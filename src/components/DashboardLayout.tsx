@@ -1,16 +1,18 @@
 import { ReactNode, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, Phone, BarChart3, Settings, Zap, Menu, X, 
-  ChevronLeft, Users, Headphones
+  Users, Headphones, Bot, LogOut
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: Phone, label: "Calls", href: "/dashboard/calls" },
   { icon: Headphones, label: "Live Call", href: "/dashboard/live" },
+  { icon: Bot, label: "AI Coach", href: "/dashboard/ai-coach" },
   { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics" },
   { icon: Users, label: "Team", href: "/dashboard/team" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
@@ -18,7 +20,17 @@ const navItems = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login");
+  };
+
+  const displayName = user?.user_metadata?.full_name || user?.email || "User";
+  const initial = displayName[0]?.toUpperCase() || "U";
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -79,9 +91,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground hidden sm:block">{displayName}</span>
             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-sm font-bold">
-              J
+              {initial}
             </div>
+            <button onClick={handleSignOut} className="text-muted-foreground hover:text-foreground" title="Sign out">
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">

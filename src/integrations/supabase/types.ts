@@ -14,7 +14,149 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      call_summaries: {
+        Row: {
+          call_id: string
+          created_at: string
+          id: string
+          key_decisions: string[] | null
+          next_steps: string[] | null
+          objections: Json | null
+          summary: string | null
+          topics: string[] | null
+          transcript: Json | null
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          id?: string
+          key_decisions?: string[] | null
+          next_steps?: string[] | null
+          objections?: Json | null
+          summary?: string | null
+          topics?: string[] | null
+          transcript?: Json | null
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          id?: string
+          key_decisions?: string[] | null
+          next_steps?: string[] | null
+          objections?: Json | null
+          summary?: string | null
+          topics?: string[] | null
+          transcript?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_summaries_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calls: {
+        Row: {
+          created_at: string
+          date: string
+          deal_score: string | null
+          duration_minutes: number | null
+          id: string
+          name: string
+          objections_count: number | null
+          participants: string[] | null
+          sentiment_score: number | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          deal_score?: string | null
+          duration_minutes?: number | null
+          id?: string
+          name: string
+          objections_count?: number | null
+          participants?: string[] | null
+          sentiment_score?: number | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          deal_score?: string | null
+          duration_minutes?: number | null
+          id?: string
+          name?: string
+          objections_count?: number | null
+          participants?: string[] | null
+          sentiment_score?: number | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

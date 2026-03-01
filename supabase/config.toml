@@ -1,1 +1,4 @@
 project_id = "dkvtufanmaiclmsnpyae"
+
+[functions.sales-coach-chat]
+verify_jwt = false
