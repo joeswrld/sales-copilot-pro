@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { Tables, TablesUpdate } from "@/integrations/supabase/types";
 import { useEffect } from "react";
 
 export type Call = Tables<"calls">;
@@ -73,23 +73,7 @@ export function useCallDetail(callId: string | undefined) {
   return { call: callQuery, summary: summaryQuery };
 }
 
-export function useCreateCall() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
-  return useMutation({
-    mutationFn: async (input: Omit<TablesInsert<"calls">, "user_id">) => {
-      const { data, error } = await supabase
-        .from("calls")
-        .insert({ ...input, user_id: user!.id })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls"] }),
-  });
-}
+// Manual call creation removed — calls are system-generated via live meetings only
 
 export function useUpdateCall() {
   const queryClient = useQueryClient();

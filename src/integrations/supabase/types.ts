@@ -67,11 +67,15 @@ export type Database = {
           date: string
           deal_score: string | null
           duration_minutes: number | null
+          end_time: string | null
           id: string
+          meeting_id: string | null
           name: string
           objections_count: number | null
           participants: string[] | null
+          platform: string | null
           sentiment_score: number | null
+          start_time: string | null
           status: string | null
           user_id: string
         }
@@ -80,11 +84,15 @@ export type Database = {
           date?: string
           deal_score?: string | null
           duration_minutes?: number | null
+          end_time?: string | null
           id?: string
+          meeting_id?: string | null
           name: string
           objections_count?: number | null
           participants?: string[] | null
+          platform?: string | null
           sentiment_score?: number | null
+          start_time?: string | null
           status?: string | null
           user_id: string
         }
@@ -93,11 +101,15 @@ export type Database = {
           date?: string
           deal_score?: string | null
           duration_minutes?: number | null
+          end_time?: string | null
           id?: string
+          meeting_id?: string | null
           name?: string
           objections_count?: number | null
           participants?: string[] | null
+          platform?: string | null
           sentiment_score?: number | null
+          start_time?: string | null
           status?: string | null
           user_id?: string
         }
@@ -130,6 +142,76 @@ export type Database = {
         }
         Relationships: []
       }
+      key_topics: {
+        Row: {
+          call_id: string
+          detected_at: string
+          id: string
+          topic: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          detected_at?: string
+          id?: string
+          topic: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          detected_at?: string
+          id?: string
+          topic?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "key_topics_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      objections: {
+        Row: {
+          call_id: string
+          confidence_score: number | null
+          detected_at: string
+          id: string
+          objection_type: string
+          suggestion: string | null
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          confidence_score?: number | null
+          detected_at?: string
+          id?: string
+          objection_type: string
+          suggestion?: string | null
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          confidence_score?: number | null
+          detected_at?: string
+          id?: string
+          objection_type?: string
+          suggestion?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "objections_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -156,6 +238,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      transcripts: {
+        Row: {
+          call_id: string
+          id: string
+          speaker: string
+          text: string
+          timestamp: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          id?: string
+          speaker: string
+          text: string
+          timestamp?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          id?: string
+          speaker?: string
+          text?: string
+          timestamp?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcripts_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
