@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserProfile } from "@/hooks/useSettings";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -22,7 +23,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { profile } = useUserProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const callsUsed = profile?.calls_used ?? 0;
+  const callsLimit = profile?.calls_limit ?? 5;
+  const planType = profile?.plan_type ?? "free";
+  const usagePercent = callsLimit > 0 ? Math.min((callsUsed / callsLimit) * 100, 100) : 0;
 
   const handleSignOut = async () => {
     await signOut();
@@ -74,11 +81,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </nav>
         <div className="p-4 border-t border-sidebar-border">
           <div className="glass rounded-lg p-3">
-            <p className="text-xs text-muted-foreground mb-2">Free Plan · 3/5 calls used</p>
+            <p className="text-xs text-muted-foreground mb-2 capitalize">{planType} Plan · {callsUsed}/{callsLimit} calls used</p>
             <div className="h-1.5 rounded-full bg-muted">
-              <div className="h-1.5 rounded-full bg-primary" style={{ width: "60%" }} />
+              <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${usagePercent}%` }} />
             </div>
-            <Button size="sm" className="w-full mt-3 text-xs">Upgrade to Pro</Button>
+            <Button size="sm" className="w-full mt-3 text-xs" asChild>
+              <Link to="/dashboard/settings">Upgrade to Pro</Link>
+            </Button>
           </div>
         </div>
       </aside>
