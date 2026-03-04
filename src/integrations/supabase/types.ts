@@ -142,6 +142,63 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_sync_logs: {
+        Row: {
+          call_id: string
+          created_at: string
+          id: string
+          provider: string
+          response_payload: Json | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          id?: string
+          provider: string
+          response_payload?: Json | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          id?: string
+          provider?: string
+          response_payload?: Json | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      integrations: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          provider: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       key_topics: {
         Row: {
           call_id: string
@@ -215,26 +272,38 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          calls_limit: number
+          calls_used: number
           created_at: string
           email: string | null
           full_name: string | null
+          gdpr_consent: boolean
           id: string
+          plan_type: string
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
+          calls_limit?: number
+          calls_used?: number
           created_at?: string
           email?: string | null
           full_name?: string | null
+          gdpr_consent?: boolean
           id: string
+          plan_type?: string
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
+          calls_limit?: number
+          calls_used?: number
           created_at?: string
           email?: string | null
           full_name?: string | null
+          gdpr_consent?: boolean
           id?: string
+          plan_type?: string
           updated_at?: string
         }
         Relationships: []
@@ -273,6 +342,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_preferences: {
+        Row: {
+          auto_join_meetings: boolean
+          crm_auto_sync: boolean
+          id: string
+          post_call_email_summary: boolean
+          real_time_objection_alerts: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_join_meetings?: boolean
+          crm_auto_sync?: boolean
+          id?: string
+          post_call_email_summary?: boolean
+          real_time_objection_alerts?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_join_meetings?: boolean
+          crm_auto_sync?: boolean
+          id?: string
+          post_call_email_summary?: boolean
+          real_time_objection_alerts?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

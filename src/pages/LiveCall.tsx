@@ -38,8 +38,12 @@ export default function LiveCall() {
     try {
       await startCall.mutateAsync({ platform });
       toast.success(`${platform} call started`);
-    } catch {
-      toast.error("Failed to start call");
+    } catch (err: any) {
+      if (err?.message === "PLAN_LIMIT_REACHED") {
+        toast.error("You've reached your plan limit. Upgrade to Pro for unlimited calls.");
+      } else {
+        toast.error("Failed to start call");
+      }
     }
   };
 

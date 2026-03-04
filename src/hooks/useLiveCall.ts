@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 export interface Transcript {
   id: string;
@@ -119,9 +120,20 @@ export function useLiveCall() {
     return () => { supabase.removeChannel(channel); };
   }, [callId, user, queryClient]);
 
-  // Start a call (simulated meeting start)
+  // Start a call (with plan limit check)
   const startCall = useMutation({
     mutationFn: async (input: { platform: string; meeting_id?: string }) => {
+      // Check plan limits
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("calls_used, calls_limit")
+        .eq("id", user!.id)
+        .single();
+
+      if (profile && profile.calls_used >= profile.calls_limit) {
+        throw new Error("PLAN_LIMIT_REACHED");
+      }
+
       const { data, error } = await supabase
         .from("calls")
         .insert({
@@ -144,7 +156,7 @@ export function useLiveCall() {
     },
   });
 
-  // End a call
+  // End a call and generate summary
   const endCall = useMutation({
     mutationFn: async () => {
       if (!callId) throw new Error("No live call");
@@ -156,11 +168,29 @@ export function useLiveCall() {
         })
         .eq("id", callId);
       if (error) throw error;
+
+      // Generate post-call summary
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (token) {
+          const res = await supabase.functions.invoke("generate-call-summary", {
+            body: { call_id: callId },
+          });
+          if (res.error) {
+            console.error("Summary generation failed:", res.error);
+            toast.error("Call saved, but summary generation failed");
+          }
+        }
+      } catch (e) {
+        console.error("Summary generation error:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
       queryClient.invalidateQueries({ queryKey: ["call-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
     },
   });
 

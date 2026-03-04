@@ -2,3 +2,6 @@ project_id = "dkvtufanmaiclmsnpyae"
 
 [functions.sales-coach-chat]
 verify_jwt = false
+
+[functions.generate-call-summary]
+verify_jwt = false
