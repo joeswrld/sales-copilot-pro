@@ -174,26 +174,38 @@ export type Database = {
       }
       integrations: {
         Row: {
+          access_token_encrypted: string | null
+          channel_id: string | null
           created_at: string
           expires_at: string | null
           id: string
+          instance_url: string | null
           provider: string
+          refresh_token_encrypted: string | null
           status: string
           user_id: string
         }
         Insert: {
+          access_token_encrypted?: string | null
+          channel_id?: string | null
           created_at?: string
           expires_at?: string | null
           id?: string
+          instance_url?: string | null
           provider: string
+          refresh_token_encrypted?: string | null
           status?: string
           user_id: string
         }
         Update: {
+          access_token_encrypted?: string | null
+          channel_id?: string | null
           created_at?: string
           expires_at?: string | null
           id?: string
+          instance_url?: string | null
           provider?: string
+          refresh_token_encrypted?: string | null
           status?: string
           user_id?: string
         }
