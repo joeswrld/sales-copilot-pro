@@ -1,7 +1,7 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ExternalLink, Loader2, Shield, CheckCircle2 } from "lucide-react";
+import { ExternalLink, Loader2, Shield, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { useIntegrations, usePreferences, useUserProfile } from "@/hooks/useSettings";
 import { toast } from "sonner";
 
@@ -15,7 +15,7 @@ const providerMeta: Record<string, { name: string; desc: string; icon: string }>
 };
 
 export default function SettingsPage() {
-  const { integrations, isLoading: intLoading, toggleIntegration } = useIntegrations();
+  const { integrations, isLoading: intLoading, connectProvider, disconnectProvider, isExpired } = useIntegrations();
   const { preferences, isLoading: prefLoading, updatePreference } = usePreferences();
   const { profile, isLoading: profileLoading, updateProfile } = useUserProfile();
 
@@ -49,6 +49,13 @@ export default function SettingsPage() {
     { key: "post_call_email_summary", label: "Post-call email summary", desc: "Receive call summary via email after each call", value: preferences?.post_call_email_summary ?? true },
     { key: "crm_auto_sync", label: "CRM auto-sync", desc: "Automatically log calls and update deal stages", value: preferences?.crm_auto_sync ?? false, disabled: !isCrmConnected },
   ];
+
+  const getIntegrationStatus = (int: { status: string; expires_at: string | null }) => {
+    if (int.status === "connected" && int.expires_at && isExpired(int as any)) {
+      return "expired";
+    }
+    return int.status;
+  };
 
   return (
     <DashboardLayout>
@@ -86,7 +93,10 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {integrations.map((int) => {
               const meta = providerMeta[int.provider] || { name: int.provider, desc: "", icon: "?" };
-              const connected = int.status === "connected";
+              const status = getIntegrationStatus(int);
+              const isConnecting = connectProvider.isPending;
+              const isDisconnecting = disconnectProvider.isPending;
+
               return (
                 <div key={int.id} className="glass rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -98,25 +108,55 @@ export default function SettingsPage() {
                       <p className="text-xs text-muted-foreground">{meta.desc}</p>
                     </div>
                   </div>
-                  <Button
-                    variant={connected ? "outline" : "default"}
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={toggleIntegration.isPending}
-                    onClick={() => toggleIntegration.mutate({ provider: int.provider, currentStatus: int.status })}
-                  >
-                    {connected ? (
+                  <div className="flex items-center gap-2">
+                    {status === "connected" && (
                       <>
-                        <CheckCircle2 className="w-3 h-3 text-success" />
-                        Connected
-                      </>
-                    ) : (
-                      <>
-                        Connect
-                        <ExternalLink className="w-3 h-3" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={isDisconnecting}
+                          onClick={() => disconnectProvider.mutate(int.provider)}
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-primary" />
+                          Connected
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={isDisconnecting}
+                          onClick={() => disconnectProvider.mutate(int.provider)}
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                        </Button>
                       </>
                     )}
-                  </Button>
+                    {status === "expired" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 border-destructive/50 text-destructive"
+                        disabled={isConnecting}
+                        onClick={() => connectProvider.mutate(int.provider)}
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Reconnect
+                      </Button>
+                    )}
+                    {status === "disconnected" && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={isConnecting}
+                        onClick={() => connectProvider.mutate(int.provider)}
+                      >
+                        Connect
+                        <ExternalLink className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -160,12 +200,12 @@ export default function SettingsPage() {
               ].map((s) => (
                 <div key={s.label}>
                   <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="text-sm font-medium text-success">{s.status}</p>
+                  <p className="text-sm font-medium text-primary">{s.status}</p>
                 </div>
               ))}
               <div>
                 <p className="text-xs text-muted-foreground">GDPR</p>
-                <p className="text-sm font-medium text-success">
+                <p className="text-sm font-medium text-primary">
                   {profile?.gdpr_consent ? "Consent Given" : "Pending"}
                 </p>
               </div>
