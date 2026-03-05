@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
 export interface Integration {
@@ -48,6 +48,18 @@ export function useIntegrations() {
     return () => { supabase.removeChannel(channel); };
   }, [user, queryClient]);
 
+  // Listen for OAuth popup success messages
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "oauth-success") {
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        toast.success(`${event.data.provider} connected successfully!`);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [queryClient]);
+
   const query = useQuery({
     queryKey: ["integrations"],
     queryFn: async () => {
@@ -58,37 +70,78 @@ export function useIntegrations() {
     enabled: !!user,
   });
 
-  const toggleIntegration = useMutation({
-    mutationFn: async ({ provider, currentStatus }: { provider: string; currentStatus: string }) => {
-      const newStatus = currentStatus === "connected" ? "disconnected" : "connected";
-      const { error } = await supabase
-        .from("integrations")
-        .update({ status: newStatus })
-        .eq("user_id", user!.id)
-        .eq("provider", provider);
+  const connectProvider = useMutation({
+    mutationFn: async (provider: string) => {
+      const redirectUri = `${window.location.origin}/dashboard/settings`;
+      const { data, error } = await supabase.functions.invoke("oauth-connect", {
+        body: { provider, redirect_uri: redirectUri },
+      });
       if (error) throw error;
-      return { provider, newStatus };
+      if (data?.error) throw new Error(data.error);
+      return data as { url: string };
     },
-    onMutate: async ({ provider, currentStatus }) => {
+    onSuccess: (data) => {
+      // Open OAuth URL in popup
+      const w = 600, h = 700;
+      const left = window.screenX + (window.innerWidth - w) / 2;
+      const top = window.screenY + (window.innerHeight - h) / 2;
+      window.open(data.url, "oauth-popup", `width=${w},height=${h},left=${left},top=${top},popup=1`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to start OAuth flow");
+    },
+  });
+
+  const disconnectProvider = useMutation({
+    mutationFn: async (provider: string) => {
+      const { data, error } = await supabase.functions.invoke("oauth-disconnect", {
+        body: { provider },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+    },
+    onMutate: async (provider) => {
       await queryClient.cancelQueries({ queryKey: ["integrations"] });
       const prev = queryClient.getQueryData<Integration[]>(["integrations"]);
       queryClient.setQueryData<Integration[]>(["integrations"], (old) =>
-        old?.map((i) =>
-          i.provider === provider
-            ? { ...i, status: currentStatus === "connected" ? "disconnected" : "connected" }
-            : i
-        )
+        old?.map((i) => i.provider === provider ? { ...i, status: "disconnected" } : i)
       );
       return { prev };
     },
     onError: (_err, _vars, context) => {
       queryClient.setQueryData(["integrations"], context?.prev);
-      toast.error("Failed to update integration");
+      toast.error("Failed to disconnect integration");
+    },
+    onSuccess: (_, provider) => {
+      toast.success(`${provider} disconnected`);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
   });
 
-  return { integrations: query.data || [], isLoading: query.isLoading, toggleIntegration };
+  // Check if a token is expired
+  const isExpired = useCallback((integration: Integration) => {
+    if (!integration.expires_at) return false;
+    return new Date(integration.expires_at) < new Date();
+  }, []);
+
+  return {
+    integrations: query.data || [],
+    isLoading: query.isLoading,
+    connectProvider,
+    disconnectProvider,
+    isExpired,
+    // Keep legacy for backwards compat
+    toggleIntegration: {
+      isPending: connectProvider.isPending || disconnectProvider.isPending,
+      mutate: ({ provider, currentStatus }: { provider: string; currentStatus: string }) => {
+        if (currentStatus === "connected") {
+          disconnectProvider.mutate(provider);
+        } else {
+          connectProvider.mutate(provider);
+        }
+      },
+    },
+  };
 }
 
 export function usePreferences() {
