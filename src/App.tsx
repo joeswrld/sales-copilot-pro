@@ -11,6 +11,7 @@ import DashboardHome from "./pages/DashboardHome";
 import CallsList from "./pages/CallsList";
 import CallDetail from "./pages/CallDetail";
 import LiveCall from "./pages/LiveCall";
+import LiveMeeting from "./pages/LiveMeeting";
 import Analytics from "./pages/Analytics";
 import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/dashboard/calls" element={<ProtectedRoute><CallsList /></ProtectedRoute>} />
             <Route path="/dashboard/calls/:id" element={<ProtectedRoute><CallDetail /></ProtectedRoute>} />
             <Route path="/dashboard/live" element={<ProtectedRoute><LiveCall /></ProtectedRoute>} />
+            <Route path="/dashboard/live/:id" element={<ProtectedRoute><LiveMeeting /></ProtectedRoute>} />
             <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/dashboard/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route path="/dashboard/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

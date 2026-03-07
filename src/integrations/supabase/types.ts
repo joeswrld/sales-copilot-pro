@@ -70,6 +70,8 @@ export type Database = {
           end_time: string | null
           id: string
           meeting_id: string | null
+          meeting_provider: string | null
+          meeting_url: string | null
           name: string
           objections_count: number | null
           participants: string[] | null
@@ -87,6 +89,8 @@ export type Database = {
           end_time?: string | null
           id?: string
           meeting_id?: string | null
+          meeting_provider?: string | null
+          meeting_url?: string | null
           name: string
           objections_count?: number | null
           participants?: string[] | null
@@ -104,6 +108,8 @@ export type Database = {
           end_time?: string | null
           id?: string
           meeting_id?: string | null
+          meeting_provider?: string | null
+          meeting_url?: string | null
           name?: string
           objections_count?: number | null
           participants?: string[] | null
@@ -317,6 +323,39 @@ export type Database = {
           id?: string
           plan_type?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      scheduled_calls: {
+        Row: {
+          created_at: string
+          id: string
+          meeting_provider: string
+          meeting_url: string | null
+          scheduled_time: string
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          meeting_provider: string
+          meeting_url?: string | null
+          scheduled_time: string
+          status?: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          meeting_provider?: string
+          meeting_url?: string | null
+          scheduled_time?: string
+          status?: string
+          title?: string
+          user_id?: string
         }
         Relationships: []
       }
