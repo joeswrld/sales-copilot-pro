@@ -185,6 +185,15 @@ export function useLiveCall() {
       } catch (e) {
         console.error("Summary generation error:", e);
       }
+
+      // Send Slack notification (fire-and-forget)
+      try {
+        await supabase.functions.invoke("slack-notify", {
+          body: { call_id: callId, user_id: user!.id },
+        });
+      } catch (e) {
+        console.error("Slack notify error:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
