@@ -11,6 +11,7 @@ import DashboardHome from "./pages/DashboardHome";
 import CallsList from "./pages/CallsList";
 import CallDetail from "./pages/CallDetail";
 import LiveCall from "./pages/LiveCall";
+import LiveMeeting from "./pages/LiveMeeting";
 import Analytics from "./pages/Analytics";
 import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
