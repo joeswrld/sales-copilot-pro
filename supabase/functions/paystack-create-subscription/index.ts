@@ -10,10 +10,10 @@ const corsHeaders = {
 const USD_TO_NGN_RATE = 1500;
 
 // Plan configurations (prices in USD cents)
-const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number }> = {
-  starter: { name: "Starter", price_usd: 19, calls_limit: 50 },
-  growth: { name: "Growth", price_usd: 49, calls_limit: 300 },
-  scale: { name: "Scale", price_usd: 99, calls_limit: -1 },
+const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number; team_members_limit: number }> = {
+  starter: { name: "Starter", price_usd: 19, calls_limit: 50, team_members_limit: 3 },
+  growth: { name: "Growth", price_usd: 49, calls_limit: 300, team_members_limit: 10 },
+  scale: { name: "Scale", price_usd: 99, calls_limit: -1, team_members_limit: -1 },
 };
 
 Deno.serve(async (req) => {
