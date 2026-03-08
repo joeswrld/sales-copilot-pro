@@ -148,6 +148,12 @@ export function useTeamMessaging(teamId: string | undefined) {
   };
 }
 
+export interface ReadReceipt {
+  user_id: string;
+  last_read_at: string | null;
+  full_name: string | null;
+}
+
 export function useConversationMessages(conversationId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -176,6 +182,35 @@ export function useConversationMessages(conversationId: string | null) {
       })) as Message[];
     },
     enabled: !!conversationId,
+  });
+
+  // Read receipts: fetch other participants' last_read_at
+  const readReceiptsQuery = useQuery({
+    queryKey: ["read-receipts", conversationId],
+    queryFn: async () => {
+      const { data: participants } = await supabase
+        .from("conversation_participants")
+        .select("user_id, last_read_at")
+        .eq("conversation_id", conversationId!)
+        .neq("user_id", user!.id);
+
+      if (!participants?.length) return [] as ReadReceipt[];
+
+      const userIds = participants.map(p => p.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", userIds);
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
+
+      return participants.map(p => ({
+        user_id: p.user_id,
+        last_read_at: p.last_read_at,
+        full_name: profileMap.get(p.user_id)?.full_name ?? null,
+      })) as ReadReceipt[];
+    },
+    enabled: !!conversationId && !!user,
+    refetchInterval: 10000,
   });
 
   useEffect(() => {
