@@ -5,14 +5,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BarChart3, Users, MessageSquare, Plus, GraduationCap, Bell } from "lucide-react";
+import { BarChart3, Users, MessageSquare, Plus, GraduationCap, Bell, Inbox } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useTeamMessaging } from "@/hooks/useTeamMessaging";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
 import TeamNotificationsTab from "@/components/team/TeamNotificationsTab";
+import TeamInboxTab from "@/components/team/TeamInboxTab";
 
 export default function TeamPage() {
   const { user } = useAuth();
