@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.paystack-cancel-subscription]
 verify_jwt = false
+
+[functions.paystack-upgrade-subscription]
+verify_jwt = false

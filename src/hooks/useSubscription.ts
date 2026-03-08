@@ -91,12 +91,42 @@ export function useSubscription() {
     },
   });
 
+  const upgradePlan = useMutation({
+    mutationFn: async (newPlanKey: string) => {
+      const callbackUrl = `${window.location.origin}/dashboard/billing?upgraded=true`;
+      const { data, error } = await supabase.functions.invoke(
+        "paystack-upgrade-subscription",
+        { body: { new_plan_key: newPlanKey, callback_url: callbackUrl } }
+      );
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { authorization_url: string; reference: string };
+    },
+    onSuccess: (data) => {
+      window.location.href = data.authorization_url;
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to upgrade plan");
+    },
+  });
+
+  // Get current plan key from plan_name
+  const getCurrentPlanKey = () => {
+    const planName = query.data?.plan_name?.toLowerCase() || "";
+    if (planName.includes("scale")) return "scale";
+    if (planName.includes("growth")) return "growth";
+    if (planName.includes("starter")) return "starter";
+    return "free";
+  };
+
   return {
     subscription: query.data,
     isLoading: query.isLoading,
     subscribe,
     cancelSubscription,
+    upgradePlan,
     isActive: query.data?.status === "active",
     refetch: query.refetch,
+    currentPlanKey: getCurrentPlanKey(),
   };
 }
