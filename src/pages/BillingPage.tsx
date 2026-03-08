@@ -122,7 +122,12 @@ export default function BillingPage() {
                     Cancel Subscription
                   </Button>
                 )}
-                {subscription.status === "cancelled" && (
+                {subscription.status === "pending" && (
+                  <p className="text-sm text-muted-foreground">
+                    Your payment is being processed. This page will update automatically once confirmed.
+                  </p>
+                )}
+                {(subscription.status === "cancelled" || subscription.status === "inactive") && (
                   <Button
                     onClick={() => subscribe.mutate("starter")}
                     disabled={subscribe.isPending}
