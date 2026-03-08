@@ -415,7 +415,7 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
       </div>
 
       {/* Strengths / Weaknesses / Suggestions */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-display flex items-center gap-2">
