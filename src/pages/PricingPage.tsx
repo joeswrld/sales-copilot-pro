@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUserProfile } from "@/hooks/useSettings";
+import { useTeamUsage } from "@/hooks/useTeamUsage";
 import { PLANS, formatNGN, USD_TO_NGN } from "@/config/plans";
 
 const fadeUp = {
