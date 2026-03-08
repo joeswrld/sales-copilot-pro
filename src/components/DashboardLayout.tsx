@@ -122,7 +122,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild className="cursor-pointer gap-2">
-                  <Link to="/dashboard/settings"><User className="w-4 h-4" /> Profile</Link>
+                  <Link to="/dashboard/profile"><User className="w-4 h-4" /> Profile</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="cursor-pointer gap-2">
                   <Link to="/dashboard/settings"><Settings className="w-4 h-4" /> Settings</Link>
