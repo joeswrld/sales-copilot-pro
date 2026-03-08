@@ -33,7 +33,7 @@ interface Props {
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
 const roleColors: Record<string, string> = { admin: "text-primary", manager: "text-amber-400", member: "text-muted-foreground" };
 
-export default function TeamMembersTab({ members, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, inviting }: Props) {
+export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
