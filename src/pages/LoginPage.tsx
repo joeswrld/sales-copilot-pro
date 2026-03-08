@@ -27,7 +27,7 @@ export default function LoginPage() {
         toast({ title: "Check your email", description: "We've sent you a password reset link." });
         setMode("login");
       } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -36,7 +36,11 @@ export default function LoginPage() {
           },
         });
         if (error) throw error;
-        toast({ title: "Check your email", description: "We've sent you a confirmation link." });
+        if (data.session) {
+          navigate("/dashboard");
+        } else {
+          toast({ title: "Check your email", description: "We've sent you a confirmation link." });
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
