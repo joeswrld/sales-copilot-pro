@@ -124,7 +124,7 @@ export default function BillingPage() {
                 )}
                 {subscription.status === "cancelled" && (
                   <Button
-                    onClick={() => subscribe.mutate()}
+                    onClick={() => subscribe.mutate("starter")}
                     disabled={subscribe.isPending}
                   >
                     {subscribe.isPending ? (
