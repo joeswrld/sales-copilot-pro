@@ -36,8 +36,9 @@ function formatNGN(amount: number): string {
 }
 
 export default function BillingPage() {
-  const { subscription, isLoading, subscribe, cancelSubscription, isActive } = useSubscription();
+  const { subscription, isLoading, subscribe, cancelSubscription, isActive, refetch } = useSubscription();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("success") === "true") {
@@ -45,6 +46,22 @@ export default function BillingPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    toast.info("Subscription status refreshed");
+  };
+
+  // Extract plan key from plan_name for "Continue Payment"
+  const getPlanKey = () => {
+    const planName = subscription?.plan_name?.toLowerCase() || "";
+    if (planName.includes("scale")) return "scale";
+    if (planName.includes("growth")) return "growth";
+    if (planName.includes("starter")) return "starter";
+    return "starter";
+  };
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;

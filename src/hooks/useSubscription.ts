@@ -38,6 +38,11 @@ export function useSubscription() {
       return data as Subscription | null;
     },
     enabled: !!user,
+    // Auto-refetch every 5 seconds when status is pending
+    refetchInterval: (query) => {
+      const data = query.state.data as Subscription | null;
+      return data?.status === "pending" ? 5000 : false;
+    },
   });
 
   const subscribe = useMutation({
