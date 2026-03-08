@@ -21,6 +21,18 @@ export interface Subscription {
   updated_at: string;
 }
 
+export interface SubscriptionTransaction {
+  reference: string;
+  status: string;
+  amount_kobo: number;
+  amount_ngn: number;
+  paid_at: string | null;
+  created_at: string;
+  currency: string;
+  channel: string | null;
+  gateway_response: string | null;
+}
+
 export function useSubscription() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -38,9 +50,8 @@ export function useSubscription() {
       return data as Subscription | null;
     },
     enabled: !!user,
-    // Auto-refetch every 5 seconds when status is pending
-    refetchInterval: (query) => {
-      const data = query.state.data as Subscription | null;
+    refetchInterval: (q) => {
+      const data = q.state.data as Subscription | null;
       return data?.status === "pending" ? 5000 : false;
     },
   });
@@ -53,7 +64,7 @@ export function useSubscription() {
         { body: { callback_url: callbackUrl, plan_key: planKey } }
       );
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
@@ -80,7 +91,7 @@ export function useSubscription() {
         }
       );
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if ((data as any)?.error) throw new Error((data as any).error);
     },
     onSuccess: () => {
       toast.success("Subscription cancelled");
@@ -99,7 +110,7 @@ export function useSubscription() {
         { body: { new_plan_key: newPlanKey, callback_url: callbackUrl } }
       );
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
@@ -110,7 +121,60 @@ export function useSubscription() {
     },
   });
 
-  // Get current plan key from plan_name
+  const verifyPayment = useMutation({
+    mutationFn: async (reference?: string | null) => {
+      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
+        body: { reference: reference || null },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as { updated: boolean };
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ["subscription"] });
+      await queryClient.invalidateQueries({ queryKey: ["subscription-transactions"] });
+      if (data.updated) {
+        toast.success("Payment verified and subscription activated");
+      }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to verify payment");
+    },
+  });
+
+  const transactionsQuery = useQuery({
+    queryKey: ["subscription-transactions", user?.id],
+    queryFn: async (): Promise<SubscriptionTransaction[]> => {
+      if (!user) return [];
+      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
+        body: {},
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return ((data as any)?.transactions ?? []) as SubscriptionTransaction[];
+    },
+    enabled: !!user,
+    refetchInterval: 15000,
+  });
+
+  const pendingSyncQuery = useQuery({
+    queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
+    queryFn: async () => {
+      if (!user || query.data?.status !== "pending") return null;
+      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
+        body: {},
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      if ((data as any)?.updated) {
+        await queryClient.invalidateQueries({ queryKey: ["subscription"] });
+      }
+      return data;
+    },
+    enabled: !!user && query.data?.status === "pending",
+    refetchInterval: 8000,
+  });
+
   const getCurrentPlanKey = () => {
     const planName = query.data?.plan_name?.toLowerCase() || "";
     if (planName.includes("scale")) return "scale";
@@ -125,8 +189,12 @@ export function useSubscription() {
     subscribe,
     cancelSubscription,
     upgradePlan,
+    verifyPayment,
     isActive: query.data?.status === "active",
     refetch: query.refetch,
     currentPlanKey: getCurrentPlanKey(),
+    transactions: transactionsQuery.data ?? [],
+    isTransactionsLoading: transactionsQuery.isLoading,
+    isSyncingPending: pendingSyncQuery.isFetching,
   };
 }

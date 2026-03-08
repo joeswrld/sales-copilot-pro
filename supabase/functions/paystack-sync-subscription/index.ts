@@ -1,0 +1,161 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+type PaystackTx = {
+  reference: string;
+  status: string;
+  amount: number;
+  paid_at: string | null;
+  created_at: string;
+  currency: string;
+  channel: string | null;
+  gateway_response: string | null;
+  customer?: { email?: string | null; customer_code?: string | null };
+  authorization?: { last4?: string | null; brand?: string | null };
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: corsHeaders,
+      });
+    }
+
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: corsHeaders,
+      });
+    }
+
+    const userId = claimsData.claims.sub as string;
+    const userEmail = (claimsData.claims.email as string | undefined)?.toLowerCase();
+
+    const { reference } = await req.json().catch(() => ({}));
+
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const { data: subscription } = await adminClient
+      .from("subscriptions")
+      .select("user_id, status, paystack_customer_code, plan_name, plan_price_usd, amount_kobo")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const paystackSecret = Deno.env.get("PAYSTACK_SECRET_KEY")!;
+
+    let verifiedTransaction: PaystackTx | null = null;
+
+    if (reference) {
+      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+        headers: { Authorization: `Bearer ${paystackSecret}` },
+      });
+      const verifyData = await verifyRes.json();
+      if (verifyData?.status && verifyData?.data?.status === "success") {
+        verifiedTransaction = verifyData.data as PaystackTx;
+      }
+    }
+
+    const listUrl = new URL("https://api.paystack.co/transaction");
+    listUrl.searchParams.set("perPage", "100");
+
+    if (subscription?.paystack_customer_code) {
+      listUrl.searchParams.set("customer", subscription.paystack_customer_code);
+    }
+
+    const txRes = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${paystackSecret}` },
+    });
+    const txData = await txRes.json();
+
+    const transactions = ((txData?.data || []) as PaystackTx[])
+      .filter((tx) => {
+        const txEmail = tx.customer?.email?.toLowerCase();
+        if (userEmail && txEmail === userEmail) return true;
+        if (subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code) return true;
+        return false;
+      })
+      .map((tx) => ({
+        reference: tx.reference,
+        status: tx.status,
+        amount_kobo: tx.amount,
+        amount_ngn: tx.amount / 100,
+        paid_at: tx.paid_at,
+        created_at: tx.created_at,
+        currency: tx.currency,
+        channel: tx.channel,
+        gateway_response: tx.gateway_response,
+      }))
+      .sort((a, b) => new Date(b.paid_at || b.created_at).getTime() - new Date(a.paid_at || a.created_at).getTime());
+
+    if (!verifiedTransaction) {
+      verifiedTransaction = ((txData?.data || []) as PaystackTx[])
+        .filter((tx) => tx.status === "success")
+        .find((tx) => {
+          const txEmail = tx.customer?.email?.toLowerCase();
+          const emailMatch = !!userEmail && txEmail === userEmail;
+          const codeMatch = !!subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code;
+          return emailMatch || codeMatch;
+        }) || null;
+    }
+
+    let updated = false;
+
+    if (verifiedTransaction && subscription?.status !== "active") {
+      const updateResult = await adminClient
+        .from("subscriptions")
+        .update({
+          status: "active",
+          updated_at: new Date().toISOString(),
+          paystack_customer_code:
+            verifiedTransaction.customer?.customer_code || subscription?.paystack_customer_code || null,
+          card_last4: verifiedTransaction.authorization?.last4 || null,
+          card_brand: verifiedTransaction.authorization?.brand || null,
+        })
+        .eq("user_id", userId)
+        .eq("status", "pending");
+
+      if (!updateResult.error) {
+        updated = true;
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        updated,
+        current_status: subscription?.status ?? "inactive",
+        transactions,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("paystack-sync-subscription error", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
