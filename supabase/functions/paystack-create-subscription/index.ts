@@ -79,34 +79,33 @@ Deno.serve(async (req) => {
     const customerCode =
       customerData.data?.customer_code || customerData.data?.id;
 
-    // 2. Get or create Paystack plan
-    // Check for env var first (e.g. PAYSTACK_PLAN_CODE_STARTER)
-    const envPlanKey = `PAYSTACK_PLAN_CODE_${plan_key.toUpperCase()}`;
-    let planCode = Deno.env.get(envPlanKey) || Deno.env.get("PAYSTACK_PLAN_CODE");
-
-    if (!planCode || plan_key !== "starter") {
-      // Create plan dynamically if not configured
-      const existingPlanCode = Deno.env.get(envPlanKey);
-      if (existingPlanCode) {
-        planCode = existingPlanCode;
-      } else {
-        const planRes = await fetch("https://api.paystack.co/plan", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${PAYSTACK_SECRET}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: `Fixsense ${planConfig.name}`,
-            interval: "monthly",
-            amount: amount_ngn_kobo, // Amount in kobo (NGN)
-            currency: "NGN",
-          }),
-        });
-        const planData = await planRes.json();
-        planCode = planData.data?.plan_code;
-      }
+    // 2. Create a new Paystack plan dynamically for each subscription
+    // This ensures each plan has the correct pricing
+    const planRes = await fetch("https://api.paystack.co/plan", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: `Fixsense ${planConfig.name} - ${Date.now()}`,
+        interval: "monthly",
+        amount: amount_ngn_kobo, // Amount in kobo (NGN)
+        currency: "NGN",
+      }),
+    });
+    const planData = await planRes.json();
+    
+    if (!planData.status || !planData.data?.plan_code) {
+      console.error("Failed to create Paystack plan:", planData);
+      return new Response(
+        JSON.stringify({ error: planData.message || "Failed to create plan" }),
+        { status: 400, headers: corsHeaders }
+      );
     }
+    
+    const planCode = planData.data.plan_code;
+    console.log(`Created Paystack plan: ${planCode} for ${planConfig.name}`);
 
     // 3. Initialize transaction with plan (charged in NGN)
     const initRes = await fetch(
