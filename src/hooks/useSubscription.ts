@@ -97,5 +97,6 @@ export function useSubscription() {
     subscribe,
     cancelSubscription,
     isActive: query.data?.status === "active",
+    refetch: query.refetch,
   };
 }
