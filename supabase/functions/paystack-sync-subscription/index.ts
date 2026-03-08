@@ -113,10 +113,28 @@ Deno.serve(async (req) => {
 
       matchedTransactions = allTransactions.filter((tx) => {
         const txEmail = tx.customer?.email?.toLowerCase();
-        if (userEmail && txEmail === userEmail) return true;
-        if (subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code) return true;
-        return false;
+        const emailMatch = !!userEmail && txEmail === userEmail;
+        const codeMatch = !!subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code;
+        const metadataUserIdMatch = tx.metadata?.user_id === userId;
+        const metadataFieldMatch =
+          tx.metadata?.custom_fields?.some(
+            (field) => field?.variable_name === "user_id" && field?.value === userId
+          ) ?? false;
+
+        return emailMatch || codeMatch || metadataUserIdMatch || metadataFieldMatch;
       });
+
+      if (matchedTransactions.length === 0 && subscription?.paystack_customer_code && allTransactions.length > 0) {
+        // Fallback: when Paystack already scoped by customer, trust this scoped list.
+        matchedTransactions = allTransactions;
+      }
+
+      if (matchedTransactions.length === 0 && reference) {
+        const matchedByReference = allTransactions.find((tx) => tx.reference === reference);
+        if (matchedByReference) {
+          matchedTransactions = [matchedByReference];
+        }
+      }
 
       if (includeTransactions) {
         transactions = matchedTransactions
