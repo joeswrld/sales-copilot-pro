@@ -178,11 +178,49 @@ export default function BillingPage() {
                   </Button>
                 )}
                 {subscription.status === "pending" && (
-                  <p className="text-sm text-muted-foreground">
-                    Your payment is being processed. This page will update automatically once confirmed.
-                  </p>
+                  <div className="w-full space-y-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      <span>Auto-refreshing every 5 seconds...</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleManualRefresh}
+                        disabled={isRefreshing}
+                      >
+                        Refresh now
+                      </Button>
+                    </div>
+                    <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+                        <strong>Payment incomplete?</strong> If you left the payment page before completing, you can continue where you left off.
+                      </p>
+                      <Button
+                        onClick={() => subscribe.mutate(getPlanKey())}
+                        disabled={subscribe.isPending}
+                        className="w-full sm:w-auto"
+                      >
+                        {subscribe.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                        )}
+                        Continue Payment
+                      </Button>
+                    </div>
+                  </div>
                 )}
                 {(subscription.status === "cancelled" || subscription.status === "inactive") && (
+                  <Button
+                    onClick={() => subscribe.mutate("starter")}
+                    disabled={subscribe.isPending}
+                  >
+                    {subscribe.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Resubscribe
+                  </Button>
+                )}
                   <Button
                     onClick={() => subscribe.mutate("starter")}
                     disabled={subscribe.isPending}
