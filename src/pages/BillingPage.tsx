@@ -229,7 +229,8 @@ export default function BillingPage() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </DashboardLayout>
+        </div>
+      </DashboardLayout>
+    </TooltipProvider>
   );
 }
