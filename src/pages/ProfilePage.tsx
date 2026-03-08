@@ -32,6 +32,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { profile, isLoading, updateProfile } = useUserProfile();
+  const { teamUsage } = useTeamUsage();
 
   const [fullName, setFullName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
