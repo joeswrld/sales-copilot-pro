@@ -69,11 +69,11 @@ export default function BillingPage() {
     refetchInterval: 30000,
   });
 
-  // Query team member count
+  // Query team member count and admin's plan
   const teamMembersQuery = useQuery({
     queryKey: ["team-member-count", user?.id],
     queryFn: async () => {
-      if (!user) return { count: 0, teamId: null };
+      if (!user) return { count: 0, teamId: null, adminPlanKey: "free" };
       const { data: membership } = await supabase
         .from("team_members")
         .select("team_id")
@@ -81,13 +81,31 @@ export default function BillingPage() {
         .eq("status", "active")
         .limit(1)
         .maybeSingle();
-      if (!membership) return { count: 1, teamId: null };
+      if (!membership) return { count: 1, teamId: null, adminPlanKey: "free" };
       const { count } = await supabase
         .from("team_members")
         .select("*", { count: "exact", head: true })
         .eq("team_id", membership.team_id)
         .eq("status", "active");
-      return { count: count ?? 1, teamId: membership.team_id };
+      // Find the admin and their plan
+      const { data: adminMember } = await supabase
+        .from("team_members")
+        .select("user_id")
+        .eq("team_id", membership.team_id)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .limit(1)
+        .single();
+      let adminPlanKey = "free";
+      if (adminMember) {
+        const { data: adminProfile } = await supabase
+          .from("profiles")
+          .select("plan_type")
+          .eq("id", adminMember.user_id)
+          .single();
+        adminPlanKey = adminProfile?.plan_type || "free";
+      }
+      return { count: count ?? 1, teamId: membership.team_id, adminPlanKey };
     },
     enabled: !!user,
     refetchInterval: 30000,
