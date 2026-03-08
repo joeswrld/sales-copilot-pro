@@ -1,129 +1,191 @@
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
-import { useUserProfile } from "@/hooks/useSettings";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, Check } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { format } from "date-fns";
 
-const plans = [
-  {
-    name: "Free",
-    price: "$0",
-    period: "/month",
-    features: ["5 calls/month", "Basic transcription", "AI summaries", "1 integration"],
-    current: true,
-  },
-  {
-    name: "Pro",
-    price: "$49",
-    period: "/month",
-    features: ["Unlimited calls", "Real-time analysis", "All integrations", "CRM sync", "Priority support"],
-    current: false,
-    popular: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    period: "",
-    features: ["Everything in Pro", "SSO & SAML", "Dedicated support", "Custom AI models", "SLA guarantee"],
-    current: false,
-  },
-];
+const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
+  active: { label: "Active", variant: "default", icon: CheckCircle2 },
+  cancelled: { label: "Cancelled", variant: "secondary", icon: XCircle },
+  past_due: { label: "Past Due", variant: "destructive", icon: AlertCircle },
+  pending: { label: "Pending", variant: "outline", icon: Loader2 },
+  inactive: { label: "Inactive", variant: "secondary", icon: XCircle },
+};
 
 export default function BillingPage() {
-  const { profile } = useUserProfile();
-  const planType = profile?.plan_type ?? "free";
-  const callsUsed = profile?.calls_used ?? 0;
-  const callsLimit = profile?.calls_limit ?? 5;
+  const { subscription, isLoading, subscribe, cancelSubscription, isActive } = useSubscription();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("success") === "true") {
+      toast.success("Subscription activated successfully!");
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
+  const StatusIcon = status.icon;
 
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-3xl mx-auto space-y-8">
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
-          <p className="text-muted-foreground mt-1">Manage your subscription and usage.</p>
+          <p className="text-muted-foreground mt-1">
+            Manage your Fixsense subscription and payment details.
+          </p>
         </div>
 
-        {/* Current plan summary */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div>
-              <CardTitle className="text-lg">Current Plan</CardTitle>
-              <CardDescription>Your active subscription details</CardDescription>
-            </div>
-            <Badge variant="secondary" className="capitalize text-sm px-3 py-1">
-              {planType}
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-sm text-muted-foreground">Calls used this month</p>
-                <p className="text-2xl font-bold text-foreground">{callsUsed} <span className="text-sm font-normal text-muted-foreground">/ {callsLimit}</span></p>
-              </div>
-              <div className="flex-1 max-w-xs">
-                <div className="h-2 rounded-full bg-muted">
-                  <div
-                    className="h-2 rounded-full bg-primary transition-all"
-                    style={{ width: `${callsLimit > 0 ? Math.min((callsUsed / callsLimit) * 100, 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Plans grid */}
-        <div className="grid gap-6 md:grid-cols-3">
-          {plans.map((plan) => {
-            const isCurrentPlan = plan.name.toLowerCase() === planType;
-            return (
-              <Card
-                key={plan.name}
-                className={
-                  plan.popular
-                    ? "border-primary shadow-lg shadow-primary/10 relative"
-                    : "border-border"
-                }
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-primary-foreground text-xs">Most Popular</Badge>
-                  </div>
-                )}
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    {plan.name === "Pro" && <Zap className="w-4 h-4 text-primary" />}
-                    {plan.name === "Enterprise" && <CreditCard className="w-4 h-4 text-primary" />}
-                    {plan.name}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : subscription && subscription.status !== "inactive" ? (
+          <>
+            {/* Current Plan Card */}
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-primary" />
+                    {subscription.plan_name}
                   </CardTitle>
-                  <div className="mt-2">
-                    <span className="text-3xl font-bold text-foreground">{plan.price}</span>
-                    <span className="text-muted-foreground text-sm">{plan.period}</span>
+                  <CardDescription>Monthly subscription</CardDescription>
+                </div>
+                <Badge variant={status.variant} className="flex items-center gap-1.5 px-3 py-1">
+                  <StatusIcon className="w-3.5 h-3.5" />
+                  {status.label}
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Price</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      $19<span className="text-sm font-normal text-muted-foreground">/month</span>
+                    </p>
                   </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Next billing date</p>
+                    <p className="text-lg font-semibold text-foreground">
+                      {subscription.next_payment_date
+                        ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Method */}
+            {subscription.card_last4 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-muted-foreground" />
+                    Payment Method
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <ul className="space-y-2">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Check className="w-4 h-4 text-primary shrink-0" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className="w-full"
-                    variant={isCurrentPlan ? "outline" : plan.popular ? "default" : "secondary"}
-                    disabled={isCurrentPlan}
-                  >
-                    {isCurrentPlan ? "Current Plan" : plan.name === "Enterprise" ? "Contact Sales" : "Upgrade"}
-                  </Button>
+                <CardContent>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-8 rounded bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase">
+                      {subscription.card_brand || "Card"}
+                    </div>
+                    <span className="text-foreground font-mono">
+                      •••• •••• •••• {subscription.card_last4}
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
+            )}
+
+            {/* Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Subscription Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                {isActive && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => cancelSubscription.mutate()}
+                    disabled={cancelSubscription.isPending}
+                  >
+                    {cancelSubscription.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Cancel Subscription
+                  </Button>
+                )}
+                {subscription.status === "cancelled" && (
+                  <Button
+                    onClick={() => subscribe.mutate()}
+                    disabled={subscribe.isPending}
+                  >
+                    {subscribe.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Resubscribe
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        ) : (
+          /* No subscription — show pricing card */
+          <Card className="border-primary shadow-lg shadow-primary/10 max-w-md mx-auto">
+            <CardHeader className="text-center pb-2">
+              <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <Zap className="w-6 h-6 text-primary" />
+              </div>
+              <CardTitle className="text-xl">Fixsense Monthly</CardTitle>
+              <CardDescription>
+                Everything you need to close more deals with AI-powered sales intelligence.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="text-center">
+                <span className="text-4xl font-bold text-foreground">$19</span>
+                <span className="text-muted-foreground">/month</span>
+              </div>
+
+              <ul className="space-y-3">
+                {[
+                  "Unlimited calls",
+                  "Real-time AI analysis",
+                  "All integrations",
+                  "CRM sync",
+                  "AI Sales Coach",
+                  "Priority support",
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => subscribe.mutate()}
+                disabled={subscribe.isPending}
+              >
+                {subscribe.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="w-4 h-4 mr-2" />
+                )}
+                Subscribe with Paystack
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardLayout>
   );

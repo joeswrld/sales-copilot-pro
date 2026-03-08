@@ -359,6 +359,57 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          amount_kobo: number
+          card_brand: string | null
+          card_last4: string | null
+          created_at: string
+          currency: string
+          id: string
+          next_payment_date: string | null
+          paystack_customer_code: string | null
+          paystack_email_token: string | null
+          paystack_subscription_code: string | null
+          plan_name: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_kobo?: number
+          card_brand?: string | null
+          card_last4?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          next_payment_date?: string | null
+          paystack_customer_code?: string | null
+          paystack_email_token?: string | null
+          paystack_subscription_code?: string | null
+          plan_name?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_kobo?: number
+          card_brand?: string | null
+          card_last4?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          next_payment_date?: string | null
+          paystack_customer_code?: string | null
+          paystack_email_token?: string | null
+          paystack_subscription_code?: string | null
+          plan_name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transcripts: {
         Row: {
           call_id: string
