@@ -1,15 +1,19 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X } from "lucide-react";
+import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X, ArrowUp, Users } from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
+import { useUserProfile } from "@/hooks/useSettings";
+import { getTeamMembersLimit } from "@/config/plans";
 
 interface PendingInvitation {
   id: string;
@@ -38,8 +42,26 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const { profile } = useUserProfile();
+  const currentPlanKey = profile?.plan_type || "free";
+  const teamMembersLimit = getTeamMembersLimit(currentPlanKey);
+  const isTeamUnlimited = teamMembersLimit === -1;
+  const totalMembers = members.length + pendingInvitations.length;
+  const isAtLimit = !isTeamUnlimited && totalMembers >= teamMembersLimit;
+  const teamPct = isTeamUnlimited ? 0 : Math.min((totalMembers / teamMembersLimit) * 100, 100);
 
   const isAdmin = currentRole === "admin";
+
+  const handleInviteClick = () => {
+    if (isAtLimit) {
+      setUpgradeOpen(true);
+      return;
+    }
+    setInviteOpen(true);
+  };
 
   const handleInvite = () => {
     if (!inviteEmail.trim()) return;
@@ -51,6 +73,32 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
 
   return (
     <div className="space-y-4">
+      {/* Team capacity bar */}
+      <Card className="border-border">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Team Capacity
+            </span>
+            <span className="text-sm font-semibold text-foreground">
+              {totalMembers} / {isTeamUnlimited ? "∞" : teamMembersLimit}
+            </span>
+          </div>
+          <Progress value={isTeamUnlimited ? 0 : teamPct} className="h-2.5" />
+          {isAtLimit && (
+            <p className="text-xs text-destructive mt-2 font-medium">
+              You have reached the team member limit for your plan. Upgrade to add more members.
+            </p>
+          )}
+          {!isTeamUnlimited && teamPct >= 80 && !isAtLimit && (
+            <p className="text-xs text-accent mt-2 font-medium">
+              You are using {totalMembers} of {teamMembersLimit} team seats. Consider upgrading your plan.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -58,9 +106,9 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
           <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""}</p>
         </div>
         {isAdmin && (
-          <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-2">
+          <Button size="sm" onClick={handleInviteClick} className="gap-2" variant={isAtLimit ? "outline" : "default"}>
             <UserPlus className="w-4 h-4" />
-            <span className="hidden sm:inline">Invite User</span>
+            <span className="hidden sm:inline">{isAtLimit ? "Upgrade to Invite" : "Invite User"}</span>
           </Button>
         )}
       </div>
@@ -199,7 +247,9 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
-            <DialogDescription>Send an invite by email. If they haven’t signed up yet, they’ll join automatically after registration.</DialogDescription>
+            <DialogDescription>
+              Send an invite by email. {!isTeamUnlimited && `You can add ${teamMembersLimit - totalMembers} more member${teamMembersLimit - totalMembers !== 1 ? "s" : ""} on your current plan.`}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -237,6 +287,30 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
               Send Invite
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upgrade Modal */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" />
+              Team Member Limit Reached
+            </DialogTitle>
+            <DialogDescription>
+              You've reached the team member limit for the <strong className="text-foreground capitalize">{currentPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setUpgradeOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={() => { setUpgradeOpen(false); navigate("/dashboard/billing"); }}>
+              <ArrowUp className="w-4 h-4 mr-1.5" />
+              Upgrade Plan
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

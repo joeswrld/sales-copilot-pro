@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp, ArrowDown, Receipt, BarChart3, TrendingUp } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp, ArrowDown, Receipt, BarChart3, TrendingUp, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit } from "@/config/plans";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
   active: { label: "Active", variant: "default", icon: CheckCircle2 },
@@ -33,23 +34,6 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   pending: { label: "Pending", variant: "outline", icon: Loader2 },
   inactive: { label: "Inactive", variant: "secondary", icon: XCircle },
 };
-
-const USD_TO_NGN = 1500;
-
-const PLANS = [
-  { key: "starter", name: "Starter", price_usd: 19, calls_limit: 50 },
-  { key: "growth", name: "Growth", price_usd: 49, calls_limit: 300 },
-  { key: "scale", name: "Scale", price_usd: 99, calls_limit: -1 },
-];
-
-function formatNGN(amount: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 export default function BillingPage() {
   const { user } = useAuth();
@@ -80,6 +64,30 @@ export default function BillingPage() {
         .maybeSingle();
       if (error) throw error;
       return data;
+    },
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
+  // Query team member count
+  const teamMembersQuery = useQuery({
+    queryKey: ["team-member-count", user?.id],
+    queryFn: async () => {
+      if (!user) return { count: 0, teamId: null };
+      const { data: membership } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      if (!membership) return { count: 1, teamId: null };
+      const { count } = await supabase
+        .from("team_members")
+        .select("*", { count: "exact", head: true })
+        .eq("team_id", membership.team_id)
+        .eq("status", "active");
+      return { count: count ?? 1, teamId: membership.team_id };
     },
     enabled: !!user,
     refetchInterval: 30000,
@@ -149,7 +157,7 @@ export default function BillingPage() {
   };
 
   const getAvailablePlans = () => {
-    return PLANS.filter((p) => p.key !== currentPlanKey);
+    return PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
   };
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
@@ -159,6 +167,11 @@ export default function BillingPage() {
     (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
   const availablePlans = getAvailablePlans();
+
+  const teamMembersLimit = getTeamMembersLimit(currentPlanKey);
+  const teamMembersUsed = teamMembersQuery.data?.count ?? 1;
+  const isTeamUnlimited = teamMembersLimit === -1;
+  const teamPct = isTeamUnlimited ? 0 : Math.min((teamMembersUsed / teamMembersLimit) * 100, 100);
 
   return (
     <TooltipProvider>
@@ -230,7 +243,7 @@ export default function BillingPage() {
                 </CardContent>
               </Card>
 
-              {/* Usage Analytics */}
+              {/* Team & Usage Analytics */}
               {profileQuery.data && (
                 <Card className="border-border">
                   <CardHeader>
@@ -243,6 +256,34 @@ export default function BillingPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    {/* Team Members Usage */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                          <Users className="w-4 h-4 text-primary" />
+                          Team Members
+                        </span>
+                        <span className="text-sm font-semibold text-foreground">
+                          {teamMembersUsed} / {isTeamUnlimited ? "∞" : teamMembersLimit}
+                        </span>
+                      </div>
+                      <Progress value={isTeamUnlimited ? 0 : teamPct} className="h-3" />
+                      <div className="flex justify-between mt-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {isTeamUnlimited
+                            ? "Unlimited members on your plan"
+                            : `${Math.round(teamPct)}% of team limit`}
+                        </span>
+                        {!isTeamUnlimited && teamPct >= 80 && teamPct < 100 && (
+                          <span className="text-xs text-accent font-medium">Approaching limit</span>
+                        )}
+                        {!isTeamUnlimited && teamMembersUsed >= teamMembersLimit && (
+                          <span className="text-xs text-destructive font-medium">Limit reached</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Meetings Usage */}
                     {(() => {
                       const used = profileQuery.data.calls_used ?? 0;
                       const limit = profileQuery.data.calls_limit ?? 5;
@@ -251,8 +292,8 @@ export default function BillingPage() {
                       const isNearLimit = !isUnlimited && pct >= 80;
                       const isAtLimit = !isUnlimited && used >= limit;
 
-                      const nextPlan = PLANS.find((_, i) => {
-                        const ci = PLANS.findIndex(p => p.key === currentPlanKey);
+                      const nextPlan = PLANS_SIMPLE.find((_, i) => {
+                        const ci = PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
                         return i === ci + 1;
                       });
 
@@ -260,7 +301,7 @@ export default function BillingPage() {
                         <>
                           <div>
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-foreground">Calls Used</span>
+                              <span className="text-sm font-medium text-foreground">Meetings This Month</span>
                               <span className="text-sm font-semibold text-foreground">
                                 {used} / {isUnlimited ? "∞" : limit}
                               </span>
@@ -269,7 +310,7 @@ export default function BillingPage() {
                             <div className="flex justify-between mt-1.5">
                               <span className="text-xs text-muted-foreground">
                                 {isUnlimited
-                                  ? "Unlimited calls on your plan"
+                                  ? "Unlimited meetings on your plan"
                                   : `${Math.round(pct)}% of monthly limit`}
                               </span>
                               {isNearLimit && !isAtLimit && (
@@ -281,63 +322,26 @@ export default function BillingPage() {
                             </div>
                           </div>
 
-                          {/* Plan comparison bars */}
-                          <div className="space-y-3 pt-2">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Usage across plans</p>
-                            {PLANS.map((plan) => {
-                              const planIsUnlimited = plan.calls_limit < 0;
-                              const planPct = planIsUnlimited ? 0 : Math.min((used / plan.calls_limit) * 100, 100);
-                              const isCurrent = plan.key === currentPlanKey;
-                              return (
-                                <div key={plan.key} className={`p-3 rounded-lg border transition-colors ${isCurrent ? "border-primary/40 bg-primary/5" : "border-border"}`}>
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-foreground">{plan.name}</span>
-                                      {isCurrent && (
-                                        <Badge variant="default" className="text-[10px] px-1.5 py-0">Current</Badge>
-                                      )}
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">
-                                      {planIsUnlimited ? "Unlimited" : `${plan.calls_limit} calls`} · ${plan.price_usd}/mo
-                                    </span>
-                                  </div>
-                                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full transition-all ${
-                                        planIsUnlimited
-                                          ? "bg-primary/20"
-                                          : planPct >= 100
-                                          ? "bg-destructive"
-                                          : planPct >= 80
-                                          ? "bg-accent"
-                                          : "bg-primary"
-                                      }`}
-                                      style={{ width: planIsUnlimited ? "5%" : `${planPct}%` }}
-                                    />
-                                  </div>
-                                  <p className="text-[11px] text-muted-foreground mt-1">
-                                    {planIsUnlimited
-                                      ? `${used} calls used — no limit`
-                                      : `${used} / ${plan.calls_limit} calls (${Math.round(planPct)}%)`}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-
                           {/* Upgrade recommendation */}
-                          {isNearLimit && nextPlan && (
+                          {((isNearLimit && nextPlan) || (!isTeamUnlimited && teamPct >= 80 && nextPlan)) && (
                             <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
                               <div className="flex items-start gap-3">
                                 <TrendingUp className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                                 <div className="space-y-2">
                                   <p className="text-sm font-medium text-foreground">
-                                    {isAtLimit ? "You've hit your limit!" : "You're approaching your limit"}
+                                    {isAtLimit || teamMembersUsed >= teamMembersLimit
+                                      ? "You've hit a limit!"
+                                      : "You're approaching a limit"}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    You've used {used} of {limit} calls this month ({Math.round(pct)}%).
+                                    {!isTeamUnlimited && teamMembersUsed >= teamMembersLimit
+                                      ? `You're using ${teamMembersUsed} of ${teamMembersLimit} team seats. `
+                                      : isNearLimit
+                                      ? `You've used ${used} of ${limit} meetings this month (${Math.round(pct)}%). `
+                                      : ""}
                                     Upgrade to <strong>{nextPlan.name}</strong> for{" "}
-                                    {nextPlan.calls_limit < 0 ? "unlimited" : nextPlan.calls_limit} calls at ${nextPlan.price_usd}/mo.
+                                    {nextPlan.team_members_limit === -1 ? "unlimited" : nextPlan.team_members_limit} team members and{" "}
+                                    {nextPlan.calls_limit < 0 ? "unlimited" : nextPlan.calls_limit} meetings at ${nextPlan.price_usd}/mo.
                                   </p>
                                   <Button
                                     size="sm"
@@ -392,7 +396,7 @@ export default function BillingPage() {
                   <CardContent>
                     <div className="grid gap-4 sm:grid-cols-2">
                       {availablePlans.map((plan) => {
-                        const isUpgrade = PLANS.findIndex(p => p.key === plan.key) > PLANS.findIndex(p => p.key === currentPlanKey);
+                        const isUpgrade = PLANS_SIMPLE.findIndex(p => p.key === plan.key) > PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
                         return (
                           <div key={plan.key} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
                             <div className="flex justify-between items-start mb-2">
@@ -414,8 +418,12 @@ export default function BillingPage() {
                             <p className="text-2xl font-bold text-foreground mb-1">
                               ${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span>
                             </p>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} calls/month
+                            <p className="text-sm text-muted-foreground mb-1">
+                              {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} meetings/month
+                            </p>
+                            <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5" />
+                              {plan.team_members_limit === -1 ? "Unlimited" : `Up to ${plan.team_members_limit}`} team members
                             </p>
                             <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly</p>
                             <Button 
@@ -439,7 +447,7 @@ export default function BillingPage() {
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle>
-                      {planPreview?.is_upgrade ? "Upgrade" : "Downgrade"} to {PLANS.find(p => p.key === selectedPlan)?.name}
+                      {planPreview?.is_upgrade ? "Upgrade" : "Downgrade"} to {PLANS_SIMPLE.find(p => p.key === selectedPlan)?.name}
                     </DialogTitle>
                     <DialogDescription>
                       Review your plan change with prorated billing
@@ -455,11 +463,11 @@ export default function BillingPage() {
                       <div className="p-4 rounded-lg bg-muted/50 space-y-3">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Current plan</span>
-                          <span className="font-medium">{PLANS.find(p => p.key === planPreview.current_plan)?.name}</span>
+                          <span className="font-medium">{PLANS_SIMPLE.find(p => p.key === planPreview.current_plan)?.name}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">New plan</span>
-                          <span className="font-medium">{PLANS.find(p => p.key === planPreview.new_plan)?.name}</span>
+                          <span className="font-medium">{PLANS_SIMPLE.find(p => p.key === planPreview.new_plan)?.name}</span>
                         </div>
                         {planPreview.days_remaining > 0 && (
                           <>
@@ -502,12 +510,7 @@ export default function BillingPage() {
                       {planPreview.is_downgrade && (
                         <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                           <p className="text-sm text-destructive">
-                            <strong>Note:</strong> Downgrading will reduce your monthly calls limit from{" "}
-                            {PLANS.find(p => p.key === planPreview.current_plan)?.calls_limit === -1 
-                              ? "unlimited" 
-                              : PLANS.find(p => p.key === planPreview.current_plan)?.calls_limit
-                            }{" "}
-                            to {PLANS.find(p => p.key === planPreview.new_plan)?.calls_limit} calls.
+                            <strong>Note:</strong> Downgrading will reduce your limits. Check that your current team size fits the new plan.
                           </p>
                         </div>
                       )}
