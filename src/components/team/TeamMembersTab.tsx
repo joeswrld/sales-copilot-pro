@@ -37,7 +37,7 @@ interface Props {
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
 const roleColors: Record<string, string> = { admin: "text-primary", manager: "text-amber-400", member: "text-muted-foreground" };
 
-export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
+export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, adminPlanKey, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -45,9 +45,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const navigate = useNavigate();
 
-  const { profile } = useUserProfile();
-  const currentPlanKey = profile?.plan_type || "free";
-  const teamMembersLimit = getTeamMembersLimit(currentPlanKey);
+  const teamMembersLimit = getTeamMembersLimit(adminPlanKey);
   const isTeamUnlimited = teamMembersLimit === -1;
   const totalMembers = members.length + pendingInvitations.length;
   const isAtLimit = !isTeamUnlimited && totalMembers >= teamMembersLimit;
