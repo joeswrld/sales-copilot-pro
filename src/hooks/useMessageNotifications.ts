@@ -3,19 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-/** Simple bell chime using Web Audio API — no external files needed */
+/** Loud, attention-grabbing notification chime using Web Audio API */
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    // Two-tone bell: high note then slightly lower
-    const playTone = (freq: number, startTime: number, duration: number) => {
+    const playTone = (freq: number, startTime: number, duration: number, volume: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine";
+      osc.type = "square"; // harsher, louder waveform
       osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0.3, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      gain.gain.setValueAtTime(volume, startTime);
+      gain.gain.setValueAtTime(volume, startTime + duration * 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(startTime);
@@ -23,13 +23,14 @@ function playNotificationSound() {
     };
 
     const now = ctx.currentTime;
-    playTone(830, now, 0.15);       // first ding
-    playTone(660, now + 0.18, 0.2); // second (lower) dong
+    // Three loud, punchy chimes
+    playTone(880, now, 0.2, 1.0);
+    playTone(1100, now + 0.22, 0.2, 1.0);
+    playTone(880, now + 0.44, 0.3, 1.0);
 
-    // Clean up context after sound finishes
-    setTimeout(() => ctx.close(), 600);
+    setTimeout(() => ctx.close(), 1000);
   } catch {
-    // Web Audio not available — silently skip
+    // Web Audio not available
   }
 }
 
