@@ -133,13 +133,29 @@ export function useTeam() {
         .eq("email", email)
         .single();
 
+      if (!profile) {
+        throw new Error("No user found with that email. They must sign up first.");
+      }
+
+      // Check if already a member
+      const { data: existing } = await supabase
+        .from("team_members")
+        .select("id, status")
+        .eq("team_id", teamQuery.data!.id)
+        .eq("user_id", profile.id)
+        .maybeSingle();
+
+      if (existing) {
+        throw new Error("This user is already a member of the team.");
+      }
+
       const { error } = await supabase
         .from("team_members")
         .insert({
           team_id: teamQuery.data!.id,
-          user_id: profile?.id ?? user!.id, // fallback for invited users
+          user_id: profile.id,
           role,
-          status: profile ? "active" : "invited",
+          status: "active",
           invited_email: email,
         });
 
