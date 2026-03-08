@@ -482,9 +482,9 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
         <CardContent className="space-y-3">
           {member.recentMeetings.map((rm, i) => (
             <div key={i} className="p-3 rounded-lg bg-secondary/20">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-medium">{rm.title}</p>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
+                <p className="text-sm font-medium truncate">{rm.title}</p>
+                <div className="flex items-center gap-2 shrink-0">
                   <ScoreIndicator score={rm.score} />
                   <span className="text-xs text-muted-foreground">{new Date(rm.date).toLocaleDateString()}</span>
                 </div>
