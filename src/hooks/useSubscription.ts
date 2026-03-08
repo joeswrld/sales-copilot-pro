@@ -28,11 +28,11 @@ export function useSubscription() {
     queryKey: ["subscription", user?.id],
     queryFn: async (): Promise<Subscription | null> => {
       if (!user) return null;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("subscriptions" as any)
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .maybeSingle() as any);
       if (error) throw error;
       return data as Subscription | null;
     },
