@@ -105,7 +105,7 @@ export function useTeam() {
   // Create team
   const createTeam = useMutation({
     mutationFn: async (name: string) => {
-      const { data: team, error } = await supabase.rpc("create_team_with_owner", {
+      const { data: team, error } = await (supabase as any).rpc("create_team_with_owner", {
         team_name: name,
       });
 
