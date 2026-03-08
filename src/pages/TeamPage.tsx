@@ -132,19 +132,19 @@ export default function TeamPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
           {summaryCards.map((card) => (
             <Card key={card.label} className="bg-card border-border">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <card.icon className="w-4 h-4 text-muted-foreground" />
-                  <div className={`flex items-center gap-1 text-xs font-medium ${card.up ? "text-emerald-400" : "text-red-400"}`}>
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <card.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
+                  <div className={`flex items-center gap-1 text-[10px] sm:text-xs font-medium ${card.up ? "text-emerald-400" : "text-red-400"}`}>
                     {card.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                     {card.change}
                   </div>
                 </div>
-                <p className="text-2xl font-bold font-display">{card.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                <p className="text-xl sm:text-2xl font-bold font-display">{card.value}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">{card.label}</p>
               </CardContent>
             </Card>
           ))}
