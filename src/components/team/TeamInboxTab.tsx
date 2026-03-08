@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, MessageSquare, Plus, ArrowLeft } from "lucide-react";
 import { useTeamMessaging, useConversationMessages } from "@/hooks/useTeamMessaging";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import type { Conversation } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
