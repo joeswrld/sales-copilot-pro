@@ -1,17 +1,22 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   MessageSquare, Send, ArrowLeft, Sparkles, Clock,
-  TrendingUp, AlertTriangle, ChevronRight, Phone
+  TrendingUp, AlertTriangle, ChevronRight, Phone, CalendarIcon, Filter
 } from "lucide-react";
 import { useCoaching, useTeamCalls, type TeamCall } from "@/hooks/useCoaching";
+import { useTeam } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
-import { format } from "date-fns";
+import { format, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
+import { cn } from "@/lib/utils";
 
 function ScoreBadge({ score }: { score: number }) {
   const normalized = Math.min(score / 10, 10);
@@ -27,6 +32,22 @@ function getInitials(name: string | null | undefined): string {
 export default function TeamCoachingTab() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const { teamCalls, teamCallsLoading } = useTeamCalls();
+  const { members } = useTeam();
+
+  // Filters
+  const [memberFilter, setMemberFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+
+  const filteredCalls = useMemo(() => {
+    return teamCalls.filter(c => {
+      if (memberFilter !== "all" && c.user_id !== memberFilter) return false;
+      const callDate = new Date(c.date);
+      if (dateFrom && isBefore(callDate, startOfDay(dateFrom))) return false;
+      if (dateTo && isAfter(callDate, endOfDay(dateTo))) return false;
+      return true;
+    });
+  }, [teamCalls, memberFilter, dateFrom, dateTo]);
 
   if (teamCallsLoading) {
     return (
@@ -36,7 +57,7 @@ export default function TeamCoachingTab() {
     );
   }
 
-  const selectedCall = teamCalls.find(c => c.id === selectedCallId);
+  const selectedCall = filteredCalls.find(c => c.id === selectedCallId);
 
   if (selectedCall) {
     return (
@@ -46,6 +67,13 @@ export default function TeamCoachingTab() {
       />
     );
   }
+
+  // Unique members who have calls
+  const callMembers = Array.from(new Map(
+    teamCalls.map(c => [c.user_id, { id: c.user_id, name: c.profile?.full_name || c.profile?.email || "Unknown" }])
+  ).values());
+
+  const hasFilters = memberFilter !== "all" || dateFrom || dateTo;
 
   if (teamCalls.length === 0) {
     return (
@@ -59,9 +87,8 @@ export default function TeamCoachingTab() {
     );
   }
 
-  // Split into calls with no comments (needs review) vs those with comments
-  const needsReview = teamCalls.filter(c => c.comment_count === 0);
-  const reviewed = teamCalls.filter(c => c.comment_count > 0);
+  const needsReview = filteredCalls.filter(c => c.comment_count === 0);
+  const reviewed = filteredCalls.filter(c => c.comment_count > 0);
 
   return (
     <div className="space-y-6">
@@ -70,29 +97,86 @@ export default function TeamCoachingTab() {
         <p className="text-xs text-muted-foreground">Review meetings, leave feedback, and help your team improve.</p>
       </div>
 
-      {needsReview.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            Needs Review ({needsReview.length})
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {needsReview.slice(0, 10).map(c => (
-              <CallCard key={c.id} call={c} onClick={() => setSelectedCallId(c.id)} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="w-4 h-4 text-muted-foreground" />
 
-      {reviewed.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground">Reviewed ({reviewed.length})</h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {reviewed.slice(0, 10).map(c => (
-              <CallCard key={c.id} call={c} onClick={() => setSelectedCallId(c.id)} />
+        <Select value={memberFilter} onValueChange={setMemberFilter}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="All members" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All members</SelectItem>
+            {callMembers.map(m => (
+              <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
             ))}
-          </div>
-        </div>
+          </SelectContent>
+        </Select>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("h-8 text-xs gap-1.5", !dateFrom && "text-muted-foreground")}>
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {dateFrom ? format(dateFrom, "MMM d") : "From"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("h-8 text-xs gap-1.5", !dateTo && "text-muted-foreground")}>
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {dateTo ? format(dateTo, "MMM d") : "To"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+
+        {hasFilters && (
+          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setMemberFilter("all"); setDateFrom(undefined); setDateTo(undefined); }}>
+            Clear
+          </Button>
+        )}
+
+        <span className="text-xs text-muted-foreground ml-auto">
+          {filteredCalls.length} meeting{filteredCalls.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {filteredCalls.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">No meetings match your filters.</div>
+      ) : (
+        <>
+          {needsReview.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Needs Review ({needsReview.length})
+              </h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {needsReview.slice(0, 10).map(c => (
+                  <CallCard key={c.id} call={c} onClick={() => setSelectedCallId(c.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reviewed.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground">Reviewed ({reviewed.length})</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {reviewed.slice(0, 10).map(c => (
+                  <CallCard key={c.id} call={c} onClick={() => setSelectedCallId(c.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -151,27 +235,18 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
     setNewComment("");
   };
 
-  // Build AI suggestions from call summary data
   const suggestions: string[] = [];
   if (call.summary?.summary) suggestions.push(call.summary.summary);
-  if (call.summary?.next_steps?.length) {
-    suggestions.push(`Next steps: ${call.summary.next_steps.join(", ")}`);
-  }
-  if (call.summary?.key_decisions?.length) {
-    suggestions.push(`Key decisions: ${call.summary.key_decisions.join(", ")}`);
-  }
-  if (call.objections_count && call.objections_count > 0) {
-    suggestions.push(`${call.objections_count} objection(s) were detected during this call.`);
-  }
+  if (call.summary?.next_steps?.length) suggestions.push(`Next steps: ${call.summary.next_steps.join(", ")}`);
+  if (call.summary?.key_decisions?.length) suggestions.push(`Key decisions: ${call.summary.key_decisions.join(", ")}`);
+  if (call.objections_count && call.objections_count > 0) suggestions.push(`${call.objections_count} objection(s) were detected during this call.`);
   if (call.sentiment_score != null) {
-    const s = call.sentiment_score;
-    if (s < 50) suggestions.push("Low sentiment score — review call for potential issues.");
-    else if (s >= 80) suggestions.push("Strong positive sentiment throughout the conversation.");
+    if (call.sentiment_score < 50) suggestions.push("Low sentiment score — review call for potential issues.");
+    else if (call.sentiment_score >= 80) suggestions.push("Strong positive sentiment throughout the conversation.");
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
@@ -187,7 +262,6 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Discussion Thread */}
         <div className="lg:col-span-2 space-y-4">
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
@@ -220,9 +294,7 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
                             <div className="flex items-center gap-2">
                               <p className="text-xs font-medium">{name}</p>
                               {isMe && <Badge variant="secondary" className="text-[9px] h-4">You</Badge>}
-                              <span className="text-[10px] text-muted-foreground">
-                                {format(new Date(c.created_at), "MMM d, h:mm a")}
-                              </span>
+                              <span className="text-[10px] text-muted-foreground">{format(new Date(c.created_at), "MMM d, h:mm a")}</span>
                             </div>
                             <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{c.comment_text}</p>
                           </div>
@@ -232,21 +304,10 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
                   </div>
                 )}
               </ScrollArea>
-
               <div className="space-y-2 pt-2 border-t border-border">
-                <Textarea
-                  placeholder="Leave coaching feedback on this meeting..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  className="min-h-[80px] resize-none"
-                />
+                <Textarea placeholder="Leave coaching feedback on this meeting..." value={newComment} onChange={(e) => setNewComment(e.target.value)} className="min-h-[80px] resize-none" />
                 <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    onClick={handleSubmit}
-                    disabled={!newComment.trim() || addComment.isPending}
-                    className="gap-2"
-                  >
+                  <Button size="sm" onClick={handleSubmit} disabled={!newComment.trim() || addComment.isPending} className="gap-2">
                     <Send className="w-3.5 h-3.5" />
                     Post Feedback
                   </Button>
@@ -256,7 +317,6 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
           </Card>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-4">
           {suggestions.length > 0 && (
             <Card className="bg-card border-border">
@@ -289,45 +349,17 @@ function MeetingCoachingView({ call, onBack }: { call: TeamCall; onBack: () => v
               <CardTitle className="text-sm font-display">Meeting Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Rep</span>
-                <span className="font-medium">{repName}</span>
-              </div>
-              {call.sentiment_score != null && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Sentiment</span>
-                  <span className="font-medium">{call.sentiment_score}/100</span>
-                </div>
-              )}
-              {call.duration_minutes != null && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Duration</span>
-                  <span className="font-medium">{call.duration_minutes} min</span>
-                </div>
-              )}
-              {call.objections_count != null && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Objections</span>
-                  <span className="font-medium">{call.objections_count}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Date</span>
-                <span className="font-medium">{format(new Date(call.date), "MMM d, yyyy")}</span>
-              </div>
-              {call.status && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Status</span>
-                  <Badge variant="secondary" className="text-xs capitalize">{call.status}</Badge>
-                </div>
-              )}
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Rep</span><span className="font-medium">{repName}</span></div>
+              {call.sentiment_score != null && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Sentiment</span><span className="font-medium">{call.sentiment_score}/100</span></div>}
+              {call.duration_minutes != null && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Duration</span><span className="font-medium">{call.duration_minutes} min</span></div>}
+              {call.objections_count != null && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Objections</span><span className="font-medium">{call.objections_count}</span></div>}
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Date</span><span className="font-medium">{format(new Date(call.date), "MMM d, yyyy")}</span></div>
+              {call.status && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Status</span><Badge variant="secondary" className="text-xs capitalize">{call.status}</Badge></div>}
               {call.summary?.topics?.length ? (
                 <div className="pt-2 border-t border-border">
                   <p className="text-xs text-muted-foreground mb-1.5">Topics</p>
                   <div className="flex flex-wrap gap-1">
-                    {call.summary.topics.map((t, i) => (
-                      <Badge key={i} variant="outline" className="text-[10px]">{t}</Badge>
-                    ))}
+                    {call.summary.topics.map((t, i) => <Badge key={i} variant="outline" className="text-[10px]">{t}</Badge>)}
                   </div>
                 </div>
               ) : null}
