@@ -105,21 +105,12 @@ export function useTeam() {
   // Create team
   const createTeam = useMutation({
     mutationFn: async (name: string) => {
-      const { data: team, error: teamError } = await supabase
-        .from("teams")
-        .insert({ name, created_by: user!.id })
-        .select()
-        .single();
+      const { data: team, error } = await (supabase as any).rpc("create_team_with_owner", {
+        team_name: name,
+      });
 
-      if (teamError) throw teamError;
-
-      // Add creator as admin
-      const { error: memberError } = await supabase
-        .from("team_members")
-        .insert({ team_id: team.id, user_id: user!.id, role: "admin", status: "active" });
-
-      if (memberError) throw memberError;
-      return team;
+      if (error) throw error;
+      return team as Team;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team"] });
