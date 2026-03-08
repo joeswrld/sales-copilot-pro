@@ -179,6 +179,7 @@ function ChatArea({ conversationId, conversations, onBack }: {
     if (!input.trim()) return;
     sendMessage.mutate(input.trim());
     setInput("");
+    sendStopTyping();
   };
 
   return (
