@@ -390,7 +390,7 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
             <AvatarFallback className="bg-primary/20 text-primary font-bold">{member.avatar}</AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-xl font-bold font-display">{member.name}</h1>
+            <h1 className="text-lg sm:text-xl font-bold font-display">{member.name}</h1>
             <p className="text-sm text-muted-foreground">{member.role}</p>
           </div>
         </div>
