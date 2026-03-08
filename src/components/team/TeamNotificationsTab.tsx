@@ -23,15 +23,6 @@ const typeColors: Record<string, string> = {
   system: "bg-muted text-muted-foreground",
 };
 
-// Demo notifications for empty state
-const demoNotifications = [
-  { type: "comment", message: "Manager commented on your Acme demo meeting: \"Great discovery questions!\"", time: "2 hours ago" },
-  { type: "coaching", message: "Your meeting score improved from 7.1 to 8.3 this week.", time: "5 hours ago" },
-  { type: "mention", message: "Sarah mentioned you in a discussion on the TechNova intro call.", time: "Yesterday" },
-  { type: "system", message: "Team weekly performance report is ready.", time: "Yesterday" },
-  { type: "coaching", message: "New AI coaching insight: Your talk ratio improved by 8% this month.", time: "2 days ago" },
-  { type: "comment", message: "Daniel replied to your feedback on the Enterprise QBR meeting.", time: "2 days ago" },
-];
 
 export default function TeamNotificationsTab() {
   const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
@@ -100,28 +91,10 @@ export default function TeamNotificationsTab() {
               </div>
             ) : (
               /* Demo/empty state showing example notifications */
-              <div className="divide-y divide-border">
-                {demoNotifications.map((n, i) => {
-                  const Icon = typeIcons[n.type] ?? Bell;
-                  const colorClass = typeColors[n.type] ?? typeColors.system;
-                  return (
-                    <div key={i} className={`flex gap-3 p-4 ${i < 2 ? "bg-primary/5" : ""}`}>
-                      <div className={`p-2 rounded-lg shrink-0 ${colorClass}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm leading-relaxed ${i < 2 ? "font-medium" : "text-muted-foreground"}`}>
-                          {n.message}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-1">{n.time}</p>
-                      </div>
-                      {i < 2 && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />}
-                    </div>
-                  );
-                })}
-                <div className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground">These are example notifications. Real notifications will appear as your team uses the platform.</p>
-                </div>
+              <div className="p-12 text-center space-y-3">
+                <Bell className="w-10 h-10 mx-auto text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">No notifications yet</p>
+                <p className="text-xs text-muted-foreground/70">You'll see notifications here when teammates comment on meetings, send messages, or join your team.</p>
               </div>
             )}
           </ScrollArea>
