@@ -8,16 +8,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw } from "lucide-react";
+import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X } from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
+
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
 
 interface Props {
   members: TeamMember[];
+  pendingInvitations: PendingInvitation[];
   currentRole: string;
   currentUserId: string;
   onInvite: (data: { email: string; role: string }) => void;
   onUpdateRole: (data: { memberId: string; role: string }) => void;
   onRemove: (memberId: string) => void;
+  onCancelInvitation: (invitationId: string) => void;
   inviting: boolean;
 }
 
