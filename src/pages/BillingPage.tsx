@@ -191,8 +191,8 @@ export default function BillingPage() {
                         Refresh now
                       </Button>
                     </div>
-                    <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+                    <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+                      <p className="text-sm text-accent-foreground mb-3">
                         <strong>Payment incomplete?</strong> If you left the payment page before completing, you can continue where you left off.
                       </p>
                       <Button
