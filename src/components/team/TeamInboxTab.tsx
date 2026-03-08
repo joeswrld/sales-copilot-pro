@@ -1,17 +1,18 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, MessageSquare, Plus, ArrowLeft } from "lucide-react";
-import { useTeamMessaging, useConversationMessages } from "@/hooks/useTeamMessaging";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Send, MessageSquare, Plus, ArrowLeft, Users } from "lucide-react";
+import { useTeamMessaging, useConversationMessages, getConversationName, getConversationInitials } from "@/hooks/useTeamMessaging";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import type { Conversation } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
 
 interface Props {
@@ -65,8 +66,8 @@ export default function TeamInboxTab({ teamId, members }: Props) {
               ) : (
                 <div className="divide-y divide-border">
                   {conversations.map((c) => {
-                    const otherName = c.participants[0]?.full_name || c.participants[0]?.email || "Unknown";
-                    const initial = otherName[0]?.toUpperCase() || "?";
+                    const name = getConversationName(c);
+                    const initials = getConversationInitials(c);
                     const isSelected = selectedConvo === c.id;
                     return (
                       <div
@@ -76,7 +77,9 @@ export default function TeamInboxTab({ teamId, members }: Props) {
                       >
                         <div className="relative">
                           <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initial}</AvatarFallback>
+                            <AvatarFallback className={`text-xs font-bold ${c.is_group ? "bg-accent/20 text-accent-foreground" : "bg-primary/20 text-primary"}`}>
+                              {c.is_group ? <Users className="w-4 h-4" /> : initials}
+                            </AvatarFallback>
                           </Avatar>
                           {c.unread_count > 0 && (
                             <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
@@ -86,7 +89,7 @@ export default function TeamInboxTab({ teamId, members }: Props) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
-                            <p className={`text-sm truncate ${c.unread_count > 0 ? "font-bold" : "font-medium"}`}>{otherName}</p>
+                            <p className={`text-sm truncate ${c.unread_count > 0 ? "font-bold" : "font-medium"}`}>{name}</p>
                             {c.last_message && (
                               <span className="text-[10px] text-muted-foreground shrink-0">
                                 {format(new Date(c.last_message.created_at), "MMM d")}
@@ -95,6 +98,9 @@ export default function TeamInboxTab({ teamId, members }: Props) {
                           </div>
                           {c.last_message && (
                             <p className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message.message_text}</p>
+                          )}
+                          {c.is_group && (
+                            <Badge variant="secondary" className="text-[9px] h-3.5 px-1 mt-0.5">Group</Badge>
                           )}
                         </div>
                       </div>
@@ -155,9 +161,9 @@ function ChatArea({ conversationId, conversations, onBack }: {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const convo = conversations.find(c => c.id === conversationId);
-  const otherName = convo?.participants[0]?.full_name || convo?.participants[0]?.email || "Chat";
+  const chatName = convo ? getConversationName(convo) : "Chat";
+  const isGroup = convo?.is_group ?? false;
 
-  // Get current user's display name for typing indicator
   const myName = user?.user_metadata?.full_name || user?.email || "You";
 
   useEffect(() => {
@@ -190,11 +196,16 @@ function ChatArea({ conversationId, conversations, onBack }: {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
-            {otherName[0]?.toUpperCase() || "?"}
+          <AvatarFallback className={`text-xs font-bold ${isGroup ? "bg-accent/20 text-accent-foreground" : "bg-primary/20 text-primary"}`}>
+            {isGroup ? <Users className="w-3.5 h-3.5" /> : (convo ? getConversationInitials(convo) : "?")}
           </AvatarFallback>
         </Avatar>
-        <p className="font-medium text-sm">{otherName}</p>
+        <div>
+          <p className="font-medium text-sm">{chatName}</p>
+          {isGroup && (
+            <p className="text-[10px] text-muted-foreground">{(convo?.participants.length ?? 0) + 1} members</p>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -210,7 +221,7 @@ function ChatArea({ conversationId, conversations, onBack }: {
               return (
                 <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[80%] rounded-xl px-3 py-2 ${isMe ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>
-                    {!isMe && (
+                    {!isMe && (isGroup || true) && (
                       <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
                         {msg.sender?.full_name || msg.sender?.email || "Unknown"}
                       </p>
@@ -266,29 +277,53 @@ function NewConversationDialog({ open, onClose, members, currentUserId, teamId, 
   onConversationCreated: (id: string) => void;
 }) {
   const { startConversation } = useConversationMessages(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const otherMembers = members.filter(m => m.user_id !== currentUserId && m.status === "active");
 
-  const handleSelect = async (userId: string) => {
-    // Check if conversation already exists
-    const existing = conversations.find(c =>
-      c.participants.some(p => p.user_id === userId)
+  const toggleMember = (userId: string) => {
+    setSelectedIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
     );
-    if (existing) {
-      onConversationCreated(existing.id);
-      return;
+  };
+
+  const handleStart = async () => {
+    if (selectedIds.length === 0) return;
+
+    // For 1-on-1, check if conversation already exists
+    if (selectedIds.length === 1) {
+      const existing = conversations.find(c =>
+        !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === selectedIds[0])
+      );
+      if (existing) {
+        setSelectedIds([]);
+        onConversationCreated(existing.id);
+        return;
+      }
     }
 
-    const convoId = await startConversation.mutateAsync({ teamId, otherUserId: userId });
+    const convoId = await startConversation.mutateAsync({ teamId, memberIds: selectedIds });
+    setSelectedIds([]);
     onConversationCreated(convoId);
   };
 
+  const handleClose = () => {
+    setSelectedIds([]);
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>New Conversation</DialogTitle>
         </DialogHeader>
+        {selectedIds.length > 1 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+            <Users className="w-3.5 h-3.5" />
+            <span>Group chat with {selectedIds.length} members</span>
+          </div>
+        )}
         <div className="space-y-1 max-h-[300px] overflow-y-auto">
           {otherMembers.length === 0 ? (
             <p className="text-sm text-muted-foreground p-4 text-center">No other team members available.</p>
@@ -296,12 +331,14 @@ function NewConversationDialog({ open, onClose, members, currentUserId, teamId, 
             otherMembers.map((m) => {
               const name = m.profile?.full_name || m.invited_email || "Unknown";
               const initial = name[0]?.toUpperCase() || "?";
+              const isChecked = selectedIds.includes(m.user_id);
               return (
                 <div
                   key={m.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/30 cursor-pointer transition-colors"
-                  onClick={() => handleSelect(m.user_id)}
+                  className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${isChecked ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
+                  onClick={() => toggleMember(m.user_id)}
                 >
+                  <Checkbox checked={isChecked} className="pointer-events-none" />
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initial}</AvatarFallback>
                   </Avatar>
@@ -314,6 +351,12 @@ function NewConversationDialog({ open, onClose, members, currentUserId, teamId, 
             })
           )}
         </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
+          <Button size="sm" onClick={handleStart} disabled={selectedIds.length === 0 || startConversation.isPending}>
+            {selectedIds.length > 1 ? "Create Group" : "Start Chat"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
