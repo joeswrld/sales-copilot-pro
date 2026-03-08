@@ -68,7 +68,17 @@ export default function DashboardHome() {
             <Link to="/dashboard/calls" className="text-xs text-primary hover:underline">View all</Link>
           </div>
           {callsLoading ? (
-            <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between p-4">
+                  <div className="space-y-2 min-w-0">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
           ) : recentCalls.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">No calls yet. Start by adding your first call.</div>
           ) : (
