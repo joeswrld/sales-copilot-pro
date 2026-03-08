@@ -148,9 +148,12 @@ export function useSubscription() {
   });
 
   const verifyPayment = useMutation({
-    mutationFn: async (reference?: string | null) => {
+    mutationFn: async (options?: { reference?: string | null; includeTransactions?: boolean }) => {
       const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: { reference: reference || null },
+        body: {
+          reference: options?.reference ?? null,
+          include_transactions: options?.includeTransactions ?? false,
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -173,7 +176,7 @@ export function useSubscription() {
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
       const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: {},
+        body: { include_transactions: true },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -188,7 +191,7 @@ export function useSubscription() {
     queryFn: async () => {
       if (!user || query.data?.status !== "pending") return null;
       const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: {},
+        body: { include_transactions: false },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
