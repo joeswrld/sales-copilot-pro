@@ -39,17 +39,27 @@ export default function DashboardHome() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCards.map(s => (
-            <div key={s.label} className="glass rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">{s.label}</span>
-                <s.icon className={`w-4 h-4 ${s.color}`} />
+          {statsLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="glass rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-4 rounded" />
+                </div>
+                <Skeleton className="h-8 w-16" />
               </div>
-              <div className="text-2xl font-bold font-display">
-                {statsLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : s.value}
+            ))
+          ) : (
+            statCards.map(s => (
+              <div key={s.label} className="glass rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">{s.label}</span>
+                  <s.icon className={`w-4 h-4 ${s.color}`} />
+                </div>
+                <div className="text-2xl font-bold font-display">{s.value}</div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         <div className="glass rounded-xl overflow-hidden">
