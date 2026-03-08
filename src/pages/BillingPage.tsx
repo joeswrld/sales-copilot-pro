@@ -173,7 +173,7 @@ export default function BillingPage() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={() => subscribe.mutate()}
+                onClick={() => subscribe.mutate("starter")}
                 disabled={subscribe.isPending}
               >
                 {subscribe.isPending ? (
