@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import SubscriptionGate from "@/components/SubscriptionGate";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mic, Link2, CalendarPlus, Video, Loader2, Clock, Trash2, ExternalLink, AlertTriangle } from "lucide-react";

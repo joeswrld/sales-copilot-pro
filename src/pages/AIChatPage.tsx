@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import SubscriptionGate from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Send, Bot, User, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
