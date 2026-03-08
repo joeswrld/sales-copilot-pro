@@ -297,7 +297,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
               Team Member Limit Reached
             </DialogTitle>
             <DialogDescription>
-              You've reached the team member limit for the <strong className="text-foreground capitalize">{currentPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
+              You've reached the team member limit for the <strong className="text-foreground capitalize">{adminPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 pt-2">

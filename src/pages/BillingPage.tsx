@@ -186,7 +186,7 @@ export default function BillingPage() {
   const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
   const availablePlans = getAvailablePlans();
 
-  const teamMembersLimit = getTeamMembersLimit(currentPlanKey);
+  const teamMembersLimit = getTeamMembersLimit(teamMembersQuery.data?.adminPlanKey ?? currentPlanKey);
   const teamMembersUsed = teamMembersQuery.data?.count ?? 1;
   const isTeamUnlimited = teamMembersLimit === -1;
   const teamPct = isTeamUnlimited ? 0 : Math.min((teamMembersUsed / teamMembersLimit) * 100, 100);

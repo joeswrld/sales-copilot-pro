@@ -134,6 +134,7 @@ export default function TeamPage() {
               pendingInvitations={pendingInvitations}
               currentRole={role}
               currentUserId={user?.id ?? ""}
+              adminPlanKey={adminPlanKey}
               onInvite={(data) => inviteMember.mutate(data)}
               onUpdateRole={(data) => updateRole.mutate(data)}
               onRemove={(id) => removeMember.mutate(id)}
