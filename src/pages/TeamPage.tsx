@@ -19,7 +19,7 @@ import TeamInboxTab from "@/components/team/TeamInboxTab";
 
 export default function TeamPage() {
   const { user } = useAuth();
-  const { team, teamLoading, role, members, membersLoading, pendingInvitations, createTeam, inviteMember, cancelInvitation, updateRole, removeMember } = useTeam();
+  const { team, teamLoading, role, members, membersLoading, pendingInvitations, adminPlanKey, createTeam, inviteMember, cancelInvitation, updateRole, removeMember } = useTeam();
   const { unreadCount } = useNotifications();
   const { totalUnread: inboxUnread } = useTeamMessaging(team?.id);
   useMessageNotifications(team?.id);
