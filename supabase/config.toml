@@ -23,3 +23,12 @@ verify_jwt = false
 
 [functions.slack-notify]
 verify_jwt = false
+
+[functions.paystack-create-subscription]
+verify_jwt = false
+
+[functions.paystack-webhook]
+verify_jwt = false
+
+[functions.paystack-cancel-subscription]
+verify_jwt = false
