@@ -20,9 +20,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { User, Mail, Shield, Trash2, Save, Calendar } from "lucide-react";
+import { User, Mail, Shield, Trash2, Save, Calendar, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/hooks/useSettings";
+import { useTeamUsage } from "@/hooks/useTeamUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
