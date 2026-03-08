@@ -14,6 +14,7 @@ import type { TeamMember } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
 
 export default function TeamInboxTab({ teamId, members }: Props) {
   const { user } = useAuth();
-  const { conversations, conversationsLoading } = useTeamMessaging(teamId);
+  const { conversations, conversationsLoading, refetchConversations } = useTeamMessaging(teamId);
   const [selectedConvo, setSelectedConvo] = useState<string | null>(null);
   const [newConvoOpen, setNewConvoOpen] = useState(false);
   const [showConvoList, setShowConvoList] = useState(true);
@@ -140,6 +141,7 @@ export default function TeamInboxTab({ teamId, members }: Props) {
         currentUserId={user?.id ?? ""}
         teamId={teamId}
         conversations={conversations}
+        refetchConversations={refetchConversations}
         onConversationCreated={(id) => {
           setNewConvoOpen(false);
           handleSelectConvo(id);
@@ -418,13 +420,14 @@ function ChatArea({ conversationId, conversations, onBack }: {
   );
 }
 
-function NewConversationDialog({ open, onClose, members, currentUserId, teamId, conversations, onConversationCreated }: {
+function NewConversationDialog({ open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onConversationCreated }: {
   open: boolean;
   onClose: () => void;
   members: TeamMember[];
   currentUserId: string;
   teamId: string;
   conversations: Conversation[];
+  refetchConversations: () => Promise<unknown>;
   onConversationCreated: (id: string) => void;
 }) {
   const { startConversation } = useConversationMessages(null);
@@ -441,21 +444,31 @@ function NewConversationDialog({ open, onClose, members, currentUserId, teamId, 
   const handleStart = async () => {
     if (selectedIds.length === 0) return;
 
-    // For 1-on-1, check if conversation already exists
-    if (selectedIds.length === 1) {
-      const existing = conversations.find(c =>
-        !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === selectedIds[0])
-      );
-      if (existing) {
-        setSelectedIds([]);
-        onConversationCreated(existing.id);
-        return;
+    try {
+      // For 1-on-1, check if conversation already exists
+      if (selectedIds.length === 1) {
+        const existing = conversations.find(c =>
+          !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === selectedIds[0])
+        );
+        if (existing) {
+          setSelectedIds([]);
+          onConversationCreated(existing.id);
+          return;
+        }
       }
-    }
 
-    const convoId = await startConversation.mutateAsync({ teamId, memberIds: selectedIds });
-    setSelectedIds([]);
-    onConversationCreated(convoId);
+      const convoId = await startConversation.mutateAsync({ teamId, memberIds: selectedIds });
+      await refetchConversations();
+      setSelectedIds([]);
+      onConversationCreated(convoId);
+      toast({ title: "Conversation started" });
+    } catch (error) {
+      toast({
+        title: "Could not start chat",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleClose = () => {
