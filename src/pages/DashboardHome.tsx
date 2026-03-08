@@ -4,6 +4,7 @@ import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const statusColors: Record<string, string> = {
   "Won": "bg-success/10 text-success",
@@ -38,17 +39,27 @@ export default function DashboardHome() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCards.map(s => (
-            <div key={s.label} className="glass rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">{s.label}</span>
-                <s.icon className={`w-4 h-4 ${s.color}`} />
+          {statsLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="glass rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-4 rounded" />
+                </div>
+                <Skeleton className="h-8 w-16" />
               </div>
-              <div className="text-2xl font-bold font-display">
-                {statsLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : s.value}
+            ))
+          ) : (
+            statCards.map(s => (
+              <div key={s.label} className="glass rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">{s.label}</span>
+                  <s.icon className={`w-4 h-4 ${s.color}`} />
+                </div>
+                <div className="text-2xl font-bold font-display">{s.value}</div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         <div className="glass rounded-xl overflow-hidden">
@@ -57,7 +68,17 @@ export default function DashboardHome() {
             <Link to="/dashboard/calls" className="text-xs text-primary hover:underline">View all</Link>
           </div>
           {callsLoading ? (
-            <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between p-4">
+                  <div className="space-y-2 min-w-0">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
           ) : recentCalls.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">No calls yet. Start by adding your first call.</div>
           ) : (
