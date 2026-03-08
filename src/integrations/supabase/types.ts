@@ -741,6 +741,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_add_conversation_participant: {
+        Args: { _conversation_id: string; _participant_user_id: string }
+        Returns: boolean
+      }
       can_create_team_conversation: {
         Args: { _team_id: string }
         Returns: boolean
