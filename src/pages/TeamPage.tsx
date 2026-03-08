@@ -20,6 +20,7 @@ export default function TeamPage() {
   const { user } = useAuth();
   const { team, teamLoading, role, members, membersLoading, createTeam, inviteMember, updateRole, removeMember } = useTeam();
   const { unreadCount } = useNotifications();
+  const { totalUnread: inboxUnread } = useTeamMessaging(team?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
 
