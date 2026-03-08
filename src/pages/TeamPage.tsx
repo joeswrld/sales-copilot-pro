@@ -172,13 +172,50 @@ export default function TeamPage() {
               </CardContent>
             </Card>
 
-            {/* Team Members Table */}
+            {/* Team Members - Card list on mobile, table on md+ */}
             <Card className="bg-card border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-display">Team Members</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                {/* Mobile: Card List */}
+                <div className="md:hidden divide-y divide-border">
+                  {teamMembers.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-3 active:bg-secondary/30 transition-colors cursor-pointer"
+                      onClick={() => setSelectedMember(m)}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{m.avatar}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{m.name}</p>
+                          <p className="text-xs text-muted-foreground">{m.role}</p>
+                        </div>
+                        <ScoreIndicator score={m.avgScore} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <p className="text-xs font-bold font-mono">{m.meetings}</p>
+                          <p className="text-[10px] text-muted-foreground">Meetings</p>
+                        </div>
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <TalkRatioBadge ratio={m.talkRatio} />
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Talk</p>
+                        </div>
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <p className="text-xs font-bold font-mono">{m.followUps}</p>
+                          <p className="text-[10px] text-muted-foreground">Follow-ups</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop: Table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
