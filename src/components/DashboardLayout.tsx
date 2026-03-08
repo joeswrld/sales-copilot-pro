@@ -2,7 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, Phone, BarChart3, Settings, Zap, Menu, X, 
-  Users, Headphones, Bot, LogOut
+  Users, Headphones, Bot, LogOut, CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
