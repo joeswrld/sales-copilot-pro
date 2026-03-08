@@ -1,15 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Users, TrendingUp, TrendingDown, Target, Trophy, Medal, Award,
-  Lightbulb, AlertTriangle, Sparkles, Mic, CheckCircle2, Phone
+  Lightbulb, AlertTriangle, Sparkles, Mic, CheckCircle2, Phone,
+  CalendarIcon, Download
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useTeamCalls } from "@/hooks/useCoaching";
-import { format, startOfMonth, getWeek } from "date-fns";
+import { format, startOfMonth, endOfMonth, getWeek, isWithinInterval } from "date-fns";
+import { cn } from "@/lib/utils";
 
 function ScoreIndicator({ score }: { score: number }) {
   const color = score >= 8 ? "text-emerald-400" : score >= 7 ? "text-amber-400" : "text-red-400";
@@ -24,29 +29,33 @@ function getInitials(name: string | null | undefined): string {
 export default function TeamOverviewTab() {
   const { teamCalls, teamCallsLoading } = useTeamCalls();
 
-  // Compute metrics from real data
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(startOfMonth(new Date()));
+  const [dateTo, setDateTo] = useState<Date | undefined>(endOfMonth(new Date()));
+
+  // Filter calls by date range
+  const filteredCalls = useMemo(() => {
+    return teamCalls.filter(c => {
+      const d = new Date(c.date);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    });
+  }, [teamCalls, dateFrom, dateTo]);
+
+  // Compute metrics
   const metrics = useMemo(() => {
-    const now = new Date();
-    const monthStart = startOfMonth(now);
-    const thisMonth = teamCalls.filter(c => new Date(c.date) >= monthStart);
-
-    const totalMeetings = thisMonth.length;
-    const scores = thisMonth.filter(c => c.sentiment_score != null).map(c => c.sentiment_score!);
+    const totalMeetings = filteredCalls.length;
+    const scores = filteredCalls.filter(c => c.sentiment_score != null).map(c => c.sentiment_score!);
     const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length / 10 : 0;
-    const totalObjections = thisMonth.reduce((sum, c) => sum + (c.objections_count ?? 0), 0);
-    const withComments = thisMonth.filter(c => c.comment_count > 0).length;
-
+    const totalObjections = filteredCalls.reduce((sum, c) => sum + (c.objections_count ?? 0), 0);
+    const withComments = filteredCalls.filter(c => c.comment_count > 0).length;
     return { totalMeetings, avgScore, totalObjections, withComments };
-  }, [teamCalls]);
+  }, [filteredCalls]);
 
   // Per-member stats
   const memberStats = useMemo(() => {
-    const now = new Date();
-    const monthStart = startOfMonth(now);
-    const thisMonth = teamCalls.filter(c => new Date(c.date) >= monthStart);
-
-    const byUser = new Map<string, { name: string; initials: string; calls: typeof thisMonth }>();
-    thisMonth.forEach(c => {
+    const byUser = new Map<string, { name: string; initials: string; calls: typeof filteredCalls }>();
+    filteredCalls.forEach(c => {
       const uid = c.user_id;
       if (!byUser.has(uid)) {
         const name = c.profile?.full_name || c.profile?.email || "Unknown";
@@ -61,12 +70,12 @@ export default function TeamOverviewTab() {
       const lastCall = data.calls[0]?.date;
       return { uid, name: data.name, initials: data.initials, meetings: data.calls.length, avgScore, lastCall };
     }).sort((a, b) => b.avgScore - a.avgScore);
-  }, [teamCalls]);
+  }, [filteredCalls]);
 
-  // Weekly trend (last 4 weeks)
+  // Weekly trend
   const weeklyTrend = useMemo(() => {
     const weeks = new Map<number, { scores: number[]; count: number }>();
-    teamCalls.forEach(c => {
+    filteredCalls.forEach(c => {
       const w = getWeek(new Date(c.date));
       if (!weeks.has(w)) weeks.set(w, { scores: [], count: 0 });
       const entry = weeks.get(w)!;
@@ -82,16 +91,13 @@ export default function TeamOverviewTab() {
         score: data.scores.length ? +(data.scores.reduce((a, b) => a + b, 0) / data.scores.length).toFixed(1) : 0,
         meetings: data.count,
       }));
-  }, [teamCalls]);
+  }, [filteredCalls]);
 
-  // Top 3 performers
   const topPerformers = memberStats.slice(0, 3);
   const labels = ["Top Performer", "Strong Performer", "Rising Performer"];
+  const recentMeetings = filteredCalls.slice(0, 6);
 
-  // Recent meetings (first 6)
-  const recentMeetings = teamCalls.slice(0, 6);
-
-  // AI insights from real data
+  // AI insights
   const coachingInsights = useMemo(() => {
     const insights: { type: string; text: string }[] = [];
     if (metrics.totalMeetings === 0) return insights;
@@ -99,7 +105,7 @@ export default function TeamOverviewTab() {
     if (metrics.avgScore < 7) {
       insights.push({ type: "warning", text: `Team average score is ${metrics.avgScore.toFixed(1)}/10. Focus on coaching to bring it above 7.0.` });
     } else if (metrics.avgScore >= 8) {
-      insights.push({ type: "success", text: `Strong team performance — average score is ${metrics.avgScore.toFixed(1)}/10 this month.` });
+      insights.push({ type: "success", text: `Strong team performance — average score is ${metrics.avgScore.toFixed(1)}/10 this period.` });
     }
 
     if (metrics.totalObjections > 0) {
@@ -122,6 +128,34 @@ export default function TeamOverviewTab() {
 
     return insights;
   }, [metrics, memberStats, topPerformers]);
+
+  // CSV Export
+  const exportCSV = () => {
+    const rangeSuffix = dateFrom && dateTo
+      ? `${format(dateFrom, "yyyy-MM-dd")}_to_${format(dateTo, "yyyy-MM-dd")}`
+      : "all";
+
+    const headers = ["Member", "Meetings", "Avg Score", "Objections", "Reviewed Meetings"];
+    const rows = memberStats.map(m => {
+      const memberCalls = filteredCalls.filter(c => c.user_id === m.uid);
+      const objections = memberCalls.reduce((sum, c) => sum + (c.objections_count ?? 0), 0);
+      const reviewed = memberCalls.filter(c => c.comment_count > 0).length;
+      return [m.name, m.meetings, m.avgScore.toFixed(1), objections, reviewed].join(",");
+    });
+
+    // Summary row
+    rows.push("");
+    rows.push(["TOTAL", metrics.totalMeetings, metrics.avgScore.toFixed(1), metrics.totalObjections, metrics.withComments].join(","));
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `team-performance-${rangeSuffix}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (teamCallsLoading) {
     return (
@@ -153,6 +187,63 @@ export default function TeamOverviewTab() {
 
   return (
     <div className="space-y-6">
+      {/* Date Range + Export Controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("gap-2 text-xs", !dateFrom && "text-muted-foreground")}>
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {dateFrom ? format(dateFrom, "MMM d, yyyy") : "From"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateFrom}
+              onSelect={setDateFrom}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+
+        <span className="text-xs text-muted-foreground">to</span>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("gap-2 text-xs", !dateTo && "text-muted-foreground")}>
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {dateTo ? format(dateTo, "MMM d, yyyy") : "To"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateTo}
+              onSelect={setDateTo}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => { setDateFrom(startOfMonth(new Date())); setDateTo(endOfMonth(new Date())); }}
+        >
+          This Month
+        </Button>
+
+        <div className="flex-1" />
+
+        <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={exportCSV}>
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </Button>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         {summaryCards.map((card) => (
@@ -198,7 +289,7 @@ export default function TeamOverviewTab() {
             </CardHeader>
             <CardContent className="space-y-3">
               {recentMeetings.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No recent meetings.</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No meetings in selected range.</p>
               ) : recentMeetings.map((entry) => {
                 const name = entry.profile?.full_name || entry.profile?.email || "Unknown";
                 const initials = getInitials(entry.profile?.full_name);
