@@ -138,11 +138,17 @@ Deno.serve(async (req) => {
     let updated = false;
 
     if (verifiedTransaction && subscription?.status !== "active") {
+      const nextDate = new Date();
+      nextDate.setMonth(nextDate.getMonth() + 1);
+
       const updateResult = await adminClient
         .from("subscriptions")
         .update({
           status: "active",
           updated_at: new Date().toISOString(),
+          next_payment_date: verifiedTransaction.paid_at
+            ? new Date(new Date(verifiedTransaction.paid_at).setMonth(new Date(verifiedTransaction.paid_at).getMonth() + 1)).toISOString()
+            : nextDate.toISOString(),
           paystack_customer_code:
             verifiedTransaction.customer?.customer_code || subscription?.paystack_customer_code || null,
           card_last4: verifiedTransaction.authorization?.last4 || null,

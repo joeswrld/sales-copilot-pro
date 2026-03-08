@@ -119,9 +119,13 @@ Deno.serve(async (req) => {
           updates.card_brand = authorization.brand;
         }
 
-        if (data.plan?.plan_code) {
-          // This is a subscription charge
-          updates.next_payment_date = data.plan_object?.next_payment_date;
+        // Calculate next payment date as ~30 days from now
+        const nextDate = new Date();
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        updates.next_payment_date = nextDate.toISOString();
+
+        if (data.plan?.plan_code && data.plan_object?.next_payment_date) {
+          updates.next_payment_date = data.plan_object.next_payment_date;
         }
 
         await updateSubscription(updates);
