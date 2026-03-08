@@ -18,6 +18,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AIChatPage from "./pages/AIChatPage";
 import BillingPage from "./pages/BillingPage";
 import PricingPage from "./pages/PricingPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
