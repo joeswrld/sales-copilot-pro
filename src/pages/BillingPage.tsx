@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -36,8 +36,9 @@ function formatNGN(amount: number): string {
 }
 
 export default function BillingPage() {
-  const { subscription, isLoading, subscribe, cancelSubscription, isActive } = useSubscription();
+  const { subscription, isLoading, subscribe, cancelSubscription, isActive, refetch } = useSubscription();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("success") === "true") {
@@ -45,6 +46,22 @@ export default function BillingPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    toast.info("Subscription status refreshed");
+  };
+
+  // Extract plan key from plan_name for "Continue Payment"
+  const getPlanKey = () => {
+    const planName = subscription?.plan_name?.toLowerCase() || "";
+    if (planName.includes("scale")) return "scale";
+    if (planName.includes("growth")) return "growth";
+    if (planName.includes("starter")) return "starter";
+    return "starter";
+  };
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;
@@ -161,9 +178,37 @@ export default function BillingPage() {
                   </Button>
                 )}
                 {subscription.status === "pending" && (
-                  <p className="text-sm text-muted-foreground">
-                    Your payment is being processed. This page will update automatically once confirmed.
-                  </p>
+                  <div className="w-full space-y-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      <span>Auto-refreshing every 5 seconds...</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleManualRefresh}
+                        disabled={isRefreshing}
+                      >
+                        Refresh now
+                      </Button>
+                    </div>
+                    <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+                      <p className="text-sm text-accent-foreground mb-3">
+                        <strong>Payment incomplete?</strong> If you left the payment page before completing, you can continue where you left off.
+                      </p>
+                      <Button
+                        onClick={() => subscribe.mutate(getPlanKey())}
+                        disabled={subscribe.isPending}
+                        className="w-full sm:w-auto"
+                      >
+                        {subscribe.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                        )}
+                        Continue Payment
+                      </Button>
+                    </div>
+                  </div>
                 )}
                 {(subscription.status === "cancelled" || subscription.status === "inactive") && (
                   <Button
