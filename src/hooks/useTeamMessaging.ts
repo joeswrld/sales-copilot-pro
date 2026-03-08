@@ -19,6 +19,9 @@ export interface Message {
   sender_id: string;
   message_text: string;
   created_at: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
   sender?: { full_name: string | null; email: string | null };
 }
 
