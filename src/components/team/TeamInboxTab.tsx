@@ -228,13 +228,22 @@ function ChatArea({ conversationId, conversations, onBack }: {
         </div>
       </ScrollArea>
 
+      {/* Typing indicator */}
+      {typingUsers.length > 0 && (
+        <div className="px-3 pb-1 shrink-0">
+          <p className="text-xs text-muted-foreground italic animate-pulse">
+            {typingUsers.map(u => u.name).join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
+          </p>
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t border-border shrink-0">
         <div className="flex gap-2">
           <Input
             placeholder="Type a message..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             className="flex-1"
           />
