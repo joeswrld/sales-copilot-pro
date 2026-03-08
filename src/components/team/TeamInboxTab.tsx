@@ -149,15 +149,31 @@ function ChatArea({ conversationId, conversations, onBack }: {
 }) {
   const { user } = useAuth();
   const { messages, messagesLoading, sendMessage } = useConversationMessages(conversationId);
+  const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const convo = conversations.find(c => c.id === conversationId);
   const otherName = convo?.participants[0]?.full_name || convo?.participants[0]?.email || "Chat";
 
+  // Get current user's display name for typing indicator
+  const myName = user?.user_metadata?.full_name || user?.email || "You";
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (value.trim()) {
+      sendTyping(myName);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => sendStopTyping(), 2000);
+    } else {
+      sendStopTyping();
+    }
+  };
 
   const handleSend = () => {
     if (!input.trim()) return;
