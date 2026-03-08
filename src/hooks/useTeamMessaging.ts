@@ -19,6 +19,9 @@ export interface Message {
   sender_id: string;
   message_text: string;
   created_at: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
   sender?: { full_name: string | null; email: string | null };
 }
 
@@ -145,6 +148,12 @@ export function useTeamMessaging(teamId: string | undefined) {
   };
 }
 
+export interface ReadReceipt {
+  user_id: string;
+  last_read_at: string | null;
+  full_name: string | null;
+}
+
 export function useConversationMessages(conversationId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -173,6 +182,35 @@ export function useConversationMessages(conversationId: string | null) {
       })) as Message[];
     },
     enabled: !!conversationId,
+  });
+
+  // Read receipts: fetch other participants' last_read_at
+  const readReceiptsQuery = useQuery({
+    queryKey: ["read-receipts", conversationId],
+    queryFn: async () => {
+      const { data: participants } = await supabase
+        .from("conversation_participants")
+        .select("user_id, last_read_at")
+        .eq("conversation_id", conversationId!)
+        .neq("user_id", user!.id);
+
+      if (!participants?.length) return [] as ReadReceipt[];
+
+      const userIds = participants.map(p => p.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", userIds);
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
+
+      return participants.map(p => ({
+        user_id: p.user_id,
+        last_read_at: p.last_read_at,
+        full_name: profileMap.get(p.user_id)?.full_name ?? null,
+      })) as ReadReceipt[];
+    },
+    enabled: !!conversationId && !!user,
+    refetchInterval: 10000,
   });
 
   useEffect(() => {
@@ -206,19 +244,23 @@ export function useConversationMessages(conversationId: string | null) {
   }, [conversationId, queryClient]);
 
   const sendMessage = useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async (payload: { text: string; file_url?: string; file_name?: string; file_type?: string }) => {
       const { error } = await supabase
         .from("team_messages")
         .insert({
           conversation_id: conversationId!,
           sender_id: user!.id,
-          message_text: text,
-        });
+          message_text: payload.text,
+          file_url: payload.file_url ?? null,
+          file_name: payload.file_name ?? null,
+          file_type: payload.file_type ?? null,
+        } as any);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["read-receipts", conversationId] });
     },
   });
 
@@ -252,6 +294,7 @@ export function useConversationMessages(conversationId: string | null) {
   return {
     messages: messagesQuery.data ?? [],
     messagesLoading: messagesQuery.isLoading,
+    readReceipts: readReceiptsQuery.data ?? [],
     sendMessage,
     startConversation,
   };
