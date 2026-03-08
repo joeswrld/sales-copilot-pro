@@ -221,6 +221,134 @@ export default function BillingPage() {
                 </CardContent>
               </Card>
 
+              {/* Usage Analytics */}
+              {profileQuery.data && (
+                <Card className="border-border">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-primary" />
+                      Usage Analytics
+                    </CardTitle>
+                    <CardDescription>
+                      Your current usage vs plan limits this billing cycle.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {(() => {
+                      const used = profileQuery.data.calls_used ?? 0;
+                      const limit = profileQuery.data.calls_limit ?? 5;
+                      const isUnlimited = limit < 0 || currentPlanKey === "scale";
+                      const pct = isUnlimited ? Math.min(used, 100) : Math.min((used / limit) * 100, 100);
+                      const isNearLimit = !isUnlimited && pct >= 80;
+                      const isAtLimit = !isUnlimited && used >= limit;
+
+                      const nextPlan = PLANS.find((_, i) => {
+                        const ci = PLANS.findIndex(p => p.key === currentPlanKey);
+                        return i === ci + 1;
+                      });
+
+                      return (
+                        <>
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-foreground">Calls Used</span>
+                              <span className="text-sm font-semibold text-foreground">
+                                {used} / {isUnlimited ? "∞" : limit}
+                              </span>
+                            </div>
+                            <Progress value={isUnlimited ? 0 : pct} className="h-3" />
+                            <div className="flex justify-between mt-1.5">
+                              <span className="text-xs text-muted-foreground">
+                                {isUnlimited
+                                  ? "Unlimited calls on your plan"
+                                  : `${Math.round(pct)}% of monthly limit`}
+                              </span>
+                              {isNearLimit && !isAtLimit && (
+                                <span className="text-xs text-accent font-medium">Approaching limit</span>
+                              )}
+                              {isAtLimit && (
+                                <span className="text-xs text-destructive font-medium">Limit reached</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Plan comparison bars */}
+                          <div className="space-y-3 pt-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Usage across plans</p>
+                            {PLANS.map((plan) => {
+                              const planIsUnlimited = plan.calls_limit < 0;
+                              const planPct = planIsUnlimited ? 0 : Math.min((used / plan.calls_limit) * 100, 100);
+                              const isCurrent = plan.key === currentPlanKey;
+                              return (
+                                <div key={plan.key} className={`p-3 rounded-lg border transition-colors ${isCurrent ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-foreground">{plan.name}</span>
+                                      {isCurrent && (
+                                        <Badge variant="default" className="text-[10px] px-1.5 py-0">Current</Badge>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                      {planIsUnlimited ? "Unlimited" : `${plan.calls_limit} calls`} · ${plan.price_usd}/mo
+                                    </span>
+                                  </div>
+                                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        planIsUnlimited
+                                          ? "bg-primary/20"
+                                          : planPct >= 100
+                                          ? "bg-destructive"
+                                          : planPct >= 80
+                                          ? "bg-accent"
+                                          : "bg-primary"
+                                      }`}
+                                      style={{ width: planIsUnlimited ? "5%" : `${planPct}%` }}
+                                    />
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground mt-1">
+                                    {planIsUnlimited
+                                      ? `${used} calls used — no limit`
+                                      : `${used} / ${plan.calls_limit} calls (${Math.round(planPct)}%)`}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Upgrade recommendation */}
+                          {isNearLimit && nextPlan && (
+                            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                              <div className="flex items-start gap-3">
+                                <TrendingUp className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium text-foreground">
+                                    {isAtLimit ? "You've hit your limit!" : "You're approaching your limit"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    You've used {used} of {limit} calls this month ({Math.round(pct)}%).
+                                    Upgrade to <strong>{nextPlan.name}</strong> for{" "}
+                                    {nextPlan.calls_limit < 0 ? "unlimited" : nextPlan.calls_limit} calls at ${nextPlan.price_usd}/mo.
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={() => handleOpenChangePlan(nextPlan.key)}
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5 mr-1.5" />
+                                    Upgrade to {nextPlan.name}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
+
               {subscription.card_last4 && (
                 <Card>
                   <CardHeader>
