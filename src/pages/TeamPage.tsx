@@ -131,11 +131,13 @@ export default function TeamPage() {
           <TabsContent value="members">
             <TeamMembersTab
               members={members}
+              pendingInvitations={pendingInvitations}
               currentRole={role}
               currentUserId={user?.id ?? ""}
               onInvite={(data) => inviteMember.mutate(data)}
               onUpdateRole={(data) => updateRole.mutate(data)}
               onRemove={(id) => removeMember.mutate(id)}
+              onCancelInvitation={(id) => cancelInvitation.mutate(id)}
               inviting={inviteMember.isPending}
             />
           </TabsContent>
