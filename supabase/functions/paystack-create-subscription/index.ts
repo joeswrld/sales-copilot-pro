@@ -6,11 +6,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Plan configurations
-const PLANS: Record<string, { name: string; amount: number; calls_limit: number }> = {
-  starter: { name: "Starter", amount: 1900, calls_limit: 50 },
-  growth: { name: "Growth", amount: 4900, calls_limit: 300 },
-  scale: { name: "Scale", amount: 9900, calls_limit: -1 },
+// Fixed conversion rate: 1 USD = 1,500 NGN
+const USD_TO_NGN_RATE = 1500;
+
+// Plan configurations (prices in USD cents)
+const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number }> = {
+  starter: { name: "Starter", price_usd: 19, calls_limit: 50 },
+  growth: { name: "Growth", price_usd: 49, calls_limit: 300 },
+  scale: { name: "Scale", price_usd: 99, calls_limit: -1 },
 };
 
 Deno.serve(async (req) => {
@@ -57,6 +60,10 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Calculate NGN amount from USD price
+    // Formula: USD * 1500 (NGN rate) * 100 (to kobo)
+    const amount_ngn_kobo = planConfig.price_usd * USD_TO_NGN_RATE * 100;
+
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
     // 1. Create or get Paystack customer
@@ -92,7 +99,8 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             name: `Fixsense ${planConfig.name}`,
             interval: "monthly",
-            amount: planConfig.amount * 100, // Convert to kobo/cents
+            amount: amount_ngn_kobo, // Amount in kobo (NGN)
+            currency: "NGN",
           }),
         });
         const planData = await planRes.json();
@@ -100,7 +108,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Initialize transaction with plan
+    // 3. Initialize transaction with plan (charged in NGN)
     const initRes = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -111,7 +119,8 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           email: userEmail,
-          amount: planConfig.amount * 100,
+          amount: amount_ngn_kobo, // Amount in kobo (NGN)
+          currency: "NGN",
           plan: planCode,
           callback_url:
             callback_url ||
@@ -120,6 +129,7 @@ Deno.serve(async (req) => {
             user_id: userId,
             plan_key: plan_key,
             plan_name: planConfig.name,
+            plan_price_usd: planConfig.price_usd,
             calls_limit: planConfig.calls_limit,
             custom_fields: [
               {
@@ -147,7 +157,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Upsert subscription record
+    // 4. Upsert subscription record with both USD and NGN amounts
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -159,7 +169,9 @@ Deno.serve(async (req) => {
         paystack_customer_code: customerCode,
         status: "pending",
         plan_name: `Fixsense ${planConfig.name}`,
-        amount_kobo: planConfig.amount * 100,
+        plan_price_usd: planConfig.price_usd,
+        amount_kobo: amount_ngn_kobo,
+        currency: "NGN",
       },
       { onConflict: "user_id" }
     );

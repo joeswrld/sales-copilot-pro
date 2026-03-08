@@ -1,13 +1,19 @@
 import { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2 } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
   active: { label: "Active", variant: "default", icon: CheckCircle2 },
@@ -16,6 +22,18 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   pending: { label: "Pending", variant: "outline", icon: Loader2 },
   inactive: { label: "Inactive", variant: "secondary", icon: XCircle },
 };
+
+// Fixed conversion rate
+const USD_TO_NGN = 1500;
+
+function formatNGN(amount: number): string {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 export default function BillingPage() {
   const { subscription, isLoading, subscribe, cancelSubscription, isActive } = useSubscription();
@@ -31,56 +49,76 @@ export default function BillingPage() {
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;
 
-  return (
-    <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your Fixsense subscription and payment details.
-          </p>
-        </div>
+  // Calculate display prices
+  const priceUSD = subscription?.plan_price_usd || 
+    (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
+  const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+  return (
+    <TooltipProvider>
+      <DashboardLayout>
+        <div className="max-w-3xl mx-auto space-y-8">
+          <div>
+            <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your Fixsense subscription and payment details.
+            </p>
           </div>
-        ) : subscription && subscription.status !== "inactive" ? (
-          <>
-            {/* Current Plan Card */}
-            <Card className="border-primary/20 bg-primary/5">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-primary" />
-                    {subscription.plan_name}
-                  </CardTitle>
-                  <CardDescription>Monthly subscription</CardDescription>
-                </div>
-                <Badge variant={status.variant} className="flex items-center gap-1.5 px-3 py-1">
-                  <StatusIcon className="w-3.5 h-3.5" />
-                  {status.label}
-                </Badge>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : subscription && subscription.status !== "inactive" ? (
+            <>
+              {/* Current Plan Card */}
+              <Card className="border-primary/20 bg-primary/5">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <div>
-                    <p className="text-sm text-muted-foreground">Price</p>
-                    <p className="text-2xl font-bold text-foreground">
-                      $19<span className="text-sm font-normal text-muted-foreground">/month</span>
-                    </p>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-primary" />
+                      {subscription.plan_name}
+                    </CardTitle>
+                    <CardDescription>Monthly subscription</CardDescription>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Next billing date</p>
-                    <p className="text-lg font-semibold text-foreground">
-                      {subscription.next_payment_date
-                        ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
-                        : "—"}
-                    </p>
+                  <Badge variant={status.variant} className="flex items-center gap-1.5 px-3 py-1">
+                    <StatusIcon className="w-3.5 h-3.5" />
+                    {status.label}
+                  </Badge>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Price</p>
+                      <p className="text-2xl font-bold text-foreground">
+                        ${priceUSD}<span className="text-sm font-normal text-muted-foreground">/month</span>
+                      </p>
+                      {priceNGN > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-xs text-muted-foreground mt-1 cursor-help inline-flex items-center gap-1">
+                              {formatNGN(priceNGN)} billed monthly
+                              <Info className="w-3 h-3" />
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Billed in Nigerian Naira (NGN)</p>
+                            <p className="text-xs text-muted-foreground">Rate: 1 USD = ₦1,500</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Next billing date</p>
+                      <p className="text-lg font-semibold text-foreground">
+                        {subscription.next_payment_date
+                          ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
+                          : "—"}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
             {/* Payment Method */}
             {subscription.card_last4 && (
@@ -191,7 +229,8 @@ export default function BillingPage() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </DashboardLayout>
+        </div>
+      </DashboardLayout>
+    </TooltipProvider>
   );
 }

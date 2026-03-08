@@ -10,6 +10,7 @@ export interface Subscription {
   paystack_subscription_code: string | null;
   paystack_email_token: string | null;
   plan_name: string;
+  plan_price_usd: number | null;
   amount_kobo: number;
   currency: string;
   status: string;
