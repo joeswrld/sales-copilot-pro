@@ -59,6 +59,7 @@ export default function PricingPage() {
   const { user } = useAuth();
   const { subscribe } = useSubscription();
   const { profile } = useUserProfile();
+  const { teamUsage } = useTeamUsage();
   const navigate = useNavigate();
 
   const currentPlan = profile?.plan_type || "free";
