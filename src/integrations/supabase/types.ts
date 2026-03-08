@@ -694,6 +694,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_team_with_owner: {
+        Args: { team_name?: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "teams"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
         Returns: string
