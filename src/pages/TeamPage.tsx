@@ -1,95 +1,462 @@
+import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Users, TrendingUp, TrendingDown, Target, MessageSquare, ArrowUpRight,
+  Trophy, Medal, Award, ChevronLeft, Lightbulb, AlertTriangle, Sparkles,
+  Calendar, BarChart3, Mic, CheckCircle2, Clock
+} from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar } from "recharts";
 
+// --- Demo Data ---
 const teamMembers = [
-  { name: "Sarah Lee", role: "Senior AE", calls: 42, winRate: 78, avgSentiment: 82, objectionRate: 91 },
-  { name: "John Smith", role: "Account Executive", calls: 38, winRate: 72, avgSentiment: 76, objectionRate: 89 },
-  { name: "Mike Chen", role: "SDR", calls: 35, winRate: 65, avgSentiment: 71, objectionRate: 78 },
-  { name: "Lisa Park", role: "Account Executive", calls: 29, winRate: 69, avgSentiment: 79, objectionRate: 85 },
+  {
+    id: "1", name: "Sarah Lee", role: "Senior AE", avatar: "SL",
+    meetings: 18, avgScore: 8.7, talkRatio: 42, followUps: 14, lastMeeting: "2026-03-07",
+    coaching: "Excellent performer",
+    strengths: ["Strong discovery questions", "Clear value articulation", "Effective objection handling"],
+    weaknesses: ["Occasionally rushes closing", "Could improve demo pacing"],
+    suggestions: ["Practice deliberate pauses before closing", "Use customer stories more in demos"],
+    recentMeetings: [
+      { title: "Enterprise Demo – TechCorp", score: 9.1, summary: "Exceptional discovery phase. Strong ROI presentation. Prospect highly engaged.", date: "2026-03-07" },
+      { title: "Renewal Call – DataFlow", score: 8.4, summary: "Good relationship building. Addressed all concerns. Upsell opportunity identified.", date: "2026-03-05" },
+    ]
+  },
+  {
+    id: "2", name: "John Smith", role: "Account Executive", avatar: "JS",
+    meetings: 15, avgScore: 7.8, talkRatio: 58, followUps: 11, lastMeeting: "2026-03-06",
+    coaching: "Improve listening ratio",
+    strengths: ["Strong product knowledge", "Good rapport building", "Persistent follow-up"],
+    weaknesses: ["Talks too much during meetings", "Weak next-step definition", "Misses pricing objections"],
+    suggestions: ["Reduce talk ratio to under 50%", "Always define clear next steps", "Practice handling pricing objections"],
+    recentMeetings: [
+      { title: "Product Demo – Acme Inc", score: 8.5, summary: "Strong product explanation but missed pricing objection. Need to improve closing.", date: "2026-03-06" },
+      { title: "Discovery Call – CloudBase", score: 7.2, summary: "Good initial rapport but dominated conversation. Prospect had limited chance to share pain points.", date: "2026-03-04" },
+    ]
+  },
+  {
+    id: "3", name: "Mike Chen", role: "SDR", avatar: "MC",
+    meetings: 22, avgScore: 7.1, talkRatio: 62, followUps: 8, lastMeeting: "2026-03-08",
+    coaching: "Focus on discovery questions",
+    strengths: ["High meeting volume", "Good energy and enthusiasm", "Quick qualification"],
+    weaknesses: ["Poor discovery question depth", "Talks over prospects", "Weak follow-up clarity"],
+    suggestions: ["Use SPIN selling framework", "Practice active listening", "Send structured follow-up emails within 2 hours"],
+    recentMeetings: [
+      { title: "Cold Outreach – NovaTech", score: 7.3, summary: "Good energy but rushed through discovery. Prospect seemed interested but unclear on next steps.", date: "2026-03-08" },
+      { title: "Qualification Call – BrightPath", score: 6.8, summary: "Talked 70% of the time. Missed key budget signals from prospect.", date: "2026-03-06" },
+    ]
+  },
+  {
+    id: "4", name: "Lisa Park", role: "Account Executive", avatar: "LP",
+    meetings: 12, avgScore: 8.2, talkRatio: 46, followUps: 10, lastMeeting: "2026-03-05",
+    coaching: "Increase meeting volume",
+    strengths: ["Excellent listening skills", "Strong closing technique", "Clear action items"],
+    weaknesses: ["Low meeting volume", "Could be more assertive in negotiations"],
+    suggestions: ["Schedule 3+ more meetings per week", "Practice assertive negotiation techniques"],
+    recentMeetings: [
+      { title: "Negotiation – FinServ Pro", score: 8.8, summary: "Excellent negotiation. Secured favorable terms. Clear next steps defined.", date: "2026-03-05" },
+      { title: "QBR – MegaCorp", score: 7.9, summary: "Thorough review but could push harder on expansion opportunities.", date: "2026-03-03" },
+    ]
+  },
+  {
+    id: "5", name: "David Kim", role: "SDR", avatar: "DK",
+    meetings: 20, avgScore: 6.9, talkRatio: 66, followUps: 6, lastMeeting: "2026-03-07",
+    coaching: "Critical: reduce talk ratio",
+    strengths: ["High activity level", "Good prospecting instincts"],
+    weaknesses: ["Talks far too much", "Doesn't ask discovery questions", "Weak closing attempts", "Poor follow-up clarity"],
+    suggestions: ["Aim for 45% talk ratio max", "Prepare 5 open-ended questions per call", "End every meeting with 3 clear next steps"],
+    recentMeetings: [
+      { title: "Intro Call – ScaleUp AI", score: 7.0, summary: "High energy but prospect barely spoke. Needs to listen more.", date: "2026-03-07" },
+      { title: "Demo – RetailMax", score: 6.5, summary: "Feature dump approach. Prospect disengaged halfway. No clear next steps.", date: "2026-03-04" },
+    ]
+  },
 ];
 
-const teamTrend = [
-  { week: "W1", avgWin: 62 },
-  { week: "W2", avgWin: 65 },
-  { week: "W3", avgWin: 68 },
-  { week: "W4", avgWin: 71 },
+const summaryCards = [
+  { label: "Team Meetings", value: "87", change: "+12%", up: true, icon: Users },
+  { label: "Avg Meeting Score", value: "7.7", change: "+0.4", up: true, icon: Target },
+  { label: "Action Items Generated", value: "142", change: "+18%", up: true, icon: CheckCircle2 },
+  { label: "Conversion Signals", value: "34", change: "-3%", up: false, icon: TrendingUp },
+  { label: "Avg Talk Ratio", value: "55%", change: "-2%", up: true, icon: Mic },
 ];
+
+const weeklyTrend = [
+  { week: "W1", score: 7.1, meetings: 18 },
+  { week: "W2", score: 7.4, meetings: 21 },
+  { week: "W3", score: 7.6, meetings: 24 },
+  { week: "W4", score: 7.9, meetings: 24 },
+];
+
+const coachingInsights = [
+  { type: "warning", text: "Your team talks 55% of the time during meetings. High-performing sales teams usually stay around 45–50%. Consider coaching reps to ask more discovery questions." },
+  { type: "tip", text: "3 team members have not defined clear next steps in over 40% of their meetings this month. This correlates with lower conversion rates." },
+  { type: "success", text: "Sarah Lee has improved her meeting score by 15% this quarter. Her discovery question technique could be a model for the team." },
+  { type: "warning", text: "David Kim and Mike Chen have talk ratios above 60%. Schedule 1:1 coaching sessions focused on active listening." },
+];
+
+type MemberDetail = (typeof teamMembers)[number];
+
+function ScoreIndicator({ score }: { score: number }) {
+  const color = score >= 8 ? "text-emerald-400" : score >= 7 ? "text-amber-400" : "text-red-400";
+  return <span className={`font-bold ${color}`}>{score.toFixed(1)}</span>;
+}
+
+function TalkRatioBadge({ ratio }: { ratio: number }) {
+  const variant = ratio <= 50 ? "default" : ratio <= 58 ? "secondary" : "destructive";
+  return <Badge variant={variant} className="text-xs font-mono">{ratio}%</Badge>;
+}
 
 export default function TeamPage() {
+  const [selectedMember, setSelectedMember] = useState<MemberDetail | null>(null);
+
+  if (selectedMember) {
+    return (
+      <DashboardLayout>
+        <MemberDetailView member={selectedMember} onBack={() => setSelectedMember(null)} />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold font-display">Team</h1>
-          <p className="text-sm text-muted-foreground">Monitor team performance and coaching insights</p>
+          <h1 className="text-2xl font-bold font-display">Team Performance</h1>
+          <p className="text-sm text-muted-foreground">Sales performance command center · Monitor, coach, and improve</p>
         </div>
 
-        {/* Team Win Rate Trend */}
-        <div className="glass rounded-xl p-5">
-          <h3 className="font-display font-semibold text-sm mb-4">Team Win Rate Trend</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={teamTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
-              <XAxis dataKey="week" tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 12 }} axisLine={false} />
-              <YAxis domain={[50, 80]} tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 12 }} axisLine={false} />
-              <Tooltip contentStyle={{ background: "hsl(222, 44%, 9%)", border: "1px solid hsl(222, 30%, 18%)", borderRadius: 8, color: "hsl(210, 40%, 96%)" }} />
-              <Bar dataKey="avgWin" fill="hsl(174, 72%, 50%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {summaryCards.map((card) => (
+            <Card key={card.label} className="bg-card border-border">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <card.icon className="w-4 h-4 text-muted-foreground" />
+                  <div className={`flex items-center gap-1 text-xs font-medium ${card.up ? "text-emerald-400" : "text-red-400"}`}>
+                    {card.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    {card.change}
+                  </div>
+                </div>
+                <p className="text-2xl font-bold font-display">{card.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Team Members Table */}
-        <div className="glass rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-display font-semibold text-sm">Team Members</h3>
+        {/* Main Grid: Table + Sidebar */}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Left: Table + Trend */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Weekly Trend Chart */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-display">Weekly Performance Trend</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={weeklyTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
+                    <XAxis dataKey="week" tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 12 }} axisLine={false} />
+                    <YAxis domain={[6, 9]} tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 12 }} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "hsl(222, 44%, 9%)", border: "1px solid hsl(222, 30%, 18%)", borderRadius: 8, color: "hsl(210, 40%, 96%)" }} />
+                    <Bar dataKey="score" name="Avg Score" fill="hsl(174, 72%, 50%)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Team Members Table */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-display">Team Members</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Member</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Meetings</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Avg Score</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Talk Ratio</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Follow-ups</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Coaching</th>
+                        <th className="text-left p-4 text-xs font-medium text-muted-foreground">Last Meeting</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {teamMembers.map((m) => (
+                        <tr
+                          key={m.id}
+                          className="hover:bg-secondary/30 transition-colors cursor-pointer"
+                          onClick={() => setSelectedMember(m)}
+                        >
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{m.avatar}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{m.name}</p>
+                                <p className="text-xs text-muted-foreground">{m.role}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 font-mono">{m.meetings}</td>
+                          <td className="p-4"><ScoreIndicator score={m.avgScore} /></td>
+                          <td className="p-4"><TalkRatioBadge ratio={m.talkRatio} /></td>
+                          <td className="p-4 font-mono">{m.followUps}</td>
+                          <td className="p-4">
+                            <span className="text-xs text-muted-foreground">{m.coaching}</span>
+                          </td>
+                          <td className="p-4">
+                            <span className="text-xs text-muted-foreground">{new Date(m.lastMeeting).toLocaleDateString()}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Team Meetings Feed */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-display">Recent Team Meetings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {teamMembers.flatMap(m =>
+                  m.recentMeetings.map((rm, i) => ({ ...rm, memberName: m.name, memberAvatar: m.avatar, key: `${m.id}-${i}` }))
+                )
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 6)
+                  .map((entry) => (
+                    <div key={entry.key} className="flex gap-3 p-3 rounded-lg bg-secondary/20 hover:bg-secondary/30 transition-colors">
+                      <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                        <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{entry.memberAvatar}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium truncate">{entry.memberName}</p>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <ScoreIndicator score={entry.score} />
+                            <span className="text-xs text-muted-foreground">{new Date(entry.date).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-primary/80 font-medium mt-0.5">{entry.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{entry.summary}</p>
+                      </div>
+                    </div>
+                  ))}
+              </CardContent>
+            </Card>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground">Rep</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground">Calls</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground">Win Rate</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground">Avg Sentiment</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground">Objection Handling</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {teamMembers.map(m => (
-                  <tr key={m.name} className="hover:bg-secondary/30 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                          {m.name[0]}
+
+          {/* Right Sidebar: Leaderboard + Coaching */}
+          <div className="space-y-6">
+            {/* Leaderboard */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-display flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-amber-400" />
+                  Top Performers
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[...teamMembers]
+                  .sort((a, b) => b.avgScore - a.avgScore)
+                  .slice(0, 3)
+                  .map((m, i) => {
+                    const icons = [Trophy, Medal, Award];
+                    const colors = ["text-amber-400", "text-zinc-400", "text-orange-400"];
+                    const labels = ["Top Performer", "Strong Performer", "Improving Performer"];
+                    const Icon = icons[i];
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-secondary/20 cursor-pointer hover:bg-secondary/30 transition-colors"
+                        onClick={() => setSelectedMember(m)}
+                      >
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-secondary">
+                          <Icon className={`w-4 h-4 ${colors[i]}`} />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{m.role}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{m.name}</p>
+                          <p className="text-xs text-muted-foreground">{labels[i]}</p>
                         </div>
+                        <ScoreIndicator score={m.avgScore} />
                       </div>
-                    </td>
-                    <td className="p-4 text-sm">{m.calls}</td>
-                    <td className="p-4">
-                      <span className="text-sm font-medium text-primary">{m.winRate}%</span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-12 rounded-full bg-muted">
-                          <div className="h-1.5 rounded-full bg-primary" style={{ width: `${m.avgSentiment}%` }} />
+                    );
+                  })}
+              </CardContent>
+            </Card>
+
+            {/* AI Coaching Insights */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-display flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  AI Coaching Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[360px] pr-2">
+                  <div className="space-y-3">
+                    {coachingInsights.map((insight, i) => {
+                      const iconMap = { warning: AlertTriangle, tip: Lightbulb, success: CheckCircle2 };
+                      const colorMap = { warning: "text-amber-400 bg-amber-400/10", tip: "text-primary bg-primary/10", success: "text-emerald-400 bg-emerald-400/10" };
+                      const Icon = iconMap[insight.type as keyof typeof iconMap];
+                      const colorClass = colorMap[insight.type as keyof typeof colorMap];
+                      return (
+                        <div key={i} className="p-3 rounded-lg bg-secondary/20">
+                          <div className="flex items-start gap-2">
+                            <div className={`p-1.5 rounded-md shrink-0 ${colorClass}`}>
+                              <Icon className="w-3.5 h-3.5" />
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{insight.text}</p>
+                          </div>
                         </div>
-                        <span className="text-xs text-muted-foreground">{m.avgSentiment}%</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-sm text-success">{m.objectionRate}%</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+// --- Member Detail View ---
+function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: () => void }) {
+  const talkRadialData = [{ name: "Talk", value: member.talkRatio, fill: member.talkRatio <= 50 ? "hsl(174, 72%, 50%)" : member.talkRatio <= 58 ? "hsl(38, 92%, 55%)" : "hsl(0, 72%, 55%)" }];
+
+  return (
+    <div className="space-y-6">
+      {/* Back + Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={onBack}>
+          <ChevronLeft className="w-5 h-5" />
+        </Button>
+        <div className="flex items-center gap-3">
+          <Avatar className="h-12 w-12">
+            <AvatarFallback className="bg-primary/20 text-primary font-bold">{member.avatar}</AvatarFallback>
+          </Avatar>
+          <div>
+            <h1 className="text-xl font-bold font-display">{member.name}</h1>
+            <p className="text-sm text-muted-foreground">{member.role}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Total Meetings", value: member.meetings, icon: Calendar },
+          { label: "Avg Score", value: member.avgScore.toFixed(1), icon: Target },
+          { label: "Talk Ratio", value: `${member.talkRatio}%`, icon: Mic },
+          { label: "Follow-ups Done", value: member.followUps, icon: CheckCircle2 },
+        ].map((stat) => (
+          <Card key={stat.label} className="bg-card border-border">
+            <CardContent className="p-4">
+              <stat.icon className="w-4 h-4 text-muted-foreground mb-2" />
+              <p className="text-2xl font-bold font-display">{stat.value}</p>
+              <p className="text-xs text-muted-foreground">{stat.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Strengths / Weaknesses / Suggestions */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              Strengths
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {member.strengths.map((s, i) => (
+                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Weaknesses
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {member.weaknesses.map((w, i) => (
+                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                  {w}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-primary" />
+              Coaching Suggestions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {member.suggestions.map((s, i) => (
+                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Meetings */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-display">Recent Meetings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {member.recentMeetings.map((rm, i) => (
+            <div key={i} className="p-3 rounded-lg bg-secondary/20">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium">{rm.title}</p>
+                <div className="flex items-center gap-2">
+                  <ScoreIndicator score={rm.score} />
+                  <span className="text-xs text-muted-foreground">{new Date(rm.date).toLocaleDateString()}</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">{rm.summary}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
