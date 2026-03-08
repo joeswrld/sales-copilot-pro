@@ -132,19 +132,19 @@ export default function TeamPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
           {summaryCards.map((card) => (
             <Card key={card.label} className="bg-card border-border">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <card.icon className="w-4 h-4 text-muted-foreground" />
-                  <div className={`flex items-center gap-1 text-xs font-medium ${card.up ? "text-emerald-400" : "text-red-400"}`}>
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <card.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
+                  <div className={`flex items-center gap-1 text-[10px] sm:text-xs font-medium ${card.up ? "text-emerald-400" : "text-red-400"}`}>
                     {card.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                     {card.change}
                   </div>
                 </div>
-                <p className="text-2xl font-bold font-display">{card.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                <p className="text-xl sm:text-2xl font-bold font-display">{card.value}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">{card.label}</p>
               </CardContent>
             </Card>
           ))}
@@ -172,13 +172,50 @@ export default function TeamPage() {
               </CardContent>
             </Card>
 
-            {/* Team Members Table */}
+            {/* Team Members - Card list on mobile, table on md+ */}
             <Card className="bg-card border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-display">Team Members</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                {/* Mobile: Card List */}
+                <div className="md:hidden divide-y divide-border">
+                  {teamMembers.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-3 active:bg-secondary/30 transition-colors cursor-pointer"
+                      onClick={() => setSelectedMember(m)}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{m.avatar}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{m.name}</p>
+                          <p className="text-xs text-muted-foreground">{m.role}</p>
+                        </div>
+                        <ScoreIndicator score={m.avgScore} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <p className="text-xs font-bold font-mono">{m.meetings}</p>
+                          <p className="text-[10px] text-muted-foreground">Meetings</p>
+                        </div>
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <TalkRatioBadge ratio={m.talkRatio} />
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Talk</p>
+                        </div>
+                        <div className="rounded-md bg-secondary/20 py-1.5 px-1">
+                          <p className="text-xs font-bold font-mono">{m.followUps}</p>
+                          <p className="text-[10px] text-muted-foreground">Follow-ups</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop: Table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
@@ -308,7 +345,7 @@ export default function TeamPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[360px] pr-2">
+                <ScrollArea className="h-[280px] lg:h-[360px] pr-2">
                   <div className="space-y-3">
                     {coachingInsights.map((insight, i) => {
                       const iconMap = { warning: AlertTriangle, tip: Lightbulb, success: CheckCircle2 };
@@ -353,7 +390,7 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
             <AvatarFallback className="bg-primary/20 text-primary font-bold">{member.avatar}</AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-xl font-bold font-display">{member.name}</h1>
+            <h1 className="text-lg sm:text-xl font-bold font-display">{member.name}</h1>
             <p className="text-sm text-muted-foreground">{member.role}</p>
           </div>
         </div>
@@ -378,7 +415,7 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
       </div>
 
       {/* Strengths / Weaknesses / Suggestions */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-display flex items-center gap-2">
@@ -445,9 +482,9 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
         <CardContent className="space-y-3">
           {member.recentMeetings.map((rm, i) => (
             <div key={i} className="p-3 rounded-lg bg-secondary/20">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-medium">{rm.title}</p>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
+                <p className="text-sm font-medium truncate">{rm.title}</p>
+                <div className="flex items-center gap-2 shrink-0">
                   <ScoreIndicator score={rm.score} />
                   <span className="text-xs text-muted-foreground">{new Date(rm.date).toLocaleDateString()}</span>
                 </div>
