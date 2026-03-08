@@ -214,8 +214,17 @@ export default function BillingPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Next billing date</p>
                       <p className="text-lg font-semibold text-foreground">
-                        {subscription.next_payment_date ? format(new Date(subscription.next_payment_date), "MMM d, yyyy") : "—"}
+                        {subscription.next_payment_date
+                          ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
+                          : transactions.length > 0 && transactions[0].paid_at
+                          ? format(new Date(new Date(transactions[0].paid_at).setMonth(new Date(transactions[0].paid_at).getMonth() + 1)), "MMM d, yyyy")
+                          : subscription.created_at
+                          ? format(new Date(new Date(subscription.created_at).setMonth(new Date(subscription.created_at).getMonth() + 1)), "MMM d, yyyy")
+                          : "—"}
                       </p>
+                      {!subscription.next_payment_date && transactions.length > 0 && transactions[0].paid_at && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Estimated from last payment</p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
