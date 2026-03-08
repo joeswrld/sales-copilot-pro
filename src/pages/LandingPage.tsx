@@ -20,12 +20,6 @@ const features = [
   { icon: Shield, title: "Enterprise Security", desc: "SOC2, GDPR, and optional HIPAA compliance with end-to-end encryption." },
 ];
 
-const pricing = [
-  { name: "Free", price: "$0", period: "/month", desc: "For solo reps getting started", features: ["5 calls/month", "Basic transcription", "Call summaries", "Email export"], cta: "Get Started", highlight: false },
-  { name: "Pro", price: "$25", period: "/user/mo", desc: "Full AI insights for growing teams", features: ["Unlimited calls", "AI objection detection", "Sentiment analysis", "CRM integration", "PDF & CSV export"], cta: "Start Free Trial", highlight: true },
-  { name: "Team", price: "$75", period: "/user/mo", desc: "Advanced analytics & coaching", features: ["Everything in Pro", "Team dashboards", "Coaching insights", "Performance benchmarking", "Priority support"], cta: "Contact Sales", highlight: false },
-  { name: "Enterprise", price: "Custom", period: "", desc: "For large organizations", features: ["Everything in Team", "Custom integrations", "HIPAA compliance", "Dedicated CSM", "SLA guarantee"], cta: "Talk to Us", highlight: false },
-];
 
 export default function LandingPage() {
   return (
