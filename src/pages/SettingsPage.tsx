@@ -1,8 +1,9 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ExternalLink, Loader2, Shield, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { ExternalLink, Loader2, Shield, CheckCircle2, XCircle, RefreshCw, Users } from "lucide-react";
 import { useIntegrations, usePreferences, useUserProfile } from "@/hooks/useSettings";
+import { useTeamUsage } from "@/hooks/useTeamUsage";
 import { toast } from "sonner";
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
