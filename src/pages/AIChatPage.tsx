@@ -125,6 +125,7 @@ export default function AIChatPage() {
 
   return (
     <DashboardLayout>
+      <SubscriptionGate message="AI Sales Coach requires an active Fixsense subscription.">
       <div className="flex flex-col h-[calc(100vh-7rem)]">
         <div className="flex items-center justify-between mb-4">
           <div>
