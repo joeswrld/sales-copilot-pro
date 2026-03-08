@@ -17,6 +17,10 @@ type PaystackTx = {
   gateway_response: string | null;
   customer?: { email?: string | null; customer_code?: string | null };
   authorization?: { last4?: string | null; brand?: string | null };
+  metadata?: {
+    user_id?: string;
+    custom_fields?: Array<{ variable_name?: string; value?: string }>;
+  } | null;
 };
 
 Deno.serve(async (req) => {
