@@ -310,7 +310,7 @@ export default function BillingPage() {
                             {planPreview.is_upgrade && planPreview.credit_ngn > 0 && (
                               <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Credit from current plan</span>
-                                <span className="text-green-600">-{formatNGN(planPreview.credit_ngn)}</span>
+                                <span className="text-primary">-{formatNGN(planPreview.credit_ngn)}</span>
                               </div>
                             )}
                           </>
@@ -338,8 +338,8 @@ export default function BillingPage() {
                       </div>
 
                       {planPreview.is_downgrade && (
-                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <p className="text-sm text-destructive">
                             <strong>Note:</strong> Downgrading will reduce your monthly calls limit from{" "}
                             {PLANS.find(p => p.key === planPreview.current_plan)?.calls_limit === -1 
                               ? "unlimited" 
