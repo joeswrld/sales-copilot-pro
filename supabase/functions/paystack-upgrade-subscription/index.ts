@@ -16,6 +16,48 @@ const PLANS: Record<string, { name: string; price_usd: number; calls_limit: numb
   scale: { name: "Scale", price_usd: 99, calls_limit: -1 },
 };
 
+const PLAN_ORDER = ["starter", "growth", "scale"];
+
+function calculateProration(
+  currentPlanPriceNgn: number,
+  newPlanPriceNgn: number,
+  nextPaymentDate: string | null
+): { proratedAmountNgn: number; daysRemaining: number; creditNgn: number } {
+  const now = new Date();
+  const nextPayment = nextPaymentDate ? new Date(nextPaymentDate) : null;
+  
+  if (!nextPayment || nextPayment <= now) {
+    // No active billing cycle, charge full amount
+    return {
+      proratedAmountNgn: newPlanPriceNgn,
+      daysRemaining: 0,
+      creditNgn: 0,
+    };
+  }
+
+  // Calculate days remaining in current billing cycle
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysRemaining = Math.max(0, Math.ceil((nextPayment.getTime() - now.getTime()) / msPerDay));
+  const daysInMonth = 30;
+
+  // Calculate credit from current plan
+  const dailyRateCurrent = currentPlanPriceNgn / daysInMonth;
+  const creditNgn = Math.round(dailyRateCurrent * daysRemaining);
+
+  // Calculate prorated charge for new plan
+  const dailyRateNew = newPlanPriceNgn / daysInMonth;
+  const proratedChargeNgn = Math.round(dailyRateNew * daysRemaining);
+
+  // Net amount: new prorated charge minus credit
+  const netAmountNgn = Math.max(0, proratedChargeNgn - creditNgn);
+
+  return {
+    proratedAmountNgn: netAmountNgn,
+    daysRemaining,
+    creditNgn,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -49,7 +91,7 @@ Deno.serve(async (req) => {
     const userId = claimsData.claims.sub as string;
     const userEmail = claimsData.claims.email as string;
 
-    const { new_plan_key, callback_url } = await req.json();
+    const { new_plan_key, callback_url, preview_only } = await req.json();
 
     // Validate new plan
     const newPlanConfig = PLANS[new_plan_key];
@@ -80,6 +122,47 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Determine current plan
+    const currentPlanName = currentSub?.plan_name?.toLowerCase() || "";
+    let currentPlanKey = "starter";
+    if (currentPlanName.includes("scale")) currentPlanKey = "scale";
+    else if (currentPlanName.includes("growth")) currentPlanKey = "growth";
+    else if (currentPlanName.includes("starter")) currentPlanKey = "starter";
+
+    const currentPlanConfig = PLANS[currentPlanKey] || PLANS.starter;
+    const currentPriceNgn = currentPlanConfig.price_usd * USD_TO_NGN_RATE;
+    const newPriceNgn = newPlanConfig.price_usd * USD_TO_NGN_RATE;
+
+    // Calculate proration
+    const proration = calculateProration(
+      currentPriceNgn,
+      newPriceNgn,
+      currentSub?.next_payment_date
+    );
+
+    const isUpgrade = PLAN_ORDER.indexOf(new_plan_key) > PLAN_ORDER.indexOf(currentPlanKey);
+    const isDowngrade = PLAN_ORDER.indexOf(new_plan_key) < PLAN_ORDER.indexOf(currentPlanKey);
+
+    // If preview only, return proration details
+    if (preview_only) {
+      return new Response(
+        JSON.stringify({
+          current_plan: currentPlanKey,
+          new_plan: new_plan_key,
+          is_upgrade: isUpgrade,
+          is_downgrade: isDowngrade,
+          current_price_ngn: currentPriceNgn,
+          new_price_ngn: newPriceNgn,
+          prorated_amount_ngn: proration.proratedAmountNgn,
+          credit_ngn: proration.creditNgn,
+          days_remaining: proration.daysRemaining,
+          new_monthly_price_ngn: newPriceNgn,
+          new_monthly_price_usd: newPlanConfig.price_usd,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
     // If user has an active subscription, cancel it first
@@ -103,12 +186,17 @@ Deno.serve(async (req) => {
         console.log("Cancelled old subscription:", cancelData);
       } catch (err) {
         console.error("Error cancelling old subscription:", err);
-        // Continue anyway - we'll create a new subscription
       }
     }
 
-    // Calculate NGN amount
-    const amount_ngn_kobo = newPlanConfig.price_usd * USD_TO_NGN_RATE * 100;
+    // For downgrades with credit remaining, we charge 0 for now and start new plan
+    // For upgrades, we charge the prorated difference
+    const chargeAmountKobo = isDowngrade 
+      ? 0 // Downgrade: no immediate charge, starts on next cycle
+      : proration.proratedAmountNgn * 100;
+
+    // Full monthly amount for the new plan (in kobo)
+    const fullMonthlyAmountKobo = newPlanConfig.price_usd * USD_TO_NGN_RATE * 100;
 
     // Create or get Paystack customer
     const customerRes = await fetch("https://api.paystack.co/customer", {
@@ -133,7 +221,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         name: `Fixsense ${newPlanConfig.name} - ${Date.now()}`,
         interval: "monthly",
-        amount: amount_ngn_kobo,
+        amount: fullMonthlyAmountKobo,
         currency: "NGN",
       }),
     });
@@ -148,9 +236,11 @@ Deno.serve(async (req) => {
     }
 
     const planCode = planData.data.plan_code;
-    console.log(`Created Paystack plan: ${planCode} for upgrade to ${newPlanConfig.name}`);
+    console.log(`Created Paystack plan: ${planCode} for ${isUpgrade ? 'upgrade' : 'downgrade'} to ${newPlanConfig.name}`);
 
-    // Initialize transaction with new plan
+    // Initialize transaction with prorated amount (or full if downgrade/no proration)
+    const transactionAmount = chargeAmountKobo > 0 ? chargeAmountKobo : fullMonthlyAmountKobo;
+    
     const initRes = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -161,7 +251,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           email: userEmail,
-          amount: amount_ngn_kobo,
+          amount: transactionAmount,
           currency: "NGN",
           plan: planCode,
           callback_url:
@@ -173,7 +263,10 @@ Deno.serve(async (req) => {
             plan_name: newPlanConfig.name,
             plan_price_usd: newPlanConfig.price_usd,
             calls_limit: newPlanConfig.calls_limit,
-            is_upgrade: true,
+            is_upgrade: isUpgrade,
+            is_downgrade: isDowngrade,
+            prorated_amount_ngn: proration.proratedAmountNgn,
+            credit_ngn: proration.creditNgn,
             custom_fields: [
               {
                 display_name: "User ID",
@@ -186,9 +279,9 @@ Deno.serve(async (req) => {
                 value: new_plan_key,
               },
               {
-                display_name: "Upgrade",
-                variable_name: "is_upgrade",
-                value: "true",
+                display_name: "Change Type",
+                variable_name: "change_type",
+                value: isUpgrade ? "upgrade" : "downgrade",
               },
             ],
           },
@@ -205,7 +298,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update subscription record to pending upgrade
+    // Update subscription record to pending
     await adminClient.from("subscriptions").upsert(
       {
         user_id: userId,
@@ -213,7 +306,7 @@ Deno.serve(async (req) => {
         status: "pending",
         plan_name: `Fixsense ${newPlanConfig.name}`,
         plan_price_usd: newPlanConfig.price_usd,
-        amount_kobo: amount_ngn_kobo,
+        amount_kobo: fullMonthlyAmountKobo,
         currency: "NGN",
       },
       { onConflict: "user_id" }
@@ -232,6 +325,10 @@ Deno.serve(async (req) => {
       JSON.stringify({
         authorization_url: initData.data.authorization_url,
         reference: initData.data.reference,
+        prorated_amount_ngn: proration.proratedAmountNgn,
+        credit_ngn: proration.creditNgn,
+        is_upgrade: isUpgrade,
+        is_downgrade: isDowngrade,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
