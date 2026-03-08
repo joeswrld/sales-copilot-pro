@@ -289,6 +289,32 @@ export function useTeam() {
     },
   });
 
+  // Get the admin's plan key for team limits
+  const adminPlanQuery = useQuery({
+    queryKey: ["team-admin-plan", teamQuery.data?.id],
+    queryFn: async () => {
+      const teamId = teamQuery.data!.id;
+      // Find the admin member
+      const { data: adminMember } = await supabase
+        .from("team_members")
+        .select("user_id")
+        .eq("team_id", teamId)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .limit(1)
+        .single();
+      if (!adminMember) return "free";
+      // Fetch the admin's profile plan_type
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan_type")
+        .eq("id", adminMember.user_id)
+        .single();
+      return profile?.plan_type || "free";
+    },
+    enabled: !!teamQuery.data?.id,
+  });
+
   return {
     team: teamQuery.data,
     teamLoading: teamQuery.isLoading,
@@ -296,6 +322,7 @@ export function useTeam() {
     members: membersQuery.data ?? [],
     membersLoading: membersQuery.isLoading,
     pendingInvitations: invitationsQuery.data ?? [],
+    adminPlanKey: adminPlanQuery.data ?? "free",
     createTeam,
     inviteMember,
     cancelInvitation,

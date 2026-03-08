@@ -12,7 +12,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X, ArrowUp, Users } from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
-import { useUserProfile } from "@/hooks/useSettings";
 import { getTeamMembersLimit } from "@/config/plans";
 
 interface PendingInvitation {
@@ -27,6 +26,7 @@ interface Props {
   pendingInvitations: PendingInvitation[];
   currentRole: string;
   currentUserId: string;
+  adminPlanKey: string;
   onInvite: (data: { email: string; role: string }) => void;
   onUpdateRole: (data: { memberId: string; role: string }) => void;
   onRemove: (memberId: string) => void;
@@ -37,7 +37,7 @@ interface Props {
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
 const roleColors: Record<string, string> = { admin: "text-primary", manager: "text-amber-400", member: "text-muted-foreground" };
 
-export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
+export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, adminPlanKey, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -45,9 +45,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const navigate = useNavigate();
 
-  const { profile } = useUserProfile();
-  const currentPlanKey = profile?.plan_type || "free";
-  const teamMembersLimit = getTeamMembersLimit(currentPlanKey);
+  const teamMembersLimit = getTeamMembersLimit(adminPlanKey);
   const isTeamUnlimited = teamMembersLimit === -1;
   const totalMembers = members.length + pendingInvitations.length;
   const isAtLimit = !isTeamUnlimited && totalMembers >= teamMembersLimit;
@@ -299,7 +297,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
               Team Member Limit Reached
             </DialogTitle>
             <DialogDescription>
-              You've reached the team member limit for the <strong className="text-foreground capitalize">{currentPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
+              You've reached the team member limit for the <strong className="text-foreground capitalize">{adminPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 pt-2">
