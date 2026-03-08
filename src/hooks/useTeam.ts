@@ -123,50 +123,90 @@ export function useTeam() {
     },
   });
 
-  // Invite member
+  // Fetch pending invitations
+  const invitationsQuery = useQuery({
+    queryKey: ["team-invitations", teamQuery.data?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("team_invitations")
+        .select("*")
+        .eq("team_id", teamQuery.data!.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!teamQuery.data?.id,
+  });
+
+  // Invite member (supports pending invitations for non-existing users)
   const inviteMember = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      // Check if user exists
+      const teamId = teamQuery.data!.id;
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("id")
         .eq("email", email)
-        .single();
-
-      if (!profile) {
-        throw new Error("No user found with that email. They must sign up first.");
-      }
-
-      // Check if already a member
-      const { data: existing } = await supabase
-        .from("team_members")
-        .select("id, status")
-        .eq("team_id", teamQuery.data!.id)
-        .eq("user_id", profile.id)
         .maybeSingle();
 
-      if (existing) {
-        throw new Error("This user is already a member of the team.");
+      if (profile) {
+        // User exists — check if already a member
+        const { data: existing } = await supabase
+          .from("team_members")
+          .select("id")
+          .eq("team_id", teamId)
+          .eq("user_id", profile.id)
+          .maybeSingle();
+
+        if (existing) throw new Error("This user is already a team member.");
+
+        const { error } = await supabase
+          .from("team_members")
+          .insert({ team_id: teamId, user_id: profile.id, role, status: "active", invited_email: email });
+        if (error) throw error;
+      } else {
+        // User doesn't exist — create pending invitation
+        const { data: existingInvite } = await supabase
+          .from("team_invitations")
+          .select("id")
+          .eq("team_id", teamId)
+          .eq("email", email.toLowerCase())
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (existingInvite) throw new Error("A pending invitation already exists for this email.");
+
+        const { error } = await supabase
+          .from("team_invitations")
+          .insert({ team_id: teamId, email: email.toLowerCase(), role, invited_by: user!.id });
+        if (error) throw error;
       }
-
-      const { error } = await supabase
-        .from("team_members")
-        .insert({
-          team_id: teamQuery.data!.id,
-          user_id: profile.id,
-          role,
-          status: "active",
-          invited_email: email,
-        });
-
-      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      toast({ title: "Member invited successfully" });
+      queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
+      toast({ title: "Invitation sent successfully" });
     },
     onError: (err: any) => {
       toast({ title: "Failed to invite member", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Cancel pending invitation
+  const cancelInvitation = useMutation({
+    mutationFn: async (invitationId: string) => {
+      const { error } = await supabase
+        .from("team_invitations")
+        .delete()
+        .eq("id", invitationId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
+      toast({ title: "Invitation cancelled" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to cancel invitation", description: err.message, variant: "destructive" });
     },
   });
 
@@ -212,8 +252,10 @@ export function useTeam() {
     role: roleQuery.data ?? "member",
     members: membersQuery.data ?? [],
     membersLoading: membersQuery.isLoading,
+    pendingInvitations: invitationsQuery.data ?? [],
     createTeam,
     inviteMember,
+    cancelInvitation,
     updateRole,
     removeMember,
   };

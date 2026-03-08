@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, MessageSquare, Plus, ArrowLeft } from "lucide-react";
 import { useTeamMessaging, useConversationMessages } from "@/hooks/useTeamMessaging";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import type { Conversation } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
@@ -148,20 +149,37 @@ function ChatArea({ conversationId, conversations, onBack }: {
 }) {
   const { user } = useAuth();
   const { messages, messagesLoading, sendMessage } = useConversationMessages(conversationId);
+  const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const convo = conversations.find(c => c.id === conversationId);
   const otherName = convo?.participants[0]?.full_name || convo?.participants[0]?.email || "Chat";
+
+  // Get current user's display name for typing indicator
+  const myName = user?.user_metadata?.full_name || user?.email || "You";
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (value.trim()) {
+      sendTyping(myName);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => sendStopTyping(), 2000);
+    } else {
+      sendStopTyping();
+    }
+  };
+
   const handleSend = () => {
     if (!input.trim()) return;
     sendMessage.mutate(input.trim());
     setInput("");
+    sendStopTyping();
   };
 
   return (
@@ -210,13 +228,22 @@ function ChatArea({ conversationId, conversations, onBack }: {
         </div>
       </ScrollArea>
 
+      {/* Typing indicator */}
+      {typingUsers.length > 0 && (
+        <div className="px-3 pb-1 shrink-0">
+          <p className="text-xs text-muted-foreground italic animate-pulse">
+            {typingUsers.map(u => u.name).join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
+          </p>
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t border-border shrink-0">
         <div className="flex gap-2">
           <Input
             placeholder="Type a message..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             className="flex-1"
           />

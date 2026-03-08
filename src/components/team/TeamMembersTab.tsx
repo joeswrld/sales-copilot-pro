@@ -8,23 +8,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw } from "lucide-react";
+import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X } from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
+
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
 
 interface Props {
   members: TeamMember[];
+  pendingInvitations: PendingInvitation[];
   currentRole: string;
   currentUserId: string;
   onInvite: (data: { email: string; role: string }) => void;
   onUpdateRole: (data: { memberId: string; role: string }) => void;
   onRemove: (memberId: string) => void;
+  onCancelInvitation: (invitationId: string) => void;
   inviting: boolean;
 }
 
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
 const roleColors: Record<string, string> = { admin: "text-primary", manager: "text-amber-400", member: "text-muted-foreground" };
 
-export default function TeamMembersTab({ members, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, inviting }: Props) {
+export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -152,6 +161,38 @@ export default function TeamMembersTab({ members, currentRole, currentUserId, on
           </div>
         </CardContent>
       </Card>
+
+      {/* Pending Invitations */}
+      {isAdmin && pendingInvitations.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              Pending Invitations ({pendingInvitations.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingInvitations.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-muted text-muted-foreground text-xs font-bold">
+                      {inv.email[0]?.toUpperCase() || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-sm font-medium">{inv.email}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{inv.role} · Invited {new Date(inv.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onCancelInvitation(inv.id)}>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Invite Dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
