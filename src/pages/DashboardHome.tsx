@@ -4,6 +4,7 @@ import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const statusColors: Record<string, string> = {
   "Won": "bg-success/10 text-success",
