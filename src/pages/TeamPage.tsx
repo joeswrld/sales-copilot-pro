@@ -474,18 +474,20 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         {[
           { label: "Total Meetings", value: member.meetings, icon: Calendar },
           { label: "Avg Score", value: member.avgScore.toFixed(1), icon: Target },
           { label: "Talk Ratio", value: `${member.talkRatio}%`, icon: Mic },
-          { label: "Follow-ups Done", value: member.followUps, icon: CheckCircle2 },
+          { label: "Follow-up Rate", value: `${member.followUpRate}%`, icon: CheckCircle2 },
+          { label: "Discovery Q's / Meeting", value: member.discoveryQuestionsPerMeeting, icon: MessageSquare },
+          { label: "Objection Handling", value: member.objectionsHandled, icon: AlertTriangle },
         ].map((stat) => (
           <Card key={stat.label} className="bg-card border-border">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <stat.icon className="w-4 h-4 text-muted-foreground mb-2" />
-              <p className="text-2xl font-bold font-display">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <p className="text-xl sm:text-2xl font-bold font-display capitalize">{stat.value}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">{stat.label}</p>
             </CardContent>
           </Card>
         ))}
