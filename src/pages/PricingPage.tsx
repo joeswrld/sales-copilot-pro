@@ -271,39 +271,73 @@ export default function PricingPage() {
           </div>
         </section>
 
-        {/* Usage indicator for logged-in free users */}
-        {user && currentPlan === "free" && profile && (
+        {/* Usage indicator for logged-in users */}
+        {user && profile && (
           <section className="pb-8 px-4">
             <div className="container max-w-md">
               <motion.div
                 initial="hidden" whileInView="visible" viewport={{ once: true }}
                 variants={fadeUp} custom={0}
-                className="glass rounded-xl p-5 text-center"
+                className="glass rounded-xl p-5 space-y-4"
               >
-                <p className="text-sm text-muted-foreground mb-2">
+                <p className="text-sm text-muted-foreground text-center mb-1">
                   Your usage this month
                 </p>
-                <p className="text-2xl font-bold font-display text-foreground mb-3">
-                  {profile.calls_used}{" "}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    / {profile.calls_limit} calls
-                  </span>
-                </p>
-                <div className="h-2 rounded-full bg-muted mb-3">
-                  <div
-                    className="h-2 rounded-full bg-primary transition-all"
-                    style={{
-                      width: `${Math.min(
-                        (profile.calls_used / profile.calls_limit) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
+
+                {/* Meetings usage */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm text-muted-foreground">Meetings</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {profile.calls_used} / {profile.calls_limit}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted">
+                    <div
+                      className="h-2 rounded-full bg-primary transition-all"
+                      style={{
+                        width: `${Math.min(
+                          (profile.calls_used / profile.calls_limit) * 100,
+                          100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  {profile.calls_used >= profile.calls_limit && (
+                    <p className="text-xs text-destructive font-medium mt-1.5">
+                      You've reached your meeting limit. Upgrade to continue.
+                    </p>
+                  )}
                 </div>
-                {profile.calls_used >= profile.calls_limit && (
-                  <p className="text-xs text-accent font-medium">
-                    You've reached your limit. Upgrade to continue analyzing meetings.
-                  </p>
+
+                {/* Team members usage */}
+                {teamUsage && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" /> Team Members
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {teamUsage.membersUsed} / {teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full transition-all ${teamUsage.isAtLimit ? "bg-destructive" : teamUsage.isNearLimit ? "bg-accent" : "bg-primary"}`}
+                        style={{ width: `${teamUsage.isUnlimited ? 0 : teamUsage.membersPct}%` }}
+                      />
+                    </div>
+                    {teamUsage.isAtLimit && (
+                      <p className="text-xs text-destructive font-medium mt-1.5">
+                        Team member limit reached. Upgrade to add more.
+                      </p>
+                    )}
+                    {teamUsage.isNearLimit && (
+                      <p className="text-xs text-accent font-medium mt-1.5">
+                        Using {teamUsage.membersUsed} of {teamUsage.membersLimit} seats. Consider upgrading.
+                      </p>
+                    )}
+                  </div>
                 )}
               </motion.div>
             </div>
