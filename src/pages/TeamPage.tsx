@@ -345,7 +345,7 @@ export default function TeamPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[360px] pr-2">
+                <ScrollArea className="h-[280px] lg:h-[360px] pr-2">
                   <div className="space-y-3">
                     {coachingInsights.map((insight, i) => {
                       const iconMap = { warning: AlertTriangle, tip: Lightbulb, success: CheckCircle2 };
