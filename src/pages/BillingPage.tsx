@@ -221,16 +221,6 @@ export default function BillingPage() {
                     Resubscribe
                   </Button>
                 )}
-                  <Button
-                    onClick={() => subscribe.mutate("starter")}
-                    disabled={subscribe.isPending}
-                  >
-                    {subscribe.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : null}
-                    Resubscribe
-                  </Button>
-                )}
               </CardContent>
             </Card>
           </>
