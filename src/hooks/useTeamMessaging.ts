@@ -294,6 +294,7 @@ export function useConversationMessages(conversationId: string | null) {
   return {
     messages: messagesQuery.data ?? [],
     messagesLoading: messagesQuery.isLoading,
+    readReceipts: readReceiptsQuery.data ?? [],
     sendMessage,
     startConversation,
   };
