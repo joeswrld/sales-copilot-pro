@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import SubscriptionGate from "@/components/SubscriptionGate";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mic, Link2, CalendarPlus, Video, Loader2, Clock, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
@@ -120,6 +121,7 @@ export default function LiveCall() {
 
   return (
     <DashboardLayout>
+      <SubscriptionGate message="Live call analysis requires an active Fixsense subscription.">
       <div className="space-y-8 max-w-4xl">
         <div>
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
@@ -343,6 +345,7 @@ export default function LiveCall() {
           </div>
         </section>
       </div>
+      </SubscriptionGate>
     </DashboardLayout>
   );
 }
