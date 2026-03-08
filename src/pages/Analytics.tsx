@@ -134,6 +134,7 @@ export default function Analytics() {
           </div>
         )}
       </div>
+      </SubscriptionGate>
     </DashboardLayout>
   );
 }

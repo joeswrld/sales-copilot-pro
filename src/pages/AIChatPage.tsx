@@ -217,6 +217,7 @@ export default function AIChatPage() {
           </Button>
         </form>
       </div>
+      </SubscriptionGate>
     </DashboardLayout>
   );
 }

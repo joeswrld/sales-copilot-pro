@@ -345,6 +345,7 @@ export default function LiveCall() {
           </div>
         </section>
       </div>
+      </SubscriptionGate>
     </DashboardLayout>
   );
 }
