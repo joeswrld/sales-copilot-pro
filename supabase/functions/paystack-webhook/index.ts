@@ -39,6 +39,60 @@ Deno.serve(async (req) => {
     );
 
     const userId = data.metadata?.user_id;
+    const customerEmail = data.customer?.email;
+    const customerCode = data.customer?.customer_code;
+
+    console.log("Webhook data:", { userId, customerEmail, customerCode, eventType });
+
+    // Helper to find and update subscription
+    const updateSubscription = async (updates: Record<string, unknown>) => {
+      let result;
+      
+      // Try by user_id first
+      if (userId) {
+        result = await supabase
+          .from("subscriptions")
+          .update(updates)
+          .eq("user_id", userId);
+        if (!result.error) {
+          console.log("Updated by user_id:", userId);
+          return result;
+        }
+      }
+      
+      // Try by customer_code
+      if (customerCode) {
+        result = await supabase
+          .from("subscriptions")
+          .update(updates)
+          .eq("paystack_customer_code", customerCode);
+        if (!result.error) {
+          console.log("Updated by customer_code:", customerCode);
+          return result;
+        }
+      }
+      
+      // Try by email through profiles
+      if (customerEmail) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", customerEmail)
+          .maybeSingle();
+        
+        if (profile?.id) {
+          result = await supabase
+            .from("subscriptions")
+            .update(updates)
+            .eq("user_id", profile.id);
+          console.log("Updated by email match:", customerEmail, "->", profile.id);
+          return result;
+        }
+      }
+      
+      console.error("Could not find subscription to update");
+      return null;
+    };
 
     switch (eventType) {
       case "subscription.create": {
@@ -49,18 +103,7 @@ Deno.serve(async (req) => {
           next_payment_date: data.next_payment_date,
           updated_at: new Date().toISOString(),
         };
-
-        if (userId) {
-          await supabase
-            .from("subscriptions")
-            .update(updates)
-            .eq("user_id", userId);
-        } else if (data.customer?.customer_code) {
-          await supabase
-            .from("subscriptions")
-            .update(updates)
-            .eq("paystack_customer_code", data.customer.customer_code);
-        }
+        await updateSubscription(updates);
         break;
       }
 
@@ -81,17 +124,7 @@ Deno.serve(async (req) => {
           updates.next_payment_date = data.plan_object?.next_payment_date;
         }
 
-        if (userId) {
-          await supabase
-            .from("subscriptions")
-            .update(updates)
-            .eq("user_id", userId);
-        } else if (data.customer?.customer_code) {
-          await supabase
-            .from("subscriptions")
-            .update(updates)
-            .eq("paystack_customer_code", data.customer.customer_code);
-        }
+        await updateSubscription(updates);
         break;
       }
 
