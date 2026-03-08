@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/hooks/useSettings";
+import { useTeamUsage } from "@/hooks/useTeamUsage";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { profile } = useUserProfile();
+  const { teamUsage } = useTeamUsage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const callsUsed = profile?.calls_used ?? 0;
@@ -88,12 +90,39 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="p-4 border-t border-sidebar-border">
-          <div className="glass rounded-lg p-3">
-            <p className="text-xs text-muted-foreground mb-2 capitalize">{planType} Plan · {callsUsed}/{callsLimit} calls used</p>
-            <div className="h-1.5 rounded-full bg-muted">
-              <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${usagePercent}%` }} />
+          <div className="glass rounded-lg p-3 space-y-2.5">
+            <p className="text-xs text-muted-foreground capitalize">{planType} Plan</p>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-muted-foreground">Calls</span>
+                <span className="text-[11px] font-medium">{callsUsed}/{callsLimit}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted">
+                <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${usagePercent}%` }} />
+              </div>
             </div>
-            <Button size="sm" className="w-full mt-3 text-xs" asChild>
+            {teamUsage && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <Users className="w-3 h-3" /> Team
+                  </span>
+                  <span className="text-[11px] font-medium">
+                    {teamUsage.membersUsed}/{teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-1.5 rounded-full transition-all",
+                      teamUsage.isAtLimit ? "bg-destructive" : teamUsage.isNearLimit ? "bg-accent" : "bg-primary"
+                    )}
+                    style={{ width: `${teamUsage.isUnlimited ? 0 : teamUsage.membersPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <Button size="sm" className="w-full text-xs" asChild>
               <Link to="/pricing">Upgrade Plan</Link>
             </Button>
           </div>
