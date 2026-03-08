@@ -14,6 +14,7 @@ import type { TeamMember } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
 
 export default function TeamInboxTab({ teamId, members }: Props) {
   const { user } = useAuth();
-  const { conversations, conversationsLoading } = useTeamMessaging(teamId);
+  const { conversations, conversationsLoading, refetchConversations } = useTeamMessaging(teamId);
   const [selectedConvo, setSelectedConvo] = useState<string | null>(null);
   const [newConvoOpen, setNewConvoOpen] = useState(false);
   const [showConvoList, setShowConvoList] = useState(true);
