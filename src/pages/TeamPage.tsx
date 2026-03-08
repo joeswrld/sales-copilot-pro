@@ -107,8 +107,15 @@ export default function TeamPage() {
               <span className="hidden sm:inline">Coaching</span>
             </TabsTrigger>
             <TabsTrigger value="inbox" className="gap-1.5 text-xs sm:text-sm">
-              <Bell className="w-3.5 h-3.5" />
+              <Inbox className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Inbox</span>
+              {inboxUnread > 0 && (
+                <Badge className="text-[10px] h-4 px-1 ml-1 bg-primary text-primary-foreground">{inboxUnread}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="gap-1.5 text-xs sm:text-sm">
+              <Bell className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Alerts</span>
               {unreadCount > 0 && (
                 <Badge className="text-[10px] h-4 px-1 ml-1 bg-primary text-primary-foreground">{unreadCount}</Badge>
               )}
