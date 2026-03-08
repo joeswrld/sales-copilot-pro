@@ -51,7 +51,8 @@ Deno.serve(async (req) => {
     const userId = claimsData.claims.sub as string;
     const userEmail = (claimsData.claims.email as string | undefined)?.toLowerCase();
 
-    const { reference } = await req.json().catch(() => ({}));
+    const { reference, include_transactions } = await req.json().catch(() => ({}));
+    const includeTransactions = include_transactions !== false;
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -67,6 +68,18 @@ Deno.serve(async (req) => {
     const paystackSecret = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
     let verifiedTransaction: PaystackTx | null = null;
+    let matchedTransactions: PaystackTx[] = [];
+    let transactions: Array<{
+      reference: string;
+      status: string;
+      amount_kobo: number;
+      amount_ngn: number;
+      paid_at: string | null;
+      created_at: string;
+      currency: string;
+      channel: string | null;
+      gateway_response: string | null;
+    }> = [];
 
     if (reference) {
       const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
@@ -78,47 +91,48 @@ Deno.serve(async (req) => {
       }
     }
 
-    const listUrl = new URL("https://api.paystack.co/transaction");
-    listUrl.searchParams.set("perPage", "100");
+    const shouldFetchTransactionList = includeTransactions || !verifiedTransaction;
 
-    if (subscription?.paystack_customer_code) {
-      listUrl.searchParams.set("customer", subscription.paystack_customer_code);
-    }
+    if (shouldFetchTransactionList) {
+      const listUrl = new URL("https://api.paystack.co/transaction");
+      listUrl.searchParams.set("perPage", includeTransactions ? "100" : "20");
 
-    const txRes = await fetch(listUrl.toString(), {
-      headers: { Authorization: `Bearer ${paystackSecret}` },
-    });
-    const txData = await txRes.json();
+      if (subscription?.paystack_customer_code) {
+        listUrl.searchParams.set("customer", subscription.paystack_customer_code);
+      }
 
-    const transactions = ((txData?.data || []) as PaystackTx[])
-      .filter((tx) => {
+      const txRes = await fetch(listUrl.toString(), {
+        headers: { Authorization: `Bearer ${paystackSecret}` },
+      });
+      const txData = await txRes.json();
+      const allTransactions = (txData?.data || []) as PaystackTx[];
+
+      matchedTransactions = allTransactions.filter((tx) => {
         const txEmail = tx.customer?.email?.toLowerCase();
         if (userEmail && txEmail === userEmail) return true;
         if (subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code) return true;
         return false;
-      })
-      .map((tx) => ({
-        reference: tx.reference,
-        status: tx.status,
-        amount_kobo: tx.amount,
-        amount_ngn: tx.amount / 100,
-        paid_at: tx.paid_at,
-        created_at: tx.created_at,
-        currency: tx.currency,
-        channel: tx.channel,
-        gateway_response: tx.gateway_response,
-      }))
-      .sort((a, b) => new Date(b.paid_at || b.created_at).getTime() - new Date(a.paid_at || a.created_at).getTime());
+      });
 
-    if (!verifiedTransaction) {
-      verifiedTransaction = ((txData?.data || []) as PaystackTx[])
-        .filter((tx) => tx.status === "success")
-        .find((tx) => {
-          const txEmail = tx.customer?.email?.toLowerCase();
-          const emailMatch = !!userEmail && txEmail === userEmail;
-          const codeMatch = !!subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code;
-          return emailMatch || codeMatch;
-        }) || null;
+      if (includeTransactions) {
+        transactions = matchedTransactions
+          .map((tx) => ({
+            reference: tx.reference,
+            status: tx.status,
+            amount_kobo: tx.amount,
+            amount_ngn: tx.amount / 100,
+            paid_at: tx.paid_at,
+            created_at: tx.created_at,
+            currency: tx.currency,
+            channel: tx.channel,
+            gateway_response: tx.gateway_response,
+          }))
+          .sort((a, b) => new Date(b.paid_at || b.created_at).getTime() - new Date(a.paid_at || a.created_at).getTime());
+      }
+
+      if (!verifiedTransaction) {
+        verifiedTransaction = matchedTransactions.find((tx) => tx.status === "success") || null;
+      }
     }
 
     let updated = false;
