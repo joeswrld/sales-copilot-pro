@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
-import { useSubscription } from "@/hooks/useSubscription";
+import { useSubscription, PlanChangePreview } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp, Receipt } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp, ArrowDown, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -20,7 +20,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
@@ -54,7 +53,8 @@ export default function BillingPage() {
     isLoading,
     subscribe,
     cancelSubscription,
-    upgradePlan,
+    changePlan,
+    previewPlanChange,
     verifyPayment,
     isActive,
     refetch,
@@ -65,7 +65,10 @@ export default function BillingPage() {
   } = useSubscription();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  const [changeDialogOpen, setChangeDialogOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   useEffect(() => {
     const shouldVerify = searchParams.get("success") === "true" || searchParams.get("upgraded") === "true";
@@ -98,14 +101,30 @@ export default function BillingPage() {
     return "starter";
   };
 
-  const handleUpgrade = (planKey: string) => {
-    setUpgradeDialogOpen(false);
-    upgradePlan.mutate(planKey);
+  const handleOpenChangePlan = async (planKey: string) => {
+    setSelectedPlan(planKey);
+    setChangeDialogOpen(true);
+    setIsLoadingPreview(true);
+    setPlanPreview(null);
+
+    try {
+      const preview = await previewPlanChange.mutateAsync(planKey);
+      setPlanPreview(preview);
+    } catch (err) {
+      toast.error("Failed to load plan preview");
+    } finally {
+      setIsLoadingPreview(false);
+    }
   };
 
-  const getUpgradeOptions = () => {
-    const currentIndex = PLANS.findIndex((p) => p.key === currentPlanKey);
-    return PLANS.filter((_, index) => index > currentIndex);
+  const handleConfirmChangePlan = () => {
+    if (selectedPlan) {
+      changePlan.mutate(selectedPlan);
+    }
+  };
+
+  const getAvailablePlans = () => {
+    return PLANS.filter((p) => p.key !== currentPlanKey);
   };
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
@@ -114,7 +133,7 @@ export default function BillingPage() {
   const priceUSD = subscription?.plan_price_usd ||
     (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
-  const upgradeOptions = getUpgradeOptions();
+  const availablePlans = getAvailablePlans();
 
   return (
     <TooltipProvider>
@@ -196,53 +215,164 @@ export default function BillingPage() {
                 </Card>
               )}
 
-              {isActive && upgradeOptions.length > 0 && (
+              {/* Change Plan Card */}
+              {isActive && availablePlans.length > 0 && (
                 <Card className="border-primary/30">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <ArrowUp className="w-5 h-5 text-primary" />
-                      Upgrade Your Plan
+                      Change Your Plan
                     </CardTitle>
-                    <CardDescription>Move to a higher tier.</CardDescription>
+                    <CardDescription>
+                      Upgrade or downgrade with prorated billing. You'll only pay for the time remaining in your current cycle.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4 sm:grid-cols-2">
-                      {upgradeOptions.map((plan) => (
-                        <div key={plan.key} className="p-4 rounded-lg border border-border">
-                          <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-semibold text-foreground">{plan.name}</h3>
-                            <Badge variant="outline">${plan.price_usd}/mo</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} calls/month
-                          </p>
-                          <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly</p>
-                          <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
-                            <DialogTrigger asChild>
-                              <Button size="sm" className="w-full">Upgrade to {plan.name}</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Upgrade to {plan.name}</DialogTitle>
-                                <DialogDescription>
-                                  You'll be redirected to Paystack to complete your new subscription payment.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="flex gap-3 pt-4">
-                                <Button variant="outline" className="flex-1" onClick={() => setUpgradeDialogOpen(false)}>Cancel</Button>
-                                <Button className="flex-1" onClick={() => handleUpgrade(plan.key)} disabled={upgradePlan.isPending}>
-                                  {upgradePlan.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                  Confirm
-                                </Button>
+                      {availablePlans.map((plan) => {
+                        const isUpgrade = PLANS.findIndex(p => p.key === plan.key) > PLANS.findIndex(p => p.key === currentPlanKey);
+                        return (
+                          <div key={plan.key} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-foreground">{plan.name}</h3>
+                                {isUpgrade ? (
+                                  <Badge variant="default" className="text-xs">
+                                    <ArrowUp className="w-3 h-3 mr-1" />
+                                    Upgrade
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <ArrowDown className="w-3 h-3 mr-1" />
+                                    Downgrade
+                                  </Badge>
+                                )}
                               </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      ))}
+                            </div>
+                            <p className="text-2xl font-bold text-foreground mb-1">
+                              ${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span>
+                            </p>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} calls/month
+                            </p>
+                            <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly</p>
+                            <Button 
+                              size="sm" 
+                              className="w-full"
+                              variant={isUpgrade ? "default" : "outline"}
+                              onClick={() => handleOpenChangePlan(plan.key)}
+                            >
+                              {isUpgrade ? "Upgrade" : "Downgrade"} to {plan.name}
+                            </Button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
               )}
+
+              {/* Plan Change Dialog */}
+              <Dialog open={changeDialogOpen} onOpenChange={setChangeDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {planPreview?.is_upgrade ? "Upgrade" : "Downgrade"} to {PLANS.find(p => p.key === selectedPlan)?.name}
+                    </DialogTitle>
+                    <DialogDescription>
+                      Review your plan change with prorated billing
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  {isLoadingPreview ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : planPreview ? (
+                    <div className="space-y-4 pt-2">
+                      <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Current plan</span>
+                          <span className="font-medium">{PLANS.find(p => p.key === planPreview.current_plan)?.name}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">New plan</span>
+                          <span className="font-medium">{PLANS.find(p => p.key === planPreview.new_plan)?.name}</span>
+                        </div>
+                        {planPreview.days_remaining > 0 && (
+                          <>
+                            <div className="border-t border-border pt-3">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Days remaining in cycle</span>
+                                <span>{planPreview.days_remaining} days</span>
+                              </div>
+                            </div>
+                            {planPreview.is_upgrade && planPreview.credit_ngn > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Credit from current plan</span>
+                                <span className="text-primary">-{formatNGN(planPreview.credit_ngn)}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        <div className="border-t border-border pt-3">
+                          <div className="flex justify-between">
+                            <span className="font-medium">Amount due today</span>
+                            <span className="font-bold text-lg">
+                              {planPreview.is_upgrade 
+                                ? formatNGN(planPreview.prorated_amount_ngn)
+                                : formatNGN(planPreview.new_price_ngn)
+                              }
+                            </span>
+                          </div>
+                          {planPreview.is_upgrade && planPreview.prorated_amount_ngn < planPreview.new_price_ngn && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Prorated for {planPreview.days_remaining} days remaining
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex justify-between text-sm pt-2">
+                          <span className="text-muted-foreground">Then monthly</span>
+                          <span>{formatNGN(planPreview.new_monthly_price_ngn)} (${planPreview.new_monthly_price_usd})</span>
+                        </div>
+                      </div>
+
+                      {planPreview.is_downgrade && (
+                        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <p className="text-sm text-destructive">
+                            <strong>Note:</strong> Downgrading will reduce your monthly calls limit from{" "}
+                            {PLANS.find(p => p.key === planPreview.current_plan)?.calls_limit === -1 
+                              ? "unlimited" 
+                              : PLANS.find(p => p.key === planPreview.current_plan)?.calls_limit
+                            }{" "}
+                            to {PLANS.find(p => p.key === planPreview.new_plan)?.calls_limit} calls.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 pt-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1" 
+                          onClick={() => setChangeDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button 
+                          className="flex-1" 
+                          onClick={handleConfirmChangePlan}
+                          disabled={changePlan.isPending}
+                        >
+                          {changePlan.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                          Confirm {planPreview.is_upgrade ? "Upgrade" : "Downgrade"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-4">Unable to load plan preview.</p>
+                  )}
+                </DialogContent>
+              </Dialog>
 
               <Card>
                 <CardHeader>

@@ -33,6 +33,20 @@ export interface SubscriptionTransaction {
   gateway_response: string | null;
 }
 
+export interface PlanChangePreview {
+  current_plan: string;
+  new_plan: string;
+  is_upgrade: boolean;
+  is_downgrade: boolean;
+  current_price_ngn: number;
+  new_price_ngn: number;
+  prorated_amount_ngn: number;
+  credit_ngn: number;
+  days_remaining: number;
+  new_monthly_price_ngn: number;
+  new_monthly_price_usd: number;
+}
+
 export function useSubscription() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -102,7 +116,19 @@ export function useSubscription() {
     },
   });
 
-  const upgradePlan = useMutation({
+  const previewPlanChange = useMutation({
+    mutationFn: async (newPlanKey: string): Promise<PlanChangePreview> => {
+      const { data, error } = await supabase.functions.invoke(
+        "paystack-upgrade-subscription",
+        { body: { new_plan_key: newPlanKey, preview_only: true } }
+      );
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data as PlanChangePreview;
+    },
+  });
+
+  const changePlan = useMutation({
     mutationFn: async (newPlanKey: string) => {
       const callbackUrl = `${window.location.origin}/dashboard/billing?upgraded=true`;
       const { data, error } = await supabase.functions.invoke(
@@ -117,7 +143,7 @@ export function useSubscription() {
       window.location.href = data.authorization_url;
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to upgrade plan");
+      toast.error(err.message || "Failed to change plan");
     },
   });
 
@@ -188,7 +214,8 @@ export function useSubscription() {
     isLoading: query.isLoading,
     subscribe,
     cancelSubscription,
-    upgradePlan,
+    changePlan,
+    previewPlanChange,
     verifyPayment,
     isActive: query.data?.status === "active",
     refetch: query.refetch,
