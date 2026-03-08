@@ -162,6 +162,38 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
         </CardContent>
       </Card>
 
+      {/* Pending Invitations */}
+      {isAdmin && pendingInvitations.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              Pending Invitations ({pendingInvitations.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingInvitations.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-muted text-muted-foreground text-xs font-bold">
+                      {inv.email[0]?.toUpperCase() || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-sm font-medium">{inv.email}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{inv.role} · Invited {new Date(inv.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onCancelInvitation(inv.id)}>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Invite Dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
