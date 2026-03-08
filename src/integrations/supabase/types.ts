@@ -372,6 +372,7 @@ export type Database = {
           paystack_email_token: string | null
           paystack_subscription_code: string | null
           plan_name: string
+          plan_price_usd: number | null
           status: string
           updated_at: string
           user_id: string
@@ -388,6 +389,7 @@ export type Database = {
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
           plan_name?: string
+          plan_price_usd?: number | null
           status?: string
           updated_at?: string
           user_id: string
@@ -404,6 +406,7 @@ export type Database = {
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
           plan_name?: string
+          plan_price_usd?: number | null
           status?: string
           updated_at?: string
           user_id?: string
