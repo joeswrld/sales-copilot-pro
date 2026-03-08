@@ -158,8 +158,8 @@ export default function SettingsPage() {
         {/* ── Plan Usage ──────────────────────────────────────────────────── */}
         <section>
           <h2 className="font-display font-semibold mb-4">Plan & Usage</h2>
-          <div className="glass rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
+          <div className="glass rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium capitalize">
                   {profile?.plan_type || "free"} Plan
@@ -173,19 +173,53 @@ export default function SettingsPage() {
                 Upgrade to Pro
               </Button>
             </div>
-            <div className="h-1.5 rounded-full bg-muted">
-              <div
-                className="h-1.5 rounded-full bg-primary transition-all"
-                style={{
-                  width: `${Math.min(
-                    ((profile?.calls_used ?? 0) /
-                      (profile?.calls_limit ?? 5)) *
-                      100,
-                    100
-                  )}%`,
-                }}
-              />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Meetings</span>
+                <span className="text-xs font-medium">{profile?.calls_used ?? 0} / {profile?.calls_limit ?? 5}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted">
+                <div
+                  className="h-1.5 rounded-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(
+                      ((profile?.calls_used ?? 0) /
+                        (profile?.calls_limit ?? 5)) *
+                        100,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
+            {teamUsage && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Users className="w-3 h-3" /> Team Members
+                  </span>
+                  <span className="text-xs font-medium">
+                    {teamUsage.membersUsed} / {teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${teamUsage.isAtLimit ? "bg-destructive" : teamUsage.isNearLimit ? "bg-accent" : "bg-primary"}`}
+                    style={{ width: `${teamUsage.isUnlimited ? 0 : teamUsage.membersPct}%` }}
+                  />
+                </div>
+                {teamUsage.isAtLimit && (
+                  <p className="text-xs text-destructive mt-1.5 font-medium">
+                    Team member limit reached. Upgrade to add more.
+                  </p>
+                )}
+                {teamUsage.isNearLimit && (
+                  <p className="text-xs text-accent mt-1.5 font-medium">
+                    Using {teamUsage.membersUsed} of {teamUsage.membersLimit} seats. Consider upgrading.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </section>
 

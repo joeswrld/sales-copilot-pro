@@ -173,17 +173,42 @@ export default function ProfilePage() {
           <CardHeader>
             <CardTitle className="text-base font-display">Usage</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Calls used this period</span>
-              <span className="text-sm font-medium">{profile?.calls_used ?? 0} / {profile?.calls_limit ?? 5}</span>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Calls used this period</span>
+                <span className="text-sm font-medium">{profile?.calls_used ?? 0} / {profile?.calls_limit ?? 5}</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted">
+                <div
+                  className="h-2 rounded-full bg-primary transition-all"
+                  style={{ width: `${Math.min(((profile?.calls_used ?? 0) / (profile?.calls_limit ?? 5)) * 100, 100)}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-muted">
-              <div
-                className="h-2 rounded-full bg-primary transition-all"
-                style={{ width: `${Math.min(((profile?.calls_used ?? 0) / (profile?.calls_limit ?? 5)) * 100, 100)}%` }}
-              />
-            </div>
+            {teamUsage && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" /> Team members
+                  </span>
+                  <span className="text-sm font-medium">
+                    {teamUsage.membersUsed} / {teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-muted">
+                  <div
+                    className={`h-2 rounded-full transition-all ${teamUsage.isAtLimit ? "bg-destructive" : teamUsage.isNearLimit ? "bg-accent" : "bg-primary"}`}
+                    style={{ width: `${teamUsage.isUnlimited ? 0 : teamUsage.membersPct}%` }}
+                  />
+                </div>
+                {teamUsage.isAtLimit && (
+                  <p className="text-xs text-destructive mt-1.5 font-medium">
+                    Team member limit reached. Upgrade to add more.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
