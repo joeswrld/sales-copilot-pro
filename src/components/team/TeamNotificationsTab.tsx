@@ -23,15 +23,6 @@ const typeColors: Record<string, string> = {
   system: "bg-muted text-muted-foreground",
 };
 
-// Demo notifications for empty state
-const demoNotifications = [
-  { type: "comment", message: "Manager commented on your Acme demo meeting: \"Great discovery questions!\"", time: "2 hours ago" },
-  { type: "coaching", message: "Your meeting score improved from 7.1 to 8.3 this week.", time: "5 hours ago" },
-  { type: "mention", message: "Sarah mentioned you in a discussion on the TechNova intro call.", time: "Yesterday" },
-  { type: "system", message: "Team weekly performance report is ready.", time: "Yesterday" },
-  { type: "coaching", message: "New AI coaching insight: Your talk ratio improved by 8% this month.", time: "2 days ago" },
-  { type: "comment", message: "Daniel replied to your feedback on the Enterprise QBR meeting.", time: "2 days ago" },
-];
 
 export default function TeamNotificationsTab() {
   const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
