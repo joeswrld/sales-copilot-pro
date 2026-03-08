@@ -164,9 +164,7 @@ export default function PricingPage() {
     }
 
     // Trigger Paystack checkout with plan info
-    subscribe.mutate(undefined, {
-      onSuccess: () => {}, // redirect handled in hook
-    });
+    subscribe.mutate(plan.key);
   };
 
   return (
