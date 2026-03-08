@@ -141,6 +141,7 @@ export default function TeamInboxTab({ teamId, members }: Props) {
         currentUserId={user?.id ?? ""}
         teamId={teamId}
         conversations={conversations}
+        refetchConversations={refetchConversations}
         onConversationCreated={(id) => {
           setNewConvoOpen(false);
           handleSelectConvo(id);
