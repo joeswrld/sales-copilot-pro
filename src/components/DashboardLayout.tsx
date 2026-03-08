@@ -33,6 +33,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { profile } = useUserProfile();
+  const { teamUsage } = useTeamUsage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const callsUsed = profile?.calls_used ?? 0;
