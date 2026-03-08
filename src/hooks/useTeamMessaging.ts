@@ -10,6 +10,7 @@ export interface Conversation {
   participants: { user_id: string; full_name: string | null; email: string | null; avatar_url: string | null }[];
   last_message?: { message_text: string; created_at: string; sender_id: string };
   unread_count: number;
+  is_group: boolean;
 }
 
 export interface Message {
@@ -21,15 +22,37 @@ export interface Message {
   sender?: { full_name: string | null; email: string | null };
 }
 
+/** Returns display name for a conversation */
+export function getConversationName(convo: Conversation): string {
+  if (convo.participants.length === 0) return "Empty Chat";
+  if (convo.participants.length === 1) {
+    return convo.participants[0].full_name || convo.participants[0].email || "Unknown";
+  }
+  // Group: show first 3 names
+  const names = convo.participants
+    .slice(0, 3)
+    .map(p => p.full_name?.split(" ")[0] || p.email?.split("@")[0] || "?");
+  const suffix = convo.participants.length > 3 ? ` +${convo.participants.length - 3}` : "";
+  return names.join(", ") + suffix;
+}
+
+/** Returns initials for avatar */
+export function getConversationInitials(convo: Conversation): string {
+  if (convo.participants.length <= 1) {
+    const name = convo.participants[0]?.full_name || convo.participants[0]?.email || "?";
+    return name[0]?.toUpperCase() || "?";
+  }
+  // Group: show count
+  return `${convo.participants.length + 1}`;
+}
+
 export function useTeamMessaging(teamId: string | undefined) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Fetch conversations
   const conversationsQuery = useQuery({
     queryKey: ["team-conversations", teamId],
     queryFn: async () => {
-      // Get conversations where user is a participant
       const { data: participantRows } = await supabase
         .from("conversation_participants")
         .select("conversation_id, last_read_at")
@@ -40,7 +63,6 @@ export function useTeamMessaging(teamId: string | undefined) {
       const convoIds = participantRows.map(p => p.conversation_id);
       const lastReadMap = new Map(participantRows.map(p => [p.conversation_id, p.last_read_at]));
 
-      // Get conversations
       const { data: convos } = await supabase
         .from("team_conversations")
         .select("*")
@@ -50,13 +72,11 @@ export function useTeamMessaging(teamId: string | undefined) {
 
       if (!convos?.length) return [];
 
-      // Get all participants for these conversations
       const { data: allParticipants } = await supabase
         .from("conversation_participants")
         .select("conversation_id, user_id")
         .in("conversation_id", convoIds);
 
-      // Get profiles
       const allUserIds = [...new Set(allParticipants?.map(p => p.user_id) ?? [])];
       const { data: profiles } = await supabase
         .from("profiles")
@@ -64,7 +84,6 @@ export function useTeamMessaging(teamId: string | undefined) {
         .in("id", allUserIds);
       const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
 
-      // Get last message for each conversation
       const results: Conversation[] = [];
       for (const convo of convos) {
         const { data: lastMsg } = await supabase
@@ -75,7 +94,6 @@ export function useTeamMessaging(teamId: string | undefined) {
           .limit(1)
           .single();
 
-        // Count unread
         const lastRead = lastReadMap.get(convo.id);
         const { count } = await supabase
           .from("team_messages")
@@ -101,10 +119,10 @@ export function useTeamMessaging(teamId: string | undefined) {
           participants,
           last_message: lastMsg ?? undefined,
           unread_count: count ?? 0,
+          is_group: participants.length > 1,
         });
       }
 
-      // Sort by last message time
       results.sort((a, b) => {
         const aTime = a.last_message?.created_at ?? a.created_at;
         const bTime = b.last_message?.created_at ?? b.created_at;
@@ -117,7 +135,6 @@ export function useTeamMessaging(teamId: string | undefined) {
     refetchInterval: 30000,
   });
 
-  // Total unread count
   const totalUnread = conversationsQuery.data?.reduce((sum, c) => sum + c.unread_count, 0) ?? 0;
 
   return {
@@ -158,7 +175,6 @@ export function useConversationMessages(conversationId: string | null) {
     enabled: !!conversationId,
   });
 
-  // Mark as read
   useEffect(() => {
     if (!conversationId || !user) return;
     supabase
@@ -171,7 +187,6 @@ export function useConversationMessages(conversationId: string | null) {
       });
   }, [conversationId, user, messagesQuery.data?.length]);
 
-  // Realtime subscription
   useEffect(() => {
     if (!conversationId) return;
 
@@ -190,7 +205,6 @@ export function useConversationMessages(conversationId: string | null) {
     return () => { supabase.removeChannel(channel); };
   }, [conversationId, queryClient]);
 
-  // Send message
   const sendMessage = useMutation({
     mutationFn: async (text: string) => {
       const { error } = await supabase
@@ -208,10 +222,9 @@ export function useConversationMessages(conversationId: string | null) {
     },
   });
 
-  // Start new conversation
+  /** Start a new conversation with one or more users */
   const startConversation = useMutation({
-    mutationFn: async ({ teamId, otherUserId }: { teamId: string; otherUserId: string }) => {
-      // Create conversation
+    mutationFn: async ({ teamId, memberIds }: { teamId: string; memberIds: string[] }) => {
       const { data: convo, error: convoErr } = await supabase
         .from("team_conversations")
         .insert({ team_id: teamId })
@@ -219,13 +232,14 @@ export function useConversationMessages(conversationId: string | null) {
         .single();
       if (convoErr) throw convoErr;
 
-      // Add both participants
+      const participantRows = [user!.id, ...memberIds].map(uid => ({
+        conversation_id: convo.id,
+        user_id: uid,
+      }));
+
       const { error: partErr } = await supabase
         .from("conversation_participants")
-        .insert([
-          { conversation_id: convo.id, user_id: user!.id },
-          { conversation_id: convo.id, user_id: otherUserId },
-        ]);
+        .insert(participantRows);
       if (partErr) throw partErr;
 
       return convo.id as string;
