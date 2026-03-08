@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUserProfile } from "@/hooks/useSettings";
+import { PLANS, formatNGN, USD_TO_NGN } from "@/config/plans";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -25,106 +26,9 @@ const fadeUp = {
   }),
 };
 
-// Fixed conversion rate: 1 USD = 1,500 NGN
-const USD_TO_NGN = 1500;
-
-const plans = [
-  {
-    key: "free",
-    name: "Free",
-    price_usd: 0,
-    price_ngn: 0,
-    period: "/month",
-    description: "Get started with AI-powered meeting intelligence",
-    features: [
-      { text: "Up to 5 meetings/month", included: true },
-      { text: "Zoom integration", included: true },
-      { text: "Google Meet integration", included: true },
-      { text: "AI meeting summaries", included: true },
-      { text: "Basic analytics", included: true },
-      { text: "Email support (limited)", included: true },
-      { text: "Team dashboard", included: false },
-      { text: "Action items", included: false },
-      { text: "Priority support", included: false },
-    ],
-    cta: "Get Started Free",
-    popular: false,
-    paystack_plan: null,
-    calls_limit: 5,
-  },
-  {
-    key: "starter",
-    name: "Starter",
-    price_usd: 19,
-    price_ngn: 19 * USD_TO_NGN,
-    period: "/month",
-    description: "For individual reps who want more meetings",
-    features: [
-      { text: "Up to 50 meetings/month", included: true },
-      { text: "Zoom integration", included: true },
-      { text: "Google Meet integration", included: true },
-      { text: "AI meeting summaries", included: true },
-      { text: "Basic analytics", included: true },
-      { text: "Email support", included: true },
-      { text: "Team dashboard", included: false },
-      { text: "Action items", included: false },
-      { text: "Priority support", included: false },
-    ],
-    cta: "Subscribe",
-    popular: false,
-    paystack_plan: "starter",
-    calls_limit: 50,
-  },
-  {
-    key: "growth",
-    name: "Growth",
-    price_usd: 49,
-    price_ngn: 49 * USD_TO_NGN,
-    period: "/month",
-    description: "For growing teams with advanced needs",
-    features: [
-      { text: "Up to 300 meetings/month", included: true },
-      { text: "Zoom + Google Meet + Slack", included: true },
-      { text: "AI summaries + action items", included: true },
-      { text: "Advanced analytics", included: true },
-      { text: "Team dashboard", included: true },
-      { text: "Priority email support", included: true },
-      { text: "Admin controls", included: false },
-      { text: "API access", included: false },
-      { text: "Unlimited meetings", included: false },
-    ],
-    cta: "Subscribe",
-    popular: true,
-    paystack_plan: "growth",
-    calls_limit: 300,
-  },
-  {
-    key: "scale",
-    name: "Scale",
-    price_usd: 99,
-    price_ngn: 99 * USD_TO_NGN,
-    period: "/month",
-    description: "For large teams that need everything",
-    features: [
-      { text: "Unlimited meetings", included: true },
-      { text: "All integrations", included: true },
-      { text: "AI insights + summaries", included: true },
-      { text: "Team performance analytics", included: true },
-      { text: "Admin controls + API access", included: true },
-      { text: "Priority support", included: true },
-      { text: "Custom onboarding", included: true },
-      { text: "Dedicated account manager", included: true },
-      { text: "SLA guarantee", included: true },
-    ],
-    cta: "Subscribe",
-    popular: false,
-    paystack_plan: "scale",
-    calls_limit: -1, // unlimited
-  },
-];
-
 const comparisonFeatures = [
   { label: "Monthly meetings", free: "5", starter: "50", growth: "300", scale: "Unlimited" },
+  { label: "Team members", free: "1", starter: "3", growth: "10", scale: "Unlimited" },
   { label: "Zoom integration", free: true, starter: true, growth: true, scale: true },
   { label: "Google Meet", free: true, starter: true, growth: true, scale: true },
   { label: "Slack integration", free: false, starter: false, growth: true, scale: true },
@@ -133,6 +37,7 @@ const comparisonFeatures = [
   { label: "Basic analytics", free: true, starter: true, growth: true, scale: true },
   { label: "Advanced analytics", free: false, starter: false, growth: true, scale: true },
   { label: "Team dashboard", free: false, starter: false, growth: true, scale: true },
+  { label: "Coaching insights", free: false, starter: false, growth: true, scale: true },
   { label: "Admin controls", free: false, starter: false, growth: false, scale: true },
   { label: "API access", free: false, starter: false, growth: false, scale: true },
   { label: "Priority support", free: false, starter: false, growth: true, scale: true },
@@ -149,15 +54,6 @@ function ComparisonCell({ value }: { value: boolean | string }) {
   );
 }
 
-function formatNGN(amount: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 export default function PricingPage() {
   const { user } = useAuth();
   const { subscribe } = useSubscription();
@@ -166,7 +62,7 @@ export default function PricingPage() {
 
   const currentPlan = profile?.plan_type || "free";
 
-  const handleSelectPlan = (plan: typeof plans[0]) => {
+  const handleSelectPlan = (plan: typeof PLANS[0]) => {
     if (plan.key === "free") {
       if (user) {
         navigate("/dashboard");
@@ -181,7 +77,6 @@ export default function PricingPage() {
       return;
     }
 
-    // Trigger Paystack checkout with plan info
     subscribe.mutate(plan.key);
   };
 
@@ -260,7 +155,7 @@ export default function PricingPage() {
         <section className="py-12 px-4">
           <div className="container max-w-6xl">
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {plans.map((plan, i) => {
+              {PLANS.map((plan, i) => {
                 const isCurrent = user && currentPlan === plan.key;
                 return (
                   <motion.div
@@ -293,8 +188,8 @@ export default function PricingPage() {
                       </p>
                     </div>
 
-                    {/* Price display - USD prominent, NGN below */}
-                    <div className="mb-6">
+                    {/* Price display */}
+                    <div className="mb-4">
                       <div className="flex items-baseline gap-1">
                         <span className="text-4xl font-bold font-display text-foreground">
                           ${plan.price_usd}
@@ -320,6 +215,18 @@ export default function PricingPage() {
                           ₦0 — Free forever
                         </p>
                       )}
+                    </div>
+
+                    {/* Team members highlight */}
+                    <div className="mb-4 p-2.5 rounded-lg bg-primary/5 border border-primary/10">
+                      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <Users className="w-4 h-4 text-primary" />
+                        {plan.team_members_limit === -1
+                          ? "Unlimited team members"
+                          : plan.team_members_limit === 1
+                          ? "1 user only"
+                          : `Up to ${plan.team_members_limit} team members`}
+                      </div>
                     </div>
 
                     <ul className="space-y-2.5 mb-8 flex-1">
@@ -429,7 +336,7 @@ export default function PricingPage() {
                       <th className="text-left text-sm font-medium text-muted-foreground p-4 min-w-[180px]">
                         Feature
                       </th>
-                      {plans.map((plan) => (
+                      {PLANS.map((plan) => (
                         <th
                           key={plan.key}
                           className={`text-center text-sm font-semibold p-4 min-w-[100px] ${
@@ -552,6 +459,12 @@ export default function PricingPage() {
                 <h3 className="font-semibold text-foreground mb-2">Can I change plans later?</h3>
                 <p className="text-sm text-muted-foreground">
                   Yes! You can upgrade or downgrade your plan at any time. Changes take effect on your next billing cycle.
+                </p>
+              </div>
+              <div className="glass rounded-xl p-6">
+                <h3 className="font-semibold text-foreground mb-2">What happens if I exceed my team member limit?</h3>
+                <p className="text-sm text-muted-foreground">
+                  You'll be prompted to upgrade to a higher plan before you can invite more members. Your existing team remains unaffected.
                 </p>
               </div>
               <div className="glass rounded-xl p-6">
