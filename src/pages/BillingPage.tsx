@@ -52,6 +52,7 @@ function formatNGN(amount: number): string {
 }
 
 export default function BillingPage() {
+  const { user } = useAuth();
   const {
     subscription,
     isLoading,
@@ -67,6 +68,23 @@ export default function BillingPage() {
     isTransactionsLoading,
     isSyncingPending,
   } = useSubscription();
+
+  const profileQuery = useQuery({
+    queryKey: ["profile-usage", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("calls_used, calls_limit, plan_type")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [changeDialogOpen, setChangeDialogOpen] = useState(false);
