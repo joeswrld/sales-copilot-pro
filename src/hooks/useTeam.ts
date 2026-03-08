@@ -205,6 +205,18 @@ export function useTeam() {
 
       if (invitationInsertError) throw invitationInsertError;
 
+      // Send invite email (fire-and-forget — don't block the invite on email delivery)
+      const inviterName = user?.user_metadata?.full_name || user?.email || "A team admin";
+      supabase.functions.invoke("send-invite-email", {
+        body: {
+          email: normalizedEmail,
+          teamName: teamQuery.data!.name,
+          inviterName,
+          role,
+          signupUrl: `${window.location.origin}/login`,
+        },
+      }).catch((err) => console.warn("Invite email failed:", err));
+
       return { mode: "pending" as const };
     },
     onSuccess: (result) => {
