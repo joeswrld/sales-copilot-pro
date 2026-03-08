@@ -216,7 +216,7 @@ export default function AIChatPage() {
             <Send className="w-4 h-4" />
           </Button>
         </form>
-      </div>
+        </div>
       </SubscriptionGate>
     </DashboardLayout>
   );
