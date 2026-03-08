@@ -87,7 +87,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${usagePercent}%` }} />
             </div>
             <Button size="sm" className="w-full mt-3 text-xs" asChild>
-              <Link to="/dashboard/settings">Upgrade to Pro</Link>
+              <Link to="/pricing">Upgrade Plan</Link>
             </Button>
           </div>
         </div>

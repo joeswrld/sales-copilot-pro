@@ -40,18 +40,17 @@ export function useSubscription() {
   });
 
   const subscribe = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (planKey: string = "starter") => {
       const callbackUrl = `${window.location.origin}/dashboard/billing?success=true`;
       const { data, error } = await supabase.functions.invoke(
         "paystack-create-subscription",
-        { body: { callback_url: callbackUrl } }
+        { body: { callback_url: callbackUrl, plan_key: planKey } }
       );
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
-      // Redirect to Paystack checkout
       window.location.href = data.authorization_url;
     },
     onError: (err: Error) => {
@@ -65,7 +64,6 @@ export function useSubscription() {
         throw new Error("No active subscription to cancel");
       }
 
-      // Call Paystack disable subscription API via edge function
       const { data, error } = await supabase.functions.invoke(
         "paystack-cancel-subscription",
         {

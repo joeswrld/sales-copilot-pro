@@ -20,12 +20,6 @@ const features = [
   { icon: Shield, title: "Enterprise Security", desc: "SOC2, GDPR, and optional HIPAA compliance with end-to-end encryption." },
 ];
 
-const pricing = [
-  { name: "Free", price: "$0", period: "/month", desc: "For solo reps getting started", features: ["5 calls/month", "Basic transcription", "Call summaries", "Email export"], cta: "Get Started", highlight: false },
-  { name: "Pro", price: "$25", period: "/user/mo", desc: "Full AI insights for growing teams", features: ["Unlimited calls", "AI objection detection", "Sentiment analysis", "CRM integration", "PDF & CSV export"], cta: "Start Free Trial", highlight: true },
-  { name: "Team", price: "$75", period: "/user/mo", desc: "Advanced analytics & coaching", features: ["Everything in Pro", "Team dashboards", "Coaching insights", "Performance benchmarking", "Priority support"], cta: "Contact Sales", highlight: false },
-  { name: "Enterprise", price: "Custom", period: "", desc: "For large organizations", features: ["Everything in Team", "Custom integrations", "HIPAA compliance", "Dedicated CSM", "SLA guarantee"], cta: "Talk to Us", highlight: false },
-];
 
 export default function LandingPage() {
   return (
@@ -41,7 +35,7 @@ export default function LandingPage() {
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
+            <Link to="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/login">
@@ -158,30 +152,12 @@ export default function LandingPage() {
         <div className="container max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold font-display mb-4">Simple, transparent pricing</h2>
-            <p className="text-muted-foreground">Start free. Scale as you grow.</p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {pricing.map((p, i) => (
-              <motion.div key={p.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`rounded-xl p-6 border ${p.highlight ? "border-primary shadow-glow bg-primary/5" : "border-border glass"}`}>
-                <h3 className="font-display font-bold text-lg mb-1">{p.name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{p.desc}</p>
-                <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-3xl font-bold font-display">{p.price}</span>
-                  <span className="text-sm text-muted-foreground">{p.period}</span>
-                </div>
-                <ul className="space-y-2 mb-6">
-                  {p.features.map(f => (
-                    <li key={f} className="text-sm text-muted-foreground flex items-start gap-2">
-                      <span className="text-primary mt-0.5">✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Button variant={p.highlight ? "default" : "outline"} className="w-full" size="sm">
-                  {p.cta}
-                </Button>
-              </motion.div>
-            ))}
+            <p className="text-muted-foreground mb-8">Start free. Scale as you grow.</p>
+            <Link to="/pricing">
+              <Button size="lg" className="gap-2">
+                View All Plans <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
