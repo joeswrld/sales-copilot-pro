@@ -13,90 +13,167 @@ import {
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar } from "recharts";
 
-// --- Demo Data ---
+// --- PipelineFlow Demo Data (10-person sales team) ---
 const teamMembers = [
   {
-    id: "1", name: "Sarah Lee", role: "Senior AE", avatar: "SL",
-    meetings: 18, avgScore: 8.7, talkRatio: 42, followUps: 14, lastMeeting: "2026-03-07",
-    coaching: "Excellent performer",
-    strengths: ["Strong discovery questions", "Clear value articulation", "Effective objection handling"],
-    weaknesses: ["Occasionally rushes closing", "Could improve demo pacing"],
-    suggestions: ["Practice deliberate pauses before closing", "Use customer stories more in demos"],
+    id: "1", name: "Sarah Johnson", role: "Senior AE", avatar: "SJ",
+    meetings: 32, avgScore: 8.9, talkRatio: 47, followUps: 29, followUpRate: 92, lastMeeting: "2026-03-08",
+    discoveryQuestionsPerMeeting: 7, objectionsHandled: "high",
+    coaching: "Top performer – model for the team",
+    strengths: ["Excellent discovery questions — averages 7 per meeting", "Strong closing technique with clear next steps", "Balanced talk ratio at 47%", "Effectively handles pricing objections"],
+    weaknesses: ["Occasionally rushes closing when running over time", "Could improve demo pacing on complex products"],
+    suggestions: ["Practice deliberate pauses before closing", "Use more customer success stories in enterprise demos", "Consider mentoring newer reps on discovery techniques"],
     recentMeetings: [
-      { title: "Enterprise Demo – TechCorp", score: 9.1, summary: "Exceptional discovery phase. Strong ROI presentation. Prospect highly engaged.", date: "2026-03-07" },
-      { title: "Renewal Call – DataFlow", score: 8.4, summary: "Good relationship building. Addressed all concerns. Upsell opportunity identified.", date: "2026-03-05" },
+      { title: "Product Demo with Acme Corp", score: 9.2, summary: "Excellent discovery questions and strong close. Prospect highly engaged throughout. Clear next steps defined with timeline.", date: "2026-03-08" },
+      { title: "Enterprise Demo – TechCorp", score: 9.1, summary: "Exceptional discovery phase. Strong ROI presentation. Identified 3 upsell opportunities.", date: "2026-03-07" },
+      { title: "Renewal Call – DataFlow Inc", score: 8.4, summary: "Good relationship building. Addressed all concerns. Upsell opportunity identified and scheduled follow-up.", date: "2026-03-05" },
     ]
   },
   {
-    id: "2", name: "John Smith", role: "Account Executive", avatar: "JS",
-    meetings: 15, avgScore: 7.8, talkRatio: 58, followUps: 11, lastMeeting: "2026-03-06",
-    coaching: "Improve listening ratio",
-    strengths: ["Strong product knowledge", "Good rapport building", "Persistent follow-up"],
-    weaknesses: ["Talks too much during meetings", "Weak next-step definition", "Misses pricing objections"],
-    suggestions: ["Reduce talk ratio to under 50%", "Always define clear next steps", "Practice handling pricing objections"],
+    id: "2", name: "Michael Torres", role: "Senior AE", avatar: "MT",
+    meetings: 28, avgScore: 8.2, talkRatio: 49, followUps: 23, followUpRate: 82, lastMeeting: "2026-03-08",
+    discoveryQuestionsPerMeeting: 6, objectionsHandled: "high",
+    coaching: "Strong performer – refine objection handling",
+    strengths: ["Consistent meeting quality", "Good talk-to-listen balance", "Strong rapport building with C-level prospects"],
+    weaknesses: ["Sometimes misses subtle pricing objections", "Could push harder on expansion opportunities"],
+    suggestions: ["Practice the 'Feel-Felt-Found' objection technique", "Prepare expansion talking points before QBRs"],
     recentMeetings: [
-      { title: "Product Demo – Acme Inc", score: 8.5, summary: "Strong product explanation but missed pricing objection. Need to improve closing.", date: "2026-03-06" },
+      { title: "QBR – Enterprise Solutions", score: 8.5, summary: "Thorough quarterly review. Good relationship management. Missed one expansion signal.", date: "2026-03-08" },
+      { title: "Negotiation – FinServ Pro", score: 8.8, summary: "Excellent negotiation. Secured favorable terms. Clear next steps defined.", date: "2026-03-06" },
+      { title: "Discovery Call – MedTech", score: 7.4, summary: "Good initial discovery but could probe deeper on budget and timeline.", date: "2026-03-04" },
+    ]
+  },
+  {
+    id: "3", name: "Daniel Rivera", role: "Account Executive", avatar: "DR",
+    meetings: 29, avgScore: 7.1, talkRatio: 63, followUps: 20, followUpRate: 68, lastMeeting: "2026-03-07",
+    discoveryQuestionsPerMeeting: 3, objectionsHandled: "medium",
+    coaching: "Improve listening ratio and discovery",
+    strengths: ["Clear product explanations", "Confident tone during demos", "Good energy and persistence"],
+    weaknesses: ["Does not ask enough discovery questions — only 3 per meeting", "Dominates the conversation too early", "Sometimes forgets to confirm next steps", "Misses pricing objections"],
+    suggestions: ["Ask at least 5 discovery questions before presenting the product", "Pause more frequently to allow the prospect to speak", "Always confirm the next step before ending the call", "Practice the SPIN selling framework"],
+    recentMeetings: [
+      { title: "Product Demo – Acme Inc", score: 7.5, summary: "Strong product explanation but missed pricing objection. Talked 65% of the time. Need to improve closing.", date: "2026-03-07" },
+      { title: "Intro Call – TechNova", score: 6.7, summary: "Rep spoke 68% of the time and rushed the demo. Prospect seemed interested but unclear on next steps.", date: "2026-03-05" },
       { title: "Discovery Call – CloudBase", score: 7.2, summary: "Good initial rapport but dominated conversation. Prospect had limited chance to share pain points.", date: "2026-03-04" },
     ]
   },
   {
-    id: "3", name: "Mike Chen", role: "SDR", avatar: "MC",
-    meetings: 22, avgScore: 7.1, talkRatio: 62, followUps: 8, lastMeeting: "2026-03-08",
-    coaching: "Focus on discovery questions",
-    strengths: ["High meeting volume", "Good energy and enthusiasm", "Quick qualification"],
-    weaknesses: ["Poor discovery question depth", "Talks over prospects", "Weak follow-up clarity"],
-    suggestions: ["Use SPIN selling framework", "Practice active listening", "Send structured follow-up emails within 2 hours"],
+    id: "4", name: "Maya Patel", role: "Account Executive", avatar: "MP",
+    meetings: 21, avgScore: 6.8, talkRatio: 66, followUps: 13, followUpRate: 60, lastMeeting: "2026-03-06",
+    discoveryQuestionsPerMeeting: 2, objectionsHandled: "low",
+    coaching: "Critical: reduce talk ratio, add discovery",
+    strengths: ["Good product knowledge", "Enthusiastic presentation style"],
+    weaknesses: ["Talks 66% of the time — significantly above target", "Only asks 2 discovery questions per meeting", "Weak objection handling — low confidence scores", "Poor follow-up clarity and consistency"],
+    suggestions: ["Target 45–50% talk ratio immediately", "Prepare 5 open-ended discovery questions before each call", "Shadow Sarah Johnson for discovery technique training", "Implement a follow-up template for consistency"],
     recentMeetings: [
-      { title: "Cold Outreach – NovaTech", score: 7.3, summary: "Good energy but rushed through discovery. Prospect seemed interested but unclear on next steps.", date: "2026-03-08" },
-      { title: "Qualification Call – BrightPath", score: 6.8, summary: "Talked 70% of the time. Missed key budget signals from prospect.", date: "2026-03-06" },
+      { title: "Demo – RetailMax", score: 6.5, summary: "Feature dump approach. Prospect disengaged halfway. No clear next steps defined.", date: "2026-03-06" },
+      { title: "Intro Call – ScaleUp AI", score: 7.0, summary: "High energy but prospect barely spoke. Needs to ask more questions and listen.", date: "2026-03-04" },
+      { title: "Discovery – CloudFirst", score: 6.9, summary: "Jumped into product pitch within 2 minutes. Missed budget and timeline qualification.", date: "2026-03-02" },
     ]
   },
   {
-    id: "4", name: "Lisa Park", role: "Account Executive", avatar: "LP",
-    meetings: 12, avgScore: 8.2, talkRatio: 46, followUps: 10, lastMeeting: "2026-03-05",
+    id: "5", name: "Lisa Park", role: "Account Executive", avatar: "LP",
+    meetings: 15, avgScore: 8.0, talkRatio: 46, followUps: 12, followUpRate: 80, lastMeeting: "2026-03-07",
+    discoveryQuestionsPerMeeting: 6, objectionsHandled: "high",
     coaching: "Increase meeting volume",
-    strengths: ["Excellent listening skills", "Strong closing technique", "Clear action items"],
-    weaknesses: ["Low meeting volume", "Could be more assertive in negotiations"],
-    suggestions: ["Schedule 3+ more meetings per week", "Practice assertive negotiation techniques"],
+    strengths: ["Excellent listening skills", "Strong closing technique", "Clear action items after every call"],
+    weaknesses: ["Low meeting volume — 15 vs team avg 18", "Could be more assertive in negotiations"],
+    suggestions: ["Schedule 3+ more meetings per week", "Practice assertive negotiation techniques", "Work with SDRs to increase pipeline fill rate"],
     recentMeetings: [
-      { title: "Negotiation – FinServ Pro", score: 8.8, summary: "Excellent negotiation. Secured favorable terms. Clear next steps defined.", date: "2026-03-05" },
-      { title: "QBR – MegaCorp", score: 7.9, summary: "Thorough review but could push harder on expansion opportunities.", date: "2026-03-03" },
+      { title: "Negotiation – FinServ Pro", score: 8.8, summary: "Excellent negotiation. Secured favorable terms. Clear next steps defined.", date: "2026-03-07" },
+      { title: "QBR – MegaCorp", score: 7.9, summary: "Thorough review but could push harder on expansion opportunities.", date: "2026-03-05" },
     ]
   },
   {
-    id: "5", name: "David Kim", role: "SDR", avatar: "DK",
-    meetings: 20, avgScore: 6.9, talkRatio: 66, followUps: 6, lastMeeting: "2026-03-07",
-    coaching: "Critical: reduce talk ratio",
-    strengths: ["High activity level", "Good prospecting instincts"],
-    weaknesses: ["Talks far too much", "Doesn't ask discovery questions", "Weak closing attempts", "Poor follow-up clarity"],
-    suggestions: ["Aim for 45% talk ratio max", "Prepare 5 open-ended questions per call", "End every meeting with 3 clear next steps"],
+    id: "6", name: "James Chen", role: "SDR", avatar: "JC",
+    meetings: 24, avgScore: 7.3, talkRatio: 55, followUps: 17, followUpRate: 71, lastMeeting: "2026-03-08",
+    discoveryQuestionsPerMeeting: 4, objectionsHandled: "medium",
+    coaching: "Improve qualification depth",
+    strengths: ["High meeting volume", "Good energy and enthusiasm", "Quick rapport building"],
+    weaknesses: ["Surface-level qualification — doesn't dig into BANT", "Inconsistent follow-up timing"],
+    suggestions: ["Use BANT framework for every qualification call", "Send follow-up emails within 1 hour of meetings", "Prepare qualification checklist before each call"],
     recentMeetings: [
-      { title: "Intro Call – ScaleUp AI", score: 7.0, summary: "High energy but prospect barely spoke. Needs to listen more.", date: "2026-03-07" },
-      { title: "Demo – RetailMax", score: 6.5, summary: "Feature dump approach. Prospect disengaged halfway. No clear next steps.", date: "2026-03-04" },
+      { title: "Qualification – NovaTech", score: 7.5, summary: "Good energy. Identified basic needs but missed budget qualification. Follow-up sent same day.", date: "2026-03-08" },
+      { title: "Cold Outreach – BrightPath", score: 7.1, summary: "Solid initial connection. Booked demo with AE. Could improve pain point discovery.", date: "2026-03-06" },
+    ]
+  },
+  {
+    id: "7", name: "Emily Watson", role: "SDR", avatar: "EW",
+    meetings: 22, avgScore: 7.5, talkRatio: 52, followUps: 18, followUpRate: 82, lastMeeting: "2026-03-07",
+    discoveryQuestionsPerMeeting: 5, objectionsHandled: "medium",
+    coaching: "Strong SDR – ready for AE track",
+    strengths: ["Balanced conversations", "Good discovery depth for SDR level", "Reliable follow-up"],
+    weaknesses: ["Could improve closing for demo bookings", "Sometimes too passive in objection moments"],
+    suggestions: ["Practice assumptive close for demo booking", "Role-play objection scenarios weekly", "Study AE techniques to prepare for promotion"],
+    recentMeetings: [
+      { title: "Discovery – InnovateCo", score: 7.8, summary: "Good qualification. Identified pain points and decision-maker. Booked demo for next week.", date: "2026-03-07" },
+      { title: "Cold Call – StackFlow", score: 7.2, summary: "Solid intro. Prospect engaged but hesitant. Could have pushed harder to book meeting.", date: "2026-03-05" },
+    ]
+  },
+  {
+    id: "8", name: "David Kim", role: "SDR", avatar: "DK",
+    meetings: 20, avgScore: 6.5, talkRatio: 68, followUps: 10, followUpRate: 50, lastMeeting: "2026-03-07",
+    discoveryQuestionsPerMeeting: 2, objectionsHandled: "low",
+    coaching: "Urgent: coaching session needed",
+    strengths: ["High activity level", "Good prospecting instincts"],
+    weaknesses: ["Talks 68% of the time — highest on the team", "Only 2 discovery questions per meeting", "50% follow-up rate — lowest on team", "Weak closing attempts"],
+    suggestions: ["Mandatory: reduce talk ratio to under 50%", "Prepare 5 open-ended questions per call minimum", "End every meeting with 3 clear next steps", "Schedule weekly 1:1 coaching with manager"],
+    recentMeetings: [
+      { title: "Intro Call – ScaleUp AI", score: 6.8, summary: "High energy but prospect barely spoke. Talked 72% of the time. No next steps confirmed.", date: "2026-03-07" },
+      { title: "Demo – RetailMax", score: 6.2, summary: "Feature dump approach. Prospect disengaged halfway. No clear next steps.", date: "2026-03-04" },
+    ]
+  },
+  {
+    id: "9", name: "Rachel Adams", role: "Account Executive", avatar: "RA",
+    meetings: 18, avgScore: 7.8, talkRatio: 50, followUps: 15, followUpRate: 83, lastMeeting: "2026-03-08",
+    discoveryQuestionsPerMeeting: 5, objectionsHandled: "high",
+    coaching: "Solid performer – push for more volume",
+    strengths: ["Perfect talk ratio balance", "Strong objection handling", "Clear and structured follow-ups"],
+    weaknesses: ["Meeting volume below potential", "Tends to over-prepare leading to fewer bookings"],
+    suggestions: ["Aim for 22+ meetings per month", "Reduce prep time per meeting by using templates", "Delegate scheduling to SDR partners"],
+    recentMeetings: [
+      { title: "Product Demo – HealthTech Pro", score: 8.3, summary: "Well-structured demo. Great objection handling on pricing. Clear 3-step follow-up plan.", date: "2026-03-08" },
+      { title: "Discovery – LogiFlow", score: 7.4, summary: "Good discovery but took too long to get to value proposition. Prospect remained engaged.", date: "2026-03-05" },
+    ]
+  },
+  {
+    id: "10", name: "Alex Nguyen", role: "SDR", avatar: "AN",
+    meetings: 19, avgScore: 7.0, talkRatio: 58, followUps: 13, followUpRate: 68, lastMeeting: "2026-03-06",
+    discoveryQuestionsPerMeeting: 3, objectionsHandled: "medium",
+    coaching: "Improve discovery and follow-up cadence",
+    strengths: ["Good rapport building", "Energetic and positive", "Handles rejection well"],
+    weaknesses: ["Talk ratio trending high at 58%", "Only 3 discovery questions per meeting", "Inconsistent follow-up — 68% completion"],
+    suggestions: ["Target 50% talk ratio or lower", "Use a discovery question template", "Set calendar reminders for follow-ups within 2 hours"],
+    recentMeetings: [
+      { title: "Qualification – DataBridge", score: 7.3, summary: "Good energy. Prospect interested. Missed timeline qualification. Follow-up delayed by 1 day.", date: "2026-03-06" },
+      { title: "Cold Outreach – SkylineAI", score: 6.7, summary: "Talked too much in opener. Prospect was polite but disengaged by minute 5.", date: "2026-03-03" },
     ]
   },
 ];
 
 const summaryCards = [
-  { label: "Team Meetings", value: "87", change: "+12%", up: true, icon: Users },
-  { label: "Avg Meeting Score", value: "7.7", change: "+0.4", up: true, icon: Target },
-  { label: "Action Items Generated", value: "142", change: "+18%", up: true, icon: CheckCircle2 },
-  { label: "Conversion Signals", value: "34", change: "-3%", up: false, icon: TrendingUp },
-  { label: "Avg Talk Ratio", value: "55%", change: "-2%", up: true, icon: Mic },
+  { label: "Team Meetings", value: "184", change: "+14%", up: true, icon: Users },
+  { label: "Avg Meeting Score", value: "7.6", change: "+0.3", up: true, icon: Target },
+  { label: "Action Items Generated", value: "312", change: "+22%", up: true, icon: CheckCircle2 },
+  { label: "Conversion Signals", value: "52", change: "+8%", up: true, icon: TrendingUp },
+  { label: "Avg Talk Ratio", value: "58%", change: "-2%", up: true, icon: Mic },
 ];
 
 const weeklyTrend = [
-  { week: "W1", score: 7.1, meetings: 18 },
-  { week: "W2", score: 7.4, meetings: 21 },
-  { week: "W3", score: 7.6, meetings: 24 },
-  { week: "W4", score: 7.9, meetings: 24 },
+  { week: "W1", score: 7.2, meetings: 42 },
+  { week: "W2", score: 7.4, meetings: 46 },
+  { week: "W3", score: 7.6, meetings: 48 },
+  { week: "W4", score: 7.9, meetings: 48 },
 ];
 
 const coachingInsights = [
-  { type: "warning", text: "Your team talks 55% of the time during meetings. High-performing sales teams usually stay around 45–50%. Consider coaching reps to ask more discovery questions." },
-  { type: "tip", text: "3 team members have not defined clear next steps in over 40% of their meetings this month. This correlates with lower conversion rates." },
-  { type: "success", text: "Sarah Lee has improved her meeting score by 15% this quarter. Her discovery question technique could be a model for the team." },
-  { type: "warning", text: "David Kim and Mike Chen have talk ratios above 60%. Schedule 1:1 coaching sessions focused on active listening." },
+  { type: "warning", text: "Your team speaks 58% of the time during meetings. High-performing sales teams typically stay below 50%. Consider coaching reps to ask more discovery questions and practice active listening." },
+  { type: "warning", text: "Only 42% of meetings end with a clearly defined next step. This correlates with lower conversion rates. Mandate a 'next steps' checklist before ending every call." },
+  { type: "tip", text: "Prospects ask pricing questions in 37% of calls, but reps only address it confidently in 18% of cases. Schedule a team session on pricing objection handling." },
+  { type: "success", text: "Sarah Johnson has improved her meeting score by 15% this quarter. Her discovery question technique (7 per meeting avg) could be a model for the entire team." },
+  { type: "warning", text: "Daniel Rivera, Maya Patel, and David Kim have talk ratios above 60%. Schedule immediate 1:1 coaching sessions focused on active listening and SPIN selling." },
+  { type: "tip", text: "Follow-up completion rate is 71% team-wide but Sarah (92%) and Rachel (83%) are significantly above average. Share their follow-up templates with the team." },
+  { type: "success", text: "Emily Watson shows strong SDR performance with balanced talk ratio (52%) and good discovery depth. Consider fast-tracking to AE role." },
 ];
 
 type MemberDetail = (typeof teamMembers)[number];
@@ -397,18 +474,20 @@ function MemberDetailView({ member, onBack }: { member: MemberDetail; onBack: ()
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         {[
           { label: "Total Meetings", value: member.meetings, icon: Calendar },
           { label: "Avg Score", value: member.avgScore.toFixed(1), icon: Target },
           { label: "Talk Ratio", value: `${member.talkRatio}%`, icon: Mic },
-          { label: "Follow-ups Done", value: member.followUps, icon: CheckCircle2 },
+          { label: "Follow-up Rate", value: `${member.followUpRate}%`, icon: CheckCircle2 },
+          { label: "Discovery Q's / Meeting", value: member.discoveryQuestionsPerMeeting, icon: MessageSquare },
+          { label: "Objection Handling", value: member.objectionsHandled, icon: AlertTriangle },
         ].map((stat) => (
           <Card key={stat.label} className="bg-card border-border">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <stat.icon className="w-4 h-4 text-muted-foreground mb-2" />
-              <p className="text-2xl font-bold font-display">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <p className="text-xl sm:text-2xl font-bold font-display capitalize">{stat.value}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">{stat.label}</p>
             </CardContent>
           </Card>
         ))}
