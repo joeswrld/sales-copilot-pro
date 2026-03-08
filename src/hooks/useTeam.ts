@@ -252,8 +252,10 @@ export function useTeam() {
     role: roleQuery.data ?? "member",
     members: membersQuery.data ?? [],
     membersLoading: membersQuery.isLoading,
+    pendingInvitations: invitationsQuery.data ?? [],
     createTeam,
     inviteMember,
+    cancelInvitation,
     updateRole,
     removeMember,
   };
