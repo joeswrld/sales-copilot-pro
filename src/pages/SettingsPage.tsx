@@ -71,6 +71,7 @@ export default function SettingsPage() {
     usePreferences();
   const { profile, isLoading: profileLoading, updateProfile } =
     useUserProfile();
+  const { teamUsage } = useTeamUsage();
 
   const isLoading = intLoading || prefLoading || profileLoading;
 
