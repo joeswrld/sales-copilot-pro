@@ -143,6 +143,10 @@ export default function TeamPage() {
           </TabsContent>
 
           <TabsContent value="inbox">
+            <TeamInboxTab teamId={team.id} members={members} />
+          </TabsContent>
+
+          <TabsContent value="notifications">
             <TeamNotificationsTab />
           </TabsContent>
         </Tabs>
