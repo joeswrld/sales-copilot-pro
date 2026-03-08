@@ -463,9 +463,14 @@ function NewConversationDialog({ open, onClose, members, currentUserId, teamId, 
       onConversationCreated(convoId);
       toast({ title: "Conversation started" });
     } catch (error) {
+      const errorMessage =
+        typeof error === "object" && error !== null && "message" in error
+          ? String((error as { message?: unknown }).message ?? "Please try again.")
+          : "Please try again.";
+
       toast({
         title: "Could not start chat",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }

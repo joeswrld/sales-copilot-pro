@@ -741,6 +741,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_create_team_conversation: {
+        Args: { _team_id: string }
+        Returns: boolean
+      }
       create_team_with_owner: {
         Args: { team_name?: string }
         Returns: {
