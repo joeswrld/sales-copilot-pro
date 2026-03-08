@@ -3,32 +3,46 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-/** Loud, attention-grabbing notification chime using Web Audio API */
+/** Very loud, impossible-to-miss notification alarm using Web Audio API */
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    const playTone = (freq: number, startTime: number, duration: number, volume: number) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square"; // harsher, louder waveform
-      osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(volume, startTime);
-      gain.gain.setValueAtTime(volume, startTime + duration * 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
+    // Master compressor to maximize perceived loudness
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-10, ctx.currentTime);
+    compressor.knee.setValueAtTime(0, ctx.currentTime);
+    compressor.ratio.setValueAtTime(20, ctx.currentTime);
+    compressor.attack.setValueAtTime(0, ctx.currentTime);
+    compressor.release.setValueAtTime(0.1, ctx.currentTime);
+    compressor.connect(ctx.destination);
+
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      // Layer two oscillators for thickness
+      for (const type of ["square", "sawtooth"] as OscillatorType[]) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(1.0, startTime);
+        gain.gain.setValueAtTime(1.0, startTime + duration * 0.7);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        osc.connect(gain);
+        gain.connect(compressor);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      }
     };
 
     const now = ctx.currentTime;
-    // Three loud, punchy chimes
-    playTone(880, now, 0.2, 1.0);
-    playTone(1100, now + 0.22, 0.2, 1.0);
-    playTone(880, now + 0.44, 0.3, 1.0);
+    // Alarm-style: 5 rapid loud chimes
+    playTone(1000, now, 0.15);
+    playTone(1200, now + 0.17, 0.15);
+    playTone(1000, now + 0.34, 0.15);
+    playTone(1200, now + 0.51, 0.15);
+    playTone(1000, now + 0.68, 0.25);
 
-    setTimeout(() => ctx.close(), 1000);
+    setTimeout(() => ctx.close(), 1200);
   } catch {
     // Web Audio not available
   }
