@@ -244,19 +244,23 @@ export function useConversationMessages(conversationId: string | null) {
   }, [conversationId, queryClient]);
 
   const sendMessage = useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async (payload: { text: string; file_url?: string; file_name?: string; file_type?: string }) => {
       const { error } = await supabase
         .from("team_messages")
         .insert({
           conversation_id: conversationId!,
           sender_id: user!.id,
-          message_text: text,
-        });
+          message_text: payload.text,
+          file_url: payload.file_url ?? null,
+          file_name: payload.file_name ?? null,
+          file_type: payload.file_type ?? null,
+        } as any);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["read-receipts", conversationId] });
     },
   });
 
