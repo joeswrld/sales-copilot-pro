@@ -121,6 +121,7 @@ export default function LiveCall() {
 
   return (
     <DashboardLayout>
+      <SubscriptionGate message="Live call analysis requires an active Fixsense subscription.">
       <div className="space-y-8 max-w-4xl">
         <div>
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
