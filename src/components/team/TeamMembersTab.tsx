@@ -12,7 +12,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X, ArrowUp, Users } from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
-import { useUserProfile } from "@/hooks/useSettings";
 import { getTeamMembersLimit } from "@/config/plans";
 
 interface PendingInvitation {
@@ -27,6 +26,7 @@ interface Props {
   pendingInvitations: PendingInvitation[];
   currentRole: string;
   currentUserId: string;
+  adminPlanKey: string;
   onInvite: (data: { email: string; role: string }) => void;
   onUpdateRole: (data: { memberId: string; role: string }) => void;
   onRemove: (memberId: string) => void;
