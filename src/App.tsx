@@ -17,6 +17,7 @@ import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
 import AIChatPage from "./pages/AIChatPage";
 import BillingPage from "./pages/BillingPage";
+import PricingPage from "./pages/PricingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
