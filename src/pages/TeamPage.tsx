@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
+import { useMessageNotifications } from "@/hooks/useMessageNotifications";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
