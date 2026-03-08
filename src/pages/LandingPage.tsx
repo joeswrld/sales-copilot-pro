@@ -158,30 +158,12 @@ export default function LandingPage() {
         <div className="container max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold font-display mb-4">Simple, transparent pricing</h2>
-            <p className="text-muted-foreground">Start free. Scale as you grow.</p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {pricing.map((p, i) => (
-              <motion.div key={p.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`rounded-xl p-6 border ${p.highlight ? "border-primary shadow-glow bg-primary/5" : "border-border glass"}`}>
-                <h3 className="font-display font-bold text-lg mb-1">{p.name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{p.desc}</p>
-                <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-3xl font-bold font-display">{p.price}</span>
-                  <span className="text-sm text-muted-foreground">{p.period}</span>
-                </div>
-                <ul className="space-y-2 mb-6">
-                  {p.features.map(f => (
-                    <li key={f} className="text-sm text-muted-foreground flex items-start gap-2">
-                      <span className="text-primary mt-0.5">✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Button variant={p.highlight ? "default" : "outline"} className="w-full" size="sm">
-                  {p.cta}
-                </Button>
-              </motion.div>
-            ))}
+            <p className="text-muted-foreground mb-8">Start free. Scale as you grow.</p>
+            <Link to="/pricing">
+              <Button size="lg" className="gap-2">
+                View All Plans <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
