@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription, PlanChangePreview } from "@/hooks/useSubscription";
@@ -69,6 +69,7 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const handledCallbackKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const shouldVerify = searchParams.get("success") === "true" || searchParams.get("upgraded") === "true";
@@ -76,18 +77,20 @@ export default function BillingPage() {
 
     if (!shouldVerify) return;
 
-    const run = async () => {
-      await verifyPayment.mutateAsync(reference);
-      toast.success("Payment callback received. Verifying subscription...");
-      setSearchParams({}, { replace: true });
-    };
+    const callbackKey = `${searchParams.toString()}`;
+    if (handledCallbackKeyRef.current === callbackKey) return;
+    handledCallbackKeyRef.current = callbackKey;
 
-    run();
+    setSearchParams({}, { replace: true });
+    verifyPayment.mutate({ reference, includeTransactions: false });
   }, [searchParams, setSearchParams, verifyPayment]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    await verifyPayment.mutateAsync(searchParams.get("reference"));
+    await verifyPayment.mutateAsync({
+      reference: searchParams.get("reference"),
+      includeTransactions: false,
+    });
     await refetch();
     setIsRefreshing(false);
     toast.info("Payment status checked");
