@@ -2,27 +2,33 @@
 
 ## Problem
 
-Supabase's built-in email service has strict rate limits (3-4 emails per hour on the free plan) and emails often land in spam. The auth logs show invite emails sending successfully, but signup confirmation emails may be getting rate-limited or filtered.
+When email confirmation is **enabled** in Supabase (the default), users register successfully but their account stays unconfirmed. When they try to log in, Supabase returns "Invalid login credentials" because the email isn't verified. If they try to register again, they get "User already registered."
 
-## Diagnosis
+## Root Cause
 
-From the auth logs, the user `essienjoseph2004@gmail.com` shows multiple `user_repeated_signup` attempts, meaning the confirmation email either wasn't received or wasn't acted on, causing retries that further exhaust the rate limit.
+Two issues:
+1. **Supabase email confirmation is likely still enabled** — you need to disable it in the Dashboard (Authentication → Providers → Email → toggle off "Confirm email")
+2. **The signup code always shows "check your email"** even when confirmation is disabled and Supabase returns a session immediately
 
-## Solutions (two options)
+## Plan
 
-### Option A: Quick Fix — Disable email confirmation (simplest)
-- In the Supabase Dashboard under **Authentication → Providers → Email**, toggle off **"Confirm email"**
-- Users can sign in immediately after signup without email verification
-- Trade-off: no email verification step
+### Step 1: Manual — Disable email confirmation in Supabase Dashboard
+Go to **Authentication → Providers → Email** and toggle **off** "Confirm email". Save.
 
-### Option B: Custom auth emails via Lovable's managed email system
-- Set up a custom sender domain (e.g., `notify.fixsense.com.ng`) so emails come from your brand and avoid spam filters
-- Uses Lovable's `scaffold_auth_email_templates` to create branded confirmation, recovery, and invite emails
-- Requires DNS configuration for the sender domain
-- Dramatically improves deliverability vs. the default `noreply@mail.app.supabase.io`
+### Step 2: Code — Update LoginPage signup handler
+Modify the signup success handler in `src/pages/LoginPage.tsx` to check if a session was returned. If yes (confirmation disabled), navigate directly to `/dashboard`. If no session (confirmation still enabled), show the "check your email" toast.
 
-### Recommended immediate action
-1. Ask users to **check their spam/junk folder** for emails from `noreply@mail.app.supabase.io`
-2. **Disable email confirmation** in Supabase Dashboard if verification isn't critical right now
-3. Set up a custom email domain later for production-quality delivery
+```typescript
+// Current: always shows "check email" toast
+// New: check if session exists after signup
+const { data, error } = await supabase.auth.signUp({...});
+if (error) throw error;
+if (data.session) {
+  navigate("/dashboard");  // auto-signed in
+} else {
+  toast({ title: "Check your email", description: "..." });
+}
+```
+
+This single change to `LoginPage.tsx` handles both scenarios correctly.
 
