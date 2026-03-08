@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/hooks/useSettings";
+import { useTeamUsage } from "@/hooks/useTeamUsage";
 import {
   DropdownMenu,
   DropdownMenuContent,
