@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
