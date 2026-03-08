@@ -267,15 +267,15 @@ export function useConversationMessages(conversationId: string | null) {
   /** Start a new conversation with one or more users */
   const startConversation = useMutation({
     mutationFn: async ({ teamId, memberIds }: { teamId: string; memberIds: string[] }) => {
-      const { data: convo, error: convoErr } = await supabase
+      const convoId = crypto.randomUUID();
+
+      const { error: convoErr } = await supabase
         .from("team_conversations")
-        .insert({ team_id: teamId })
-        .select()
-        .single();
+        .insert({ id: convoId, team_id: teamId });
       if (convoErr) throw convoErr;
 
       const participantRows = [user!.id, ...memberIds].map(uid => ({
-        conversation_id: convo.id,
+        conversation_id: convoId,
         user_id: uid,
       }));
 
@@ -284,7 +284,7 @@ export function useConversationMessages(conversationId: string | null) {
         .insert(participantRows);
       if (partErr) throw partErr;
 
-      return convo.id as string;
+      return convoId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
