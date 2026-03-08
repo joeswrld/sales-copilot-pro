@@ -5,7 +5,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp } from "lucide-react";
+import { CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2, Info, RefreshCw, ExternalLink, ArrowUp, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -31,10 +31,8 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   inactive: { label: "Inactive", variant: "secondary", icon: XCircle },
 };
 
-// Fixed conversion rate
 const USD_TO_NGN = 1500;
 
-// Plan configurations
 const PLANS = [
   { key: "starter", name: "Starter", price_usd: 19, calls_limit: 50 },
   { key: "growth", name: "Growth", price_usd: 49, calls_limit: 300 },
@@ -51,30 +49,47 @@ function formatNGN(amount: number): string {
 }
 
 export default function BillingPage() {
-  const { subscription, isLoading, subscribe, cancelSubscription, upgradePlan, isActive, refetch, currentPlanKey } = useSubscription();
+  const {
+    subscription,
+    isLoading,
+    subscribe,
+    cancelSubscription,
+    upgradePlan,
+    verifyPayment,
+    isActive,
+    refetch,
+    currentPlanKey,
+    transactions,
+    isTransactionsLoading,
+    isSyncingPending,
+  } = useSubscription();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      toast.success("Subscription activated successfully!");
+    const shouldVerify = searchParams.get("success") === "true" || searchParams.get("upgraded") === "true";
+    const reference = searchParams.get("reference");
+
+    if (!shouldVerify) return;
+
+    const run = async () => {
+      await verifyPayment.mutateAsync(reference);
+      toast.success("Payment callback received. Verifying subscription...");
       setSearchParams({}, { replace: true });
-    }
-    if (searchParams.get("upgraded") === "true") {
-      toast.success("Plan upgraded successfully!");
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
+    };
+
+    run();
+  }, [searchParams, setSearchParams, verifyPayment]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
+    await verifyPayment.mutateAsync(searchParams.get("reference"));
     await refetch();
     setIsRefreshing(false);
-    toast.info("Subscription status refreshed");
+    toast.info("Payment status checked");
   };
 
-  // Extract plan key from plan_name for "Continue Payment"
   const getPlanKey = () => {
     const planName = subscription?.plan_name?.toLowerCase() || "";
     if (planName.includes("scale")) return "scale";
@@ -88,20 +103,17 @@ export default function BillingPage() {
     upgradePlan.mutate(planKey);
   };
 
-  // Get available upgrade options
   const getUpgradeOptions = () => {
-    const currentIndex = PLANS.findIndex(p => p.key === currentPlanKey);
+    const currentIndex = PLANS.findIndex((p) => p.key === currentPlanKey);
     return PLANS.filter((_, index) => index > currentIndex);
   };
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;
 
-  // Calculate display prices
-  const priceUSD = subscription?.plan_price_usd || 
+  const priceUSD = subscription?.plan_price_usd ||
     (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
-
   const upgradeOptions = getUpgradeOptions();
 
   return (
@@ -110,9 +122,7 @@ export default function BillingPage() {
         <div className="max-w-3xl mx-auto space-y-8">
           <div>
             <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage your Fixsense subscription and payment details.
-            </p>
+            <p className="text-muted-foreground mt-1">Manage your Fixsense subscription and payment details.</p>
           </div>
 
           {isLoading ? (
@@ -121,7 +131,6 @@ export default function BillingPage() {
             </div>
           ) : subscription && subscription.status !== "inactive" ? (
             <>
-              {/* Current Plan Card */}
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <div>
@@ -161,16 +170,13 @@ export default function BillingPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Next billing date</p>
                       <p className="text-lg font-semibold text-foreground">
-                        {subscription.next_payment_date
-                          ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
-                          : "—"}
+                        {subscription.next_payment_date ? format(new Date(subscription.next_payment_date), "MMM d, yyyy") : "—"}
                       </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Payment Method */}
               {subscription.card_last4 && (
                 <Card>
                   <CardHeader>
@@ -184,15 +190,12 @@ export default function BillingPage() {
                       <div className="w-12 h-8 rounded bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase">
                         {subscription.card_brand || "Card"}
                       </div>
-                      <span className="text-foreground font-mono">
-                        •••• •••• •••• {subscription.card_last4}
-                      </span>
+                      <span className="text-foreground font-mono">•••• •••• •••• {subscription.card_last4}</span>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Upgrade Plan Card - Show only for active subscriptions with upgrade options */}
               {isActive && upgradeOptions.length > 0 && (
                 <Card className="border-primary/30">
                   <CardHeader>
@@ -200,72 +203,37 @@ export default function BillingPage() {
                       <ArrowUp className="w-5 h-5 text-primary" />
                       Upgrade Your Plan
                     </CardTitle>
-                    <CardDescription>
-                      Get more features and higher limits by upgrading to a higher tier.
-                    </CardDescription>
+                    <CardDescription>Move to a higher tier.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4 sm:grid-cols-2">
                       {upgradeOptions.map((plan) => (
-                        <div
-                          key={plan.key}
-                          className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors"
-                        >
+                        <div key={plan.key} className="p-4 rounded-lg border border-border">
                           <div className="flex justify-between items-start mb-2">
                             <h3 className="font-semibold text-foreground">{plan.name}</h3>
-                            <Badge variant="outline" className="text-primary">
-                              ${plan.price_usd}/mo
-                            </Badge>
+                            <Badge variant="outline">${plan.price_usd}/mo</Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-3">
+                          <p className="text-sm text-muted-foreground mb-2">
                             {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} calls/month
                           </p>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            {formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly
-                          </p>
+                          <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly</p>
                           <Dialog open={upgradeDialogOpen} onOpenChange={setUpgradeDialogOpen}>
                             <DialogTrigger asChild>
-                              <Button size="sm" className="w-full">
-                                Upgrade to {plan.name}
-                              </Button>
+                              <Button size="sm" className="w-full">Upgrade to {plan.name}</Button>
                             </DialogTrigger>
                             <DialogContent>
                               <DialogHeader>
                                 <DialogTitle>Upgrade to {plan.name}</DialogTitle>
                                 <DialogDescription>
-                                  You're about to upgrade to the {plan.name} plan at ${plan.price_usd}/month 
-                                  ({formatNGN(plan.price_usd * USD_TO_NGN)} NGN).
+                                  You'll be redirected to Paystack to complete your new subscription payment.
                                 </DialogDescription>
                               </DialogHeader>
-                              <div className="space-y-4 pt-4">
-                                <div className="p-4 rounded-lg bg-muted/50">
-                                  <h4 className="font-medium mb-2">What happens next:</h4>
-                                  <ul className="text-sm text-muted-foreground space-y-1">
-                                    <li>• Your current subscription will be cancelled</li>
-                                    <li>• You'll be redirected to Paystack to complete payment</li>
-                                    <li>• Your new plan starts immediately after payment</li>
-                                    <li>• You'll get {plan.calls_limit === -1 ? "unlimited" : plan.calls_limit} calls/month</li>
-                                  </ul>
-                                </div>
-                                <div className="flex gap-3">
-                                  <Button
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => setUpgradeDialogOpen(false)}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    className="flex-1"
-                                    onClick={() => handleUpgrade(plan.key)}
-                                    disabled={upgradePlan.isPending}
-                                  >
-                                    {upgradePlan.isPending ? (
-                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    ) : null}
-                                    Confirm Upgrade
-                                  </Button>
-                                </div>
+                              <div className="flex gap-3 pt-4">
+                                <Button variant="outline" className="flex-1" onClick={() => setUpgradeDialogOpen(false)}>Cancel</Button>
+                                <Button className="flex-1" onClick={() => handleUpgrade(plan.key)} disabled={upgradePlan.isPending}>
+                                  {upgradePlan.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                  Confirm
+                                </Button>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -276,35 +244,23 @@ export default function BillingPage() {
                 </Card>
               )}
 
-              {/* Actions */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Subscription Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-3">
                   {isActive && (
-                    <Button
-                      variant="destructive"
-                      onClick={() => cancelSubscription.mutate()}
-                      disabled={cancelSubscription.isPending}
-                    >
-                      {cancelSubscription.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : null}
+                    <Button variant="destructive" onClick={() => cancelSubscription.mutate()} disabled={cancelSubscription.isPending}>
+                      {cancelSubscription.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                       Cancel Subscription
                     </Button>
                   )}
                   {subscription.status === "pending" && (
                     <div className="w-full space-y-4">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                        <span>Auto-refreshing every 5 seconds...</span>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={handleManualRefresh}
-                          disabled={isRefreshing}
-                        >
+                        <RefreshCw className={`w-4 h-4 ${(isRefreshing || isSyncingPending) ? "animate-spin" : ""}`} />
+                        <span>Checking payment status every few seconds...</span>
+                        <Button variant="ghost" size="sm" onClick={handleManualRefresh} disabled={isRefreshing || verifyPayment.isPending}>
                           Refresh now
                         </Button>
                       </div>
@@ -312,29 +268,16 @@ export default function BillingPage() {
                         <p className="text-sm text-accent-foreground mb-3">
                           <strong>Payment incomplete?</strong> If you left the payment page before completing, you can continue where you left off.
                         </p>
-                        <Button
-                          onClick={() => subscribe.mutate(getPlanKey())}
-                          disabled={subscribe.isPending}
-                          className="w-full sm:w-auto"
-                        >
-                          {subscribe.isPending ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                          )}
+                        <Button onClick={() => subscribe.mutate(getPlanKey())} disabled={subscribe.isPending} className="w-full sm:w-auto">
+                          {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
                           Continue Payment
                         </Button>
                       </div>
                     </div>
                   )}
                   {(subscription.status === "cancelled" || subscription.status === "inactive") && (
-                    <Button
-                      onClick={() => subscribe.mutate("starter")}
-                      disabled={subscribe.isPending}
-                    >
-                      {subscribe.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : null}
+                    <Button onClick={() => subscribe.mutate("starter")} disabled={subscribe.isPending}>
+                      {subscribe.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                       Resubscribe
                     </Button>
                   )}
@@ -342,59 +285,65 @@ export default function BillingPage() {
               </Card>
             </>
           ) : (
-            /* No subscription — show pricing card */
             <Card className="border-primary shadow-lg shadow-primary/10 max-w-md mx-auto">
               <CardHeader className="text-center pb-2">
                 <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                   <Zap className="w-6 h-6 text-primary" />
                 </div>
                 <CardTitle className="text-xl">Fixsense Monthly</CardTitle>
-                <CardDescription>
-                  Everything you need to close more deals with AI-powered sales intelligence.
-                </CardDescription>
+                <CardDescription>Everything you need to close more deals with AI-powered sales intelligence.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="text-center">
                   <span className="text-4xl font-bold text-foreground">$19</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
-
-                <ul className="space-y-3">
-                  {[
-                    "Unlimited calls",
-                    "Real-time AI analysis",
-                    "All integrations",
-                    "CRM sync",
-                    "AI Sales Coach",
-                    "Priority support",
-                  ].map((feature) => (
-                    <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={() => subscribe.mutate("starter")}
-                  disabled={subscribe.isPending}
-                >
-                  {subscribe.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <CreditCard className="w-4 h-4 mr-2" />
-                  )}
+                <Button className="w-full" size="lg" onClick={() => subscribe.mutate("starter")} disabled={subscribe.isPending}>
+                  {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}
                   Subscribe with Paystack
                 </Button>
-
                 <p className="text-xs text-center text-muted-foreground">
                   Or <Link to="/pricing" className="text-primary hover:underline">view all plans</Link>
                 </p>
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-muted-foreground" />
+                Transaction History
+              </CardTitle>
+              <CardDescription>Your recent Paystack transactions.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isTransactionsLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading transactions...
+                </div>
+              ) : transactions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transactions yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {transactions.slice(0, 10).map((tx) => (
+                    <div key={tx.reference} className="p-3 rounded-lg border border-border flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{formatNGN(tx.amount_ngn)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {tx.paid_at ? format(new Date(tx.paid_at), "MMM d, yyyy • h:mm a") : format(new Date(tx.created_at), "MMM d, yyyy • h:mm a")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Ref: {tx.reference}</p>
+                      </div>
+                      <Badge variant={tx.status === "success" ? "default" : tx.status === "pending" ? "outline" : "secondary"}>
+                        {tx.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </DashboardLayout>
     </TooltipProvider>
