@@ -142,50 +142,81 @@ export function useTeam() {
   const inviteMember = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       const teamId = teamQuery.data!.id;
+      const normalizedEmail = email.trim().toLowerCase();
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("id")
-        .eq("email", email)
+        .ilike("email", normalizedEmail)
         .maybeSingle();
+
+      if (profileError) throw profileError;
 
       if (profile) {
         // User exists — check if already a member
-        const { data: existing } = await supabase
+        const { data: existingMember, error: existingMemberError } = await supabase
           .from("team_members")
           .select("id")
           .eq("team_id", teamId)
           .eq("user_id", profile.id)
           .maybeSingle();
 
-        if (existing) throw new Error("This user is already a team member.");
+        if (existingMemberError) throw existingMemberError;
+        if (existingMember) throw new Error("This user is already a team member.");
 
-        const { error } = await supabase
+        const { error: memberInsertError } = await supabase
           .from("team_members")
-          .insert({ team_id: teamId, user_id: profile.id, role, status: "active", invited_email: email });
-        if (error) throw error;
-      } else {
-        // User doesn't exist — create pending invitation
-        const { data: existingInvite } = await supabase
+          .insert({
+            team_id: teamId,
+            user_id: profile.id,
+            role,
+            status: "active",
+            invited_email: normalizedEmail,
+          });
+
+        if (memberInsertError) throw memberInsertError;
+
+        // Clean up stale pending invites for this email if they exist
+        await supabase
           .from("team_invitations")
-          .select("id")
+          .delete()
           .eq("team_id", teamId)
-          .eq("email", email.toLowerCase())
-          .eq("status", "pending")
-          .maybeSingle();
+          .eq("email", normalizedEmail)
+          .eq("status", "pending");
 
-        if (existingInvite) throw new Error("A pending invitation already exists for this email.");
-
-        const { error } = await supabase
-          .from("team_invitations")
-          .insert({ team_id: teamId, email: email.toLowerCase(), role, invited_by: user!.id });
-        if (error) throw error;
+        return { mode: "added" as const };
       }
+
+      // User doesn't exist — create pending invitation
+      const { data: existingInvite, error: existingInviteError } = await supabase
+        .from("team_invitations")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("email", normalizedEmail)
+        .eq("status", "pending")
+        .maybeSingle();
+
+      if (existingInviteError) throw existingInviteError;
+      if (existingInvite) throw new Error("A pending invitation already exists for this email.");
+
+      const { error: invitationInsertError } = await supabase
+        .from("team_invitations")
+        .insert({ team_id: teamId, email: normalizedEmail, role, invited_by: user!.id });
+
+      if (invitationInsertError) throw invitationInsertError;
+
+      return { mode: "pending" as const };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
       queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
-      toast({ title: "Invitation sent successfully" });
+      toast({
+        title: result.mode === "added" ? "Member added" : "Invitation sent",
+        description:
+          result.mode === "pending"
+            ? "They’ll be added automatically after they sign up with this email."
+            : undefined,
+      });
     },
     onError: (err: any) => {
       toast({ title: "Failed to invite member", description: err.message, variant: "destructive" });

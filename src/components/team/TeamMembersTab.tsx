@@ -199,7 +199,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
-            <DialogDescription>Send an invitation to join your team.</DialogDescription>
+            <DialogDescription>Send an invite by email. If they haven’t signed up yet, they’ll join automatically after registration.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
