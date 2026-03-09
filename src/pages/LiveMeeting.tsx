@@ -1,18 +1,38 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Mic, MicOff, AlertCircle, Lightbulb, TrendingUp, Clock, Loader2, Video, MonitorUp } from "lucide-react";
+import {
+  Mic, MicOff, AlertCircle, Lightbulb, TrendingUp, Clock, Loader2,
+  Video, MonitorUp, ExternalLink, MessageSquare, BarChart3, Target
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import { toast } from "sonner";
 
+const MEETING_TYPE_LABELS: Record<string, string> = {
+  discovery: "Discovery Call",
+  demo: "Product Demo",
+  follow_up: "Follow-up",
+  negotiation: "Negotiation",
+  other: "Other",
+};
+
+const DISCOVERY_REMINDERS = [
+  "Ask about their current process",
+  "Understand their budget timeline",
+  "Identify the decision maker",
+  "Discuss pain points in detail",
+  "Ask about competing solutions",
+];
+
 export default function LiveMeeting() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } = useLiveCall();
   const [elapsed, setElapsed] = useState(0);
+  const [meetPopupOpen, setMeetPopupOpen] = useState(false);
   const intervalRef = useRef<number>();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +54,31 @@ export default function LiveMeeting() {
 
   const canStartCapture = capabilities.webmRecorder && (capabilities.tabAudio || capabilities.micAudio);
   const captureButtonLabel = capabilities.tabAudio ? "Share Tab Audio" : capabilities.micAudio ? "Share Mic Audio" : "Audio Unsupported";
+
+  // Compute live talk ratio from transcripts
+  const talkRatio = useMemo(() => {
+    if (transcripts.length === 0) return { rep: 0, prospect: 0 };
+    const repWords = transcripts
+      .filter((t) => t.speaker === "Rep")
+      .reduce((sum, t) => sum + t.text.split(/\s+/).length, 0);
+    const prospectWords = transcripts
+      .filter((t) => t.speaker !== "Rep")
+      .reduce((sum, t) => sum + t.text.split(/\s+/).length, 0);
+    const total = repWords + prospectWords;
+    if (total === 0) return { rep: 0, prospect: 0 };
+    return {
+      rep: Math.round((repWords / total) * 100),
+      prospect: Math.round((prospectWords / total) * 100),
+    };
+  }, [transcripts]);
+
+  // Count questions asked
+  const questionsCount = useMemo(() => {
+    return transcripts.filter((t) => t.text.includes("?")).length;
+  }, [transcripts]);
+
+  // Meeting type
+  const meetingType = (liveCall as any)?.meeting_type as string | undefined;
 
   // Timer
   useEffect(() => {
@@ -66,12 +111,26 @@ export default function LiveMeeting() {
     stopCapture();
     try {
       await endCall.mutateAsync();
-      toast.success("Call ended and saved");
-      navigate("/dashboard/live");
+      toast.success("Call ended — AI summary generating...");
+      if (callId) {
+        navigate(`/dashboard/calls/${callId}`);
+      } else {
+        navigate("/dashboard/live");
+      }
     } catch {
       toast.error("Failed to end call");
     }
-  }, [endCall, stopCapture, navigate]);
+  }, [endCall, stopCapture, navigate, callId]);
+
+  const handleOpenMeetPopup = () => {
+    const meetUrl = liveCall?.meeting_url || liveCall?.meeting_id;
+    if (meetUrl && (meetUrl.startsWith("http") || meetUrl.includes("meet.google.com"))) {
+      window.open(meetUrl, "fixsense-meeting", "width=1000,height=700,menubar=no,toolbar=no");
+      setMeetPopupOpen(true);
+    } else {
+      toast.info("No meeting URL available. Open your meeting separately and use audio capture here.");
+    }
+  };
 
   const engagementScore = liveCall?.sentiment_score || 0;
 
@@ -91,12 +150,23 @@ export default function LiveMeeting() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold font-display">Live Meeting</h1>
-            <p className="text-sm text-muted-foreground">Real-time AI-powered call intelligence</p>
+            <h1 className="text-2xl font-bold font-display">{liveCall?.name || "Live Meeting"}</h1>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-sm text-muted-foreground">Real-time AI-powered call intelligence</p>
+              {meetingType && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {MEETING_TYPE_LABELS[meetingType] || meetingType}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button onClick={handleOpenMeetPopup} variant="outline" className="gap-2" size="sm">
+              <ExternalLink className="w-4 h-4" />
+              {meetPopupOpen ? "Reopen Meeting" : "Open Meeting"}
+            </Button>
             {!isCapturing && (
-              <Button onClick={startCapture} variant="outline" className="gap-2" disabled={!canStartCapture}>
+              <Button onClick={startCapture} variant="outline" className="gap-2" size="sm" disabled={!canStartCapture}>
                 <MonitorUp className="w-4 h-4" />
                 {captureButtonLabel}
               </Button>
@@ -105,6 +175,7 @@ export default function LiveMeeting() {
               onClick={handleEnd}
               variant="destructive"
               className="gap-2"
+              size="sm"
               disabled={endCall.isPending}
             >
               {endCall.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -134,6 +205,11 @@ export default function LiveMeeting() {
               <span className="text-xs">Audio capturing{captureSource ? ` (${captureSource === "tab" ? "Tab" : "Mic"})` : ""}</span>
             </div>
           )}
+          {liveCall?.participants && (liveCall.participants as string[]).length > 0 && (
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <span className="text-xs">{(liveCall.participants as string[]).join(", ")}</span>
+            </div>
+          )}
           {captureError && <span className="text-xs text-destructive">{captureError}</span>}
         </div>
 
@@ -147,8 +223,8 @@ export default function LiveMeeting() {
                 {capabilities.tabAudio
                   ? "Click \"Share Tab Audio\" above and select the browser tab with your meeting. Fixsense will transcribe and analyze the call in real time."
                   : capabilities.micAudio
-                    ? "This device doesn’t support tab-audio sharing. Click \"Share Mic Audio\" to transcribe what your microphone hears."
-                    : "Audio capture isn’t supported on this device/browser. Please use desktop Chrome/Edge."}
+                    ? "This device doesn't support tab-audio sharing. Click \"Share Mic Audio\" to transcribe what your microphone hears."
+                    : "Audio capture isn't supported on this device/browser. Please use desktop Chrome/Edge."}
               </p>
             </div>
           </div>
@@ -215,6 +291,32 @@ export default function LiveMeeting() {
 
           {/* AI Insights Sidebar */}
           <div className="space-y-4">
+            {/* Talk Ratio */}
+            <div className="glass rounded-xl p-4">
+              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <BarChart3 className="w-3 h-3" /> Talk Ratio
+              </h3>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-primary">You ({talkRatio.rep}%)</span>
+                  <span className="text-accent">Prospect ({talkRatio.prospect}%)</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted flex overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-500"
+                    style={{ width: `${talkRatio.rep}%` }}
+                  />
+                  <div
+                    className="h-full bg-accent transition-all duration-500"
+                    style={{ width: `${talkRatio.prospect}%` }}
+                  />
+                </div>
+                {talkRatio.rep > 65 && transcripts.length > 5 && (
+                  <p className="text-xs text-warning mt-1">⚠️ You're speaking more than 65%. Let the prospect talk more.</p>
+                )}
+              </div>
+            </div>
+
             {/* Engagement Score */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
@@ -229,10 +331,35 @@ export default function LiveMeeting() {
               </div>
             </div>
 
+            {/* Quick Stats */}
+            <div className="glass rounded-xl p-4">
+              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <MessageSquare className="w-3 h-3" /> Call Stats
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-lg font-bold font-display">{questionsCount}</div>
+                  <div className="text-xs text-muted-foreground">Questions Asked</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display">{objections.length}</div>
+                  <div className="text-xs text-muted-foreground">Objections</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display">{topics.length}</div>
+                  <div className="text-xs text-muted-foreground">Topics</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display">{formatTime(elapsed)}</div>
+                  <div className="text-xs text-muted-foreground">Duration</div>
+                </div>
+              </div>
+            </div>
+
             {/* Objections */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                <AlertCircle className="w-3 h-3" /> Objections Detected ({objections.length})
+                <AlertCircle className="w-3 h-3" /> Objections ({objections.length})
               </h3>
               {objections.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No objections yet</p>
@@ -261,6 +388,25 @@ export default function LiveMeeting() {
               )}
             </div>
 
+            {/* Discovery Reminders */}
+            {meetingType === "discovery" && (
+              <div className="glass rounded-xl p-4">
+                <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                  <Target className="w-3 h-3" /> Discovery Reminders
+                </h3>
+                <ul className="space-y-2">
+                  {DISCOVERY_REMINDERS.map((reminder, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                      <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
+                        {i + 1}
+                      </span>
+                      {reminder}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Topics */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3">Key Topics</h3>
@@ -282,4 +428,3 @@ export default function LiveMeeting() {
     </DashboardLayout>
   );
 }
-

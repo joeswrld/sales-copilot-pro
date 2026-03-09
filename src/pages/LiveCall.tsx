@@ -2,7 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, Link2, CalendarPlus, Video, Loader2, Clock, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
+import { Mic, Link2, CalendarPlus, Video, Loader2, Clock, Trash2, ExternalLink, AlertTriangle, Users, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,19 +20,38 @@ function detectProvider(url: string): string | null {
   return null;
 }
 
+const MEETING_TYPES = [
+  { value: "discovery", label: "Discovery Call" },
+  { value: "demo", label: "Product Demo" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "negotiation", label: "Negotiation" },
+  { value: "other", label: "Other" },
+];
+
 export default function LiveCall() {
   const navigate = useNavigate();
   const { liveCall, isLive, isLoading, startCall } = useLiveCall();
   const { scheduledCalls, isLoading: schedLoading, scheduleMeeting, cancelScheduled } = useScheduledCalls();
   const { integrations } = useIntegrations();
 
-  const [platform, setPlatform] = useState("zoom");
+  // Create Meeting state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [meetingType, setMeetingType] = useState("discovery");
+  const [participants, setParticipants] = useState("");
+  const [platform, setPlatform] = useState("google_meet");
+
+  // Join Meeting state
   const [joinUrl, setJoinUrl] = useState("");
+
+  // Schedule state
   const [schedOpen, setSchedOpen] = useState(false);
   const [schedTitle, setSchedTitle] = useState("");
-  const [schedProvider, setSchedProvider] = useState("zoom");
+  const [schedProvider, setSchedProvider] = useState("google_meet");
   const [schedUrl, setSchedUrl] = useState("");
   const [schedTime, setSchedTime] = useState("");
+  const [schedType, setSchedType] = useState("discovery");
+  const [schedParticipants, setSchedParticipants] = useState("");
 
   const isProviderConnected = (provider: string) =>
     integrations.some((i) => i.provider === provider && i.status === "connected");
@@ -42,19 +61,35 @@ export default function LiveCall() {
     navigate(`/dashboard/live/${liveCall.id}`);
   }
 
-  const handleStartMeeting = async () => {
+  const handleCreateMeeting = async () => {
+    if (!meetingTitle.trim()) {
+      toast.error("Please enter a meeting title");
+      return;
+    }
     if (!isProviderConnected(platform)) {
       toast.error(`Please connect ${platform === "zoom" ? "Zoom" : "Google Meet"} in Settings first`);
       return;
     }
     try {
-      const call = await startCall.mutateAsync({ platform: platform === "zoom" ? "Zoom" : "Google Meet" });
+      const participantList = participants
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      const call = await startCall.mutateAsync({
+        platform: platform === "zoom" ? "Zoom" : "Google Meet",
+        meeting_id: crypto.randomUUID(),
+        name: meetingTitle,
+        meeting_type: meetingType,
+        participants: participantList,
+      });
+      setCreateOpen(false);
       navigate(`/dashboard/live/${call.id}`);
     } catch (err: any) {
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("You've reached your plan limit. Upgrade to Pro for unlimited calls.");
       } else {
-        toast.error("Failed to start meeting");
+        toast.error("Failed to create meeting");
       }
     }
   };
@@ -147,37 +182,86 @@ export default function LiveCall() {
 
         {/* Action cards */}
         <div className="grid md:grid-cols-3 gap-4">
-          {/* Start Meeting */}
+          {/* Create Meeting */}
           <div className="glass rounded-xl p-6 flex flex-col">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                 <Video className="w-5 h-5 text-primary" />
               </div>
-              <h2 className="font-display font-semibold">Start Meeting</h2>
+              <h2 className="font-display font-semibold">Create Meeting</h2>
             </div>
-            <p className="text-xs text-muted-foreground mb-4 flex-1">Create a new meeting and begin AI-powered analysis.</p>
-            <Select value={platform} onValueChange={setPlatform}>
-              <SelectTrigger className="mb-3">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zoom" disabled={!zoomConnected}>
-                  Zoom {!zoomConnected && "(not connected)"}
-                </SelectItem>
-                <SelectItem value="google_meet" disabled={!meetConnected}>
-                  Google Meet {!meetConnected && "(not connected)"}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={handleStartMeeting}
-              disabled={startCall.isPending || !anyMeetingConnected}
-              className="gap-2"
-            >
-              {startCall.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              <Mic className="w-4 h-4" />
-              Start Meeting
-            </Button>
+            <p className="text-xs text-muted-foreground mb-4 flex-1">Create a new meeting with title, participants, and type for AI-powered analysis.</p>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" disabled={!anyMeetingConnected}>
+                  <Mic className="w-4 h-4" />
+                  Create Meeting
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Create Meeting</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <Label>Meeting Title</Label>
+                    <Input
+                      value={meetingTitle}
+                      onChange={(e) => setMeetingTitle(e.target.value)}
+                      placeholder="Q4 Discovery Call with Acme Corp"
+                    />
+                  </div>
+                  <div>
+                    <Label>Meeting Type</Label>
+                    <Select value={meetingType} onValueChange={setMeetingType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MEETING_TYPES.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Participants (comma-separated emails)</Label>
+                    <Input
+                      value={participants}
+                      onChange={(e) => setParticipants(e.target.value)}
+                      placeholder="jane@acme.com, john@acme.com"
+                    />
+                  </div>
+                  <div>
+                    <Label>Platform</Label>
+                    <Select value={platform} onValueChange={setPlatform}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="google_meet" disabled={!meetConnected}>
+                          Google Meet {!meetConnected && "(not connected)"}
+                        </SelectItem>
+                        <SelectItem value="zoom" disabled={!zoomConnected}>
+                          Zoom {!zoomConnected && "(not connected)"}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleCreateMeeting}
+                    disabled={startCall.isPending}
+                    className="w-full gap-2"
+                  >
+                    {startCall.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <Video className="w-4 h-4" />
+                    Start Meeting
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {/* Join Meeting */}
@@ -190,7 +274,7 @@ export default function LiveCall() {
             </div>
             <p className="text-xs text-muted-foreground mb-4 flex-1">Paste a Zoom or Google Meet URL to join with AI analysis.</p>
             <Input
-              placeholder="https://zoom.us/j/..."
+              placeholder="https://meet.google.com/abc-def-ghi"
               value={joinUrl}
               onChange={(e) => setJoinUrl(e.target.value)}
               className="mb-3"
@@ -237,14 +321,37 @@ export default function LiveCall() {
                     />
                   </div>
                   <div>
+                    <Label>Meeting Type</Label>
+                    <Select value={schedType} onValueChange={setSchedType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MEETING_TYPES.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Participants (comma-separated)</Label>
+                    <Input
+                      value={schedParticipants}
+                      onChange={(e) => setSchedParticipants(e.target.value)}
+                      placeholder="jane@acme.com, john@acme.com"
+                    />
+                  </div>
+                  <div>
                     <Label>Platform</Label>
                     <Select value={schedProvider} onValueChange={setSchedProvider}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="zoom">Zoom</SelectItem>
                         <SelectItem value="google_meet">Google Meet</SelectItem>
+                        <SelectItem value="zoom">Zoom</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

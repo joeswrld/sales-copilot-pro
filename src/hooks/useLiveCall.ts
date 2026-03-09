@@ -32,7 +32,6 @@ export function useLiveCall() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Get current live call
   const liveCallQuery = useQuery({
     queryKey: ["live-call"],
     queryFn: async () => {
@@ -52,7 +51,6 @@ export function useLiveCall() {
 
   const callId = liveCallQuery.data?.id;
 
-  // Realtime transcripts
   const transcriptsQuery = useQuery({
     queryKey: ["live-transcripts", callId],
     queryFn: async () => {
@@ -67,7 +65,6 @@ export function useLiveCall() {
     enabled: !!callId,
   });
 
-  // Realtime objections
   const objectionsQuery = useQuery({
     queryKey: ["live-objections", callId],
     queryFn: async () => {
@@ -82,7 +79,6 @@ export function useLiveCall() {
     enabled: !!callId,
   });
 
-  // Realtime key topics
   const topicsQuery = useQuery({
     queryKey: ["live-topics", callId],
     queryFn: async () => {
@@ -122,8 +118,13 @@ export function useLiveCall() {
 
   // Start a call (with plan limit check)
   const startCall = useMutation({
-    mutationFn: async (input: { platform: string; meeting_id?: string }) => {
-      // Check plan limits
+    mutationFn: async (input: {
+      platform: string;
+      meeting_id?: string;
+      name?: string;
+      meeting_type?: string;
+      participants?: string[];
+    }) => {
       const { data: profile } = await supabase
         .from("profiles")
         .select("calls_used, calls_limit")
@@ -138,13 +139,15 @@ export function useLiveCall() {
         .from("calls")
         .insert({
           user_id: user!.id,
-          name: `${input.platform} Call`,
+          name: input.name || `${input.platform} Call`,
           status: "live",
           platform: input.platform,
           meeting_id: input.meeting_id || crypto.randomUUID(),
+          meeting_type: input.meeting_type || null,
+          participants: input.participants || [],
           start_time: new Date().toISOString(),
           date: new Date().toISOString(),
-        })
+        } as any)
         .select()
         .single();
       if (error) throw error;
