@@ -1,26 +1,39 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Clock, Users, TrendingUp, AlertCircle, CheckCircle, Loader2, Pencil, Save, X } from "lucide-react";
+import {
+  ArrowLeft, Clock, Users, TrendingUp, AlertCircle, CheckCircle,
+  Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallDetail, useUpdateCall } from "@/hooks/useCalls";
 import { format } from "date-fns";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Json } from "@/integrations/supabase/types";
 
 interface Objection {
-  text: string;
-  handled: boolean;
-  response: string;
+  text?: string;
+  type?: string;
+  handled?: boolean;
+  response?: string;
+  suggestion?: string;
+  confidence?: number;
 }
 
 interface TranscriptLine {
-  time: string;
+  time?: string;
+  timestamp?: string;
   speaker: string;
   text: string;
 }
+
+const MEETING_TYPE_LABELS: Record<string, string> = {
+  discovery: "Discovery Call",
+  demo: "Product Demo",
+  follow_up: "Follow-up",
+  negotiation: "Negotiation",
+  other: "Other",
+};
 
 export default function CallDetail() {
   const { id } = useParams();
@@ -43,6 +56,11 @@ export default function CallDetail() {
 
   const objections = (summaryData?.objections as unknown as Objection[] | null) || [];
   const transcript = (summaryData?.transcript as unknown as TranscriptLine[] | null) || [];
+  const meetingScore = (summaryData as any)?.meeting_score as number | null;
+  const talkRatio = (summaryData as any)?.talk_ratio as { rep: number; prospect: number } | null;
+  const buyingSignals = ((summaryData as any)?.buying_signals as string[] | null) || [];
+  const actionItems = ((summaryData as any)?.action_items as string[] | null) || [];
+  const meetingType = (callData as any)?.meeting_type as string | null;
 
   const handleSaveName = async () => {
     try {
@@ -72,9 +90,49 @@ export default function CallDetail() {
                 <button onClick={() => { setEditing(true); setEditName(callData.name); }} className="text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
               </div>
             )}
-            <p className="text-sm text-muted-foreground">{format(new Date(callData.date), "MMMM d, yyyy 'at' h:mm a")}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-muted-foreground">{format(new Date(callData.date), "MMMM d, yyyy 'at' h:mm a")}</p>
+              {meetingType && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {MEETING_TYPE_LABELS[meetingType] || meetingType}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Meeting Score Hero */}
+        {meetingScore !== null && meetingScore !== undefined && (
+          <div className="glass rounded-xl p-6 flex items-center gap-6">
+            <div className="relative w-20 h-20 flex items-center justify-center">
+              <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="hsl(var(--muted))"
+                  strokeWidth="3"
+                />
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="3"
+                  strokeDasharray={`${(meetingScore / 10) * 100}, 100`}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="absolute text-2xl font-bold font-display text-primary">{meetingScore.toFixed(1)}</span>
+            </div>
+            <div>
+              <h2 className="font-display font-semibold text-lg">Meeting Score</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {meetingScore >= 8 ? "Excellent call performance" :
+                 meetingScore >= 6 ? "Good call with areas to improve" :
+                 "Needs improvement — review insights below"}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Quick stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -96,43 +154,84 @@ export default function CallDetail() {
           </div>
         </div>
 
+        {/* Talk Ratio */}
+        {talkRatio && (
+          <div className="glass rounded-xl p-5">
+            <h2 className="font-display font-semibold mb-3 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" /> Talk Ratio
+            </h2>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-primary">You ({talkRatio.rep}%)</span>
+                <span className="text-accent">Prospect ({talkRatio.prospect}%)</span>
+              </div>
+              <div className="h-3 rounded-full bg-muted flex overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent" style={{ width: `${talkRatio.prospect}%` }} />
+              </div>
+              {talkRatio.rep > 65 && (
+                <p className="text-xs text-warning">⚠️ You spoke more than 65% of the time. Aim for 40-60% for better engagement.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Summary */}
         {summaryData?.summary && (
           <div className="glass rounded-xl p-5">
-            <h2 className="font-display font-semibold mb-3">AI Summary</h2>
+            <h2 className="font-display font-semibold mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" /> AI Summary
+            </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">{summaryData.summary}</p>
           </div>
         )}
 
-        {/* Key Decisions & Next Steps */}
-        {((summaryData?.key_decisions?.length || 0) > 0 || (summaryData?.next_steps?.length || 0) > 0) && (
-          <div className="grid md:grid-cols-2 gap-4">
-            {(summaryData?.key_decisions?.length || 0) > 0 && (
-              <div className="glass rounded-xl p-5">
-                <h2 className="font-display font-semibold mb-3">Key Decisions</h2>
-                <ul className="space-y-2">
-                  {summaryData!.key_decisions!.map((d, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <CheckCircle className="w-4 h-4 text-success shrink-0 mt-0.5" />{d}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {(summaryData?.next_steps?.length || 0) > 0 && (
-              <div className="glass rounded-xl p-5">
-                <h2 className="font-display font-semibold mb-3">Next Steps</h2>
-                <ul className="space-y-2">
-                  {summaryData!.next_steps!.map((s, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">{i + 1}</span>{s}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+        {/* Buying Signals */}
+        {buyingSignals.length > 0 && (
+          <div className="glass rounded-xl p-5">
+            <h2 className="font-display font-semibold mb-3 flex items-center gap-2">
+              <Target className="w-4 h-4 text-success" /> Buying Signals ({buyingSignals.length})
+            </h2>
+            <ul className="space-y-2">
+              {buyingSignals.map((signal, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <span className="w-5 h-5 rounded-full bg-success/10 text-success flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">✓</span>
+                  {signal}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
+
+        {/* Key Decisions & Next Steps & Action Items */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {(summaryData?.key_decisions?.length || 0) > 0 && (
+            <div className="glass rounded-xl p-5">
+              <h2 className="font-display font-semibold mb-3">Key Decisions</h2>
+              <ul className="space-y-2">
+                {summaryData!.key_decisions!.map((d, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0 mt-0.5" />{d}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {((summaryData?.next_steps?.length || 0) > 0 || actionItems.length > 0) && (
+            <div className="glass rounded-xl p-5">
+              <h2 className="font-display font-semibold mb-3 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" /> Action Items
+              </h2>
+              <ul className="space-y-2">
+                {[...(actionItems.length > 0 ? actionItems : summaryData?.next_steps || [])].map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">{i + 1}</span>{s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* Objections */}
         {objections.length > 0 && (
@@ -142,12 +241,16 @@ export default function CallDetail() {
               {objections.map((obj, i) => (
                 <div key={i} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium">{obj.text}</p>
+                    <p className="text-sm font-medium">{obj.text || obj.type}</p>
                     <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${obj.handled ? "bg-success/10 text-success" : "bg-accent/10 text-accent"}`}>
                       {obj.handled ? "Handled" : "Open"}
                     </span>
                   </div>
-                  {obj.response && <p className="text-xs text-muted-foreground mt-2">Response: {obj.response}</p>}
+                  {(obj.response || obj.suggestion) && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {obj.response ? `Response: ${obj.response}` : `Suggestion: ${obj.suggestion}`}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -160,10 +263,10 @@ export default function CallDetail() {
             <h2 className="font-display font-semibold mb-3">Transcript</h2>
             <div className="space-y-4">
               {transcript.map((line, i) => (
-                <div key={i} className={line.speaker !== "You" ? "pl-4 border-l-2 border-accent/40" : ""}>
+                <div key={i} className={line.speaker !== "You" && line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : ""}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-medium ${line.speaker === "You" ? "text-primary" : "text-accent"}`}>{line.speaker}</span>
-                    <span className="text-xs text-muted-foreground">{line.time}</span>
+                    <span className={`text-xs font-medium ${(line.speaker === "You" || line.speaker === "Rep") ? "text-primary" : "text-accent"}`}>{line.speaker}</span>
+                    <span className="text-xs text-muted-foreground">{line.time || line.timestamp}</span>
                   </div>
                   <p className="text-sm text-foreground/90">{line.text}</p>
                 </div>
@@ -175,7 +278,9 @@ export default function CallDetail() {
         {/* Empty state when no summary */}
         {!summaryData && !summary.isLoading && (
           <div className="glass rounded-xl p-10 text-center">
-            <p className="text-muted-foreground text-sm">No AI summary available for this call yet.</p>
+            <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm">AI summary is being generated...</p>
+            <p className="text-xs text-muted-foreground mt-1">This usually takes a few seconds after the call ends.</p>
           </div>
         )}
       </div>

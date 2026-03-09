@@ -82,27 +82,55 @@ Deno.serve(async (req) => {
       confidence: o.confidence_score,
     }));
 
+    // Compute talk ratio from transcripts
+    const repWords = (transcripts || [])
+      .filter((t: any) => t.speaker === "Rep")
+      .reduce((sum: number, t: any) => sum + (t.text?.split(/\s+/).length || 0), 0);
+    const prospectWords = (transcripts || [])
+      .filter((t: any) => t.speaker !== "Rep")
+      .reduce((sum: number, t: any) => sum + (t.text?.split(/\s+/).length || 0), 0);
+    const totalWords = repWords + prospectWords;
+    const talkRatio = totalWords > 0
+      ? { rep: Math.round((repWords / totalWords) * 100), prospect: Math.round((prospectWords / totalWords) * 100) }
+      : { rep: 0, prospect: 0 };
+
     // Generate AI summary
     let summary = "";
     let nextSteps: string[] = [];
     let keyDecisions: string[] = [];
+    let meetingScore: number | null = null;
+    let buyingSignals: string[] = [];
+    let actionItems: string[] = [];
 
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (geminiKey && transcriptText.length > 0) {
       try {
-        const prompt = `Analyze this sales call transcript and provide:
-1. A concise summary (2-3 sentences)
-2. Key decisions made (bullet points)
-3. Next steps / action items (bullet points)
+        const meetingType = call?.meeting_type || "sales call";
+        const prompt = `Analyze this ${meetingType} sales call transcript and provide a comprehensive analysis:
+
+1. A concise summary (2-3 sentences capturing the key outcome)
+2. Meeting score (0-10, based on: rapport building, discovery depth, objection handling, next step clarity)
+3. Key decisions made (bullet points)
+4. Action items for the sales rep (specific, actionable tasks)
+5. Buying signals detected (phrases or behaviors indicating purchase intent)
+6. Next steps agreed upon
 
 Transcript:
 ${transcriptText.slice(0, 8000)}
 
+Talk ratio: Rep ${talkRatio.rep}%, Prospect ${talkRatio.prospect}%
 Objections detected: ${JSON.stringify(objectionList)}
 Topics discussed: ${topicList.join(", ")}
 
 Respond in JSON format:
-{"summary": "...", "key_decisions": ["..."], "next_steps": ["..."]}`;
+{
+  "summary": "...",
+  "meeting_score": 7.5,
+  "key_decisions": ["..."],
+  "action_items": ["Send pricing document", "Schedule follow-up demo"],
+  "buying_signals": ["Prospect asked about implementation timeline", "..."],
+  "next_steps": ["..."]
+}`;
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
@@ -111,7 +139,7 @@ Respond in JSON format:
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+              generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
             }),
           }
         );
@@ -124,6 +152,9 @@ Respond in JSON format:
           summary = parsed.summary || "";
           keyDecisions = parsed.key_decisions || [];
           nextSteps = parsed.next_steps || [];
+          meetingScore = typeof parsed.meeting_score === "number" ? parsed.meeting_score : null;
+          buyingSignals = parsed.buying_signals || [];
+          actionItems = parsed.action_items || [];
         }
       } catch (e) {
         console.error("AI summary generation failed:", e);
@@ -134,7 +165,7 @@ Respond in JSON format:
       nextSteps = ["Review call recording", "Follow up with prospect"];
     }
 
-    // Upsert call summary
+    // Upsert call summary with enriched data
     const { error: upsertError } = await supabase
       .from("call_summaries")
       .upsert(
@@ -151,6 +182,10 @@ Respond in JSON format:
             text: t.text,
             timestamp: t.timestamp,
           })),
+          meeting_score: meetingScore,
+          talk_ratio: talkRatio,
+          buying_signals: buyingSignals,
+          action_items: actionItems,
         },
         { onConflict: "call_id" }
       );
@@ -192,7 +227,7 @@ Respond in JSON format:
     }
 
     return new Response(
-      JSON.stringify({ success: true, summary, nextSteps, keyDecisions }),
+      JSON.stringify({ success: true, summary, meetingScore, nextSteps, keyDecisions, buyingSignals, actionItems, talkRatio }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
