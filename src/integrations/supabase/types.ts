@@ -16,37 +16,49 @@ export type Database = {
     Tables: {
       call_summaries: {
         Row: {
+          action_items: string[] | null
+          buying_signals: string[] | null
           call_id: string
           created_at: string
           id: string
           key_decisions: string[] | null
+          meeting_score: number | null
           next_steps: string[] | null
           objections: Json | null
           summary: string | null
+          talk_ratio: Json | null
           topics: string[] | null
           transcript: Json | null
           user_id: string
         }
         Insert: {
+          action_items?: string[] | null
+          buying_signals?: string[] | null
           call_id: string
           created_at?: string
           id?: string
           key_decisions?: string[] | null
+          meeting_score?: number | null
           next_steps?: string[] | null
           objections?: Json | null
           summary?: string | null
+          talk_ratio?: Json | null
           topics?: string[] | null
           transcript?: Json | null
           user_id: string
         }
         Update: {
+          action_items?: string[] | null
+          buying_signals?: string[] | null
           call_id?: string
           created_at?: string
           id?: string
           key_decisions?: string[] | null
+          meeting_score?: number | null
           next_steps?: string[] | null
           objections?: Json | null
           summary?: string | null
+          talk_ratio?: Json | null
           topics?: string[] | null
           transcript?: Json | null
           user_id?: string
@@ -71,6 +83,7 @@ export type Database = {
           id: string
           meeting_id: string | null
           meeting_provider: string | null
+          meeting_type: string | null
           meeting_url: string | null
           name: string
           objections_count: number | null
@@ -90,6 +103,7 @@ export type Database = {
           id?: string
           meeting_id?: string | null
           meeting_provider?: string | null
+          meeting_type?: string | null
           meeting_url?: string | null
           name: string
           objections_count?: number | null
@@ -109,6 +123,7 @@ export type Database = {
           id?: string
           meeting_id?: string | null
           meeting_provider?: string | null
+          meeting_type?: string | null
           meeting_url?: string | null
           name?: string
           objections_count?: number | null
