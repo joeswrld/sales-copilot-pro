@@ -16,7 +16,14 @@ export default function LiveMeeting() {
   const intervalRef = useRef<number>();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  const { isCapturing, error: captureError, startCapture, stopCapture } = useAudioCapture({
+  const {
+    isCapturing,
+    error: captureError,
+    startCapture,
+    stopCapture,
+    captureSource,
+    capabilities,
+  } = useAudioCapture({
     callId: callId || null,
     onChunkProcessed: (result) => {
       if (result?.analysis) {
@@ -24,6 +31,9 @@ export default function LiveMeeting() {
       }
     },
   });
+
+  const canStartCapture = capabilities.webmRecorder && (capabilities.tabAudio || capabilities.micAudio);
+  const captureButtonLabel = capabilities.tabAudio ? "Share Tab Audio" : capabilities.micAudio ? "Share Mic Audio" : "Audio Unsupported";
 
   // Timer
   useEffect(() => {
@@ -86,9 +96,9 @@ export default function LiveMeeting() {
           </div>
           <div className="flex items-center gap-2">
             {!isCapturing && (
-              <Button onClick={startCapture} variant="outline" className="gap-2">
+              <Button onClick={startCapture} variant="outline" className="gap-2" disabled={!canStartCapture}>
                 <MonitorUp className="w-4 h-4" />
-                Share Tab Audio
+                {captureButtonLabel}
               </Button>
             )}
             <Button
@@ -121,12 +131,10 @@ export default function LiveMeeting() {
           {isCapturing && (
             <div className="flex items-center gap-1.5 text-primary">
               <Mic className="w-3 h-3" />
-              <span className="text-xs">Audio capturing</span>
+              <span className="text-xs">Audio capturing{captureSource ? ` (${captureSource === "tab" ? "Tab" : "Mic"})` : ""}</span>
             </div>
           )}
-          {captureError && (
-            <span className="text-xs text-destructive">{captureError}</span>
-          )}
+          {captureError && <span className="text-xs text-destructive">{captureError}</span>}
         </div>
 
         {/* Audio capture prompt */}
@@ -136,8 +144,11 @@ export default function LiveMeeting() {
             <div>
               <p className="text-sm font-medium">Enable audio capture for live transcription</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Click "Share Tab Audio" above and select the browser tab with your meeting. 
-                Fixsense will transcribe and analyze the call in real time.
+                {capabilities.tabAudio
+                  ? "Click \"Share Tab Audio\" above and select the browser tab with your meeting. Fixsense will transcribe and analyze the call in real time."
+                  : capabilities.micAudio
+                    ? "This device doesn’t support tab-audio sharing. Click \"Share Mic Audio\" to transcribe what your microphone hears."
+                    : "Audio capture isn’t supported on this device/browser. Please use desktop Chrome/Edge."}
               </p>
             </div>
           </div>
@@ -161,20 +172,36 @@ export default function LiveMeeting() {
                   ) : (
                     <>
                       <Mic className="w-10 h-10 mb-3 opacity-30" />
-                      <p className="text-sm">Share tab audio to begin transcription</p>
+                      <p className="text-sm">
+                        {capabilities.tabAudio
+                          ? "Share tab audio to begin transcription"
+                          : capabilities.micAudio
+                            ? "Share microphone audio to begin transcription"
+                            : "Audio capture is not supported on this device"}
+                      </p>
                     </>
                   )}
                 </div>
               ) : (
                 <>
                   {transcripts.map((line) => (
-                    <div key={line.id} className={cn("animate-slide-up", line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : "")}>
+                    <div
+                      key={line.id}
+                      className={cn(
+                        "animate-slide-up",
+                        line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : "",
+                      )}
+                    >
                       <div className="flex items-center gap-2 mb-1">
                         <span className={cn("text-xs font-medium", line.speaker === "Rep" ? "text-primary" : "text-accent")}>
                           {line.speaker}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          {new Date(line.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
                         </span>
                       </div>
                       <p className="text-sm text-foreground/90">{line.text}</p>
@@ -193,9 +220,7 @@ export default function LiveMeeting() {
               <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
                 <TrendingUp className="w-3 h-3" /> Engagement Score
               </h3>
-              <div className="text-3xl font-bold font-display text-primary">
-                {engagementScore}%
-              </div>
+              <div className="text-3xl font-bold font-display text-primary">{engagementScore}%</div>
               <div className="h-1.5 rounded-full bg-muted mt-2">
                 <div
                   className="h-1.5 rounded-full bg-primary transition-all duration-1000"
@@ -220,7 +245,7 @@ export default function LiveMeeting() {
                         "rounded-lg p-3 text-xs",
                         (obj.confidence_score || 0) > 0.7
                           ? "bg-destructive/10 border border-destructive/20"
-                          : "bg-accent/10 border border-accent/20"
+                          : "bg-accent/10 border border-accent/20",
                       )}
                     >
                       <p className="font-medium mb-1">{obj.objection_type}</p>
@@ -257,3 +282,4 @@ export default function LiveMeeting() {
     </DashboardLayout>
   );
 }
+
