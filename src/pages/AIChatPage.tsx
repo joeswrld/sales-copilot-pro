@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-import SubscriptionGate from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Send, Bot, User, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -125,8 +124,7 @@ export default function AIChatPage() {
 
   return (
     <DashboardLayout>
-      <SubscriptionGate message="AI Sales Coach requires an active Fixsense subscription.">
-        <div className="flex flex-col h-[calc(100vh-7rem)]">
+      <div className="flex flex-col h-[calc(100vh-7rem)]">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold font-display">AI Sales Coach</h1>
@@ -216,8 +214,7 @@ export default function AIChatPage() {
             <Send className="w-4 h-4" />
           </Button>
         </form>
-        </div>
-      </SubscriptionGate>
+      </div>
     </DashboardLayout>
   );
 }

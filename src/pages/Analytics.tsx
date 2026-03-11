@@ -1,5 +1,4 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import SubscriptionGate from "@/components/SubscriptionGate";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import { useCalls } from "@/hooks/useCalls";
 import { Loader2 } from "lucide-react";
@@ -68,8 +67,7 @@ export default function Analytics() {
 
   return (
     <DashboardLayout>
-      <SubscriptionGate message="Advanced analytics requires an active Fixsense subscription.">
-        <div className="space-y-6">
+      <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold font-display">Analytics</h1>
           <p className="text-sm text-muted-foreground">Track performance metrics and identify trends</p>
@@ -77,7 +75,7 @@ export default function Analytics() {
 
         {noData ? (
           <div className="glass rounded-xl p-10 text-center">
-            <p className="text-muted-foreground text-sm">No data yet. Add some calls to see your analytics.</p>
+            <p className="text-muted-foreground text-sm">No data yet. Complete some calls to see your analytics.</p>
           </div>
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
@@ -133,8 +131,7 @@ export default function Analytics() {
             </div>
           </div>
         )}
-        </div>
-      </SubscriptionGate>
+      </div>
     </DashboardLayout>
   );
 }
