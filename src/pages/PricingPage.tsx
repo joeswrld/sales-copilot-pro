@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Tooltip,
   TooltipContent,
@@ -10,13 +11,15 @@ import {
 } from "@/components/ui/tooltip";
 import {
   Zap, Check, ArrowRight, Shield, CreditCard, X, Info,
-  Mic, BarChart3, Users, Bot, Headphones, Slack,
+  Users, Video, Infinity,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useTeamUsage } from "@/hooks/useTeamUsage";
+import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { PLANS, formatNGN, USD_TO_NGN } from "@/config/plans";
+import { format } from "date-fns";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -55,30 +58,43 @@ function ComparisonCell({ value }: { value: boolean | string }) {
   );
 }
 
+function MeetingLimitBadge({ limit }: { limit: number }) {
+  if (limit === -1) {
+    return (
+      <div className="flex items-center gap-1.5 text-primary font-semibold text-sm">
+        <Infinity className="w-4 h-4" />
+        Unlimited meetings/month
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 text-foreground font-semibold text-sm">
+      <Video className="w-4 h-4 text-primary" />
+      {limit} meetings/month
+    </div>
+  );
+}
+
 export default function PricingPage() {
   const { user } = useAuth();
   const { subscribe } = useSubscription();
   const { profile } = useUserProfile();
   const { teamUsage } = useTeamUsage();
+  const { usage } = useMeetingUsage();
   const navigate = useNavigate();
 
   const currentPlan = profile?.plan_type || "free";
 
   const handleSelectPlan = (plan: typeof PLANS[0]) => {
     if (plan.key === "free") {
-      if (user) {
-        navigate("/dashboard");
-      } else {
-        navigate("/login");
-      }
+      if (user) navigate("/dashboard");
+      else navigate("/login");
       return;
     }
-
     if (!user) {
       navigate("/login");
       return;
     }
-
     subscribe.mutate(plan.key);
   };
 
@@ -105,12 +121,8 @@ export default function PricingPage() {
                 </Link>
               ) : (
                 <>
-                  <Link to="/login">
-                    <Button variant="ghost" size="sm">Log in</Button>
-                  </Link>
-                  <Link to="/login">
-                    <Button size="sm">Get Started</Button>
-                  </Link>
+                  <Link to="/login"><Button variant="ghost" size="sm">Log in</Button></Link>
+                  <Link to="/login"><Button size="sm">Get Started</Button></Link>
                 </>
               )}
             </div>
@@ -141,8 +153,6 @@ export default function PricingPage() {
               Connect your meetings, analyze insights, and automate follow-ups.
               Start free — upgrade as you grow.
             </motion.p>
-            
-            {/* Currency notice */}
             <motion.div
               initial="hidden" animate="visible" variants={fadeUp} custom={3}
               className="inline-flex items-center gap-2 text-sm text-muted-foreground"
@@ -181,21 +191,15 @@ export default function PricingPage() {
                       </div>
                     )}
 
-                    <div className="mb-5">
-                      <h3 className="font-display font-bold text-lg mb-1 text-foreground">
-                        {plan.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {plan.description}
-                      </p>
+                    <div className="mb-4">
+                      <h3 className="font-display font-bold text-lg mb-1 text-foreground">{plan.name}</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
                     </div>
 
-                    {/* Price display */}
+                    {/* Price */}
                     <div className="mb-4">
                       <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold font-display text-foreground">
-                          ${plan.price_usd}
-                        </span>
+                        <span className="text-4xl font-bold font-display text-foreground">${plan.price_usd}</span>
                         <span className="text-sm text-muted-foreground">{plan.period}</span>
                       </div>
                       {plan.price_ngn > 0 && (
@@ -213,22 +217,37 @@ export default function PricingPage() {
                         </Tooltip>
                       )}
                       {plan.price_usd === 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          ₦0 — Free forever
+                        <p className="text-xs text-muted-foreground mt-1">₦0 — Free forever</p>
+                      )}
+                    </div>
+
+                    {/* Meeting Limit — prominently highlighted */}
+                    <div className={`mb-4 p-3 rounded-xl border ${
+                      plan.calls_limit === -1
+                        ? "bg-primary/10 border-primary/20"
+                        : "bg-primary/5 border-primary/10"
+                    }`}>
+                      <MeetingLimitBadge limit={plan.calls_limit} />
+                      {plan.calls_limit !== -1 && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Resets monthly · AI analysis on every call
+                        </p>
+                      )}
+                      {plan.calls_limit === -1 && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          No limits · Full AI on every call
                         </p>
                       )}
                     </div>
 
-                    {/* Team members highlight */}
-                    <div className="mb-4 p-2.5 rounded-lg bg-primary/5 border border-primary/10">
-                      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                        <Users className="w-4 h-4 text-primary" />
-                        {plan.team_members_limit === -1
-                          ? "Unlimited team members"
-                          : plan.team_members_limit === 1
-                          ? "1 user only"
-                          : `Up to ${plan.team_members_limit} team members`}
-                      </div>
+                    {/* Team members */}
+                    <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Users className="w-4 h-4 text-primary shrink-0" />
+                      {plan.team_members_limit === -1
+                        ? "Unlimited team members"
+                        : plan.team_members_limit === 1
+                        ? "1 user only"
+                        : `Up to ${plan.team_members_limit} team members`}
                     </div>
 
                     <ul className="space-y-2.5 mb-8 flex-1">
@@ -272,7 +291,7 @@ export default function PricingPage() {
         </section>
 
         {/* Usage indicator for logged-in users */}
-        {user && profile && (
+        {user && usage && (
           <section className="pb-8 px-4">
             <div className="container max-w-md">
               <motion.div
@@ -280,34 +299,53 @@ export default function PricingPage() {
                 variants={fadeUp} custom={0}
                 className="glass rounded-xl p-5 space-y-4"
               >
-                <p className="text-sm text-muted-foreground text-center mb-1">
-                  Your usage this month
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">Your usage this month</p>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium capitalize">
+                    {usage.planName} Plan
+                  </span>
+                </div>
 
                 {/* Meetings usage */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm text-muted-foreground">Meetings</span>
-                    <span className="text-sm font-semibold text-foreground">
-                      {profile.calls_used} / {profile.calls_limit}
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <Video className="w-3.5 h-3.5" /> Meetings
+                    </span>
+                    <span className={`text-sm font-semibold ${
+                      usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-accent" : "text-foreground"
+                    }`}>
+                      {usage.isUnlimited ? `${usage.used} used` : `${usage.used} / ${usage.limit}`}
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-primary transition-all"
-                      style={{
-                        width: `${Math.min(
-                          (profile.calls_used / profile.calls_limit) * 100,
-                          100
-                        )}%`,
-                      }}
+                  {!usage.isUnlimited && (
+                    <Progress
+                      value={usage.pct}
+                      className={`h-2 ${usage.isAtLimit ? "[&>div]:bg-destructive" : usage.isNearLimit ? "[&>div]:bg-accent" : ""}`}
                     />
-                  </div>
-                  {profile.calls_used >= profile.calls_limit && (
-                    <p className="text-xs text-destructive font-medium mt-1.5">
-                      You've reached your meeting limit. Upgrade to continue.
-                    </p>
                   )}
+                  {usage.isUnlimited && (
+                    <div className="flex items-center gap-1.5 text-primary text-xs font-medium mt-1">
+                      <Infinity className="w-3.5 h-3.5" /> Unlimited meetings on your plan
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-1.5">
+                    {!usage.isUnlimited && (
+                      <span className="text-xs text-muted-foreground">
+                        Resets {format(usage.resetDate, "MMM d, yyyy")}
+                      </span>
+                    )}
+                    {usage.isAtLimit && (
+                      <span className="text-xs text-destructive font-medium ml-auto">
+                        Limit reached — upgrade to continue
+                      </span>
+                    )}
+                    {usage.isNearLimit && !usage.isAtLimit && (
+                      <span className="text-xs text-accent font-medium ml-auto">
+                        {usage.remaining} meetings remaining
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Team members usage */}
@@ -321,23 +359,23 @@ export default function PricingPage() {
                         {teamUsage.membersUsed} / {teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div
-                        className={`h-2 rounded-full transition-all ${teamUsage.isAtLimit ? "bg-destructive" : teamUsage.isNearLimit ? "bg-accent" : "bg-primary"}`}
-                        style={{ width: `${teamUsage.isUnlimited ? 0 : teamUsage.membersPct}%` }}
-                      />
-                    </div>
+                    <Progress
+                      value={teamUsage.isUnlimited ? 0 : teamUsage.membersPct}
+                      className={`h-2 ${teamUsage.isAtLimit ? "[&>div]:bg-destructive" : teamUsage.isNearLimit ? "[&>div]:bg-accent" : ""}`}
+                    />
                     {teamUsage.isAtLimit && (
                       <p className="text-xs text-destructive font-medium mt-1.5">
-                        Team member limit reached. Upgrade to add more.
-                      </p>
-                    )}
-                    {teamUsage.isNearLimit && (
-                      <p className="text-xs text-accent font-medium mt-1.5">
-                        Using {teamUsage.membersUsed} of {teamUsage.membersLimit} seats. Consider upgrading.
+                        Team limit reached. Upgrade to add more members.
                       </p>
                     )}
                   </div>
+                )}
+
+                {(usage.isAtLimit || usage.isNearLimit) && (
+                  <Button size="sm" className="w-full" onClick={() => navigate("/dashboard/billing")}>
+                    <Zap className="w-3.5 h-3.5 mr-1.5" />
+                    Upgrade Plan
+                  </Button>
                 )}
               </motion.div>
             </div>
@@ -352,12 +390,8 @@ export default function PricingPage() {
               variants={fadeUp} custom={0}
               className="text-center mb-10"
             >
-              <h2 className="text-2xl md:text-3xl font-bold font-display mb-2 text-foreground">
-                Compare plans
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                See exactly what you get with each plan.
-              </p>
+              <h2 className="text-2xl md:text-3xl font-bold font-display mb-2 text-foreground">Compare plans</h2>
+              <p className="text-muted-foreground text-sm">See exactly what you get with each plan.</p>
             </motion.div>
 
             <motion.div
@@ -369,47 +403,26 @@ export default function PricingPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left text-sm font-medium text-muted-foreground p-4 min-w-[180px]">
-                        Feature
-                      </th>
+                      <th className="text-left text-sm font-medium text-muted-foreground p-4 min-w-[180px]">Feature</th>
                       {PLANS.map((plan) => (
                         <th
                           key={plan.key}
-                          className={`text-center text-sm font-semibold p-4 min-w-[100px] ${
-                            plan.popular ? "text-primary" : "text-foreground"
-                          }`}
+                          className={`text-center text-sm font-semibold p-4 min-w-[100px] ${plan.popular ? "text-primary" : "text-foreground"}`}
                         >
                           <div>{plan.name}</div>
-                          <div className="text-xs font-normal text-muted-foreground">
-                            ${plan.price_usd}/mo
-                          </div>
+                          <div className="text-xs font-normal text-muted-foreground">${plan.price_usd}/mo</div>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {comparisonFeatures.map((row, i) => (
-                      <tr
-                        key={row.label}
-                        className={`border-b border-border/50 ${
-                          i % 2 === 0 ? "" : "bg-muted/20"
-                        }`}
-                      >
-                        <td className="text-sm text-muted-foreground p-4">
-                          {row.label}
-                        </td>
-                        <td className="text-center p-4">
-                          <ComparisonCell value={row.free} />
-                        </td>
-                        <td className="text-center p-4">
-                          <ComparisonCell value={row.starter} />
-                        </td>
-                        <td className="text-center p-4">
-                          <ComparisonCell value={row.growth} />
-                        </td>
-                        <td className="text-center p-4">
-                          <ComparisonCell value={row.scale} />
-                        </td>
+                      <tr key={row.label} className={`border-b border-border/50 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                        <td className="text-sm text-muted-foreground p-4">{row.label}</td>
+                        <td className="text-center p-4"><ComparisonCell value={row.free} /></td>
+                        <td className="text-center p-4"><ComparisonCell value={row.starter} /></td>
+                        <td className="text-center p-4"><ComparisonCell value={row.growth} /></td>
+                        <td className="text-center p-4"><ComparisonCell value={row.scale} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -423,98 +436,48 @@ export default function PricingPage() {
         <section className="py-16 px-4 border-t border-border">
           <div className="container max-w-4xl">
             <div className="grid sm:grid-cols-3 gap-8 text-center">
-              <motion.div
-                initial="hidden" whileInView="visible" viewport={{ once: true }}
-                variants={fadeUp} custom={0}
-                className="flex flex-col items-center gap-3"
-              >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <X className="w-5 h-5 text-primary" />
-                </div>
-                <h3 className="font-display font-semibold text-foreground">Cancel anytime</h3>
-                <p className="text-sm text-muted-foreground">
-                  No long-term contracts. Cancel your subscription at any time with one click.
-                </p>
-              </motion.div>
-              <motion.div
-                initial="hidden" whileInView="visible" viewport={{ once: true }}
-                variants={fadeUp} custom={1}
-                className="flex flex-col items-center gap-3"
-              >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-primary" />
-                </div>
-                <h3 className="font-display font-semibold text-foreground">Secure payments</h3>
-                <p className="text-sm text-muted-foreground">
-                  Powered by Paystack. Your payment information is always secure and encrypted.
-                </p>
-              </motion.div>
-              <motion.div
-                initial="hidden" whileInView="visible" viewport={{ once: true }}
-                variants={fadeUp} custom={2}
-                className="flex flex-col items-center gap-3"
-              >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-primary" />
-                </div>
-                <h3 className="font-display font-semibold text-foreground">Trusted worldwide</h3>
-                <p className="text-sm text-muted-foreground">
-                  Join thousands of sales teams using Fixsense to close more deals.
-                </p>
-              </motion.div>
+              {[
+                { icon: X, title: "Cancel anytime", desc: "No long-term contracts. Cancel with one click." },
+                { icon: Shield, title: "Secure payments", desc: "Powered by Paystack. Always encrypted." },
+                { icon: Users, title: "Trusted worldwide", desc: "Join thousands of sales teams using Fixsense." },
+              ].map((item, i) => (
+                <motion.div
+                  key={item.title}
+                  initial="hidden" whileInView="visible" viewport={{ once: true }}
+                  variants={fadeUp} custom={i}
+                  className="flex flex-col items-center gap-3"
+                >
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <item.icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="font-display font-semibold text-foreground">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground">{item.desc}</p>
+                </motion.div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* FAQ Section */}
+        {/* FAQ */}
         <section className="py-16 px-4 border-t border-border">
           <div className="container max-w-3xl">
-            <motion.div
-              initial="hidden" whileInView="visible" viewport={{ once: true }}
-              variants={fadeUp} custom={0}
-              className="text-center mb-10"
-            >
-              <h2 className="text-2xl md:text-3xl font-bold font-display mb-2 text-foreground">
-                Frequently asked questions
-              </h2>
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-10">
+              <h2 className="text-2xl md:text-3xl font-bold font-display mb-2 text-foreground">Frequently asked questions</h2>
             </motion.div>
-
-            <motion.div
-              initial="hidden" whileInView="visible" viewport={{ once: true }}
-              variants={fadeUp} custom={1}
-              className="space-y-6"
-            >
-              <div className="glass rounded-xl p-6">
-                <h3 className="font-semibold text-foreground mb-2">Why am I billed in NGN?</h3>
-                <p className="text-sm text-muted-foreground">
-                  We use Paystack for payment processing, which charges in Nigerian Naira (NGN). 
-                  Prices are displayed in USD for reference, and converted at a fixed rate of 1 USD = ₦1,500.
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <h3 className="font-semibold text-foreground mb-2">Can I change plans later?</h3>
-                <p className="text-sm text-muted-foreground">
-                  Yes! You can upgrade or downgrade your plan at any time. Changes take effect on your next billing cycle.
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <h3 className="font-semibold text-foreground mb-2">What happens if I exceed my team member limit?</h3>
-                <p className="text-sm text-muted-foreground">
-                  You'll be prompted to upgrade to a higher plan before you can invite more members. Your existing team remains unaffected.
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <h3 className="font-semibold text-foreground mb-2">What happens if I exceed my meeting limit?</h3>
-                <p className="text-sm text-muted-foreground">
-                  You'll be prompted to upgrade to a higher plan. Your existing meetings and data remain accessible.
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <h3 className="font-semibold text-foreground mb-2">Is there a refund policy?</h3>
-                <p className="text-sm text-muted-foreground">
-                  We offer a 7-day money-back guarantee on all paid plans. Contact support for assistance.
-                </p>
-              </div>
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={1} className="space-y-6">
+              {[
+                { q: "Why am I billed in NGN?", a: "We use Paystack for payment processing, which charges in Nigerian Naira (NGN). Prices are displayed in USD for reference, and converted at a fixed rate of 1 USD = ₦1,500." },
+                { q: "When do my monthly meetings reset?", a: "Your meeting count resets at the start of each billing cycle, which is based on your subscription renewal date. You can see your exact reset date on the billing page and in the sidebar." },
+                { q: "What counts as a meeting?", a: "Any call that is started and completed through Fixsense counts as one meeting. Live calls that have not ended yet are not counted until they complete." },
+                { q: "Can I change plans later?", a: "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately with prorated billing." },
+                { q: "What happens if I exceed my meeting limit?", a: "You'll be prompted to upgrade to a higher plan before you can start new meetings. Your existing meetings and data remain fully accessible." },
+                { q: "Is there a refund policy?", a: "We offer a 7-day money-back guarantee on all paid plans. Contact support for assistance." },
+              ].map((faq) => (
+                <div key={faq.q} className="glass rounded-xl p-6">
+                  <h3 className="font-semibold text-foreground mb-2">{faq.q}</h3>
+                  <p className="text-sm text-muted-foreground">{faq.a}</p>
+                </div>
+              ))}
             </motion.div>
           </div>
         </section>
@@ -522,25 +485,15 @@ export default function PricingPage() {
         {/* Footer CTA */}
         <section className="py-20 px-4">
           <div className="container max-w-3xl text-center">
-            <motion.div
-              initial="hidden" whileInView="visible" viewport={{ once: true }}
-              variants={fadeUp} custom={0}
-              className="glass rounded-2xl p-10"
-            >
-              <h2 className="text-2xl md:text-3xl font-bold font-display mb-4 text-foreground">
-                Ready to close more deals?
-              </h2>
-              <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                Start with 5 free meetings per month. No credit card required.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Link to={user ? "/dashboard" : "/login"}>
-                  <Button size="lg" className="w-full sm:w-auto shadow-glow">
-                    Get Started Free
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="glass rounded-2xl p-10">
+              <h2 className="text-2xl md:text-3xl font-bold font-display mb-4 text-foreground">Ready to close more deals?</h2>
+              <p className="text-muted-foreground mb-8 max-w-lg mx-auto">Start with 5 free meetings per month. No credit card required.</p>
+              <Link to={user ? "/dashboard" : "/login"}>
+                <Button size="lg" className="shadow-glow">
+                  Get Started Free
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
             </motion.div>
           </div>
         </section>
