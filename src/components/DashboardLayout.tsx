@@ -43,7 +43,7 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
             <span
               className={cn(
                 "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                isActive ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                isActive ? "bg-primary/20 text-primary" : "bg-primary text-primary-foreground"
               )}
             >
               {item.badge}
@@ -65,6 +65,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { usage } = useMeetingUsage();
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+
+  // Total unread for Messages nav item = conversation unread + notification unread
+  const messagesUnread = totalUnread + unreadCount;
 
   // Build sidebar meeting usage sub-label for Live Calls
   const meetingSubLabel = usage ? (
@@ -97,13 +100,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       label: "Messages",
       icon: MessageSquare,
       href: "/dashboard/messages",
-      badge: totalUnread > 0 ? totalUnread : null,
-    },
-    {
-      label: "Notifications",
-      icon: Bell,
-      href: "/dashboard/notifications",
-      badge: unreadCount > 0 ? unreadCount : null,
+      badge: messagesUnread > 0 ? messagesUnread : null,
     },
   ];
 
