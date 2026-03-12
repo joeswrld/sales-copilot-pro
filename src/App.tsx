@@ -49,7 +49,7 @@ const App = () => (
             <Route path="/dashboard/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/dashboard/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
-            <Route path="/dashboard/ai-coach" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
+            <Route path="/dashboard/coach" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
