@@ -5,23 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BarChart3, Users, MessageSquare, Plus, GraduationCap, Bell, Inbox } from "lucide-react";
+import { BarChart3, Users, Plus, GraduationCap } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
-import { useNotifications } from "@/hooks/useNotifications";
-import { useTeamMessaging } from "@/hooks/useTeamMessaging";
 import { useMessageNotifications } from "@/hooks/useMessageNotifications";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
-import TeamNotificationsTab from "@/components/team/TeamNotificationsTab";
-import TeamInboxTab from "@/components/team/TeamInboxTab";
 
 export default function TeamPage() {
   const { user } = useAuth();
   const { team, teamLoading, role, members, membersLoading, pendingInvitations, adminPlanKey, createTeam, inviteMember, cancelInvitation, updateRole, removeMember } = useTeam();
-  const { unreadCount } = useNotifications();
-  const { totalUnread: inboxUnread } = useTeamMessaging(team?.id);
   useMessageNotifications(team?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -108,20 +102,6 @@ export default function TeamPage() {
               <GraduationCap className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Coaching</span>
             </TabsTrigger>
-            <TabsTrigger value="inbox" className="gap-1.5 text-xs sm:text-sm">
-              <Inbox className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Inbox</span>
-              {inboxUnread > 0 && (
-                <Badge className="text-[10px] h-4 px-1 ml-1 bg-primary text-primary-foreground">{inboxUnread}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-1.5 text-xs sm:text-sm">
-              <Bell className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Alerts</span>
-              {unreadCount > 0 && (
-                <Badge className="text-[10px] h-4 px-1 ml-1 bg-primary text-primary-foreground">{unreadCount}</Badge>
-              )}
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -145,14 +125,6 @@ export default function TeamPage() {
 
           <TabsContent value="coaching">
             <TeamCoachingTab />
-          </TabsContent>
-
-          <TabsContent value="inbox">
-            <TeamInboxTab teamId={team.id} members={members} />
-          </TabsContent>
-
-          <TabsContent value="notifications">
-            <TeamNotificationsTab />
           </TabsContent>
         </Tabs>
       </div>
