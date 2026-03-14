@@ -5,13 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BarChart3, Users, Plus, GraduationCap } from "lucide-react";
+import { BarChart3, Users, Plus, GraduationCap, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useMessageNotifications } from "@/hooks/useMessageNotifications";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
+import TeamSettingsTab from "@/components/team/TeamSettingsTab";
 import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
 
 export default function TeamPage() {
@@ -24,6 +25,8 @@ export default function TeamPage() {
   useMessageNotifications(team?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
+
+  const isAdmin = role === "admin";
 
   if (teamLoading) {
     return (
@@ -112,6 +115,12 @@ export default function TeamPage() {
               <GraduationCap className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Coaching</span>
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="settings" className="gap-1.5 text-xs sm:text-sm">
+                <Settings className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Settings</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="overview">
@@ -136,8 +145,20 @@ export default function TeamPage() {
           <TabsContent value="coaching">
             <TeamCoachingTab />
           </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="settings">
+              <TeamSettingsTab
+                teamId={team.id}
+                teamName={team.name}
+                createdAt={team.created_at}
+                membersCount={members.length}
+                currentRole={role}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </DashboardLayout>
   );
-}
+  }
