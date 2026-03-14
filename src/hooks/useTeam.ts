@@ -233,13 +233,22 @@ export function useTeam() {
       // Check for duplicate pending invitation
       const { data: existingInvite } = await supabase
         .from("team_invitations")
-        .select("id")
+        .select("id, status")
         .eq("team_id", teamId)
-        .eq("email", normalizedEmail)
-        .eq("status", "pending")
+        .ilike("email", normalizedEmail)
         .maybeSingle();
 
-      if (existingInvite) throw new Error("A pending invitation already exists for this email.");
+      if (existingInvite?.status === "pending") {
+        throw new Error("A pending invitation already exists for this email.");
+      }
+
+      // Clean up any stale accepted/declined rows so the unique index doesn't block re-invites
+      if (existingInvite) {
+        await supabase
+          .from("team_invitations")
+          .delete()
+          .eq("id", existingInvite.id);
+      }
 
       // Create the invitation (DB trigger fires notification to existing users automatically)
       const { error: inviteError } = await supabase
