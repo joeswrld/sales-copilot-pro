@@ -3,14 +3,16 @@ import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription, PlanChangePreview } from "@/hooks/useSubscription";
 import { useMeetingUsage } from "@/hooks/useMeetingUsage";
+import { useEffectivePlan } from "@/hooks/useEffectivePlan";
+import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2,
-  Info, RefreshCw, ExternalLink, ArrowUp, ArrowDown, Receipt,
-  BarChart3, TrendingUp, Users, Calendar, Video,
+  Info, RefreshCw, ArrowUp, ArrowDown, Receipt,
+  BarChart3, TrendingUp, Users, Calendar, Video, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -27,11 +29,11 @@ import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit } from "@/conf
 import { cn } from "@/lib/utils";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
-  active: { label: "Active", variant: "default", icon: CheckCircle2 },
-  cancelled: { label: "Cancelled", variant: "secondary", icon: XCircle },
-  past_due: { label: "Past Due", variant: "destructive", icon: AlertCircle },
-  pending: { label: "Pending", variant: "outline", icon: Loader2 },
-  inactive: { label: "Inactive", variant: "secondary", icon: XCircle },
+  active:    { label: "Active",    variant: "default",     icon: CheckCircle2 },
+  cancelled: { label: "Cancelled", variant: "secondary",   icon: XCircle },
+  past_due:  { label: "Past Due",  variant: "destructive", icon: AlertCircle },
+  pending:   { label: "Pending",   variant: "outline",     icon: Loader2 },
+  inactive:  { label: "Inactive",  variant: "secondary",   icon: XCircle },
 };
 
 export default function BillingPage() {
@@ -41,7 +43,8 @@ export default function BillingPage() {
     previewPlanChange, verifyPayment, isActive, refetch, currentPlanKey,
     transactions, isTransactionsLoading, isSyncingPending,
   } = useSubscription();
-  const { usage: meetingUsage, isLoading: usageLoading } = useMeetingUsage();
+  const { usage: meetingUsage } = useMeetingUsage();
+  const { effectivePlan } = useEffectivePlan();
 
   const teamMembersQuery = useQuery({
     queryKey: ["team-member-count", user?.id],
@@ -92,14 +95,6 @@ export default function BillingPage() {
     toast.info("Payment status checked");
   };
 
-  const getPlanKey = () => {
-    const planName = subscription?.plan_name?.toLowerCase() || "";
-    if (planName.includes("scale")) return "scale";
-    if (planName.includes("growth")) return "growth";
-    if (planName.includes("starter")) return "starter";
-    return "starter";
-  };
-
   const handleOpenChangePlan = async (planKey: string) => {
     setSelectedPlan(planKey);
     setChangeDialogOpen(true);
@@ -123,7 +118,10 @@ export default function BillingPage() {
   const priceUSD = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
   const availablePlans = getAvailablePlans();
-  const teamMembersLimit = getTeamMembersLimit(teamMembersQuery.data?.adminPlanKey ?? currentPlanKey);
+
+  // Use effective plan key (team-inherited or personal) for limit calculations
+  const resolvedPlanKey = effectivePlan?.planKey ?? currentPlanKey;
+  const teamMembersLimit = getTeamMembersLimit(teamMembersQuery.data?.adminPlanKey ?? resolvedPlanKey);
   const teamMembersUsed = teamMembersQuery.data?.count ?? 1;
   const isTeamUnlimited = teamMembersLimit === -1;
   const teamPct = isTeamUnlimited ? 0 : Math.min((teamMembersUsed / teamMembersLimit) * 100, 100);
@@ -136,6 +134,9 @@ export default function BillingPage() {
             <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
             <p className="text-muted-foreground mt-1">Manage your Fixsense subscription and payment details.</p>
           </div>
+
+          {/* Plan inheritance notice — only visible to team members whose plan is inherited */}
+          <PlanInheritanceBanner />
 
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
@@ -202,7 +203,15 @@ export default function BillingPage() {
                     <BarChart3 className="w-5 h-5 text-primary" />
                     Usage Analytics
                   </CardTitle>
-                  <CardDescription>Your current usage vs plan limits this billing cycle.</CardDescription>
+                  <CardDescription>
+                    Your current usage vs plan limits this billing cycle.
+                    {effectivePlan?.isInherited && (
+                      <span className="ml-1 inline-flex items-center gap-1 text-primary">
+                        <Sparkles className="w-3 h-3" />
+                        Limits reflect your workspace's {effectivePlan.planName} plan.
+                      </span>
+                    )}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Meetings Usage */}
@@ -212,6 +221,11 @@ export default function BillingPage() {
                         <span className="text-sm font-medium text-foreground flex items-center gap-2">
                           <Video className="w-4 h-4 text-primary" />
                           Meetings This Month
+                          {meetingUsage.isInherited && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5 text-primary border-primary/30">
+                              <Sparkles className="w-2.5 h-2.5" /> workspace plan
+                            </Badge>
+                          )}
                         </span>
                         <span className="text-sm font-semibold text-foreground">
                           {meetingUsage.used} / {meetingUsage.isUnlimited ? "∞" : meetingUsage.limit}
@@ -349,6 +363,11 @@ export default function BillingPage() {
                     </CardTitle>
                     <CardDescription>
                       Upgrade or downgrade with prorated billing.
+                      {effectivePlan?.isInherited && (
+                        <span className="block mt-1 text-primary text-xs">
+                          Upgrading your plan will also expand limits for all workspace members.
+                        </span>
+                      )}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -442,7 +461,8 @@ export default function BillingPage() {
                       {planPreview.is_downgrade && (
                         <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                           <p className="text-sm text-destructive">
-                            <strong>Note:</strong> Downgrading will reduce your limits including meeting count.
+                            <strong>Note:</strong> Downgrading will reduce your limits including meeting count
+                            {effectivePlan?.isInherited ? " for all workspace members" : ""}.
                           </p>
                         </div>
                       )}
