@@ -1,114 +1,140 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTeam } from "@/hooks/useTeam";
 
 /**
- * Plan configuration used across the platform.
- * Mirrors the server-side PLANS record in Supabase functions.
+ * Plan configuration — single source of truth.
+ * Mirrors the SQL function get_user_active_plan_details.
  */
 export const PLAN_CONFIG: Record<
   string,
   { name: string; calls_limit: number; team_members_limit: number; price_usd: number }
 > = {
-  free:    { name: "Free",    calls_limit: 5,      team_members_limit: 1,  price_usd: 0  },
-  starter: { name: "Starter", calls_limit: 50,     team_members_limit: 3,  price_usd: 19 },
-  growth:  { name: "Growth",  calls_limit: 300,    team_members_limit: 10, price_usd: 49 },
-  scale:   { name: "Scale",   calls_limit: -1,     team_members_limit: -1, price_usd: 99 },
+  free:    { name: "Free",    calls_limit: 5,   team_members_limit: 1,  price_usd: 0  },
+  starter: { name: "Starter", calls_limit: 50,  team_members_limit: 3,  price_usd: 19 },
+  growth:  { name: "Growth",  calls_limit: 300, team_members_limit: 10, price_usd: 49 },
+  scale:   { name: "Scale",   calls_limit: -1,  team_members_limit: -1, price_usd: 99 },
 };
 
 export interface EffectivePlan {
-  /** The resolved plan key (may come from the team admin's plan) */
+  /** Resolved plan key — may come from the team admin's subscription */
   planKey: string;
   /** Human-readable plan name */
   planName: string;
-  /** Meeting limit (-1 = unlimited) */
+  /** Meeting limit per month (-1 = unlimited) */
   callsLimit: number;
-  /** Team members limit (-1 = unlimited) */
+  /** Team member seat limit (-1 = unlimited) */
   teamMembersLimit: number;
-  /** True when plan is inherited from a team admin rather than the user's own subscription */
+  /** True when the plan is inherited from a workspace admin */
   isInherited: boolean;
-  /** The team admin's profile id when isInherited is true */
+  /** The workspace admin's user id when isInherited is true */
   adminUserId: string | null;
-  /** The user's own plan key (before inheritance) */
+  /** The user's own plan key before inheritance */
   personalPlanKey: string;
+  /** Workspace id the user belongs to (if any) */
+  workspaceId: string | null;
 }
 
 /**
- * Resolves the *effective* plan for the authenticated user.
+ * Resolves the effective plan for the authenticated user.
  *
- * Priority:
- *  1. If the user belongs to an active team → use the team admin's plan_type.
- *  2. Otherwise → use the user's own profile.plan_type.
+ * Strategy:
+ *  1. Call the Postgres RPC `get_user_active_plan_details(user_id)` which:
+ *       - checks if the user is an active workspace member
+ *       - if yes → returns the workspace owner's plan_type
+ *       - if no  → returns the user's own profile.plan_type
+ *  2. No writes happen — plan is derived dynamically every time.
+ *  3. Instant update: when a user joins/leaves a team, the next
+ *     query automatically returns the correct plan.
  *
- * This is the single source of truth for feature gating across the app.
+ * This replaces the old multi-step client-side approach that
+ * required separate fetches for team members and admin profiles.
  */
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
   const { user } = useAuth();
-  const { team, members } = useTeam();
 
   const query = useQuery({
-    queryKey: ["effective-plan", user?.id, team?.id],
+    queryKey: ["effective-plan", user?.id],
     queryFn: async (): Promise<EffectivePlan> => {
       if (!user) throw new Error("Not authenticated");
 
-      // 1. Fetch the user's own profile plan
-      const { data: profile, error: profileErr } = await supabase
-        .from("profiles")
-        .select("plan_type, calls_limit")
-        .eq("id", user.id)
-        .single();
+      // Single RPC call — the DB function resolves workspace vs personal plan
+      const { data, error } = await supabase.rpc(
+        "get_user_active_plan_details",
+        { p_user_id: user.id }
+      );
 
-      if (profileErr) throw profileErr;
+      if (error) {
+        console.error("get_user_active_plan_details error:", error);
+        // Graceful fallback — fetch personal plan directly
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("plan_type")
+          .eq("id", user.id)
+          .single();
 
-      const personalPlanKey = profile?.plan_type ?? "free";
-
-      // 2. If user is in a team, find the admin and get their plan
-      if (team?.id && members.length > 0) {
-        const adminMember = members.find(
-          (m) => m.role === "admin" && m.status === "active"
-        );
-
-        if (adminMember && adminMember.user_id !== user.id) {
-          // Fetch the admin's profile plan
-          const { data: adminProfile } = await supabase
-            .from("profiles")
-            .select("id, plan_type, calls_limit")
-            .eq("id", adminMember.user_id)
-            .single();
-
-          if (adminProfile) {
-            const inheritedPlanKey = adminProfile.plan_type ?? "free";
-            const config = PLAN_CONFIG[inheritedPlanKey] ?? PLAN_CONFIG.free;
-
-            return {
-              planKey: inheritedPlanKey,
-              planName: config.name,
-              callsLimit: config.calls_limit,
-              teamMembersLimit: config.team_members_limit,
-              isInherited: true,
-              adminUserId: adminProfile.id,
-              personalPlanKey,
-            };
-          }
-        }
+        const personalKey = profile?.plan_type ?? "free";
+        const config = PLAN_CONFIG[personalKey] ?? PLAN_CONFIG.free;
+        return {
+          planKey: personalKey,
+          planName: config.name,
+          callsLimit: config.calls_limit,
+          teamMembersLimit: config.team_members_limit,
+          isInherited: false,
+          adminUserId: null,
+          personalPlanKey: personalKey,
+          workspaceId: null,
+        };
       }
 
-      // 3. Fallback: user's own plan
-      const config = PLAN_CONFIG[personalPlanKey] ?? PLAN_CONFIG.free;
+      // The RPC returns a single row (LIMIT 1 in the SQL)
+      const row = Array.isArray(data) ? data[0] : data;
+
+      if (!row) {
+        // No profile at all — shouldn't happen but guard anyway
+        return {
+          planKey: "free",
+          planName: "Free",
+          callsLimit: 5,
+          teamMembersLimit: 1,
+          isInherited: false,
+          adminUserId: null,
+          personalPlanKey: "free",
+          workspaceId: null,
+        };
+      }
+
+      const planKey   = row.plan_key ?? "free";
+      const config    = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.free;
+
+      // Fetch personal plan if inherited (needed for display comparisons)
+      let personalPlanKey = planKey;
+      if (row.is_inherited) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("plan_type")
+          .eq("id", user.id)
+          .single();
+        personalPlanKey = profile?.plan_type ?? "free";
+      }
 
       return {
-        planKey: personalPlanKey,
+        planKey,
         planName: config.name,
-        callsLimit: config.calls_limit,
-        teamMembersLimit: config.team_members_limit,
-        isInherited: false,
-        adminUserId: null,
+        // Use DB-computed limits (handles edge cases like -1 for unlimited)
+        callsLimit: row.calls_limit ?? config.calls_limit,
+        teamMembersLimit: row.team_members_limit ?? config.team_members_limit,
+        isInherited: row.is_inherited ?? false,
+        adminUserId: row.owner_user_id ?? null,
         personalPlanKey,
+        workspaceId: row.workspace_id ?? null,
       };
     },
     enabled: !!user,
-    staleTime: 60_000,
+    // Plan rarely changes — 2 minute stale time is safe.
+    // When a user joins/leaves a team, invalidate this query explicitly.
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
   return { effectivePlan: query.data ?? null, isLoading: query.isLoading };
@@ -121,8 +147,6 @@ export function isPlanFeatureAvailable(
   planKey: string,
   feature: "ai_coach" | "team_analytics" | "live_calls" | "coaching"
 ): boolean {
-  // Free plan has no advanced features
   if (planKey === "free") return false;
-  // All paid plans unlock every feature
   return true;
 }
