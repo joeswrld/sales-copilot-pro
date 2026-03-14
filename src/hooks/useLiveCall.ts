@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffectivePlan, PLAN_CONFIG } from "@/hooks/useEffectivePlan";
+import { useEffectivePlan } from "@/hooks/useEffectivePlan";
+import { getMeetingLimit } from "@/hooks/useMeetingUsage";
 import { toast } from "sonner";
 
 export interface Transcript {
@@ -118,7 +119,9 @@ export function useLiveCall() {
     return () => { supabase.removeChannel(channel); };
   }, [callId, user, queryClient]);
 
-  // Start a call – enforces effective plan limits (team-inherited or personal)
+  // ── Start a call ────────────────────────────────────────────────────────────
+  // Enforces the *effective* plan limit (workspace-inherited or personal).
+  // No need to re-fetch the admin profile — effectivePlan already resolved it.
   const startCall = useMutation({
     mutationFn: async (input: {
       platform: string;
@@ -127,77 +130,81 @@ export function useLiveCall() {
       meeting_type?: string;
       participants?: string[];
     }) => {
-      // Determine limit from effective plan (team-inherited takes priority)
-      let callsLimit: number;
+      const callsLimit = effectivePlan?.callsLimit ?? 5;
+      const workspaceId = effectivePlan?.workspaceId ?? null;
 
-      if (effectivePlan) {
-        callsLimit = effectivePlan.callsLimit;
-      } else {
-        // Fallback: read directly from profile
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("calls_used, calls_limit")
-          .eq("id", user!.id)
-          .single();
-        callsLimit = profile?.calls_limit ?? 5;
-      }
-
-      // Count calls used this billing cycle
+      // Billing cycle start (first of current month)
       const cycleStart = new Date();
       cycleStart.setDate(1);
       cycleStart.setHours(0, 0, 0, 0);
 
-      const { count } = await supabase
-        .from("calls")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user!.id)
-        .neq("status", "live")
-        .gte("created_at", cycleStart.toISOString());
+      let usedCount = 0;
 
-      const used = count ?? 0;
+      if (workspaceId) {
+        // Count across the whole workspace
+        const { data: usageRow } = await supabase
+          .from("workspace_meeting_usage")
+          .select("meetings_used")
+          .eq("workspace_id", workspaceId)
+          .maybeSingle();
+        usedCount = usageRow?.meetings_used ?? 0;
+      } else {
+        // Personal count
+        const { count } = await supabase
+          .from("calls")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user!.id)
+          .neq("status", "live")
+          .gte("created_at", cycleStart.toISOString());
+        usedCount = count ?? 0;
+      }
 
-      if (callsLimit !== -1 && used >= callsLimit) {
+      if (callsLimit !== -1 && usedCount >= callsLimit) {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
       const { data, error } = await supabase
         .from("calls")
         .insert({
-          user_id: user!.id,
-          name: input.name || `${input.platform} Call`,
-          status: "live",
-          platform: input.platform,
-          meeting_id: input.meeting_id || crypto.randomUUID(),
+          user_id:      user!.id,
+          name:         input.name || `${input.platform} Call`,
+          status:       "live",
+          platform:     input.platform,
+          meeting_id:   input.meeting_id || crypto.randomUUID(),
           meeting_type: input.meeting_type || null,
           participants: input.participants || [],
-          start_time: new Date().toISOString(),
-          date: new Date().toISOString(),
+          start_time:   new Date().toISOString(),
+          date:         new Date().toISOString(),
         } as any)
         .select()
         .single();
+
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
+      queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
     },
   });
 
-  // End a call and generate summary
+  // ── End a call ──────────────────────────────────────────────────────────────
   const endCall = useMutation({
     mutationFn: async () => {
       if (!callId) throw new Error("No live call");
+
       const { error } = await supabase
         .from("calls")
         .update({
-          status: "completed",
+          status:   "completed",
           end_time: new Date().toISOString(),
         })
         .eq("id", callId);
+
       if (error) throw error;
 
-      // Generate post-call summary
+      // Generate post-call summary (fire-and-forget)
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData?.session?.access_token;
@@ -214,7 +221,7 @@ export function useLiveCall() {
         console.error("Summary generation error:", e);
       }
 
-      // Send Slack notification (fire-and-forget)
+      // Slack notification (fire-and-forget)
       try {
         await supabase.functions.invoke("slack-notify", {
           body: { call_id: callId, user_id: user!.id },
@@ -233,12 +240,12 @@ export function useLiveCall() {
   });
 
   return {
-    liveCall: liveCallQuery.data,
-    isLive: !!liveCallQuery.data,
-    isLoading: liveCallQuery.isLoading,
+    liveCall:    liveCallQuery.data,
+    isLive:      !!liveCallQuery.data,
+    isLoading:   liveCallQuery.isLoading,
     transcripts: transcriptsQuery.data || [],
-    objections: objectionsQuery.data || [],
-    topics: topicsQuery.data || [],
+    objections:  objectionsQuery.data  || [],
+    topics:      topicsQuery.data      || [],
     startCall,
     endCall,
     callId,
