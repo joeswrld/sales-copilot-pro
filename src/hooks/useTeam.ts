@@ -25,6 +25,16 @@ export interface Team {
   created_at: string;
 }
 
+export interface PendingInvitation {
+  id: string;
+  team_id: string;
+  email: string;
+  role: string;
+  created_at: string;
+  /** true when the email belongs to an existing Fixsense account */
+  isExistingUser?: boolean;
+}
+
 export function useTeam() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -122,7 +132,6 @@ export function useTeam() {
       queryClient.invalidateQueries({ queryKey: ["team"] });
       queryClient.invalidateQueries({ queryKey: ["team-role"] });
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      // Workspace is auto-created by DB trigger — bust plan caches now
       invalidatePlanCaches();
       toast({ title: "Team created successfully" });
     },
@@ -141,24 +150,73 @@ export function useTeam() {
         .eq("team_id", teamQuery.data!.id)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
-      return data ?? [];
+
+      if (!data?.length) return [] as PendingInvitation[];
+
+      // Enrich with whether the email belongs to an existing user
+      const emails = data.map(i => i.email.toLowerCase());
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("email")
+        .in("email", emails);
+
+      const existingEmails = new Set(profiles?.map(p => p.email?.toLowerCase()) ?? []);
+
+      return data.map(inv => ({
+        ...inv,
+        isExistingUser: existingEmails.has(inv.email.toLowerCase()),
+      })) as PendingInvitation[];
     },
     enabled: !!teamQuery.data?.id,
   });
 
+  // ── My pending invitations (invitations sent TO the current user) ───────────
+  const myPendingInvitationsQuery = useQuery({
+    queryKey: ["my-team-invitations", user?.id],
+    queryFn: async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", user!.id)
+        .single();
+
+      if (!profile?.email) return [];
+
+      const { data: invitations } = await supabase
+        .from("team_invitations")
+        .select("*, teams(name)")
+        .eq("status", "pending");
+
+      // Filter to those matching this user's email (RLS already filters server-side)
+      return (invitations ?? []).filter(
+        inv => inv.email?.toLowerCase() === profile.email?.toLowerCase()
+      ) as Array<{
+        id: string;
+        team_id: string;
+        email: string;
+        role: string;
+        created_at: string;
+        teams: { name: string } | null;
+      }>;
+    },
+    enabled: !!user,
+  });
+
   // ── Invite member ───────────────────────────────────────────────────────────
+  // Always creates a pending invitation (even for existing users).
+  // Existing users see a notification and can accept/decline from the UI.
+  // New users receive an email invite and are auto-added when they sign up.
   const inviteMember = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       const teamId = teamQuery.data!.id;
       const normalizedEmail = email.trim().toLowerCase();
 
-      const { data: profile, error: profileError } = await supabase
+      // Prevent double-adding an already active member
+      const { data: profile } = await supabase
         .from("profiles")
         .select("id")
         .ilike("email", normalizedEmail)
         .maybeSingle();
-
-      if (profileError) throw profileError;
 
       if (profile) {
         const { data: existingMember } = await supabase
@@ -166,33 +224,13 @@ export function useTeam() {
           .select("id")
           .eq("team_id", teamId)
           .eq("user_id", profile.id)
+          .eq("status", "active")
           .maybeSingle();
 
-        if (existingMember) throw new Error("This user is already a team member.");
-
-        const { error: memberInsertError } = await supabase
-          .from("team_members")
-          .insert({
-            team_id:       teamId,
-            user_id:       profile.id,
-            role,
-            status:        "active",
-            invited_email: normalizedEmail,
-          });
-
-        if (memberInsertError) throw memberInsertError;
-
-        await supabase
-          .from("team_invitations")
-          .delete()
-          .eq("team_id", teamId)
-          .eq("email", normalizedEmail)
-          .eq("status", "pending");
-
-        return { mode: "added" as const };
+        if (existingMember) throw new Error("This user is already an active team member.");
       }
 
-      // User doesn't exist yet — create pending invitation
+      // Check for duplicate pending invitation
       const { data: existingInvite } = await supabase
         .from("team_invitations")
         .select("id")
@@ -203,36 +241,42 @@ export function useTeam() {
 
       if (existingInvite) throw new Error("A pending invitation already exists for this email.");
 
+      // Create the invitation (DB trigger fires notification to existing users automatically)
       const { error: inviteError } = await supabase
         .from("team_invitations")
-        .insert({ team_id: teamId, email: normalizedEmail, role, invited_by: user!.id });
+        .insert({
+          team_id:    teamId,
+          email:      normalizedEmail,
+          role,
+          invited_by: user!.id,
+        });
 
       if (inviteError) throw inviteError;
 
-      const inviterName = user?.user_metadata?.full_name || user?.email || "A team admin";
-      supabase.functions.invoke("send-invite-email", {
-        body: {
-          email:       normalizedEmail,
-          teamName:    teamQuery.data!.name,
-          inviterName,
-          role,
-          signupUrl:   `${window.location.origin}/login`,
-        },
-      }).catch(err => console.warn("Invite email failed:", err));
+      // For non-existing users: also send an email invite via edge function
+      if (!profile) {
+        const inviterName = user?.user_metadata?.full_name || user?.email || "A team admin";
+        supabase.functions.invoke("send-invite-email", {
+          body: {
+            email:       normalizedEmail,
+            teamName:    teamQuery.data!.name,
+            inviterName,
+            role,
+            signupUrl:   `${window.location.origin}/login`,
+          },
+        }).catch(err => console.warn("Invite email failed:", err));
+      }
 
-      return { mode: "pending" as const };
+      return { isExistingUser: !!profile };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
       queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
-      // New member inherits admin plan — bust plan caches so they see it instantly
-      invalidatePlanCaches();
       toast({
-        title: result.mode === "added" ? "Member added" : "Invitation sent",
-        description:
-          result.mode === "pending"
-            ? "They'll be added automatically after they sign up with this email."
-            : undefined,
+        title: result.isExistingUser ? "Invitation sent" : "Invitation sent",
+        description: result.isExistingUser
+          ? "They'll see a notification and can accept from their Team page."
+          : "They'll be added automatically after they sign up with this email.",
       });
     },
     onError: (err: any) => {
@@ -258,6 +302,44 @@ export function useTeam() {
     },
   });
 
+  // ── Accept invitation (current user accepts an invite sent to them) ─────────
+  const acceptInvitation = useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error } = await (supabase as any).rpc("accept_team_invitation", {
+        p_team_id: teamId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team"] });
+      queryClient.invalidateQueries({ queryKey: ["team-role"] });
+      queryClient.invalidateQueries({ queryKey: ["team-members"] });
+      queryClient.invalidateQueries({ queryKey: ["my-team-invitations"] });
+      invalidatePlanCaches();
+      toast({ title: "You've joined the team!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to accept invitation", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // ── Decline invitation ──────────────────────────────────────────────────────
+  const declineInvitation = useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error } = await (supabase as any).rpc("decline_team_invitation", {
+        p_team_id: teamId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-team-invitations"] });
+      toast({ title: "Invitation declined" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to decline invitation", description: err.message, variant: "destructive" });
+    },
+  });
+
   // ── Update role ─────────────────────────────────────────────────────────────
   const updateRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
@@ -269,7 +351,6 @@ export function useTeam() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      // Role change may change who is the workspace owner
       invalidatePlanCaches();
       toast({ title: "Role updated" });
     },
@@ -279,9 +360,6 @@ export function useTeam() {
   });
 
   // ── Remove member ───────────────────────────────────────────────────────────
-  // When a user is removed they immediately revert to their personal plan
-  // because the next call to get_user_active_plan_details will find no
-  // workspace membership and return their own profile.plan_type.
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
       const { error } = await supabase
@@ -292,7 +370,6 @@ export function useTeam() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      // Removed member reverts to personal plan — bust caches for everyone
       invalidatePlanCaches();
       toast({ title: "Member removed" });
     },
@@ -326,21 +403,23 @@ export function useTeam() {
       return profile?.plan_type || "free";
     },
     enabled: !!teamQuery.data?.id,
-    // Stale quickly — needs to reflect subscription changes
     staleTime: 30_000,
   });
 
   return {
-    team:               teamQuery.data,
-    teamLoading:        teamQuery.isLoading,
-    role:               roleQuery.data ?? "member",
-    members:            membersQuery.data ?? [],
-    membersLoading:     membersQuery.isLoading,
-    pendingInvitations: invitationsQuery.data ?? [],
-    adminPlanKey:       adminPlanQuery.data ?? "free",
+    team:                    teamQuery.data,
+    teamLoading:             teamQuery.isLoading,
+    role:                    roleQuery.data ?? "member",
+    members:                 membersQuery.data ?? [],
+    membersLoading:          membersQuery.isLoading,
+    pendingInvitations:      invitationsQuery.data ?? [],
+    myPendingInvitations:    myPendingInvitationsQuery.data ?? [],
+    adminPlanKey:            adminPlanQuery.data ?? "free",
     createTeam,
     inviteMember,
     cancelInvitation,
+    acceptInvitation,
+    declineInvitation,
     updateRole,
     removeMember,
   };
