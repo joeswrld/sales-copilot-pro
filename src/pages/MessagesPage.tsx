@@ -5,12 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search, Send, MessageSquare, Bell, Plus, Users, FileText,
   Image as ImageIcon, Paperclip, X, Check, CheckCheck, TrendingUp,
-  AtSign, AlertCircle, Sparkles, Filter, ArrowLeft
+  AtSign, AlertCircle, Smile, Trash2, ArrowLeft
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -24,6 +23,19 @@ import { cn } from "@/lib/utils";
 import type { Conversation, ReadReceipt } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface MessageReaction {
+  emoji: string;
+  count: number;
+  reacted: boolean; // did the current user react with this emoji?
+}
+
+// ─── Emoji picker options ─────────────────────────────────────────────────────
+
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "✅", "👏"];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -68,6 +80,124 @@ const notifTypeColors: Record<string, string> = {
   mention: "bg-amber-500/10 text-amber-400",
   system: "bg-muted text-muted-foreground",
 };
+
+// ─── Reactions hook ───────────────────────────────────────────────────────────
+
+function useMessageReactions(conversationId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const reactionsQuery = useQuery({
+    queryKey: ["message-reactions", conversationId],
+    queryFn: async () => {
+      // Fetch all reactions for messages in this conversation
+      const { data: msgs } = await supabase
+        .from("team_messages")
+        .select("id")
+        .eq("conversation_id", conversationId!);
+      if (!msgs?.length) return {} as Record<string, MessageReaction[]>;
+
+      const msgIds = msgs.map(m => m.id);
+      const { data: reactions } = await supabase
+        .from("message_reactions")
+        .select("id, message_id, user_id, emoji")
+        .in("message_id", msgIds);
+
+      // Group by message_id and emoji
+      const grouped: Record<string, MessageReaction[]> = {};
+      reactions?.forEach(r => {
+        if (!grouped[r.message_id]) grouped[r.message_id] = [];
+        const existing = grouped[r.message_id].find(x => x.emoji === r.emoji);
+        if (existing) {
+          existing.count++;
+          if (r.user_id === user?.id) existing.reacted = true;
+        } else {
+          grouped[r.message_id].push({ emoji: r.emoji, count: 1, reacted: r.user_id === user?.id });
+        }
+      });
+      return grouped;
+    },
+    enabled: !!conversationId && !!user,
+  });
+
+  // Realtime subscription for reactions
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`reactions-${conversationId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["message-reactions", conversationId] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversationId, queryClient]);
+
+  const toggleReaction = useMutation({
+    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
+      if (!user) return;
+      const reactions = reactionsQuery.data?.[messageId] ?? [];
+      const existing = reactions.find(r => r.emoji === emoji && r.reacted);
+
+      if (existing) {
+        // Remove reaction
+        await supabase
+          .from("message_reactions")
+          .delete()
+          .eq("message_id", messageId)
+          .eq("user_id", user.id)
+          .eq("emoji", emoji);
+      } else {
+        // Add reaction
+        await supabase
+          .from("message_reactions")
+          .insert({ message_id: messageId, user_id: user.id, emoji });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["message-reactions", conversationId] });
+    },
+  });
+
+  return { reactions: reactionsQuery.data ?? {}, toggleReaction };
+}
+
+// ─── Delete message hook ──────────────────────────────────────────────────────
+
+function useDeleteMessage(conversationId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (messageId: string) => {
+      const { error } = await supabase
+        .from("team_messages")
+        .delete()
+        .eq("id", messageId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
+    },
+  });
+}
+
+// ─── Emoji Picker Popup ───────────────────────────────────────────────────────
+
+function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
+  return (
+    <div className="absolute z-50 bottom-full mb-1.5 left-0 bg-card border border-border rounded-xl shadow-lg p-2 flex gap-1">
+      {QUICK_EMOJIS.map(emoji => (
+        <button
+          key={emoji}
+          onClick={() => { onSelect(emoji); onClose(); }}
+          className="w-8 h-8 flex items-center justify-center text-base rounded-lg hover:bg-secondary/60 transition-colors"
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ─── New Conversation Dialog ─────────────────────────────────────────────────
 
@@ -121,6 +251,233 @@ function NewConversationDialog({
             <p className="text-sm text-muted-foreground text-center py-6">No other team members.</p>
           ) : others.map(m => {
             const name = m.profile?.full_name || m.invited_email || "Unknown";
+            const checked = selectedIds.includes(m.user_id);
+            return (
+              <div key={m.id} onClick={() => toggle(m.user_id)}
+                className={cn("flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors",
+                  checked ? "bg-secondary/50" : "hover:bg-secondary/30")}>
+                <Checkbox checked={checked} className="pointer-events-none" />
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+                    {getInitials(m.profile?.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-medium">{name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{m.role}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => { setSelectedIds([]); onClose(); }}>Cancel</Button>
+          <Button size="sm" onClick={handleStart} disabled={!selectedIds.length || startConversation.isPending}>
+            {selectedIds.length > 1 ? "Create Group" : "Start Chat"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Chat Thread Panel ────────────────────────────────────────────────────────
+
+function ChatThread({
+  conversationId, conversations, onBack,
+}: {
+  conversationId: string; conversations: Conversation[]; onBack?: () => void;
+}) {
+  const { user } = useAuth();
+  const { messages, messagesLoading, sendMessage, readReceipts } = useConversationMessages(conversationId);
+  const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
+  const { reactions, toggleReaction } = useMessageReactions(conversationId);
+  const deleteMessage = useDeleteMessage(conversationId);
+
+  const [input, setInput] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const myName = user?.user_metadata?.full_name || user?.email || "You";
+
+  const convo = conversations.find(c => c.id === conversationId);
+  const chatName = convo ? getConversationName(convo) : "Chat";
+  const isGroup = convo?.is_group ?? false;
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!emojiPickerMsgId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-emoji-picker]") && !target.closest("[data-emoji-trigger]")) {
+        setEmojiPickerMsgId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [emojiPickerMsgId]);
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    if (val.trim()) {
+      sendTyping(myName);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => sendStopTyping(), 2000);
+    } else {
+      sendStopTyping();
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    const ext = file.name.split(".").pop() ?? "bin";
+    const path = `${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from("team-attachments").upload(path, file, { contentType: file.type });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from("team-attachments").getPublicUrl(path);
+    return { url: urlData.publicUrl, name: file.name, type: file.type };
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() && !pendingFile) return;
+    setUploading(true);
+    try {
+      let fileData: { url: string; name: string; type: string } | undefined;
+      if (pendingFile) fileData = await uploadFile(pendingFile);
+      sendMessage.mutate({
+        text: input.trim() || (pendingFile?.name ?? "Attachment"),
+        file_url: fileData?.url,
+        file_name: fileData?.name,
+        file_type: fileData?.type,
+      });
+      setInput("");
+      setPendingFile(null);
+      sendStopTyping();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (messageId: string) => {
+    try {
+      await deleteMessage.mutateAsync(messageId);
+    } catch {
+      toast({ title: "Failed to delete message", variant: "destructive" });
+    }
+  };
+
+  // Group messages by date
+  const grouped = useMemo(() => {
+    const groups: { label: string; msgs: typeof messages }[] = [];
+    let last = "";
+    messages.forEach(m => {
+      const d = new Date(m.created_at);
+      const label = isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMMM d, yyyy");
+      if (label !== last) { groups.push({ label, msgs: [] }); last = label; }
+      groups[groups.length - 1].msgs.push(m);
+    });
+    return groups;
+  }, [messages]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border bg-card/80 shrink-0">
+        {onBack && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+        )}
+        <Avatar className="h-9 w-9 shrink-0">
+          <AvatarFallback className={cn("text-xs font-bold",
+            isGroup ? "bg-accent/20 text-accent-foreground" : "bg-primary/20 text-primary")}>
+            {isGroup ? <Users className="w-4 h-4" /> : (convo ? getConversationInitials(convo) : "?")}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="font-semibold text-sm truncate">{chatName}</p>
+          {isGroup && (
+            <p className="text-[11px] text-muted-foreground">{(convo?.participants.length ?? 0) + 1} members</p>
+          )}
+        </div>
+        {typingUsers.length > 0 && (
+          <p className="ml-auto text-xs text-muted-foreground italic animate-pulse">
+            {typingUsers.map(u => u.name.split(" ")[0]).join(", ")} typing…
+          </p>
+        )}
+      </div>
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 px-5 py-4">
+        {messagesLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
+              <MessageSquare className="w-5 h-5 text-primary" />
+            </div>
+            <p className="text-sm font-medium">No messages yet</p>
+            <p className="text-xs text-muted-foreground mt-1">Send the first message to start the conversation.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {grouped.map(group => (
+              <div key={group.label}>
+                <div className="flex items-center gap-3 my-3">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-2">{group.label}</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <div className="space-y-1">
+                  {group.msgs.map((msg, idx) => {
+                    const isMe = msg.sender_id === user?.id;
+                    const status = getReadStatus(msg.created_at, msg.sender_id, user?.id ?? "", readReceipts);
+                    const nextMsg = group.msgs[idx + 1];
+                    const showReceipt = isMe && (!nextMsg || nextMsg.sender_id !== user?.id);
+                    const prevMsg = group.msgs[idx - 1];
+                    const sameSenderAsPrev = prevMsg?.sender_id === msg.sender_id;
+                    const msgReactions = reactions[msg.id] ?? [];
+                    const isHovered = hoveredMsgId === msg.id;
+                    const showEmojiPicker = emojiPickerMsgId === msg.id;
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cn("flex gap-2.5 group/msg", isMe ? "justify-end" : "justify-start", sameSenderAsPrev ? "mt-0.5" : "mt-3")}
+                        onMouseEnter={() => setHoveredMsgId(msg.id)}
+                        onMouseLeave={() => { setHoveredMsgId(null); }}
+                      >
+                        {!isMe && !sameSenderAsPrev && (
+                          <Avatar className="h-7 w-7 shrink-0 mt-0.5">
+                            <AvatarFallback className="bg-secondary text-foreground text-[10px] font-bold">
+                              {getInitials(msg.sender?.full_name || msg.sender?.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        {!isMe && sameSenderAsPrev && <div className="w-7 shrink-0" />}
+
+                        <div className={cn("max-w-[72%] flex flex-col gap-0.5", isMe ? "items-end" : "items-start")}>
+                          {!isMe && !sameSenderAsPrev && (
+                            <p className="text-[10px] font-medium text-muted-foreground ml-1">
+                              {msg.sender?.full_name || msg.sender?.email || "Unknown"}
+                            </p>
+                          )}
+
+                          {/* Message bubble + action buttons */}
+                          <div className={cn("flex items-end gap-1.5", isMe ? "flex-row-reverse" : "flex-row")}>
+                            {/* Action buttons (visible on hover) */}
+                            <div className={cn(
+                              "flex items-center gap-0.5 shrink-0 transition-opaci            const name = m.profile?.full_name || m.invited_email || "Unknown";
             const checked = selectedIds.includes(m.user_id);
             return (
               <div key={m.id} onClick={() => toggle(m.user_id)}
