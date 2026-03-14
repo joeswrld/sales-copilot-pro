@@ -2,14 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const PLAN_MEETING_LIMITS: Record<string, number> = {
-  free: 5,
+  free:    5,
   starter: 50,
-  growth: 300,
-  scale: -1, // unlimited
+  growth:  300,
+  scale:   -1, // unlimited
 };
 
 export interface MeetingUsage {
@@ -25,6 +26,8 @@ export interface MeetingUsage {
   billingCycleStart: Date;
   billingCycleEnd: Date;
   resetDate: Date;
+  /** True when the plan limit is inherited from a team admin */
+  isInherited: boolean;
 }
 
 export function getMeetingLimit(planKey: string): number {
@@ -33,7 +36,8 @@ export function getMeetingLimit(planKey: string): number {
 
 export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: boolean } {
   const { user } = useAuth();
-  const { currentPlanKey, subscription } = useSubscription();
+  const { subscription } = useSubscription();
+  const { effectivePlan, isLoading: planLoading } = useEffectivePlan();
   const queryClient = useQueryClient();
 
   // Real-time subscription to invalidate usage when calls change
@@ -49,7 +53,7 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
   }, [user, queryClient]);
 
   const query = useQuery({
-    queryKey: ["meeting-usage", user?.id, currentPlanKey],
+    queryKey: ["meeting-usage", user?.id, effectivePlan?.planKey],
     queryFn: async (): Promise<MeetingUsage> => {
       // Determine billing cycle start
       let billingCycleStart = new Date();
@@ -70,7 +74,7 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
         }
       }
 
-      // Billing cycle end = start + 30 days
+      // Billing cycle end = start + ~1 month
       const billingCycleEnd = new Date(billingCycleStart);
       billingCycleEnd.setMonth(billingCycleEnd.getMonth() + 1);
 
@@ -85,17 +89,19 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
       if (error) throw error;
 
       const used = count ?? 0;
-      const planKey = currentPlanKey || "free";
+
+      // Use effective plan (team-inherited or personal)
+      const planKey = effectivePlan?.planKey ?? "free";
       const limit = getMeetingLimit(planKey);
       const isUnlimited = limit === -1;
       const remaining = isUnlimited ? Infinity : Math.max(0, limit - used);
       const pct = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
 
       const planNames: Record<string, string> = {
-        free: "Free",
+        free:    "Free",
         starter: "Starter",
-        growth: "Growth",
-        scale: "Scale",
+        growth:  "Growth",
+        scale:   "Scale",
       };
 
       return {
@@ -111,12 +117,13 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
         billingCycleStart,
         billingCycleEnd,
         resetDate: billingCycleEnd,
+        isInherited: effectivePlan?.isInherited ?? false,
       };
     },
-    enabled: !!user,
+    enabled: !!user && !planLoading,
     staleTime: 30000,
-    refetchInterval: 60000, // refresh every minute
+    refetchInterval: 60000,
   });
 
-  return { usage: query.data ?? null, isLoading: query.isLoading };
+  return { usage: query.data ?? null, isLoading: query.isLoading || planLoading };
 }

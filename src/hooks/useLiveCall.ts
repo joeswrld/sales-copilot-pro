@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffectivePlan, PLAN_CONFIG } from "@/hooks/useEffectivePlan";
 import { toast } from "sonner";
 
 export interface Transcript {
@@ -30,6 +31,7 @@ export interface KeyTopic {
 
 export function useLiveCall() {
   const { user } = useAuth();
+  const { effectivePlan } = useEffectivePlan();
   const queryClient = useQueryClient();
 
   const liveCallQuery = useQuery({
@@ -116,7 +118,7 @@ export function useLiveCall() {
     return () => { supabase.removeChannel(channel); };
   }, [callId, user, queryClient]);
 
-  // Start a call (with plan limit check)
+  // Start a call – enforces effective plan limits (team-inherited or personal)
   const startCall = useMutation({
     mutationFn: async (input: {
       platform: string;
@@ -125,13 +127,36 @@ export function useLiveCall() {
       meeting_type?: string;
       participants?: string[];
     }) => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("calls_used, calls_limit")
-        .eq("id", user!.id)
-        .single();
+      // Determine limit from effective plan (team-inherited takes priority)
+      let callsLimit: number;
 
-      if (profile && profile.calls_used >= profile.calls_limit) {
+      if (effectivePlan) {
+        callsLimit = effectivePlan.callsLimit;
+      } else {
+        // Fallback: read directly from profile
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("calls_used, calls_limit")
+          .eq("id", user!.id)
+          .single();
+        callsLimit = profile?.calls_limit ?? 5;
+      }
+
+      // Count calls used this billing cycle
+      const cycleStart = new Date();
+      cycleStart.setDate(1);
+      cycleStart.setHours(0, 0, 0, 0);
+
+      const { count } = await supabase
+        .from("calls")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user!.id)
+        .neq("status", "live")
+        .gte("created_at", cycleStart.toISOString());
+
+      const used = count ?? 0;
+
+      if (callsLimit !== -1 && used >= callsLimit) {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
@@ -203,6 +228,7 @@ export function useLiveCall() {
       queryClient.invalidateQueries({ queryKey: ["calls"] });
       queryClient.invalidateQueries({ queryKey: ["call-stats"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
     },
   });
 
