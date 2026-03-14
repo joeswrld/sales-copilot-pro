@@ -12,10 +12,15 @@ import { useMessageNotifications } from "@/hooks/useMessageNotifications";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
+import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
 
 export default function TeamPage() {
   const { user } = useAuth();
-  const { team, teamLoading, role, members, membersLoading, pendingInvitations, adminPlanKey, createTeam, inviteMember, cancelInvitation, updateRole, removeMember } = useTeam();
+  const {
+    team, teamLoading, role, members, membersLoading,
+    pendingInvitations, adminPlanKey,
+    createTeam, inviteMember, cancelInvitation, updateRole, removeMember,
+  } = useTeam();
   useMessageNotifications(team?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -33,12 +38,17 @@ export default function TeamPage() {
   if (!team) {
     return (
       <DashboardLayout>
-        <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4 space-y-4">
+          {/* Show any pending invitations for this user even before they have a team */}
+          <div className="w-full max-w-md">
+            <TeamInvitationsBanner />
+          </div>
+
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
             <Users className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold font-display mb-2">Create Your Team</h1>
-          <p className="text-sm text-muted-foreground max-w-md mb-6">
+          <h1 className="text-2xl font-bold font-display">Create Your Team</h1>
+          <p className="text-sm text-muted-foreground max-w-md">
             Set up a team workspace to monitor performance, manage members, and coach your sales team — all in one place.
           </p>
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
