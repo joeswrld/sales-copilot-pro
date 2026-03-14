@@ -1,14 +1,15 @@
 import { Sparkles, ShieldCheck } from "lucide-react";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import { useTeam } from "@/hooks/useTeam";
-import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Shows a subtle banner when the current user's active plan
- * is inherited from their team admin rather than their own subscription.
+ * is inherited from their team admin (workspace owner).
+ *
+ * Uses the optimised useEffectivePlan hook which resolves the
+ * plan in a single RPC call — no N+1 queries.
  */
 export default function PlanInheritanceBanner() {
-  const { user } = useAuth();
   const { members } = useTeam();
   const { effectivePlan, isLoading } = useEffectivePlan();
 
