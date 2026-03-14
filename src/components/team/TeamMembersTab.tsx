@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2, RefreshCw, Clock, X, ArrowUp, Users } from "lucide-react";
+import {
+  UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2,
+  RefreshCw, Clock, X, ArrowUp, Users, Sparkles, Mail,
+} from "lucide-react";
 import type { TeamMember } from "@/hooks/useTeam";
 import { getTeamMembersLimit } from "@/config/plans";
 
@@ -19,6 +22,8 @@ interface PendingInvitation {
   email: string;
   role: string;
   created_at: string;
+  /** true when the email belongs to an existing Fixsense account */
+  isExistingUser?: boolean;
 }
 
 interface Props {
@@ -35,9 +40,16 @@ interface Props {
 }
 
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
-const roleColors: Record<string, string> = { admin: "text-primary", manager: "text-amber-400", member: "text-muted-foreground" };
+const roleColors: Record<string, string> = {
+  admin: "text-primary",
+  manager: "text-amber-400",
+  member: "text-muted-foreground",
+};
 
-export default function TeamMembersTab({ members, pendingInvitations, currentRole, currentUserId, adminPlanKey, onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting }: Props) {
+export default function TeamMembersTab({
+  members, pendingInvitations, currentRole, currentUserId, adminPlanKey,
+  onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting,
+}: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -54,10 +66,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
   const isAdmin = currentRole === "admin";
 
   const handleInviteClick = () => {
-    if (isAtLimit) {
-      setUpgradeOpen(true);
-      return;
-    }
+    if (isAtLimit) { setUpgradeOpen(true); return; }
     setInviteOpen(true);
   };
 
@@ -101,10 +110,17 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold font-display">Team Members</h2>
-          <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-muted-foreground">
+            {members.length} member{members.length !== 1 ? "s" : ""}
+          </p>
         </div>
         {isAdmin && (
-          <Button size="sm" onClick={handleInviteClick} className="gap-2" variant={isAtLimit ? "outline" : "default"}>
+          <Button
+            size="sm"
+            onClick={handleInviteClick}
+            className="gap-2"
+            variant={isAtLimit ? "outline" : "default"}
+          >
             <UserPlus className="w-4 h-4" />
             <span className="hidden sm:inline">{isAtLimit ? "Upgrade to Invite" : "Invite User"}</span>
           </Button>
@@ -123,12 +139,16 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
               <CardContent className="p-3">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarFallback className="bg-primary/20 text-primary text-sm font-bold">{initial}</AvatarFallback>
+                    <AvatarFallback className="bg-primary/20 text-primary text-sm font-bold">
+                      {initial}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate">{name}</p>
-                      {m.status === "invited" && <Badge variant="secondary" className="text-[10px]">Invited</Badge>}
+                      {m.status === "invited" && (
+                        <Badge variant="secondary" className="text-[10px]">Invited</Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">{email}</p>
                     <div className="flex items-center gap-1 mt-1">
@@ -137,7 +157,11 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                     </div>
                   </div>
                   {isAdmin && m.user_id !== currentUserId && (
-                    <MemberActions member={m} onUpdateRole={onUpdateRole} onRemove={() => setRemoveTarget(m)} />
+                    <MemberActions
+                      member={m}
+                      onUpdateRole={onUpdateRole}
+                      onRemove={() => setRemoveTarget(m)}
+                    />
                   )}
                 </div>
               </CardContent>
@@ -158,7 +182,9 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                   <th className="text-left p-4 text-xs font-medium text-muted-foreground">Role</th>
                   <th className="text-left p-4 text-xs font-medium text-muted-foreground">Status</th>
                   <th className="text-left p-4 text-xs font-medium text-muted-foreground">Joined</th>
-                  {isAdmin && <th className="text-right p-4 text-xs font-medium text-muted-foreground">Actions</th>}
+                  {isAdmin && (
+                    <th className="text-right p-4 text-xs font-medium text-muted-foreground">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -172,7 +198,9 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initial}</AvatarFallback>
+                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+                              {initial}
+                            </AvatarFallback>
                           </Avatar>
                           <span className="font-medium">{name}</span>
                         </div>
@@ -185,7 +213,10 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                         </div>
                       </td>
                       <td className="p-4">
-                        <Badge variant={m.status === "active" ? "default" : "secondary"} className="text-xs capitalize">
+                        <Badge
+                          variant={m.status === "active" ? "default" : "secondary"}
+                          className="text-xs capitalize"
+                        >
                           {m.status}
                         </Badge>
                       </td>
@@ -195,7 +226,11 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                       {isAdmin && (
                         <td className="p-4 text-right">
                           {m.user_id !== currentUserId && (
-                            <MemberActions member={m} onUpdateRole={onUpdateRole} onRemove={() => setRemoveTarget(m)} />
+                            <MemberActions
+                              member={m}
+                              onUpdateRole={onUpdateRole}
+                              onRemove={() => setRemoveTarget(m)}
+                            />
                           )}
                         </td>
                       )}
@@ -219,7 +254,10 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
           </CardHeader>
           <CardContent className="space-y-2">
             {pendingInvitations.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
+              <div
+                key={inv.id}
+                className="flex items-center justify-between p-2 rounded-lg bg-secondary/30"
+              >
                 <div className="flex items-center gap-3">
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className="bg-muted text-muted-foreground text-xs font-bold">
@@ -228,10 +266,33 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium">{inv.email}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{inv.role} · Invited {new Date(inv.created_at).toLocaleDateString()}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {inv.role} · Invited {new Date(inv.created_at).toLocaleDateString()}
+                      </p>
+                      {inv.isExistingUser ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] h-4 px-1.5 text-primary border-primary/30 gap-1"
+                        >
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Existing user · notified
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5 gap-1">
+                          <Mail className="w-2.5 h-2.5" />
+                          Email invite sent
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onCancelInvitation(inv.id)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => onCancelInvitation(inv.id)}
+                >
                   <X className="w-3.5 h-3.5" />
                 </Button>
               </div>
@@ -246,7 +307,8 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
-              Send an invite by email. {!isTeamUnlimited && `You can add ${teamMembersLimit - totalMembers} more member${teamMembersLimit - totalMembers !== 1 ? "s" : ""} on your current plan.`}
+              Send an invite by email. Existing Fixsense users will get an in-app notification to accept.
+              {!isTeamUnlimited && ` You can add ${teamMembersLimit - totalMembers} more member${teamMembersLimit - totalMembers !== 1 ? "s" : ""} on your current plan.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -257,6 +319,7 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
                 placeholder="colleague@company.com"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
               />
             </div>
             <div>
@@ -297,14 +360,19 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
               Team Member Limit Reached
             </DialogTitle>
             <DialogDescription>
-              You've reached the team member limit for the <strong className="text-foreground capitalize">{adminPlanKey}</strong> plan ({teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
+              You've reached the team member limit for the{" "}
+              <strong className="text-foreground capitalize">{adminPlanKey}</strong> plan (
+              {teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setUpgradeOpen(false)}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={() => { setUpgradeOpen(false); navigate("/dashboard/billing"); }}>
+            <Button
+              className="flex-1"
+              onClick={() => { setUpgradeOpen(false); navigate("/dashboard/billing"); }}
+            >
               <ArrowUp className="w-4 h-4 mr-1.5" />
               Upgrade Plan
             </Button>
@@ -318,7 +386,8 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove {removeTarget?.profile?.full_name || removeTarget?.invited_email} from the team?
+              Are you sure you want to remove{" "}
+              {removeTarget?.profile?.full_name || removeTarget?.invited_email} from the team?
               They will lose access to team analytics and meetings.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -326,7 +395,9 @@ export default function TeamMembersTab({ members, pendingInvitations, currentRol
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (removeTarget) { onRemove(removeTarget.id); setRemoveTarget(null); } }}
+              onClick={() => {
+                if (removeTarget) { onRemove(removeTarget.id); setRemoveTarget(null); }
+              }}
             >
               Remove
             </AlertDialogAction>
