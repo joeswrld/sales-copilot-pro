@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Plan configuration — single source of truth.
- * Mirrors the SQL function get_user_active_plan_details.
  */
 export const PLAN_CONFIG: Record<
   string,
@@ -16,35 +15,27 @@ export const PLAN_CONFIG: Record<
   scale:   { name: "Scale",   calls_limit: -1,  team_members_limit: -1, price_usd: 99 },
 };
 
+const PLAN_ORDER = ["free", "starter", "growth", "scale"];
+
 export interface EffectivePlan {
-  /** Resolved plan key — may come from the team admin's subscription */
   planKey: string;
-  /** Human-readable plan name */
   planName: string;
-  /** Meeting limit per month (-1 = unlimited) */
   callsLimit: number;
-  /** Team member seat limit (-1 = unlimited) */
   teamMembersLimit: number;
-  /** True when the plan is inherited from a workspace admin */
   isInherited: boolean;
-  /** The workspace admin's user id when isInherited is true */
   adminUserId: string | null;
-  /** The user's own plan key before inheritance */
   personalPlanKey: string;
-  /** Workspace id the user belongs to (if any) */
   workspaceId: string | null;
 }
 
-/**
- * Convert a Paystack plan_name like "Fixsense Starter" to a plan key.
- */
+/** Normalise Paystack plan_name like "Fixsense Starter" → "starter" */
 function planNameToKey(planName: string | null | undefined): string | null {
   if (!planName) return null;
   const lower = planName.toLowerCase();
-  if (lower.includes("scale")) return "scale";
-  if (lower.includes("growth")) return "growth";
+  if (lower.includes("scale"))   return "scale";
+  if (lower.includes("growth"))  return "growth";
   if (lower.includes("starter")) return "starter";
-  if (lower.includes("free")) return "free";
+  if (lower.includes("free"))    return "free";
   return null;
 }
 
@@ -52,10 +43,14 @@ function planNameToKey(planName: string | null | undefined): string | null {
  * Resolves the effective plan for the authenticated user.
  *
  * Resolution order:
- *  1. Active subscription's plan_name (Paystack — most authoritative after payment)
- *  2. Postgres RPC `get_user_active_plan_details` (team-inherited or profile.plan_type)
- *  3. Direct profile.plan_type fallback
- *  4. "free" default
+ *  1. Team admin's active subscription plan_name  ← most authoritative for team members
+ *  2. Team admin's profile.plan_type              ← fallback when webhook hasn't fired yet
+ *  3. User's own active subscription plan_name
+ *  4. User's own profile.plan_type
+ *  5. "free" default
+ *
+ * The admin plan is used when it is HIGHER than the user's own plan.
+ * Usage is counted at workspace level so all members share the same pool.
  */
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
   const { user } = useAuth();
@@ -65,126 +60,125 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
     queryFn: async (): Promise<EffectivePlan> => {
       if (!user) throw new Error("Not authenticated");
 
-      // ── Step 1: Check active subscription first (most reliable) ──
-      const { data: sub } = await supabase
+      // ── 1. User's own subscription ────────────────────────────────
+      const { data: ownSub } = await supabase
         .from("subscriptions" as any)
-        .select("status, plan_name, plan_price_usd")
+        .select("status, plan_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      let subscriptionPlanKey: string | null = null;
-      if ((sub as any)?.status === "active" && (sub as any)?.plan_name) {
-        subscriptionPlanKey = planNameToKey((sub as any).plan_name);
+      const ownSubPlanKey =
+        (ownSub as any)?.status === "active"
+          ? (planNameToKey((ownSub as any)?.plan_name) ?? null)
+          : null;
+
+      // ── 2. User's own profile plan ────────────────────────────────
+      const { data: ownProfile } = await supabase
+        .from("profiles")
+        .select("plan_type")
+        .eq("id", user.id)
+        .single();
+
+      const ownProfilePlan = ownProfile?.plan_type ?? "free";
+      const personalPlanKey = ownSubPlanKey ?? ownProfilePlan;
+
+      // ── 3. Team membership check ──────────────────────────────────
+      const { data: membership } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+
+      const teamId = membership?.team_id ?? null;
+
+      if (!teamId) {
+        // No team — use personal plan
+        const config = PLAN_CONFIG[personalPlanKey] ?? PLAN_CONFIG.free;
+        return {
+          planKey:          personalPlanKey,
+          planName:         config.name,
+          callsLimit:       config.calls_limit,
+          teamMembersLimit: config.team_members_limit,
+          isInherited:      false,
+          adminUserId:      null,
+          personalPlanKey,
+          workspaceId:      null,
+        };
       }
 
-      // ── Step 2: RPC for workspace/team plan ──────────────────────
-      const { data: rpcData, error: rpcError } = await supabase.rpc(
-        "get_user_active_plan_details",
-        { p_user_id: user.id }
-      );
+      // ── 4. Resolve workspace + admin plan ─────────────────────────
+      // Get workspace (created by trigger when team is created)
+      const { data: ws } = await supabase
+        .from("workspaces" as any)
+        .select("id, owner_id")
+        .eq("team_id", teamId)
+        .maybeSingle();
 
-      // ── Step 3: Build the effective plan ────────────────────────
-      if (rpcError) {
-        console.error("get_user_active_plan_details error:", rpcError);
+      const workspaceId = (ws as any)?.id ?? null;
+      const adminUserId = (ws as any)?.owner_id ?? null;
 
-        // Fallback to profile + subscription
-        const { data: profile } = await supabase
+      let adminPlanKey = "free";
+
+      if (adminUserId) {
+        // Admin's active subscription (most reliable post-payment)
+        const { data: adminSub } = await supabase
+          .from("subscriptions" as any)
+          .select("status, plan_name")
+          .eq("user_id", adminUserId)
+          .maybeSingle();
+
+        const adminSubPlanKey =
+          (adminSub as any)?.status === "active"
+            ? (planNameToKey((adminSub as any)?.plan_name) ?? null)
+            : null;
+
+        // Admin's profile plan_type as fallback
+        const { data: adminProfile } = await supabase
           .from("profiles")
           .select("plan_type")
-          .eq("id", user.id)
+          .eq("id", adminUserId)
           .single();
 
-        // Use subscription plan if active and available
-        const personalKey = subscriptionPlanKey ?? profile?.plan_type ?? "free";
-        const config = PLAN_CONFIG[personalKey] ?? PLAN_CONFIG.free;
-
-        return {
-          planKey: personalKey,
-          planName: config.name,
-          callsLimit: config.calls_limit,
-          teamMembersLimit: config.team_members_limit,
-          isInherited: false,
-          adminUserId: null,
-          personalPlanKey: personalKey,
-          workspaceId: null,
-        };
+        adminPlanKey =
+          adminSubPlanKey ??
+          adminProfile?.plan_type ??
+          "free";
       }
 
-      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      // ── 5. Pick higher of admin plan vs personal plan ─────────────
+      const adminIdx    = PLAN_ORDER.indexOf(adminPlanKey);
+      const personalIdx = PLAN_ORDER.indexOf(personalPlanKey);
 
-      if (!row) {
-        const personalKey = subscriptionPlanKey ?? "free";
-        const config = PLAN_CONFIG[personalKey] ?? PLAN_CONFIG.free;
-        return {
-          planKey: personalKey,
-          planName: config.name,
-          callsLimit: config.calls_limit,
-          teamMembersLimit: config.team_members_limit,
-          isInherited: false,
-          adminUserId: null,
-          personalPlanKey: personalKey,
-          workspaceId: null,
-        };
-      }
-
-      // RPC-resolved plan key (from team admin or profile)
-      const rpcPlanKey = row.plan_key ?? "free";
-
-      // Determine final plan key:
-      // - If the user has an active subscription AND they are NOT inheriting from a team,
-      //   the subscription's plan_name is more authoritative than the profile.plan_type
-      //   (profile may lag if the webhook hasn't updated it yet).
-      // - If inheriting from a team admin, the admin's plan takes precedence.
-      let finalPlanKey = rpcPlanKey;
-      if (subscriptionPlanKey && !(row.is_inherited ?? false)) {
-        // Use the subscription plan if it's a higher tier than what RPC returned
-        const planOrder = ["free", "starter", "growth", "scale"];
-        const subIdx = planOrder.indexOf(subscriptionPlanKey);
-        const rpcIdx = planOrder.indexOf(rpcPlanKey);
-        if (subIdx > rpcIdx) {
-          finalPlanKey = subscriptionPlanKey;
-        }
-      }
+      const finalPlanKey = adminIdx > personalIdx ? adminPlanKey : personalPlanKey;
+      const isInherited  = adminIdx > personalIdx;
 
       const config = PLAN_CONFIG[finalPlanKey] ?? PLAN_CONFIG.free;
 
-      // Fetch personal plan if inherited
-      let personalPlanKey = finalPlanKey;
-      if (row.is_inherited) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("plan_type")
-          .eq("id", user.id)
-          .single();
-        personalPlanKey = subscriptionPlanKey ?? profile?.plan_type ?? "free";
-      }
-
       return {
-        planKey: finalPlanKey,
-        planName: config.name,
-        callsLimit: row.calls_limit ?? config.calls_limit,
-        teamMembersLimit: row.team_members_limit ?? config.team_members_limit,
-        isInherited: row.is_inherited ?? false,
-        adminUserId: row.owner_user_id ?? null,
+        planKey:          finalPlanKey,
+        planName:         config.name,
+        callsLimit:       config.calls_limit,
+        teamMembersLimit: config.team_members_limit,
+        isInherited,
+        adminUserId,
         personalPlanKey,
-        workspaceId: row.workspace_id ?? null,
+        workspaceId,
       };
     },
-    enabled: !!user,
+    enabled:   !!user,
     staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    gcTime:    5 * 60 * 1000,
   });
 
   return { effectivePlan: query.data ?? null, isLoading: query.isLoading };
 }
 
-/**
- * Small utility: check if a feature is available under the given plan.
- */
 export function isPlanFeatureAvailable(
   planKey: string,
   feature: "ai_coach" | "team_analytics" | "live_calls" | "coaching"
 ): boolean {
   if (planKey === "free") return false;
   return true;
-  }
+}
