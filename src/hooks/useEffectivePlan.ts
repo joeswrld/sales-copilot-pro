@@ -36,19 +36,26 @@ export interface EffectivePlan {
 }
 
 /**
+ * Convert a Paystack plan_name like "Fixsense Starter" to a plan key.
+ */
+function planNameToKey(planName: string | null | undefined): string | null {
+  if (!planName) return null;
+  const lower = planName.toLowerCase();
+  if (lower.includes("scale")) return "scale";
+  if (lower.includes("growth")) return "growth";
+  if (lower.includes("starter")) return "starter";
+  if (lower.includes("free")) return "free";
+  return null;
+}
+
+/**
  * Resolves the effective plan for the authenticated user.
  *
- * Strategy:
- *  1. Call the Postgres RPC `get_user_active_plan_details(user_id)` which:
- *       - checks if the user is an active workspace member
- *       - if yes → returns the workspace owner's plan_type
- *       - if no  → returns the user's own profile.plan_type
- *  2. No writes happen — plan is derived dynamically every time.
- *  3. Instant update: when a user joins/leaves a team, the next
- *     query automatically returns the correct plan.
- *
- * This replaces the old multi-step client-side approach that
- * required separate fetches for team members and admin profiles.
+ * Resolution order:
+ *  1. Active subscription's plan_name (Paystack — most authoritative after payment)
+ *  2. Postgres RPC `get_user_active_plan_details` (team-inherited or profile.plan_type)
+ *  3. Direct profile.plan_type fallback
+ *  4. "free" default
  */
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
   const { user } = useAuth();
@@ -58,22 +65,55 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
     queryFn: async (): Promise<EffectivePlan> => {
       if (!user) throw new Error("Not authenticated");
 
-      // Single RPC call — the DB function resolves workspace vs personal plan
-      const { data, error } = await supabase.rpc(
+      // ── Step 1: Check active subscription first (most reliable) ──
+      const { data: sub } = await supabase
+        .from("subscriptions" as any)
+        .select("status, plan_name, plan_price_usd")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      let subscriptionPlanKey: string | null = null;
+      if ((sub as any)?.status === "active" && (sub as any)?.plan_name) {
+        subscriptionPlanKey = planNameToKey((sub as any).plan_name);
+      }
+
+      // ── Step 2: RPC for workspace/team plan ──────────────────────
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
         "get_user_active_plan_details",
         { p_user_id: user.id }
       );
 
-      if (error) {
-        console.error("get_user_active_plan_details error:", error);
-        // Graceful fallback — fetch personal plan directly
+      // ── Step 3: Build the effective plan ────────────────────────
+      if (rpcError) {
+        console.error("get_user_active_plan_details error:", rpcError);
+
+        // Fallback to profile + subscription
         const { data: profile } = await supabase
           .from("profiles")
           .select("plan_type")
           .eq("id", user.id)
           .single();
 
-        const personalKey = profile?.plan_type ?? "free";
+        // Use subscription plan if active and available
+        const personalKey = subscriptionPlanKey ?? profile?.plan_type ?? "free";
+        const config = PLAN_CONFIG[personalKey] ?? PLAN_CONFIG.free;
+
+        return {
+          planKey: personalKey,
+          planName: config.name,
+          callsLimit: config.calls_limit,
+          teamMembersLimit: config.team_members_limit,
+          isInherited: false,
+          adminUserId: null,
+          personalPlanKey: personalKey,
+          workspaceId: null,
+        };
+      }
+
+      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+
+      if (!row) {
+        const personalKey = subscriptionPlanKey ?? "free";
         const config = PLAN_CONFIG[personalKey] ?? PLAN_CONFIG.free;
         return {
           planKey: personalKey,
@@ -87,41 +127,41 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
         };
       }
 
-      // The RPC returns a single row (LIMIT 1 in the SQL)
-      const row = Array.isArray(data) ? data[0] : data;
+      // RPC-resolved plan key (from team admin or profile)
+      const rpcPlanKey = row.plan_key ?? "free";
 
-      if (!row) {
-        // No profile at all — shouldn't happen but guard anyway
-        return {
-          planKey: "free",
-          planName: "Free",
-          callsLimit: 5,
-          teamMembersLimit: 1,
-          isInherited: false,
-          adminUserId: null,
-          personalPlanKey: "free",
-          workspaceId: null,
-        };
+      // Determine final plan key:
+      // - If the user has an active subscription AND they are NOT inheriting from a team,
+      //   the subscription's plan_name is more authoritative than the profile.plan_type
+      //   (profile may lag if the webhook hasn't updated it yet).
+      // - If inheriting from a team admin, the admin's plan takes precedence.
+      let finalPlanKey = rpcPlanKey;
+      if (subscriptionPlanKey && !(row.is_inherited ?? false)) {
+        // Use the subscription plan if it's a higher tier than what RPC returned
+        const planOrder = ["free", "starter", "growth", "scale"];
+        const subIdx = planOrder.indexOf(subscriptionPlanKey);
+        const rpcIdx = planOrder.indexOf(rpcPlanKey);
+        if (subIdx > rpcIdx) {
+          finalPlanKey = subscriptionPlanKey;
+        }
       }
 
-      const planKey   = row.plan_key ?? "free";
-      const config    = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.free;
+      const config = PLAN_CONFIG[finalPlanKey] ?? PLAN_CONFIG.free;
 
-      // Fetch personal plan if inherited (needed for display comparisons)
-      let personalPlanKey = planKey;
+      // Fetch personal plan if inherited
+      let personalPlanKey = finalPlanKey;
       if (row.is_inherited) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("plan_type")
           .eq("id", user.id)
           .single();
-        personalPlanKey = profile?.plan_type ?? "free";
+        personalPlanKey = subscriptionPlanKey ?? profile?.plan_type ?? "free";
       }
 
       return {
-        planKey,
+        planKey: finalPlanKey,
         planName: config.name,
-        // Use DB-computed limits (handles edge cases like -1 for unlimited)
         callsLimit: row.calls_limit ?? config.calls_limit,
         teamMembersLimit: row.team_members_limit ?? config.team_members_limit,
         isInherited: row.is_inherited ?? false,
@@ -131,8 +171,6 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       };
     },
     enabled: !!user,
-    // Plan rarely changes — 2 minute stale time is safe.
-    // When a user joins/leaves a team, invalidate this query explicitly.
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
   });
@@ -149,4 +187,4 @@ export function isPlanFeatureAvailable(
 ): boolean {
   if (planKey === "free") return false;
   return true;
-}
+  }
