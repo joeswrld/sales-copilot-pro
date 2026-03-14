@@ -32,16 +32,14 @@ export interface MeetingUsage {
  */
 export function getMeetingLimit(planKey: string): number {
   const MAP: Record<string, number> = {
-    free: 5,
+    free:    5,
     starter: 50,
-    growth: 300,
-    scale: -1,
+    growth:  300,
+    scale:   -1,
   };
 
-  // Direct match first
   if (MAP[planKey] !== undefined) return MAP[planKey];
 
-  // Normalize: strip "fixsense " prefix and lowercase
   const normalized = planKey
     .toLowerCase()
     .replace(/^fixsense\s+/, "")
@@ -50,36 +48,32 @@ export function getMeetingLimit(planKey: string): number {
   return MAP[normalized] ?? 5;
 }
 
-/**
- * Derive the canonical plan key from a subscription plan_name.
- * Paystack plan names are stored as "Fixsense Starter", "Fixsense Growth", etc.
- */
 function planNameToKey(planName: string | null | undefined): string {
   if (!planName) return "free";
   const lower = planName.toLowerCase();
-  if (lower.includes("scale")) return "scale";
-  if (lower.includes("growth")) return "growth";
+  if (lower.includes("scale"))   return "scale";
+  if (lower.includes("growth"))  return "growth";
   if (lower.includes("starter")) return "starter";
   return "free";
 }
 
 const PLAN_NAMES: Record<string, string> = {
-  free: "Free",
+  free:    "Free",
   starter: "Starter",
-  growth: "Growth",
-  scale: "Scale",
+  growth:  "Growth",
+  scale:   "Scale",
 };
 
 /**
  * Returns real-time meeting usage for the current user.
  *
- * Plan resolution priority:
- *  1. Active subscription's plan_name (most reliable — set by Paystack webhook)
- *  2. effectivePlan from DB RPC (team-inherited or personal profile.plan_type)
- *  3. Fallback: "free"
+ * When the user belongs to a team workspace, usage is counted across
+ * ALL workspace members so they share the admin's quota pool.
  *
- * When the user belongs to a workspace the usage is counted
- * across ALL workspace members — they share the admin's quota.
+ * Plan resolution priority:
+ *  1. Active subscription's plan_name (most reliable after Paystack payment)
+ *  2. effectivePlan from useEffectivePlan (team-inherited or personal)
+ *  3. "free" default
  */
 export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: boolean } {
   const { user } = useAuth();
@@ -111,7 +105,7 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
       effectivePlan?.workspaceId,
     ],
     queryFn: async (): Promise<MeetingUsage> => {
-      // ── Billing cycle boundaries ───────────────────────────
+      // ── Billing cycle boundaries ───────────────────────────────────
       let billingCycleStart = new Date();
       billingCycleStart.setDate(1);
       billingCycleStart.setHours(0, 0, 0, 0);
@@ -133,40 +127,60 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
       const billingCycleEnd = new Date(billingCycleStart);
       billingCycleEnd.setMonth(billingCycleEnd.getMonth() + 1);
 
-      // ── Resolve the plan key ───────────────────────────────
-      // Priority 1: active subscription's plan_name (most reliable after Paystack payment)
-      let planKey = "free";
-      let planSource = "fallback";
+      // ── Resolve plan key ───────────────────────────────────────────
+      // Priority: own active subscription > effectivePlan (team-inherited or personal)
+      let planKey = effectivePlan?.planKey ?? "free";
 
       if (subscription?.status === "active" && subscription?.plan_name) {
-        planKey = planNameToKey(subscription.plan_name);
-        planSource = "subscription";
-      } else if (effectivePlan?.planKey && effectivePlan.planKey !== "free") {
-        planKey = effectivePlan.planKey;
-        planSource = "effectivePlan";
-      } else if (effectivePlan?.planKey) {
-        // Even if "free", use it
-        planKey = effectivePlan.planKey;
-        planSource = "effectivePlan-free";
+        const subKey = planNameToKey(subscription.plan_name);
+        // Only override if own subscription is higher or equal and user isn't inheriting
+        if (!effectivePlan?.isInherited) {
+          const order = ["free", "starter", "growth", "scale"];
+          if (order.indexOf(subKey) >= order.indexOf(planKey)) {
+            planKey = subKey;
+          }
+        }
       }
 
-      // ── Determine whether to count at workspace or user level ─
-      const workspaceId = effectivePlan?.workspaceId ?? null;
+      // ── Usage counting ─────────────────────────────────────────────
+      const workspaceId       = effectivePlan?.workspaceId ?? null;
       const isWorkspaceShared = !!workspaceId;
 
       let used = 0;
 
       if (isWorkspaceShared) {
-        // Count meetings from ALL active workspace members via the view
+        // Count completed calls across ALL active workspace members
+        // via the workspace_meeting_usage view (created by migration)
         const { data: usageRow } = await supabase
-          .from("workspace_meeting_usage")
+          .from("workspace_meeting_usage" as any)
           .select("meetings_used")
           .eq("workspace_id", workspaceId)
           .maybeSingle();
 
-        used = usageRow?.meetings_used ?? 0;
+        used = (usageRow as any)?.meetings_used ?? 0;
+
+        // Fallback: manual count if the view doesn't exist yet
+        if (used === 0 && usageRow === null) {
+          // Get all active members of the team
+          const { data: members } = await supabase
+            .from("team_members")
+            .select("user_id")
+            .eq("status", "active");
+
+          if (members && members.length > 0) {
+            const memberIds = members.map((m: any) => m.user_id);
+            const { count } = await supabase
+              .from("calls")
+              .select("id", { count: "exact", head: true })
+              .in("user_id", memberIds)
+              .neq("status", "live")
+              .gte("created_at", billingCycleStart.toISOString());
+
+            used = count ?? 0;
+          }
+        }
       } else {
-        // Personal usage only — count completed calls since billing cycle start
+        // Personal usage only
         const { count, error } = await supabase
           .from("calls")
           .select("id", { count: "exact", head: true })
@@ -178,32 +192,32 @@ export function useMeetingUsage(): { usage: MeetingUsage | null; isLoading: bool
         used = count ?? 0;
       }
 
-      // ── Plan limits ────────────────────────────────────────
-      const limit = getMeetingLimit(planKey);
+      // ── Compute usage stats ────────────────────────────────────────
+      const limit       = getMeetingLimit(planKey);
       const isUnlimited = limit === -1;
-      const remaining = isUnlimited ? Infinity : Math.max(0, limit - used);
-      const pct = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
+      const remaining   = isUnlimited ? Infinity : Math.max(0, limit - used);
+      const pct         = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
 
       return {
         used,
         limit,
-        remaining: isUnlimited ? -1 : remaining,
+        remaining:        isUnlimited ? -1 : remaining,
         isUnlimited,
-        isAtLimit: !isUnlimited && used >= limit,
-        isNearLimit: !isUnlimited && pct >= 80 && used < limit,
+        isAtLimit:        !isUnlimited && used >= limit,
+        isNearLimit:      !isUnlimited && pct >= 80 && used < limit,
         pct,
         planKey,
-        planName: PLAN_NAMES[planKey] ?? "Free",
+        planName:         PLAN_NAMES[planKey] ?? "Free",
         billingCycleStart,
         billingCycleEnd,
-        resetDate: billingCycleEnd,
-        isInherited: effectivePlan?.isInherited ?? false,
+        resetDate:        billingCycleEnd,
+        isInherited:      effectivePlan?.isInherited ?? false,
         isWorkspaceShared,
         workspaceId,
       };
     },
-    enabled: !!user && !planLoading,
-    staleTime: 30_000,
+    enabled:        !!user && !planLoading,
+    staleTime:      30_000,
     refetchInterval: 60_000,
   });
 
