@@ -1,11 +1,8 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "react-router-dom";
-import { Search, Trash2, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { useCalls, useDeleteCall } from "@/hooks/useCalls";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { toast } from "sonner";
+import { useCalls } from "@/hooks/useCalls";
 import { format } from "date-fns";
 
 const statusColors: Record<string, string> = {
@@ -19,21 +16,10 @@ const statusColors: Record<string, string> = {
 
 export default function CallsList() {
   const [search, setSearch] = useState("");
-  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: calls, isLoading } = useCalls();
-  const deleteCall = useDeleteCall();
 
   const filtered = (calls || []).filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try {
-      await deleteCall.mutateAsync(deleteId);
-      setDeleteId(null);
-      toast.success("Call deleted");
-    } catch { toast.error("Failed to delete call"); }
-  };
 
   return (
     <DashboardLayout>
@@ -59,26 +45,29 @@ export default function CallsList() {
           </div>
         ) : (
           <div className="glass rounded-xl overflow-hidden">
-            <div className="hidden md:grid grid-cols-7 gap-4 p-4 text-xs font-medium text-muted-foreground border-b border-border">
+            <div className="hidden md:grid grid-cols-6 gap-4 p-4 text-xs font-medium text-muted-foreground border-b border-border">
               <span className="col-span-2">Call</span>
               <span>Platform</span>
               <span>Duration</span>
               <span>Engagement</span>
               <span>Status</span>
-              <span />
             </div>
             <div className="divide-y divide-border">
               {filtered.map(call => {
                 const isLive = call.status === "live";
                 return (
-                  <div key={call.id} className="grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 p-4 hover:bg-secondary/30 transition-colors items-center">
-                    <Link to={isLive ? "/dashboard/live" : `/dashboard/calls/${call.id}`} className="md:col-span-2 min-w-0">
+                  <Link
+                    key={call.id}
+                    to={isLive ? "/dashboard/live" : `/dashboard/calls/${call.id}`}
+                    className="grid grid-cols-1 md:grid-cols-6 gap-2 md:gap-4 p-4 hover:bg-secondary/30 transition-colors items-center"
+                  >
+                    <div className="md:col-span-2 min-w-0">
                       <div className="flex items-center gap-2">
                         {isLive && <span className="w-2 h-2 rounded-full bg-destructive animate-pulse-glow shrink-0" />}
                         <p className="font-medium text-sm truncate">{call.name}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">{format(new Date(call.date), "MMM d, yyyy")}</p>
-                    </Link>
+                    </div>
                     <span className="text-sm text-muted-foreground">{(call as any).platform || "—"}</span>
                     <span className="text-sm text-muted-foreground">{call.duration_minutes ? `${call.duration_minutes} min` : isLive ? "In progress" : "—"}</span>
                     <div className="flex items-center gap-2">
@@ -90,30 +79,13 @@ export default function CallsList() {
                     <span className={`text-xs px-2 py-1 rounded-full w-fit ${statusColors[call.status || ""] || "bg-secondary text-secondary-foreground"}`}>
                       {isLive ? "● LIVE" : call.status}
                     </span>
-                    <button onClick={() => setDeleteId(call.id)} className="text-muted-foreground hover:text-destructive transition-colors justify-self-end">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  </Link>
                 );
               })}
             </div>
           </div>
         )}
       </div>
-
-      {/* Delete confirmation */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Delete this call?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteCall.isPending}>
-              {deleteCall.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />} Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 }
