@@ -3,21 +3,25 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search, Send, MessageSquare, Bell, Plus, Users, FileText,
   Image as ImageIcon, Paperclip, X, Check, CheckCheck, TrendingUp,
-  AtSign, AlertCircle, ArrowLeft, Copy, Trash2, Pencil, MoreHorizontal,
-  Hash, ChevronRight, Loader2, Mic
+  AtSign, AlertCircle, ArrowLeft, Copy, Trash2, Pencil,
+  Loader2, ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
-import { useTeamMessaging, useConversationMessages, getConversationName, getConversationInitials } from "@/hooks/useTeamMessaging";
+import {
+  useTeamMessaging, useConversationMessages,
+  getConversationName, getConversationInitials,
+} from "@/hooks/useTeamMessaging";
 import { useNotifications } from "@/hooks/useNotifications";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 import { format, isToday, isYesterday, isThisWeek } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -25,8 +29,7 @@ import type { Conversation, ReadReceipt } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
+/* ─── helpers ─────────────────────────────────────────────── */
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
   if (isToday(d)) return format(d, "h:mm a");
@@ -34,210 +37,108 @@ function formatTime(dateStr: string): string {
   if (isThisWeek(d)) return format(d, "EEE");
   return format(d, "MMM d");
 }
-
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
-
 function isImageFile(type: string | null | undefined): boolean {
   return !!type?.startsWith("image/");
 }
-
-function getReadStatus(
-  msgCreatedAt: string,
-  senderId: string,
-  currentUserId: string,
-  readReceipts: ReadReceipt[]
-): "none" | "sent" | "read" {
-  if (senderId !== currentUserId) return "none";
-  const readBy = readReceipts.filter(r => r.last_read_at && new Date(r.last_read_at) >= new Date(msgCreatedAt));
-  return readBy.length > 0 ? "read" : "sent";
+function getReadStatus(at: string, sid: string, uid: string, rr: ReadReceipt[]): "none"|"sent"|"read" {
+  if (sid !== uid) return "none";
+  return rr.some(r => r.last_read_at && new Date(r.last_read_at) >= new Date(at)) ? "read" : "sent";
 }
+const notifIcons: Record<string, typeof Bell> = { comment: MessageSquare, coaching: TrendingUp, mention: AtSign, system: AlertCircle };
 
-const notifTypeIcons: Record<string, typeof Bell> = {
-  comment: MessageSquare,
-  coaching: TrendingUp,
-  mention: AtSign,
-  system: AlertCircle,
-};
-
-const notifTypeColors: Record<string, string> = {
-  comment: "bg-indigo-500/10 text-indigo-400",
-  coaching: "bg-emerald-500/10 text-emerald-400",
-  mention: "bg-amber-500/10 text-amber-400",
-  system: "bg-slate-500/10 text-slate-400",
-};
-
-// ─── Message Context Menu ────────────────────────────────────────────────────
-
-interface MessageMenuProps {
-  isMe: boolean;
-  messageText: string;
-  onCopy: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  onClose: () => void;
-  position: { x: number; y: number };
-}
-
-function MessageContextMenu({ isMe, messageText, onCopy, onEdit, onDelete, onClose, position }: MessageMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
+/* ─── context menu ────────────────────────────────────────── */
+function CtxMenu({ isMe, pos, onCopy, onEdit, onDelete, onClose }: {
+  isMe: boolean; pos: { x: number; y: number };
+  onCopy(): void; onEdit?(): void; onDelete?(): void; onClose(): void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, [onClose]);
-
-  const actions = [
-    { icon: Copy, label: "Copy text", action: onCopy, always: true },
+  const left = Math.min(pos.x, window.innerWidth - 168);
+  const top  = Math.min(pos.y, window.innerHeight - (isMe ? 120 : 48));
+  const items = [
+    { icon: Copy,   label: "Copy",   fn: onCopy,    danger: false },
     ...(isMe ? [
-      { icon: Pencil, label: "Edit message", action: onEdit!, always: false },
-      { icon: Trash2, label: "Delete message", action: onDelete!, always: false, danger: true },
+      { icon: Pencil, label: "Edit",   fn: onEdit!,   danger: false },
+      { icon: Trash2, label: "Delete", fn: onDelete!, danger: true  },
     ] : []),
   ];
-
   return (
-    <div
-      ref={menuRef}
-      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 9999 }}
-      className="w-44 rounded-xl border border-white/[0.08] shadow-2xl overflow-hidden"
-      style={{
-        position: "fixed",
-        left: position.x,
-        top: position.y,
-        zIndex: 9999,
-        background: "rgba(10, 14, 26, 0.97)",
-        backdropFilter: "blur(20px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "12px",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
-        width: "172px",
-        overflow: "hidden",
-      }}
-    >
-      {actions.map((action, i) => (
-        <button
-          key={i}
-          onClick={() => { action.action?.(); onClose(); }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            width: "100%",
-            padding: "9px 14px",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            color: action.danger ? "#f87171" : "rgba(255,255,255,0.75)",
-            fontSize: "13px",
-            fontWeight: 500,
-            fontFamily: "'DM Sans', system-ui, sans-serif",
-            transition: "background 0.15s, color 0.15s",
-            borderBottom: i < actions.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = action.danger
-              ? "rgba(248,113,113,0.1)"
-              : "rgba(255,255,255,0.06)";
-            (e.currentTarget as HTMLElement).style.color = action.danger ? "#f87171" : "#ffffff";
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = "transparent";
-            (e.currentTarget as HTMLElement).style.color = action.danger ? "#f87171" : "rgba(255,255,255,0.75)";
-          }}
-        >
-          <action.icon style={{ width: "14px", height: "14px", flexShrink: 0 }} />
-          {action.label}
+    <div ref={ref} style={{ position: "fixed", left, top, zIndex: 9999 }} className="mp-ctxmenu">
+      {items.map((a, i) => (
+        <button key={i} onClick={() => { a.fn(); onClose(); }}
+          className={cn("mp-ctx-item", a.danger && "mp-ctx-item--danger")}>
+          <a.icon style={{ width: 13, height: 13 }} />{a.label}
         </button>
       ))}
     </div>
   );
 }
 
-// ─── New Conversation Dialog ─────────────────────────────────────────────────
-
-function NewConversationDialog({
-  open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onCreated,
-}: {
-  open: boolean; onClose: () => void; members: TeamMember[];
+/* ─── new convo dialog ────────────────────────────────────── */
+function NewConvoDialog({ open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onCreated }: {
+  open: boolean; onClose(): void; members: TeamMember[];
   currentUserId: string; teamId: string;
-  conversations: Conversation[]; refetchConversations: () => void;
-  onCreated: (id: string) => void;
+  conversations: Conversation[]; refetchConversations(): void;
+  onCreated(id: string): void;
 }) {
   const { startConversation } = useConversationMessages(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sel, setSel] = useState<string[]>([]);
   const others = members.filter(m => m.user_id !== currentUserId && m.status === "active");
-
-  const toggle = (uid: string) =>
-    setSelectedIds(prev => prev.includes(uid) ? prev.filter(x => x !== uid) : [...prev, uid]);
-
+  const toggle = (uid: string) => setSel(p => p.includes(uid) ? p.filter(x => x !== uid) : [...p, uid]);
   const handleStart = async () => {
-    if (!selectedIds.length) return;
+    if (!sel.length) return;
     try {
-      if (selectedIds.length === 1) {
-        const existing = conversations.find(c =>
-          !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === selectedIds[0])
-        );
-        if (existing) { setSelectedIds([]); onCreated(existing.id); return; }
+      if (sel.length === 1) {
+        const ex = conversations.find(c => !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === sel[0]));
+        if (ex) { setSel([]); onCreated(ex.id); return; }
       }
-      const id = await startConversation.mutateAsync({ teamId, memberIds: selectedIds });
-      refetchConversations();
-      setSelectedIds([]);
-      onCreated(id);
+      const id = await startConversation.mutateAsync({ teamId, memberIds: sel });
+      refetchConversations(); setSel([]); onCreated(id);
       toast({ title: "Conversation started" });
-    } catch (err: any) {
-      toast({ title: "Could not start chat", description: err?.message ?? "Try again.", variant: "destructive" });
-    }
+    } catch (e: any) { toast({ title: "Could not start chat", description: e?.message, variant: "destructive" }); }
   };
-
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) { setSelectedIds([]); onClose(); } }}>
-      <DialogContent className="sm:max-w-sm" style={{ background: "rgba(10,14,26,0.98)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px" }}>
+    <Dialog open={open} onOpenChange={v => { if (!v) { setSel([]); onClose(); } }}>
+      <DialogContent className="sm:max-w-sm" style={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
         <DialogHeader>
-          <DialogTitle style={{ color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif" }}>New Conversation</DialogTitle>
+          <DialogTitle style={{ color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>New Conversation</DialogTitle>
         </DialogHeader>
-        {selectedIds.length > 1 && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
-            <Users className="w-3.5 h-3.5" /> Group chat · {selectedIds.length} members
-          </p>
-        )}
-        <div className="space-y-1 max-h-72 overflow-y-auto">
-          {others.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No other team members.</p>
-          ) : others.map(m => {
-            const name = m.profile?.full_name || m.invited_email || "Unknown";
-            const checked = selectedIds.includes(m.user_id);
-            return (
-              <div key={m.id} onClick={() => toggle(m.user_id)}
-                className={cn(
-                  "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all",
-                  checked
-                    ? "bg-indigo-500/15 border border-indigo-500/30"
-                    : "hover:bg-white/[0.04] border border-transparent"
-                )}>
-                <Checkbox checked={checked} className="pointer-events-none" />
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-indigo-500/20 text-indigo-400 text-xs font-bold">
-                    {getInitials(m.profile?.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-sm font-medium text-slate-200">{name}</p>
-                  <p className="text-xs text-slate-500 capitalize">{m.role}</p>
+        {sel.length > 1 && <p className="text-xs text-slate-400 flex items-center gap-1.5 px-1"><Users className="w-3.5 h-3.5" /> Group · {sel.length} members</p>}
+        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+          {others.length === 0
+            ? <p className="text-sm text-slate-500 text-center py-6">No other members.</p>
+            : others.map(m => {
+              const name = m.profile?.full_name || m.invited_email || "Unknown";
+              const chk  = sel.includes(m.user_id);
+              return (
+                <div key={m.id} onClick={() => toggle(m.user_id)}
+                  className={cn("flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all select-none",
+                    chk ? "bg-violet-500/15 border border-violet-500/30" : "hover:bg-white/[0.04] border border-transparent")}>
+                  <Checkbox checked={chk} className="pointer-events-none" />
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{getInitials(name)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">{name}</p>
+                    <p className="text-xs text-slate-500 capitalize">{m.role}</p>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => { setSelectedIds([]); onClose(); }}>Cancel</Button>
-          <Button size="sm" onClick={handleStart} disabled={!selectedIds.length || startConversation.isPending}
-            style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)" }}>
-            {selectedIds.length > 1 ? "Create Group" : "Start Chat"}
+          <Button variant="outline" size="sm" onClick={() => { setSel([]); onClose(); }}>Cancel</Button>
+          <Button size="sm" disabled={!sel.length || startConversation.isPending} onClick={handleStart}
+            style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+            {sel.length > 1 ? "Create Group" : "Start Chat"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -245,1142 +146,707 @@ function NewConversationDialog({
   );
 }
 
-// ─── Chat Thread Panel ────────────────────────────────────────────────────────
-
-function ChatThread({
-  conversationId, conversations, onBack,
-}: {
-  conversationId: string; conversations: Conversation[]; onBack?: () => void;
+/* ─── chat thread ─────────────────────────────────────────── */
+function ChatThread({ conversationId, conversations, onBack }: {
+  conversationId: string; conversations: Conversation[]; onBack?(): void;
 }) {
   const { user } = useAuth();
   const { messages, messagesLoading, sendMessage, readReceipts } = useConversationMessages(conversationId);
   const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
-  const [input, setInput] = useState("");
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [input, setInput]         = useState("");
+  const [pendingFile, setPF]      = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ msgId: string; x: number; y: number } | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const editInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [editId, setEditId]       = useState<string | null>(null);
+  const [editTxt, setEditTxt]     = useState("");
+  const [ctx, setCtx]             = useState<{ id: string; x: number; y: number } | null>(null);
+  const [lpId, setLpId]           = useState<string | null>(null);
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const fileRef     = useRef<HTMLInputElement>(null);
+  const editRef     = useRef<HTMLInputElement>(null);
+  const typingTimer = useRef<NodeJS.Timeout | null>(null);
+  const lpTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myName = user?.user_metadata?.full_name || user?.email || "You";
-
-  const convo = conversations.find(c => c.id === conversationId);
+  const convo   = conversations.find(c => c.id === conversationId);
   const chatName = convo ? getConversationName(convo) : "Chat";
-  const isGroup = convo?.is_group ?? false;
+  const isGroup  = convo?.is_group ?? false;
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+  useEffect(() => { if (editId && editRef.current) editRef.current.focus(); }, [editId]);
 
-  useEffect(() => {
-    if (editingId && editInputRef.current) {
-      editInputRef.current.focus();
-    }
-  }, [editingId]);
-
-  const handleInputChange = (val: string) => {
-    setInput(val);
-    if (val.trim()) {
+  const onInputChange = (v: string) => {
+    setInput(v);
+    if (v.trim()) {
       sendTyping(myName);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => sendStopTyping(), 2000);
-    } else {
-      sendStopTyping();
-    }
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => sendStopTyping(), 2000);
+    } else sendStopTyping();
   };
 
   const uploadFile = async (file: File) => {
-    const ext = file.name.split(".").pop() ?? "bin";
+    const ext  = file.name.split(".").pop() ?? "bin";
     const path = `${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from("team-attachments").upload(path, file, { contentType: file.type });
     if (error) throw error;
-    const { data: urlData } = supabase.storage.from("team-attachments").getPublicUrl(path);
-    return { url: urlData.publicUrl, name: file.name, type: file.type };
+    const { data } = supabase.storage.from("team-attachments").getPublicUrl(path);
+    return { url: data.publicUrl, name: file.name, type: file.type };
   };
 
   const handleSend = async () => {
     if (!input.trim() && !pendingFile) return;
     setUploading(true);
     try {
-      let fileData: { url: string; name: string; type: string } | undefined;
-      if (pendingFile) fileData = await uploadFile(pendingFile);
-      sendMessage.mutate({
-        text: input.trim() || (pendingFile?.name ?? "Attachment"),
-        file_url: fileData?.url,
-        file_name: fileData?.name,
-        file_type: fileData?.type,
-      });
-      setInput("");
-      setPendingFile(null);
-      sendStopTyping();
-    } finally {
-      setUploading(false);
-    }
+      let fd: { url: string; name: string; type: string } | undefined;
+      if (pendingFile) fd = await uploadFile(pendingFile);
+      sendMessage.mutate({ text: input.trim() || (pendingFile?.name ?? "Attachment"), file_url: fd?.url, file_name: fd?.name, file_type: fd?.type });
+      setInput(""); setPF(null); sendStopTyping();
+    } finally { setUploading(false); }
   };
 
-  const handleCopyMessage = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      toast({ title: "Copied to clipboard" });
-    });
+  const copyMsg   = (t: string) => { navigator.clipboard.writeText(t); toast({ title: "Copied" }); };
+  const startEdit = (id: string, t: string) => { setEditId(id); setEditTxt(t); };
+  const saveEdit  = async (id: string) => {
+    if (!editTxt.trim()) return;
+    try { await supabase.from("team_messages").update({ message_text: editTxt.trim() }).eq("id", id); toast({ title: "Updated" }); }
+    catch { toast({ title: "Failed to update", variant: "destructive" }); }
+    finally { setEditId(null); setEditTxt(""); }
+  };
+  const delMsg = async (id: string) => {
+    try { await supabase.from("team_messages").delete().eq("id", id); toast({ title: "Deleted" }); }
+    catch { toast({ title: "Failed to delete", variant: "destructive" }); }
   };
 
-  const handleStartEdit = (msgId: string, text: string) => {
-    setEditingId(msgId);
-    setEditText(text);
-  };
+  const onCtx = (e: React.MouseEvent, id: string) => { e.preventDefault(); setCtx({ id, x: e.clientX, y: e.clientY }); };
+  const onTouchStart = (id: string) => { lpTimer.current = setTimeout(() => setLpId(id), 500); };
+  const onTouchEnd   = () => { if (lpTimer.current) clearTimeout(lpTimer.current); };
 
-  const handleSaveEdit = async (msgId: string) => {
-    if (!editText.trim()) return;
-    try {
-      const { error } = await supabase
-        .from("team_messages")
-        .update({ message_text: editText.trim() })
-        .eq("id", msgId);
-      if (error) throw error;
-      toast({ title: "Message updated" });
-    } catch {
-      toast({ title: "Failed to update message", variant: "destructive" });
-    } finally {
-      setEditingId(null);
-      setEditText("");
-    }
-  };
-
-  const handleDeleteMessage = async (msgId: string) => {
-    try {
-      const { error } = await supabase
-        .from("team_messages")
-        .delete()
-        .eq("id", msgId);
-      if (error) throw error;
-      toast({ title: "Message deleted" });
-    } catch {
-      toast({ title: "Failed to delete message", variant: "destructive" });
-    }
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, msgId: string) => {
-    e.preventDefault();
-    const x = Math.min(e.clientX, window.innerWidth - 180);
-    const y = Math.min(e.clientY, window.innerHeight - 140);
-    setContextMenu({ msgId, x, y });
-  };
-
-  // Group messages by date
   const grouped = useMemo(() => {
-    const groups: { label: string; msgs: typeof messages }[] = [];
-    let last = "";
+    const g: { label: string; msgs: typeof messages }[] = []; let last = "";
     messages.forEach(m => {
       const d = new Date(m.created_at);
       const label = isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMMM d, yyyy");
-      if (label !== last) { groups.push({ label, msgs: [] }); last = label; }
-      groups[groups.length - 1].msgs.push(m);
+      if (label !== last) { g.push({ label, msgs: [] }); last = label; }
+      g[g.length - 1].msgs.push(m);
     });
-    return groups;
+    return g;
   }, [messages]);
 
-  return (
-    <div className="flex flex-col h-full" style={{ background: "rgba(8,11,20,0.6)" }}>
-      {/* Header */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        padding: "14px 20px",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(10,14,26,0.8)",
-        backdropFilter: "blur(20px)",
-        flexShrink: 0,
-      }}>
-        {onBack && (
-          <button
-            className="md:hidden"
-            onClick={onBack}
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "8px",
-              width: "32px",
-              height: "32px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "rgba(255,255,255,0.6)",
-            }}
-          >
-            <ArrowLeft style={{ width: "14px", height: "14px" }} />
-          </button>
-        )}
+  const lpMsg  = messages.find(m => m.id === lpId);
+  const lpIsMe = lpMsg?.sender_id === user?.id;
 
-        <div style={{
-          width: "38px",
-          height: "38px",
-          borderRadius: "10px",
-          background: isGroup
-            ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(99,102,241,0.3))"
-            : "linear-gradient(135deg, rgba(99,102,241,0.3), rgba(79,70,229,0.3))",
-          border: "1px solid rgba(99,102,241,0.3)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}>
+  return (
+    <div className="mp-thread">
+      {/* header */}
+      <div className="mp-thread-header">
+        <button className="mp-back-btn" onClick={onBack}><ArrowLeft style={{ width: 16, height: 16 }} /></button>
+        <div className="mp-thread-av">
+          {isGroup ? <Users style={{ width: 14, height: 14, color: "#a78bfa" }} />
+            : <span style={{ fontSize: 12, fontWeight: 700, color: "#818cf8" }}>{convo ? getConversationInitials(convo) : "?"}</span>}
+        </div>
+        <div className="mp-thread-info">
+          <p className="mp-thread-name">{chatName}</p>
           {isGroup
-            ? <Users style={{ width: "16px", height: "16px", color: "#818cf8" }} />
-            : <span style={{ fontSize: "13px", fontWeight: 700, color: "#818cf8" }}>
-                {convo ? getConversationInitials(convo) : "?"}
-              </span>
-          }
+            ? <p className="mp-thread-sub">{(convo?.participants.length ?? 0) + 1} members</p>
+            : typingUsers.length > 0
+              ? <p className="mp-thread-typing">typing…</p>
+              : <p className="mp-thread-sub">Online</p>}
         </div>
-
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <p style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {chatName}
-          </p>
-          {isGroup && (
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>
-              {(convo?.participants.length ?? 0) + 1} members
-            </p>
-          )}
-        </div>
-
         {typingUsers.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-            <div style={{ display: "flex", gap: "3px" }}>
-              {[0,1,2].map(i => (
-                <div key={i} style={{
-                  width: "5px", height: "5px", borderRadius: "50%",
-                  background: "#6366f1",
-                  animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
-                }} />
-              ))}
-            </div>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", fontStyle: "italic" }}>
-              {typingUsers.map(u => u.name.split(" ")[0]).join(", ")} typing
-            </p>
-          </div>
+          <div className="mp-typing-dots"><span /><span /><span /></div>
         )}
       </div>
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+      {/* messages */}
+      <div className="mp-messages">
         {messagesLoading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-            <Loader2 style={{ width: "20px", height: "20px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
-          </div>
+          <div className="mp-center"><Loader2 className="mp-spin" /></div>
         ) : messages.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-            <div style={{
-              width: "56px", height: "56px", borderRadius: "16px",
-              background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))",
-              border: "1px solid rgba(99,102,241,0.2)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              marginBottom: "16px",
-            }}>
-              <MessageSquare style={{ width: "22px", height: "22px", color: "#6366f1" }} />
+          <div className="mp-empty-thread">
+            <div className="mp-empty-icon"><MessageSquare style={{ width: 22, height: 22, color: "#7c3aed" }} /></div>
+            <p className="mp-empty-title">No messages yet</p>
+            <p className="mp-empty-sub">Start the conversation below</p>
+          </div>
+        ) : grouped.map(group => (
+          <div key={group.label}>
+            <div className="mp-date-div">
+              <div className="mp-div-line" /><span className="mp-div-label">{group.label}</span><div className="mp-div-line" />
             </div>
-            <p style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>No messages yet</p>
-            <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)" }}>Send the first message to get the conversation going.</p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-            {grouped.map(group => (
-              <div key={group.label}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "20px 0 12px" }}>
-                  <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                  <span style={{
-                    fontSize: "10px", color: "rgba(255,255,255,0.25)",
-                    fontWeight: 600, letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    padding: "3px 10px",
-                    background: "rgba(255,255,255,0.04)",
-                    borderRadius: "20px",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    fontFamily: "'DM Sans', system-ui, sans-serif",
-                  }}>
-                    {group.label}
-                  </span>
-                  <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                </div>
-
-                {group.msgs.map((msg, idx) => {
-                  const isMe = msg.sender_id === user?.id;
-                  const status = getReadStatus(msg.created_at, msg.sender_id, user?.id ?? "", readReceipts);
-                  const nextMsg = group.msgs[idx + 1];
-                  const showReceipt = isMe && (!nextMsg || nextMsg.sender_id !== user?.id);
-                  const prevMsg = group.msgs[idx - 1];
-                  const sameSender = prevMsg?.sender_id === msg.sender_id;
-                  const isEditing = editingId === msg.id;
-                  const isContextMsg = contextMenu?.msgId === msg.id;
-
-                  return (
-                    <div
-                      key={msg.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: isMe ? "flex-end" : "flex-start",
-                        marginTop: sameSender ? "2px" : "12px",
-                        position: "relative",
-                      }}
-                      onContextMenu={e => handleContextMenu(e, msg.id)}
-                    >
-                      {!isMe && !sameSender && (
-                        <div style={{
-                          width: "30px", height: "30px", borderRadius: "8px",
-                          background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))",
-                          border: "1px solid rgba(99,102,241,0.2)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          flexShrink: 0, marginRight: "8px", marginTop: "2px",
-                          fontSize: "11px", fontWeight: 700, color: "#818cf8",
-                        }}>
-                          {getInitials(msg.sender?.full_name || msg.sender?.email)}
-                        </div>
-                      )}
-                      {!isMe && sameSender && <div style={{ width: "38px", flexShrink: 0 }} />}
-
-                      <div style={{
-                        maxWidth: "68%",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: isMe ? "flex-end" : "flex-start",
-                      }}>
-                        {!isMe && !sameSender && (
-                          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "3px", marginLeft: "2px", fontWeight: 500 }}>
-                            {msg.sender?.full_name || msg.sender?.email || "Unknown"}
-                          </p>
-                        )}
-
-                        {isEditing ? (
-                          <div style={{
-                            display: "flex",
-                            gap: "6px",
-                            alignItems: "center",
-                            background: "rgba(99,102,241,0.1)",
-                            border: "1px solid rgba(99,102,241,0.3)",
-                            borderRadius: "12px",
-                            padding: "6px 10px",
-                          }}>
-                            <input
-                              ref={editInputRef}
-                              value={editText}
-                              onChange={e => setEditText(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") handleSaveEdit(msg.id);
-                                if (e.key === "Escape") { setEditingId(null); setEditText(""); }
-                              }}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                outline: "none",
-                                color: "#f1f5f9",
-                                fontSize: "13px",
-                                minWidth: "120px",
-                                fontFamily: "'DM Sans', system-ui, sans-serif",
-                              }}
-                            />
-                            <button
-                              onClick={() => handleSaveEdit(msg.id)}
-                              style={{ background: "#6366f1", border: "none", borderRadius: "6px", padding: "3px 8px", color: "#fff", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => { setEditingId(null); setEditText(""); }}
-                              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "11px" }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              padding: "9px 13px",
-                              borderRadius: isMe ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                              background: isMe
-                                ? "linear-gradient(135deg, #6366f1, #4f46e5)"
-                                : "rgba(255,255,255,0.06)",
-                              border: isMe
-                                ? "1px solid rgba(99,102,241,0.4)"
-                                : "1px solid rgba(255,255,255,0.07)",
-                              cursor: "context-menu",
-                              boxShadow: isContextMsg
-                                ? "0 0 0 2px rgba(99,102,241,0.4)"
-                                : isMe
-                                ? "0 4px 20px rgba(99,102,241,0.3)"
-                                : "none",
-                              transition: "box-shadow 0.15s",
-                            }}
-                          >
-                            {msg.file_url && (
-                              <div style={{ marginBottom: "8px" }}>
-                                {isImageFile(msg.file_type) ? (
-                                  <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
-                                    <img src={msg.file_url} alt={msg.file_name ?? "image"} style={{ borderRadius: "8px", maxWidth: "100%", maxHeight: "160px", objectFit: "cover", display: "block" }} />
-                                  </a>
-                                ) : (
-                                  <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
-                                    style={{
-                                      display: "flex", alignItems: "center", gap: "8px",
-                                      padding: "8px 10px", borderRadius: "8px",
-                                      background: isMe ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
-                                      textDecoration: "none",
-                                    }}>
-                                    <FileText style={{ width: "14px", height: "14px", color: isMe ? "rgba(255,255,255,0.8)" : "#818cf8", flexShrink: 0 }} />
-                                    <span style={{ fontSize: "12px", color: isMe ? "rgba(255,255,255,0.9)" : "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                      {msg.file_name ?? "File"}
-                                    </span>
-                                  </a>
-                                )}
-                              </div>
-                            )}
-                            {(!msg.file_url || msg.message_text !== msg.file_name) && (
-                              <p style={{
-                                fontSize: "13px",
-                                lineHeight: "1.55",
-                                color: isMe ? "#fff" : "rgba(255,255,255,0.82)",
-                                margin: 0,
-                                fontFamily: "'DM Sans', system-ui, sans-serif",
-                              }}>
-                                {msg.message_text}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "3px" }}>
-                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>
-                            {format(new Date(msg.created_at), "h:mm a")}
-                          </span>
-                          {showReceipt && status === "read" && (
-                            <CheckCheck style={{ width: "12px", height: "12px", color: "#818cf8" }} />
-                          )}
-                          {showReceipt && status === "sent" && (
-                            <Check style={{ width: "12px", height: "12px", color: "rgba(255,255,255,0.3)" }} />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Inline action buttons on hover */}
-                      {isMe && !isEditing && (
-                        <div
-                          className="msg-actions"
-                          style={{
-                            display: "flex",
-                            gap: "4px",
-                            alignItems: "center",
-                            marginRight: "8px",
-                            opacity: 0,
-                            transition: "opacity 0.15s",
-                          }}
-                        >
-                          <button
-                            onClick={() => handleCopyMessage(msg.message_text)}
-                            title="Copy"
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex", alignItems: "center" }}
-                          >
-                            <Copy style={{ width: "11px", height: "11px" }} />
-                          </button>
-                          <button
-                            onClick={() => handleStartEdit(msg.id, msg.message_text)}
-                            title="Edit"
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex", alignItems: "center" }}
-                          >
-                            <Pencil style={{ width: "11px", height: "11px" }} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMessage(msg.id)}
-                            title="Delete"
-                            style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.15)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(248,113,113,0.6)", display: "flex", alignItems: "center" }}
-                          >
-                            <Trash2 style={{ width: "11px", height: "11px" }} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-            <div ref={scrollRef} />
-          </div>
-        )}
-      </div>
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <MessageContextMenu
-          isMe={messages.find(m => m.id === contextMenu.msgId)?.sender_id === user?.id}
-          messageText={messages.find(m => m.id === contextMenu.msgId)?.message_text ?? ""}
-          position={{ x: contextMenu.x, y: contextMenu.y }}
-          onCopy={() => handleCopyMessage(messages.find(m => m.id === contextMenu.msgId)?.message_text ?? "")}
-          onEdit={() => {
-            const msg = messages.find(m => m.id === contextMenu.msgId);
-            if (msg) handleStartEdit(msg.id, msg.message_text);
-          }}
-          onDelete={() => handleDeleteMessage(contextMenu.msgId)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
-
-      {/* File preview */}
-      {pendingFile && (
-        <div style={{ padding: "8px 20px 0", flexShrink: 0 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: "8px",
-            background: "rgba(99,102,241,0.08)",
-            border: "1px solid rgba(99,102,241,0.2)",
-            borderRadius: "10px", padding: "8px 12px",
-          }}>
-            {pendingFile.type.startsWith("image/")
-              ? <ImageIcon style={{ width: "14px", height: "14px", color: "#818cf8", flexShrink: 0 }} />
-              : <FileText style={{ width: "14px", height: "14px", color: "#818cf8", flexShrink: 0 }} />
-            }
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "12px", color: "#94a3b8" }}>{pendingFile.name}</span>
-            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
-              {(pendingFile.size / 1024).toFixed(0)} KB
-            </span>
-            <button onClick={() => setPendingFile(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center" }}>
-              <X style={{ width: "13px", height: "13px" }} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{
-        padding: "12px 20px 16px",
-        borderTop: "1px solid rgba(255,255,255,0.05)",
-        background: "rgba(10,14,26,0.6)",
-        backdropFilter: "blur(12px)",
-        flexShrink: 0,
-      }}>
-        <input type="file" ref={fileInputRef} className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f && f.size <= 20 * 1024 * 1024) setPendingFile(f); e.target.value = ""; }}
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "14px",
-          padding: "6px 8px 6px 14px",
-          transition: "border-color 0.2s",
-        }}
-          onFocus={() => {}}
-        >
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", padding: "4px", borderRadius: "6px", transition: "color 0.15s" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
-          >
-            <Paperclip style={{ width: "16px", height: "16px" }} />
-          </button>
-          <input
-            style={{
-              flex: 1, background: "transparent", border: "none", outline: "none",
-              color: "#f1f5f9", fontSize: "13px",
-              padding: "6px 0",
-              fontFamily: "'DM Sans', system-ui, sans-serif",
-            }}
-            placeholder="Type a message..."
-            value={input}
-            onChange={e => handleInputChange(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
-            disabled={uploading}
-          />
-          <button
-            onClick={handleSend}
-            disabled={(!input.trim() && !pendingFile) || sendMessage.isPending || uploading}
-            style={{
-              width: "34px", height: "34px", borderRadius: "10px",
-              background: ((!input.trim() && !pendingFile) || sendMessage.isPending || uploading)
-                ? "rgba(99,102,241,0.3)"
-                : "linear-gradient(135deg, #6366f1, #4f46e5)",
-              border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.2s",
-              boxShadow: ((!input.trim() && !pendingFile) || sendMessage.isPending || uploading)
-                ? "none"
-                : "0 4px 12px rgba(99,102,241,0.4)",
-            }}
-          >
-            <Send style={{ width: "14px", height: "14px", color: "#fff" }} />
-          </button>
-        </div>
-        <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)", marginTop: "6px", textAlign: "center", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-          Right-click any message to copy, edit, or delete · Enter to send
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Notifications Panel ─────────────────────────────────────────────────────
-
-function NotificationsPanel() {
-  const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
-  const [filter, setFilter] = useState<"all" | "unread">("all");
-
-  const filtered = notifications.filter(n => filter === "all" || !n.is_read);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(10,14,26,0.8)", flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", margin: 0 }}>Notifications</h3>
-          {unreadCount > 0 && (
-            <span style={{
-              background: "rgba(99,102,241,0.2)", color: "#818cf8",
-              fontSize: "10px", fontWeight: 700, padding: "2px 8px",
-              borderRadius: "20px", border: "1px solid rgba(99,102,241,0.3)",
-            }}>
-              {unreadCount} new
-            </span>
-          )}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          {["all", "unread"].map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f as "all" | "unread")}
-              style={{
-                background: filter === f ? "rgba(99,102,241,0.15)" : "transparent",
-                border: filter === f ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
-                borderRadius: "6px", padding: "3px 10px",
-                color: filter === f ? "#818cf8" : "rgba(255,255,255,0.4)",
-                fontSize: "11px", fontWeight: 500, cursor: "pointer",
-                transition: "all 0.15s",
-                textTransform: "capitalize",
-                fontFamily: "'DM Sans', system-ui, sans-serif",
-              }}
-            >
-              {f}
-            </button>
-          ))}
-          {unreadCount > 0 && (
-            <button
-              onClick={() => markAllRead.mutate()}
-              disabled={markAllRead.isPending}
-              style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: "6px", padding: "3px 10px",
-                color: "rgba(255,255,255,0.5)",
-                fontSize: "11px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: "5px",
-                fontFamily: "'DM Sans', system-ui, sans-serif",
-              }}
-            >
-              <CheckCheck style={{ width: "11px", height: "11px" }} />
-              Mark all read
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        {notificationsLoading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-            <Loader2 style={{ width: "20px", height: "20px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 24px", textAlign: "center" }}>
-            <div style={{
-              width: "48px", height: "48px", borderRadius: "14px",
-              background: "rgba(99,102,241,0.1)",
-              border: "1px solid rgba(99,102,241,0.2)",
-              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "14px",
-            }}>
-              <Bell style={{ width: "20px", height: "20px", color: "#6366f1" }} />
-            </div>
-            <p style={{ fontSize: "13px", fontWeight: 600, color: "#64748b", marginBottom: "4px" }}>
-              {filter === "unread" ? "No unread notifications" : "All caught up"}
-            </p>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)" }}>
-              Coaching feedback, mentions, and updates will appear here.
-            </p>
-          </div>
-        ) : (
-          <div>
-            {filtered.map(n => {
-              const Icon = notifTypeIcons[n.type] ?? Bell;
-              const colorClass = notifTypeColors[n.type] ?? notifTypeColors.system;
+            {group.msgs.map((msg, idx) => {
+              const isMe   = msg.sender_id === user?.id;
+              const status = getReadStatus(msg.created_at, msg.sender_id, user?.id ?? "", readReceipts);
+              const next   = group.msgs[idx + 1];
+              const prev   = group.msgs[idx - 1];
+              const showRec = isMe && (!next || next.sender_id !== user?.id);
+              const samePrev = prev?.sender_id === msg.sender_id;
+              const isEd = editId === msg.id;
               return (
-                <div
-                  key={n.id}
-                  onClick={() => !n.is_read && markRead.mutate(n.id)}
-                  style={{
-                    display: "flex",
-                    gap: "12px",
-                    padding: "14px 20px",
-                    borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    cursor: "pointer",
-                    background: !n.is_read ? "rgba(99,102,241,0.04)" : "transparent",
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = !n.is_read ? "rgba(99,102,241,0.04)" : "transparent")}
-                >
-                  <div className={cn("p-2 rounded-xl shrink-0 mt-0.5", colorClass)} style={{ width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon style={{ width: "15px", height: "15px" }} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: "13px",
-                      lineHeight: "1.5",
-                      color: !n.is_read ? "#e2e8f0" : "rgba(255,255,255,0.45)",
-                      fontWeight: !n.is_read ? 500 : 400,
-                      fontFamily: "'DM Sans', system-ui, sans-serif",
-                      margin: 0,
-                    }}>
-                      {n.message}
-                    </p>
-                    <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", marginTop: "3px" }}>
-                      {format(new Date(n.created_at), "MMM d, h:mm a")}
-                    </p>
-                  </div>
-                  {!n.is_read && (
-                    <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#6366f1", flexShrink: 0, marginTop: "6px" }} />
+                <div key={msg.id}
+                  className={cn("mp-msg-row", isMe ? "mp-msg-row--me" : "mp-msg-row--them", samePrev && "mp-msg-row--same")}
+                  onContextMenu={e => onCtx(e, msg.id)}
+                  onTouchStart={() => onTouchStart(msg.id)}
+                  onTouchEnd={onTouchEnd} onTouchMove={onTouchEnd}>
+                  {!isMe && !samePrev && (
+                    <div className="mp-av">{getInitials(msg.sender?.full_name || msg.sender?.email)}</div>
                   )}
+                  {!isMe && samePrev && <div className="mp-av-sp" />}
+                  <div className={cn("mp-msg-body", isMe ? "mp-msg-body--me" : "mp-msg-body--them")}>
+                    {!isMe && !samePrev && <p className="mp-sender">{msg.sender?.full_name || msg.sender?.email || "Unknown"}</p>}
+                    {isEd ? (
+                      <div className="mp-edit-wrap">
+                        <input ref={editRef} value={editTxt} onChange={e => setEditTxt(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") saveEdit(msg.id); if (e.key === "Escape") { setEditId(null); setEditTxt(""); } }}
+                          className="mp-edit-input" />
+                        <button className="mp-edit-save" onClick={() => saveEdit(msg.id)}>Save</button>
+                        <button className="mp-edit-cancel" onClick={() => { setEditId(null); setEditTxt(""); }}>×</button>
+                      </div>
+                    ) : (
+                      <div className={cn("mp-bubble", isMe ? "mp-bubble--me" : "mp-bubble--them")}>
+                        {msg.file_url && (
+                          <div className="mp-attach">
+                            {isImageFile(msg.file_type)
+                              ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer"><img src={msg.file_url} alt={msg.file_name ?? "img"} className="mp-attach-img" /></a>
+                              : <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={cn("mp-attach-file", isMe && "mp-attach-file--me")}><FileText style={{ width: 14, height: 14, flexShrink: 0 }} /><span className="mp-attach-name">{msg.file_name ?? "File"}</span></a>}
+                          </div>
+                        )}
+                        {(!msg.file_url || msg.message_text !== msg.file_name) && (
+                          <p className="mp-bubble-text">{msg.message_text}</p>
+                        )}
+                      </div>
+                    )}
+                    {/* desktop hover actions */}
+                    {isMe && !isEd && (
+                      <div className="mp-hover-acts">
+                        <button className="mp-ha" title="Copy"   onClick={() => copyMsg(msg.message_text)}><Copy   style={{ width: 11, height: 11 }} /></button>
+                        <button className="mp-ha" title="Edit"   onClick={() => startEdit(msg.id, msg.message_text)}><Pencil style={{ width: 11, height: 11 }} /></button>
+                        <button className="mp-ha mp-ha--del" title="Delete" onClick={() => delMsg(msg.id)}><Trash2 style={{ width: 11, height: 11 }} /></button>
+                      </div>
+                    )}
+                    <div className={cn("mp-meta", isMe && "mp-meta--me")}>
+                      <span className="mp-time">{format(new Date(msg.created_at), "h:mm a")}</span>
+                      {showRec && status === "read" && <CheckCheck style={{ width: 12, height: 12, color: "#818cf8" }} />}
+                      {showRec && status === "sent" && <Check      style={{ width: 12, height: 12, color: "rgba(255,255,255,0.3)" }} />}
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
-        )}
+        ))}
+        <div ref={scrollRef} />
+      </div>
+
+      {/* desktop context menu */}
+      {ctx && (
+        <CtxMenu
+          isMe={messages.find(m => m.id === ctx.id)?.sender_id === user?.id ?? false}
+          pos={{ x: ctx.x, y: ctx.y }}
+          onCopy={()   => copyMsg(messages.find(m => m.id === ctx.id)?.message_text ?? "")}
+          onEdit={()   => { const m = messages.find(x => x.id === ctx.id); if (m) startEdit(m.id, m.message_text); }}
+          onDelete={()  => delMsg(ctx.id)}
+          onClose={()  => setCtx(null)}
+        />
+      )}
+
+      {/* mobile long-press action sheet */}
+      {lpId && lpMsg && (
+        <div className="mp-sheet-overlay" onClick={() => setLpId(null)}>
+          <div className="mp-sheet" onClick={e => e.stopPropagation()}>
+            <div className="mp-sheet-handle" />
+            <div className="mp-sheet-preview">
+              <p className="mp-sheet-preview-txt">{lpMsg.message_text.slice(0, 70)}{lpMsg.message_text.length > 70 ? "…" : ""}</p>
+            </div>
+            {[
+              { icon: Copy,   label: "Copy text",      fn: () => { copyMsg(lpMsg.message_text); setLpId(null); }, danger: false },
+              ...(lpIsMe ? [
+                { icon: Pencil, label: "Edit message",   fn: () => { startEdit(lpMsg.id, lpMsg.message_text); setLpId(null); }, danger: false },
+                { icon: Trash2, label: "Delete message", fn: () => { delMsg(lpMsg.id); setLpId(null); }, danger: true },
+              ] : []),
+            ].map((a, i) => (
+              <button key={i} className={cn("mp-sheet-btn", a.danger && "mp-sheet-btn--danger")} onClick={a.fn}>
+                <a.icon style={{ width: 18, height: 18 }} />{a.label}
+              </button>
+            ))}
+            <button className="mp-sheet-cancel" onClick={() => setLpId(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* file preview */}
+      {pendingFile && (
+        <div className="mp-file-prev">
+          {pendingFile.type.startsWith("image/") ? <ImageIcon style={{ width: 14, height: 14, color: "#818cf8", flexShrink: 0 }} /> : <FileText style={{ width: 14, height: 14, color: "#818cf8", flexShrink: 0 }} />}
+          <span className="mp-fp-name">{pendingFile.name}</span>
+          <span className="mp-fp-size">{(pendingFile.size / 1024).toFixed(0)} KB</span>
+          <button className="mp-fp-rm" onClick={() => setPF(null)}><X style={{ width: 12, height: 12 }} /></button>
+        </div>
+      )}
+
+      {/* input */}
+      <div className="mp-input-bar">
+        <input type="file" ref={fileRef} className="sr-only"
+          onChange={e => { const f = e.target.files?.[0]; if (f && f.size <= 20 * 1024 * 1024) setPF(f); e.target.value = ""; }}
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
+        <div className="mp-input-wrap">
+          <button className="mp-input-icon" onClick={() => fileRef.current?.click()} disabled={uploading}><Paperclip style={{ width: 17, height: 17 }} /></button>
+          <input className="mp-chat-input" placeholder="Message…" value={input}
+            onChange={e => onInputChange(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
+            disabled={uploading} />
+          <button className={cn("mp-send", (input.trim() || pendingFile) && !uploading && !sendMessage.isPending && "mp-send--active")}
+            onClick={handleSend} disabled={(!input.trim() && !pendingFile) || sendMessage.isPending || uploading}>
+            <Send style={{ width: 15, height: 15 }} />
+          </button>
+        </div>
+        <p className="mp-hint">Long-press on mobile · Right-click on desktop to copy / edit / delete</p>
       </div>
     </div>
   );
 }
 
-// ─── Main MessagesPage ────────────────────────────────────────────────────────
+/* ─── notifications ───────────────────────────────────────── */
+function NotifsPanel() {
+  const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
+  const [filter, setFilter] = useState<"all"|"unread">("all");
+  const filtered = notifications.filter(n => filter === "all" || !n.is_read);
+  return (
+    <div className="mp-notif-panel">
+      <div className="mp-notif-hdr">
+        <div className="mp-notif-hdr-l">
+          <span className="mp-notif-title">Notifications</span>
+          {unreadCount > 0 && <span className="mp-notif-badge">{unreadCount}</span>}
+        </div>
+        <div className="mp-notif-hdr-r">
+          {(["all","unread"] as const).map(f => (
+            <button key={f} className={cn("mp-filter-btn", filter === f && "mp-filter-btn--active")} onClick={() => setFilter(f)}>
+              {f === "all" ? "All" : "Unread"}
+            </button>
+          ))}
+          {unreadCount > 0 && (
+            <button className="mp-markall-btn" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
+              <CheckCheck style={{ width: 11, height: 11 }} /> All read
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mp-notif-list">
+        {notificationsLoading ? (
+          <div className="mp-center"><Loader2 className="mp-spin" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="mp-notif-empty">
+            <Bell style={{ width: 28, height: 28, color: "rgba(124,58,237,0.4)" }} />
+            <p>{filter === "unread" ? "No unread notifications" : "You're all caught up"}</p>
+          </div>
+        ) : filtered.map(n => {
+          const Icon = notifIcons[n.type] ?? Bell;
+          return (
+            <div key={n.id} className={cn("mp-notif-item", !n.is_read && "mp-notif-item--unread")} onClick={() => !n.is_read && markRead.mutate(n.id)}>
+              <div className="mp-notif-icon"><Icon style={{ width: 14, height: 14 }} /></div>
+              <div className="mp-notif-body">
+                <p className={cn("mp-notif-text", !n.is_read && "mp-notif-text--bold")}>{n.message}</p>
+                <p className="mp-notif-time">{format(new Date(n.created_at), "MMM d, h:mm a")}</p>
+              </div>
+              {!n.is_read && <div className="mp-notif-dot" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
+/* ─── convo list panel ────────────────────────────────────── */
+function ConvoListPanel({ convos, loading, selected, onSelect, search, onSearchChange }: {
+  convos: Conversation[]; loading: boolean; selected: string | null;
+  onSelect(id: string): void; search: string; onSearchChange(v: string): void;
+}) {
+  return (
+    <div className="mp-convo-panel">
+      <div className="mp-search-wrap">
+        <Search style={{ width: 14, height: 14, color: "rgba(255,255,255,0.22)", flexShrink: 0 }} />
+        <input className="mp-search" placeholder="Search…" value={search} onChange={e => onSearchChange(e.target.value)} />
+        {search && <button className="mp-search-clr" onClick={() => onSearchChange("")}><X style={{ width: 12, height: 12 }} /></button>}
+      </div>
+      <div className="mp-convo-items">
+        {loading ? (
+          <div className="mp-center"><Loader2 className="mp-spin" /></div>
+        ) : convos.length === 0 ? (
+          <div className="mp-convo-empty">
+            <MessageSquare style={{ width: 26, height: 26, color: "rgba(124,58,237,0.3)" }} />
+            <p>{search ? "No results" : "No conversations"}</p>
+          </div>
+        ) : convos.map(c => {
+          const name = getConversationName(c);
+          const init = getConversationInitials(c);
+          const isSel = selected === c.id;
+          return (
+            <button key={c.id} className={cn("mp-convo-item", isSel && "mp-convo-item--active")} onClick={() => onSelect(c.id)}>
+              <div className="mp-convo-av-wrap">
+                <div className={cn("mp-convo-av", c.is_group && "mp-convo-av--group")}>
+                  {c.is_group ? <Users style={{ width: 14, height: 14 }} /> : init}
+                </div>
+                {c.unread_count > 0 && <div className="mp-convo-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>}
+              </div>
+              <div className="mp-convo-info">
+                <div className="mp-convo-row1">
+                  <span className={cn("mp-convo-name", c.unread_count > 0 && "mp-convo-name--unread")}>{name}</span>
+                  {c.last_message && <span className="mp-convo-time">{formatTime(c.last_message.created_at)}</span>}
+                </div>
+                {c.last_message && (
+                  <p className={cn("mp-convo-preview", c.unread_count > 0 && "mp-convo-preview--unread")}>{c.last_message.message_text}</p>
+                )}
+              </div>
+              <ChevronRight className="mp-chevron" style={{ width: 14, height: 14 }} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── main ────────────────────────────────────────────────── */
 export default function MessagesPage() {
-  const { user } = useAuth();
+  const { user }   = useAuth();
   const { team, members } = useTeam();
   const { conversations, conversationsLoading, totalUnread, refetchConversations } = useTeamMessaging(team?.id);
-  const { unreadCount: notifUnreadCount } = useNotifications();
-  const [selectedConvo, setSelectedConvo] = useState<string | null>(null);
-  const [newConvoOpen, setNewConvoOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"messages" | "notifications">("messages");
-  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
+  const { unreadCount: notifCount } = useNotifications();
+  const [selected, setSelected]   = useState<string | null>(null);
+  const [newOpen, setNewOpen]      = useState(false);
+  const [search, setSearch]        = useState("");
+  const [tab, setTab]              = useState<"chats"|"notifs">("chats");
+  const [mobileScr, setMobileScr] = useState<"list"|"thread">("list");
 
-  const filteredConvos = useMemo(() => {
-    if (!searchQuery.trim()) return conversations;
-    const q = searchQuery.toLowerCase();
-    return conversations.filter(c => {
-      const name = getConversationName(c).toLowerCase();
-      const lastMsg = c.last_message?.message_text?.toLowerCase() ?? "";
-      return name.includes(q) || lastMsg.includes(q);
-    });
-  }, [conversations, searchQuery]);
+  const filtered = useMemo(() => {
+    if (!search.trim()) return conversations;
+    const q = search.toLowerCase();
+    return conversations.filter(c =>
+      getConversationName(c).toLowerCase().includes(q) ||
+      (c.last_message?.message_text ?? "").toLowerCase().includes(q));
+  }, [conversations, search]);
 
-  const handleSelectConvo = (id: string) => {
-    setSelectedConvo(id);
-    setMobileView("thread");
-  };
-
-  const handleBack = () => {
-    setMobileView("list");
-  };
-
-  const totalBadge = totalUnread + notifUnreadCount;
+  const selectConvo = (id: string) => { setSelected(id); setMobileScr("thread"); };
+  const goBack      = () => setMobileScr("list");
+  const totalBadge  = totalUnread + notifCount;
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
-        @keyframes bounce {
-          0%, 80%, 100% { transform: translateY(0); }
-          40% { transform: translateY(-4px); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        /* tokens */
+        .mp-page{--bg0:#060912;--bg1:#0b0f1c;--bg2:#0f1424;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.04);--ac:#7c3aed;--ac2:#6d28d9;--ac-glow:rgba(124,58,237,0.35);--ac-soft:rgba(124,58,237,0.12);--t1:#f0f6fc;--t2:rgba(255,255,255,0.6);--t3:rgba(255,255,255,0.3);--t4:rgba(255,255,255,0.14);--r:var(--font-body,'DM Sans',system-ui,sans-serif);--rd:'Bricolage Grotesque',system-ui,sans-serif;}
 
-        .msg-row:hover .msg-actions {
-          opacity: 1 !important;
-        }
-        .convo-item:hover {
-          background: rgba(255,255,255,0.03) !important;
-        }
-        .convo-item.active {
-          background: rgba(99,102,241,0.1) !important;
-          border-color: rgba(99,102,241,0.2) !important;
-        }
+        @keyframes mpSpin{to{transform:rotate(360deg)}}
+        @keyframes mpBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
+        @keyframes mpSlideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes mpSheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes mpFade{from{opacity:0}to{opacity:1}}
+
+        .mp-page{display:flex;flex-direction:column;height:calc(100dvh - 4rem);margin:-24px;overflow:hidden;background:var(--bg0);font-family:'DM Sans',system-ui,sans-serif;}
+        @media(max-width:767px){.mp-page{margin:-16px;height:calc(100dvh - 3.5rem);padding-bottom:58px;}}
+
+        /* top bar */
+        .mp-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;flex-shrink:0;background:rgba(11,15,28,0.96);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);}
+        .mp-topbar-l{display:flex;align-items:center;gap:10px;}
+        .mp-topbar-icon{width:32px;height:32px;border-radius:9px;background:var(--ac-soft);border:1px solid rgba(124,58,237,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .mp-topbar-title{font-size:15px;font-weight:700;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;}
+        .mp-topbar-badge{font-size:10px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;padding:2px 8px;border-radius:20px;box-shadow:0 2px 8px var(--ac-glow);}
+        .mp-new-btn{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:9px;padding:7px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px var(--ac-glow);font-family:'DM Sans',sans-serif;transition:transform .15s,box-shadow .15s;}
+        .mp-new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--ac-glow);}
+        @media(max-width:480px){.mp-new-btn span{display:none;}.mp-new-btn{width:34px;height:34px;padding:0;border-radius:50%;justify-content:center;}}
+
+        /* body */
+        .mp-body{display:flex;flex:1;min-height:0;}
+
+        /* sidebar */
+        .mp-sidebar{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg1);}
+        @media(max-width:767px){.mp-sidebar{width:100%;border-right:none;}.mp-sidebar--hidden{display:none;}}
+
+        /* tabs */
+        .mp-tabs{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--border2);flex-shrink:0;}
+        .mp-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 0;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--t3);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;}
+        .mp-tab--active{background:var(--ac-soft);border-color:rgba(124,58,237,0.25);color:#a78bfa;}
+        .mp-tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
+
+        /* convo panel */
+        .mp-convo-panel{display:flex;flex-direction:column;flex:1;min-height:0;}
+        .mp-search-wrap{display:flex;align-items:center;gap:8px;margin:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:7px 10px;flex-shrink:0;}
+        .mp-search{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:12px;font-family:'DM Sans',sans-serif;}
+        .mp-search::placeholder{color:var(--t4);}
+        .mp-search-clr{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;padding:0;}
+        .mp-convo-items{flex:1;overflow-y:auto;padding:4px 6px;}
+        .mp-convo-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;color:var(--t3);font-size:12px;}
+        .mp-convo-item{width:100%;display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left;transition:all .13s;margin-bottom:2px;font-family:'DM Sans',sans-serif;}
+        .mp-convo-item:hover{background:rgba(255,255,255,0.03);}
+        .mp-convo-item--active{background:var(--ac-soft)!important;border-color:rgba(124,58,237,0.22)!important;}
+        .mp-convo-av-wrap{position:relative;flex-shrink:0;}
+        .mp-convo-av{width:40px;height:40px;border-radius:12px;background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#a78bfa;}
+        .mp-convo-av--group{background:rgba(139,92,246,0.15);color:#c084fc;}
+        .mp-convo-unread{position:absolute;top:-3px;right:-3px;width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;box-shadow:0 2px 6px var(--ac-glow);}
+        .mp-convo-info{flex:1;min-width:0;}
+        .mp-convo-row1{display:flex;justify-content:space-between;align-items:baseline;gap:4px;}
+        .mp-convo-name{font-size:13px;font-weight:500;color:rgba(255,255,255,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .mp-convo-name--unread{font-weight:600;color:var(--t1);}
+        .mp-convo-time{font-size:10px;color:var(--t3);flex-shrink:0;}
+        .mp-convo-preview{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+        .mp-convo-preview--unread{color:rgba(255,255,255,0.5);font-weight:500;}
+        .mp-chevron{color:var(--t4);flex-shrink:0;}
+        @media(min-width:768px){.mp-chevron{display:none;}}
+
+        /* right panel */
+        .mp-right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,0.7);}
+        @media(max-width:767px){.mp-right--hidden{display:none;}}
+        .mp-right-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;}
+        .mp-re-icon{width:68px;height:68px;border-radius:20px;margin-bottom:18px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(124,58,237,0.06);}
+        .mp-right-empty h3{font-size:15px;font-weight:700;color:#64748b;font-family:'Bricolage Grotesque',sans-serif;margin:0 0 6px;}
+        .mp-right-empty p{font-size:12px;color:var(--t4);max-width:240px;line-height:1.6;margin:0 0 20px;}
+        .mp-re-btn{display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px var(--ac-glow);font-family:'DM Sans',sans-serif;}
+
+        /* thread */
+        .mp-thread{display:flex;flex-direction:column;height:100%;}
+
+        /* thread header */
+        .mp-thread-header{display:flex;align-items:center;gap:10px;padding:12px 18px;flex-shrink:0;background:rgba(11,15,28,0.92);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);}
+        .mp-back-btn{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;transition:.13s;}
+        .mp-back-btn:hover{background:rgba(255,255,255,0.09);}
+        @media(min-width:768px){.mp-back-btn{display:none;}}
+        .mp-thread-av{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(109,40,217,0.25));border:1px solid rgba(124,58,237,0.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .mp-thread-info{flex:1;min-width:0;}
+        .mp-thread-name{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .mp-thread-sub{font-size:11px;color:var(--t3);margin:0;}
+        .mp-thread-typing{font-size:11px;color:#a78bfa;font-style:italic;margin:0;}
+        .mp-typing-dots{display:flex;gap:3px;align-items:center;flex-shrink:0;}
+        .mp-typing-dots span{width:5px;height:5px;border-radius:50%;background:#7c3aed;display:block;}
+        .mp-typing-dots span:nth-child(1){animation:mpBounce 1.2s .0s infinite;}
+        .mp-typing-dots span:nth-child(2){animation:mpBounce 1.2s .2s infinite;}
+        .mp-typing-dots span:nth-child(3){animation:mpBounce 1.2s .4s infinite;}
+
+        /* messages */
+        .mp-messages{flex:1;overflow-y:auto;padding:14px 16px;}
+        @media(max-width:767px){.mp-messages{padding:10px 10px;}}
+        .mp-center{display:flex;justify-content:center;padding:40px 0;}
+        .mp-spin{width:20px;height:20px;color:#7c3aed;animation:mpSpin 1s linear infinite;}
+        .mp-empty-thread{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;}
+        .mp-empty-icon{width:52px;height:52px;border-radius:16px;margin-bottom:14px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;}
+        .mp-empty-title{font-size:14px;font-weight:600;color:#64748b;margin:0 0 4px;}
+        .mp-empty-sub{font-size:12px;color:var(--t4);margin:0;}
+
+        /* date divider */
+        .mp-date-div{display:flex;align-items:center;gap:10px;margin:18px 0 10px;}
+        .mp-div-line{flex:1;height:1px;background:var(--border2);}
+        .mp-div-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:20px;white-space:nowrap;}
+
+        /* message rows */
+        .mp-msg-row{display:flex;margin-bottom:2px;position:relative;}
+        .mp-msg-row--me{justify-content:flex-end;margin-top:3px;}
+        .mp-msg-row--them{justify-content:flex-start;margin-top:3px;}
+        .mp-msg-row--same{margin-bottom:1px;}
+        .mp-msg-row:not(.mp-msg-row--same){margin-top:10px;}
+        .mp-av{width:30px;height:30px;border-radius:8px;flex-shrink:0;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#818cf8;margin-right:8px;margin-top:2px;}
+        .mp-av-sp{width:38px;flex-shrink:0;}
+        .mp-msg-body{display:flex;flex-direction:column;max-width:70%;}
+        @media(max-width:480px){.mp-msg-body{max-width:86%;}}
+        .mp-msg-body--me{align-items:flex-end;}
+        .mp-msg-body--them{align-items:flex-start;}
+        .mp-sender{font-size:10px;color:var(--t3);margin:0 0 2px 2px;font-weight:500;}
+
+        /* bubbles */
+        .mp-bubble{padding:9px 13px;line-height:1.5;cursor:context-menu;transition:box-shadow .13s;word-break:break-word;}
+        .mp-bubble--me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,0.4);border-radius:16px 16px 4px 16px;box-shadow:0 3px 16px rgba(124,58,237,0.28);}
+        .mp-bubble--them{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.07);border-radius:16px 16px 16px 4px;}
+        .mp-bubble-text{font-size:13px;color:#fff;margin:0;font-family:'DM Sans',sans-serif;}
+        .mp-bubble--them .mp-bubble-text{color:rgba(255,255,255,0.84);}
+        @media(max-width:767px){.mp-bubble-text{font-size:14px;}.mp-bubble{padding:10px 14px;}}
+
+        /* attachments */
+        .mp-attach{margin-bottom:6px;}
+        .mp-attach-img{border-radius:8px;max-width:100%;max-height:160px;object-fit:cover;display:block;}
+        .mp-attach-file{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;text-decoration:none;background:rgba(255,255,255,0.1);font-size:12px;color:rgba(255,255,255,0.85);}
+        .mp-attach-file--me{background:rgba(255,255,255,0.15);}
+        .mp-attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+        /* hover actions — desktop only */
+        .mp-hover-acts{display:none;position:absolute;right:calc(100% + 6px);top:50%;transform:translateY(-50%);gap:3px;align-items:center;}
+        @media(min-width:768px){.mp-msg-row--me:hover .mp-hover-acts{display:flex;}}
+        .mp-ha{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,0.4);display:flex;align-items:center;transition:.12s;}
+        .mp-ha:hover{background:rgba(255,255,255,0.12);color:#fff;}
+        .mp-ha--del{background:rgba(239,68,68,0.06);border-color:rgba(239,68,68,0.15);}
+        .mp-ha--del:hover{background:rgba(239,68,68,0.15);color:#f87171;}
+
+        /* edit */
+        .mp-edit-wrap{display:flex;align-items:center;gap:6px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:7px 10px;}
+        .mp-edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:100px;flex:1;font-family:'DM Sans',sans-serif;}
+        .mp-edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
+        .mp-edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
+
+        /* meta */
+        .mp-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
+        .mp-meta--me{justify-content:flex-end;}
+        .mp-time{font-size:10px;color:var(--t4);}
+
+        /* context menu */
+        .mp-ctxmenu{background:rgba(10,13,22,0.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.7);overflow:hidden;width:160px;animation:mpFade .12s ease;}
+        .mp-ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
+        .mp-ctx-item:last-child{border-bottom:none;}
+        .mp-ctx-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+        .mp-ctx-item--danger{color:#f87171;}
+        .mp-ctx-item--danger:hover{background:rgba(248,113,113,0.1);}
+
+        /* action sheet */
+        .mp-sheet-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);animation:mpFade .2s ease;}
+        .mp-sheet{position:absolute;bottom:0;left:0;right:0;background:#0f1424;border-top:1px solid rgba(255,255,255,0.08);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);animation:mpSheetUp .25s ease;}
+        .mp-sheet-handle{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15);margin:10px auto 0;}
+        .mp-sheet-preview{padding:12px 20px 10px;border-bottom:1px solid rgba(255,255,255,0.05);}
+        .mp-sheet-preview-txt{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;}
+        .mp-sheet-btn{display:flex;align-items:center;gap:14px;width:100%;padding:16px 22px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--t1);font-size:16px;font-weight:500;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;}
+        .mp-sheet-btn--danger{color:#f87171;}
+        .mp-sheet-cancel{display:block;width:calc(100% - 24px);margin:8px 12px 4px;padding:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;color:var(--t2);font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+
+        /* file preview */
+        .mp-file-prev{display:flex;align-items:center;gap:8px;margin:0 14px 4px;background:rgba(124,58,237,0.07);border:1px solid rgba(124,58,237,0.2);border-radius:10px;padding:8px 12px;}
+        .mp-fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
+        .mp-fp-size{font-size:10px;color:var(--t3);flex-shrink:0;}
+        .mp-fp-rm{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;padding:0;}
+
+        /* input bar */
+        .mp-input-bar{padding:10px 14px 12px;border-top:1px solid var(--border2);background:rgba(11,15,28,0.75);backdrop-filter:blur(12px);flex-shrink:0;}
+        @media(max-width:767px){.mp-input-bar{padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));}}
+        .mp-input-wrap{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:6px 6px 6px 12px;transition:border-color .15s;}
+        .mp-input-wrap:focus-within{border-color:rgba(124,58,237,0.4);}
+        .mp-input-icon{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;align-items:center;padding:4px;border-radius:6px;transition:.13s;}
+        .mp-input-icon:hover{color:var(--t1);background:rgba(255,255,255,0.06);}
+        .mp-chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;padding:6px 0;font-family:'DM Sans',sans-serif;}
+        .mp-chat-input::placeholder{color:var(--t4);}
+        @media(max-width:767px){.mp-chat-input{font-size:16px;}}
+        .mp-send{width:34px;height:34px;border-radius:10px;border:none;background:rgba(124,58,237,0.3);color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s;}
+        .mp-send--active{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 3px 12px var(--ac-glow);}
+        .mp-send--active:hover{transform:scale(1.05);}
+        .mp-hint{font-size:10px;color:var(--t4);text-align:center;margin:5px 0 0;font-family:'DM Sans',sans-serif;}
+        @media(max-width:767px){.mp-hint{display:none;}}
+
+        /* notifications */
+        .mp-notif-panel{display:flex;flex-direction:column;height:100%;}
+        .mp-notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:rgba(11,15,28,0.9);flex-shrink:0;flex-wrap:wrap;gap:8px;}
+        .mp-notif-hdr-l{display:flex;align-items:center;gap:8px;}
+        .mp-notif-title{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
+        .mp-notif-badge{background:var(--ac-soft);color:#a78bfa;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid rgba(124,58,237,0.3);}
+        .mp-notif-hdr-r{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+        .mp-filter-btn{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;text-transform:capitalize;transition:.13s;}
+        .mp-filter-btn--active{background:var(--ac-soft);border-color:rgba(124,58,237,0.3);color:#a78bfa;}
+        .mp-markall-btn{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 9px;color:var(--t2);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        .mp-notif-list{flex:1;overflow-y:auto;}
+        .mp-notif-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:50px 20px;color:var(--t3);font-size:12px;}
+        .mp-notif-item{display:flex;gap:11px;padding:13px 18px;border-bottom:1px solid var(--border2);cursor:pointer;transition:.13s;}
+        .mp-notif-item:hover{background:rgba(255,255,255,0.02);}
+        .mp-notif-item--unread{background:rgba(124,58,237,0.04);}
+        .mp-notif-icon{width:34px;height:34px;border-radius:10px;flex-shrink:0;background:var(--ac-soft);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;color:#a78bfa;margin-top:1px;}
+        .mp-notif-body{flex:1;min-width:0;}
+        .mp-notif-text{font-size:13px;color:rgba(255,255,255,0.5);margin:0;line-height:1.5;font-family:'DM Sans',sans-serif;}
+        .mp-notif-text--bold{font-weight:500;color:rgba(255,255,255,0.84);}
+        .mp-notif-time{font-size:10px;color:var(--t4);margin-top:3px;}
+        .mp-notif-dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:6px;}
+
+        /* mobile bottom nav */
+        .mp-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,0.97);backdrop-filter:blur(20px);border-top:1px solid var(--border);z-index:50;padding-bottom:env(safe-area-inset-bottom,0px);}
+        @media(max-width:767px){.mp-bottom-nav{display:flex;}}
+        .mp-bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .15s;}
+        .mp-bnav-btn--active{color:#a78bfa;}
+        .mp-bnav-icon{position:relative;}
+        .mp-bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px var(--ac-glow);}
+
+        /* scrollbars */
+        .mp-messages::-webkit-scrollbar,.mp-convo-items::-webkit-scrollbar,.mp-notif-list::-webkit-scrollbar{width:3px;}
+        .mp-messages::-webkit-scrollbar-track,.mp-convo-items::-webkit-scrollbar-track,.mp-notif-list::-webkit-scrollbar-track{background:transparent;}
+        .mp-messages::-webkit-scrollbar-thumb,.mp-convo-items::-webkit-scrollbar-thumb,.mp-notif-list::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.2);border-radius:2px;}
+
+        .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);}
       `}</style>
 
       <DashboardLayout>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "calc(100vh - 4rem)",
-            margin: "-24px",
-            background: "rgba(6,9,18,0.98)",
-            overflow: "hidden",
-          }}
-        >
-          {/* ── Top Header Bar ── */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 24px",
-            height: "60px",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(10,14,26,0.95)",
-            backdropFilter: "blur(20px)",
-            flexShrink: 0,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-              <div style={{
-                width: "32px", height: "32px", borderRadius: "9px",
-                background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.25))",
-                border: "1px solid rgba(99,102,241,0.3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <MessageSquare style={{ width: "15px", height: "15px", color: "#818cf8" }} />
-              </div>
-              <div>
-                <h1 style={{ fontSize: "15px", fontWeight: 700, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", margin: 0, lineHeight: 1.2 }}>
-                  Messages
-                </h1>
-                <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", margin: 0, display: "none" }}
-                  className="sm:block">
-                  Team workspace communications
-                </p>
-              </div>
-              {totalBadge > 0 && (
-                <span style={{
-                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                  color: "#fff",
-                  fontSize: "10px", fontWeight: 700,
-                  padding: "2px 8px", borderRadius: "20px",
-                  boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
-                }}>
-                  {totalBadge}
-                </span>
-              )}
-            </div>
+        <div className="mp-page">
 
-            <button
-              onClick={() => setNewConvoOpen(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: "7px",
-                background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                border: "none", borderRadius: "9px",
-                padding: "7px 14px",
-                color: "#fff", fontSize: "12px", fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-                transition: "all 0.2s",
-                fontFamily: "'DM Sans', system-ui, sans-serif",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(99,102,241,0.5)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 14px rgba(99,102,241,0.35)"; }}
-            >
-              <Plus style={{ width: "13px", height: "13px" }} />
-              <span>New Message</span>
+          {/* top bar */}
+          <div className="mp-topbar">
+            <div className="mp-topbar-l">
+              <div className="mp-topbar-icon"><MessageSquare style={{ width: 15, height: 15, color: "#a78bfa" }} /></div>
+              <p className="mp-topbar-title">Messages</p>
+              {totalBadge > 0 && <span className="mp-topbar-badge">{totalBadge}</span>}
+            </div>
+            <button className="mp-new-btn" onClick={() => setNewOpen(true)}>
+              <Plus style={{ width: 13, height: 13 }} /><span>New Message</span>
             </button>
           </div>
 
-          {/* ── Body ── */}
-          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+          {/* body */}
+          <div className="mp-body">
 
-            {/* ── Left Sidebar ── */}
-            <div
-              style={{
-                width: "300px",
-                flexShrink: 0,
-                display: mobileView === "thread" ? "none" : "flex",
-                flexDirection: "column",
-                borderRight: "1px solid rgba(255,255,255,0.05)",
-                background: "rgba(8,11,20,0.8)",
-              }}
-              className="md:flex"
-            >
-              {/* Tabs */}
-              <div style={{
-                display: "flex",
-                padding: "10px 12px",
-                gap: "4px",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                flexShrink: 0,
-              }}>
-                {[
-                  { id: "messages" as const, label: "Chats", icon: MessageSquare, badge: totalUnread },
-                  { id: "notifications" as const, label: "Alerts", icon: Bell, badge: notifUnreadCount },
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      flex: 1,
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                      padding: "7px 12px",
-                      borderRadius: "8px",
-                      background: activeTab === tab.id ? "rgba(99,102,241,0.15)" : "transparent",
-                      border: activeTab === tab.id ? "1px solid rgba(99,102,241,0.25)" : "1px solid transparent",
-                      color: activeTab === tab.id ? "#818cf8" : "rgba(255,255,255,0.35)",
-                      fontSize: "12px", fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      fontFamily: "'DM Sans', system-ui, sans-serif",
-                    }}
-                  >
-                    <tab.icon style={{ width: "13px", height: "13px" }} />
-                    {tab.label}
-                    {tab.badge > 0 && (
-                      <span style={{
-                        background: activeTab === tab.id ? "#6366f1" : "rgba(99,102,241,0.4)",
-                        color: "#fff",
-                        fontSize: "9px", fontWeight: 700,
-                        padding: "1px 6px", borderRadius: "10px",
-                        minWidth: "16px", textAlign: "center",
-                      }}>
-                        {tab.badge}
-                      </span>
-                    )}
+            {/* sidebar */}
+            <div className={cn("mp-sidebar", mobileScr === "thread" && "mp-sidebar--hidden")}>
+              <div className="mp-tabs">
+                {([
+                  { id: "chats"  as const, label: "Chats",  Icon: MessageSquare, badge: totalUnread },
+                  { id: "notifs" as const, label: "Alerts", Icon: Bell,          badge: notifCount  },
+                ] as const).map(t => (
+                  <button key={t.id} className={cn("mp-tab", tab === t.id && "mp-tab--active")} onClick={() => setTab(t.id)}>
+                    <t.Icon style={{ width: 13, height: 13 }} />
+                    {t.label}
+                    {t.badge > 0 && <span className="mp-tab-badge">{t.badge}</span>}
                   </button>
                 ))}
               </div>
-
-              {activeTab === "messages" ? (
-                <>
-                  {/* Search */}
-                  <div style={{ padding: "10px 12px", flexShrink: 0 }}>
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: "8px",
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.07)",
-                      borderRadius: "9px", padding: "7px 12px",
-                    }}>
-                      <Search style={{ width: "13px", height: "13px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
-                      <input
-                        style={{
-                          flex: 1, background: "transparent", border: "none", outline: "none",
-                          color: "#f1f5f9", fontSize: "12px",
-                          fontFamily: "'DM Sans', system-ui, sans-serif",
-                        }}
-                        placeholder="Search conversations..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                      />
-                      {searchQuery && (
-                        <button onClick={() => setSearchQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", display: "flex" }}>
-                          <X style={{ width: "12px", height: "12px" }} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Conversation List */}
-                  <div style={{ flex: 1, overflowY: "auto" }}>
-                    {conversationsLoading ? (
-                      <div style={{ display: "flex", justifyContent: "center", padding: "30px 0" }}>
-                        <Loader2 style={{ width: "18px", height: "18px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
-                      </div>
-                    ) : filteredConvos.length === 0 ? (
-                      <div style={{ padding: "30px 20px", textAlign: "center" }}>
-                        <MessageSquare style={{ width: "28px", height: "28px", color: "rgba(99,102,241,0.3)", margin: "0 auto 10px" }} />
-                        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-                          {searchQuery ? "No results found" : "No conversations yet"}
-                        </p>
-                      </div>
-                    ) : (
-                      <div style={{ padding: "6px 8px" }}>
-                        {filteredConvos.map(c => {
-                          const name = getConversationName(c);
-                          const isSelected = selectedConvo === c.id;
-                          const initials = getConversationInitials(c);
-                          return (
-                            <button
-                              key={c.id}
-                              onClick={() => handleSelectConvo(c.id)}
-                              className={`convo-item ${isSelected ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                display: "flex", alignItems: "center", gap: "10px",
-                                padding: "10px 10px",
-                                borderRadius: "10px",
-                                border: isSelected ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
-                                background: isSelected ? "rgba(99,102,241,0.1)" : "transparent",
-                                cursor: "pointer",
-                                textAlign: "left",
-                                transition: "all 0.15s",
-                                marginBottom: "2px",
-                              }}
-                            >
-                              <div style={{ position: "relative", flexShrink: 0 }}>
-                                <div style={{
-                                  width: "36px", height: "36px", borderRadius: "10px",
-                                  background: c.is_group
-                                    ? "linear-gradient(135deg, rgba(139,92,246,0.25), rgba(99,102,241,0.25))"
-                                    : "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(79,70,229,0.2))",
-                                  border: `1px solid ${c.is_group ? "rgba(139,92,246,0.2)" : "rgba(99,102,241,0.2)"}`,
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  fontSize: "12px", fontWeight: 700,
-                                  color: c.is_group ? "#a78bfa" : "#818cf8",
-                                }}>
-                                  {c.is_group ? <Users style={{ width: "15px", height: "15px" }} /> : initials}
-                                </div>
-                                {c.unread_count > 0 && (
-                                  <div style={{
-                                    position: "absolute", top: "-3px", right: "-3px",
-                                    width: "16px", height: "16px",
-                                    background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                                    borderRadius: "50%",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: "9px", fontWeight: 700, color: "#fff",
-                                    boxShadow: "0 2px 6px rgba(99,102,241,0.5)",
-                                  }}>
-                                    {c.unread_count > 9 ? "9+" : c.unread_count}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "4px" }}>
-                                  <p style={{
-                                    fontSize: "13px",
-                                    fontWeight: c.unread_count > 0 ? 600 : 500,
-                                    color: c.unread_count > 0 ? "#f1f5f9" : "rgba(255,255,255,0.7)",
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                    fontFamily: "'DM Sans', system-ui, sans-serif",
-                                    margin: 0,
-                                  }}>
-                                    {name}
-                                  </p>
-                                  {c.last_message && (
-                                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }}>
-                                      {formatTime(c.last_message.created_at)}
-                                    </span>
-                                  )}
-                                </div>
-                                {c.last_message && (
-                                  <p style={{
-                                    fontSize: "11px",
-                                    color: c.unread_count > 0 ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)",
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                    marginTop: "1px",
-                                    fontFamily: "'DM Sans', system-ui, sans-serif",
-                                    fontWeight: c.unread_count > 0 ? 500 : 400,
-                                  }}>
-                                    {c.last_message.message_text}
-                                  </p>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <NotificationsPanel />
-              )}
+              {tab === "chats"
+                ? <ConvoListPanel convos={filtered} loading={conversationsLoading} selected={selected} onSelect={selectConvo} search={search} onSearchChange={setSearch} />
+                : <NotifsPanel />}
             </div>
 
-            {/* ── Right Panel ── */}
-            <div
-              style={{
-                flex: 1,
-                display: (mobileView === "list" && !selectedConvo) ? "none" : "flex",
-                flexDirection: "column",
-                minWidth: 0,
-                background: "rgba(6,9,18,0.7)",
-              }}
-              className="md:flex"
-            >
-              {activeTab === "messages" ? (
-                selectedConvo ? (
-                  <ChatThread
-                    conversationId={selectedConvo}
-                    conversations={conversations}
-                    onBack={handleBack}
-                  />
-                ) : (
-                  <div style={{
-                    flex: 1,
-                    display: "flex", flexDirection: "column",
-                    alignItems: "center", justifyContent: "center",
-                    textAlign: "center", padding: "40px",
-                  }}>
-                    <div style={{
-                      width: "72px", height: "72px", borderRadius: "20px",
-                      background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.12))",
-                      border: "1px solid rgba(99,102,241,0.15)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      marginBottom: "20px",
-                      boxShadow: "0 0 40px rgba(99,102,241,0.08)",
-                    }}>
-                      <MessageSquare style={{ width: "28px", height: "28px", color: "#6366f1" }} />
+            {/* right panel */}
+            <div className={cn("mp-right", mobileScr === "list" && "mp-right--hidden")}>
+              {tab === "chats"
+                ? selected
+                  ? <ChatThread conversationId={selected} conversations={conversations} onBack={goBack} />
+                  : (
+                    <div className="mp-right-empty">
+                      <div className="mp-re-icon"><MessageSquare style={{ width: 26, height: 26, color: "#7c3aed" }} /></div>
+                      <h3>Select a conversation</h3>
+                      <p>Pick a thread from the sidebar or start a new one with your team.</p>
+                      <button className="mp-re-btn" onClick={() => setNewOpen(true)}>
+                        <Plus style={{ width: 14, height: 14 }} />New Message
+                      </button>
                     </div>
-                    <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#94a3b8", fontFamily: "'Bricolage Grotesque', sans-serif", marginBottom: "8px" }}>
-                      Select a conversation
-                    </h3>
-                    <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.25)", maxWidth: "280px", lineHeight: 1.6, fontFamily: "'DM Sans', system-ui, sans-serif", marginBottom: "24px" }}>
-                      Choose a thread from the sidebar or start a new conversation with your team.
-                    </p>
-                    <button
-                      onClick={() => setNewConvoOpen(true)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: "8px",
-                        background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                        border: "none", borderRadius: "10px",
-                        padding: "10px 20px",
-                        color: "#fff", fontSize: "13px", fontWeight: 600,
-                        cursor: "pointer",
-                        boxShadow: "0 4px 16px rgba(99,102,241,0.35)",
-                        fontFamily: "'DM Sans', system-ui, sans-serif",
-                      }}
-                    >
-                      <Plus style={{ width: "15px", height: "15px" }} />
-                      New Message
-                    </button>
-                  </div>
-                )
-              ) : (
-                <div style={{ flex: 1, overflowY: "hidden" }}>
-                  <NotificationsPanel />
-                </div>
-              )}
+                  )
+                : <NotifsPanel />}
             </div>
           </div>
+
+          {/* mobile bottom nav */}
+          <nav className="mp-bottom-nav">
+            {([
+              { id: "chats"  as const, label: "Chats",  Icon: MessageSquare, badge: totalUnread },
+              { id: "notifs" as const, label: "Alerts", Icon: Bell,          badge: notifCount  },
+            ] as const).map(t => (
+              <button key={t.id}
+                className={cn("mp-bnav-btn", tab === t.id && mobileScr === "list" && "mp-bnav-btn--active")}
+                onClick={() => { setTab(t.id); setMobileScr("list"); }}>
+                <div className="mp-bnav-icon">
+                  <t.Icon style={{ width: 20, height: 20 }} />
+                  {t.badge > 0 && <span className="mp-bnav-badge">{t.badge > 9 ? "9+" : t.badge}</span>}
+                </div>
+                {t.label}
+              </button>
+            ))}
+            <button className="mp-bnav-btn" onClick={() => setNewOpen(true)}>
+              <div className="mp-bnav-icon"><Plus style={{ width: 20, height: 20 }} /></div>
+              New
+            </button>
+          </nav>
         </div>
 
         {team && (
-          <NewConversationDialog
-            open={newConvoOpen}
-            onClose={() => setNewConvoOpen(false)}
-            members={members}
-            currentUserId={user?.id ?? ""}
-            teamId={team.id}
-            conversations={conversations}
+          <NewConvoDialog
+            open={newOpen} onClose={() => setNewOpen(false)}
+            members={members} currentUserId={user?.id ?? ""}
+            teamId={team.id} conversations={conversations}
             refetchConversations={refetchConversations}
-            onCreated={id => {
-              setNewConvoOpen(false);
-              setActiveTab("messages");
-              handleSelectConvo(id);
-            }}
+            onCreated={id => { setNewOpen(false); setTab("chats"); selectConvo(id); }}
           />
         )}
       </DashboardLayout>
