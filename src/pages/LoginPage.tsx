@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react"; import { useNavigate } from "react-router-dom"; import { supabase } from "@/integrations/supabase/client"; import { Zap, Mail, Lock, User, Eye, EyeOff, ArrowRight, Check } from "lucide-react"; import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect, useRef } from "react"; import { useNavigate } from "react-router-dom"; import { supabase } from "@/integrations/supabase/client"; 
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 
 const testimonials = [
   { quote: "Fixsense helped us increase close rates by 30%. Our team now knows exactly what works in every call — no more guessing.", name: "Marcus Reid", role: "Head of Sales, Vantex SaaS", avatar: "MR", metric: "30% increase in close rate" },
@@ -384,9 +385,7 @@ export default function LoginPage() {
           {/* Logo */}
           <div style={{ marginBottom: "40px" }}>
             <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
-              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "linear-gradient(135deg, #2dd4bf, #0d9488)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Zap style={{ width: "16px", height: "16px", color: "#030712" }} />
-              </div>
+          <img src="/fixsense_icon_logo (2).png" alt="Fixsense" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain", flexShrink: 0 }} />
               <span style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: "-0.02em" }}>Fixsense</span>
             </a>
           </div>
@@ -494,9 +493,9 @@ export default function LoginPage() {
         {/* Hero strip */}
         <div className="mobile-hero">
           <div className="mobile-hero-logo">
-            <div className="mobile-hero-logomark">
-              <Zap style={{ width: "16px", height: "16px", color: "#030712" }} />
-            </div>
+            <div className="mobile-hero-logomark" style={{ background: "none", padding: 0 }}>
+  <img src="/fixsense_icon_logo.png" alt="Fixsense" style={{ width: 38, height: 38, borderRadius: 11, objectFit: "contain", display: "block" }} />
+</div>
             <span className="mobile-hero-wordmark">Fixsense</span>
           </div>
           <div className="mobile-hero-tagline">
