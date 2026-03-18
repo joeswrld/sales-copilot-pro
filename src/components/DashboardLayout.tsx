@@ -12,6 +12,25 @@ import { useTeamMessaging } from "@/hooks/useTeamMessaging";
 import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { cn } from "@/lib/utils";
 
+// ── Logo Component ──────────────────────────────────────────────────────────
+// Uses the actual Fixsense icon PNG. Pass `size` in px (default 28).
+function FixsenseLogo({ size = 28 }: { size?: number }) {
+  return (
+    <img
+      src="/fixsense_icon_logo.png"
+      alt="Fixsense"
+      width={size}
+      height={size}
+      style={{
+        borderRadius: Math.round(size * 0.22),
+        objectFit: "cover",
+        flexShrink: 0,
+        display: "block",
+      }}
+    />
+  );
+}
+
 interface NavItem {
   label: string;
   icon: React.ElementType;
@@ -35,11 +54,9 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
           : "text-[rgba(255,255,255,0.45)] hover:text-[rgba(255,255,255,0.85)] hover:bg-[rgba(255,255,255,0.04)]"
       )}
     >
-      {/* Active indicator bar */}
       {isActive && (
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-r-full bg-[#4FFFFF] opacity-90" />
       )}
-
       <item.icon
         className={cn(
           "shrink-0 transition-colors",
@@ -49,7 +66,6 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
         )}
         style={{ width: 15, height: 15 }}
       />
-
       {!collapsed && (
         <>
           <span className="flex-1 truncate tracking-[-0.01em]">{item.label}</span>
@@ -122,15 +138,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       {/* ── Wordmark ─────────────────────────────────────────── */}
       <div className="px-4 pt-5 pb-4">
         <Link to="/dashboard" className="flex items-center gap-2.5 group">
-          <div
-            className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-            style={{
-              background: "linear-gradient(135deg, #1af0c4 0%, #0bbfa0 100%)",
-              boxShadow: "0 0 12px rgba(26,240,196,0.25)",
-            }}
-          >
-            <Radio style={{ width: 13, height: 13, color: "#001a15" }} />
-          </div>
+          {/* Real Fixsense logo image */}
+          <FixsenseLogo size={28} />
           <div className="flex flex-col leading-none">
             <span className="text-[15px] font-bold tracking-[-0.03em] text-white">
               Fixsense
@@ -225,7 +234,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             navigate("/");
           }}
         >
-          {/* Avatar */}
           <div
             className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 uppercase"
             style={{
@@ -264,7 +272,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           borderRight: "1px solid rgba(255,255,255,0.07)",
         }}
       >
-        {/* Subtle gradient accent along the top */}
         <div
           className="absolute top-0 left-0 right-0 h-px"
           style={{ background: "linear-gradient(90deg, transparent 0%, rgba(26,240,196,0.5) 40%, rgba(11,191,160,0.4) 60%, transparent 100%)" }}
@@ -312,7 +319,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             borderBottom: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          {/* Mobile hamburger + wordmark */}
+          {/* Mobile hamburger + logo */}
           <div className="flex items-center gap-3">
             <button
               className="md:hidden w-7 h-7 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.5)] hover:text-white hover:bg-[rgba(255,255,255,0.07)] transition-colors"
@@ -321,13 +328,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <Menu style={{ width: 16, height: 16 }} />
             </button>
 
-            {/* Breadcrumb path */}
-            <BreadcrumbPath />
+            {/* Mobile: show logo in topbar when sidebar is hidden */}
+            <div className="flex md:hidden items-center gap-2">
+              <FixsenseLogo size={22} />
+              <span className="text-[13px] font-bold tracking-[-0.02em] text-white">Fixsense</span>
+            </div>
+
+            {/* Desktop: breadcrumb */}
+            <div className="hidden md:block">
+              <BreadcrumbPath />
+            </div>
           </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-1">
-            {/* Notifications bell */}
             <button
               className="relative w-8 h-8 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)] transition-colors"
               onClick={() => navigate("/dashboard/messages")}
@@ -341,7 +355,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               )}
             </button>
 
-            {/* Profile chip */}
             <button
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.06)]"
               onClick={() => navigate("/dashboard/profile")}
@@ -409,7 +422,6 @@ function BreadcrumbPath() {
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
         const label = labels[seg] || seg;
-        // skip uuid-like segments
         if (seg.includes("-") && seg.length > 20) return null;
         return (
           <span key={i} className="flex items-center gap-1.5">
