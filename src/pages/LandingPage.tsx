@@ -58,7 +58,7 @@ function FadeIn({ children, delay = 0, className = "" }: { children: React.React
 function FixsenseLogo({ size = 32, borderRadius = 8 }: { size?: number; borderRadius?: number }) {
   return (
     <img
-      src="/fixsense_icon_logo.png"
+      src="/fixsense_icon_logo (2).png"
       alt="Fixsense"
       width={size}
       height={size}
@@ -66,7 +66,7 @@ function FixsenseLogo({ size = 32, borderRadius = 8 }: { size?: number; borderRa
         width: size,
         height: size,
         borderRadius,
-        objectFit: "contain",
+        objectFit: "cover",
         flexShrink: 0,
         display: "block",
       }}
@@ -676,6 +676,7 @@ export default function LandingPage() {
       {/* ── Nav ── */}
       <nav className={`lp-nav${scrolled ? " scrolled" : ""}`}>
         <div className="lp-nav-inner">
+          {/* LOGO in nav header */}
           <Link to="/" className="lp-logo">
             <FixsenseLogo size={32} borderRadius={8} />
             <span className="lp-logo-text">Fixsense</span>
@@ -714,6 +715,7 @@ export default function LandingPage() {
       <div className={`lp-drawer-overlay${mobileOpen ? " open" : ""}`} onClick={() => setMobileOpen(false)} />
       <div className={`lp-drawer${mobileOpen ? " open" : ""}`} role="dialog" aria-modal="true">
         <div className="lp-drawer-header">
+          {/* LOGO in mobile drawer */}
           <Link to="/" className="lp-logo" onClick={() => setMobileOpen(false)}>
             <FixsenseLogo size={28} borderRadius={7} />
             <span className="lp-logo-text">Fixsense</span>
@@ -956,7 +958,6 @@ export default function LandingPage() {
               Three steps to better sales performance
             </h2>
           </FadeIn>
-
           <div className="steps-grid">
             {steps.map((step, i) => (
               <FadeIn key={i} delay={i * 100}>
@@ -989,14 +990,11 @@ export default function LandingPage() {
               From live call intelligence to post-call analysis — Fixsense covers the entire sales conversation lifecycle.
             </p>
           </FadeIn>
-
           <div className="features-grid">
             {features.map((f, i) => (
               <FadeIn key={i} delay={i * 60}>
                 <div className="feature-card card-glass" style={{ height: "100%" }}>
-                  <div className="feature-icon" style={{ background: `${f.color}18`, color: f.color }}>
-                    {f.icon}
-                  </div>
+                  <div className="feature-icon" style={{ background: `${f.color}18`, color: f.color }}>{f.icon}</div>
                   <h3 className="df" style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 8 }}>{f.title}</h3>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{f.desc}</p>
                 </div>
@@ -1029,7 +1027,6 @@ export default function LandingPage() {
               Teams that chose data over guesswork
             </h2>
           </FadeIn>
-
           <div className="testimonials-grid">
             {testimonials.map((t, i) => (
               <FadeIn key={i} delay={i * 100}>
@@ -1068,7 +1065,6 @@ export default function LandingPage() {
               {user ? "You're already on board — upgrade anytime." : "Start free. Upgrade as your team grows. No surprises."}
             </p>
           </FadeIn>
-
           <div className="pricing-grid">
             {plans.map((plan, i) => (
               <FadeIn key={i} delay={i * 70}>
@@ -1116,7 +1112,6 @@ export default function LandingPage() {
                 {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>
             </FadeIn>
-
             <FadeIn delay={150}>
               <div className="why-grid">
                 {whyPoints.map((p, i) => (
@@ -1173,7 +1168,7 @@ export default function LandingPage() {
       <footer className="lp-footer">
         <div className="container">
           <div className="footer-grid">
-            {/* Brand */}
+            {/* Brand with LOGO */}
             <div className="footer-brand">
               <Link to="/" className="lp-logo" style={{ marginBottom: 14, display: "inline-flex" }}>
                 <FixsenseLogo size={28} borderRadius={7} />
