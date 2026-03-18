@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 function FixsenseLogo({ size = 28 }: { size?: number }) {
   return (
     <img
-      src="/fixsense_icon_logo.png"
+      src="/fixsense_icon_logo (2).png"
       alt="Fixsense"
       width={size}
       height={size}
