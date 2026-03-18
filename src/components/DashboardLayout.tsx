@@ -138,7 +138,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       {/* ── Wordmark ─────────────────────────────────────────── */}
       <div className="px-4 pt-5 pb-4">
         <Link to="/dashboard" className="flex items-center gap-2.5 group">
-          {/* Real Fixsense logo image */}
+          {/* Fixsense logo */}
           <FixsenseLogo size={28} />
           <div className="flex flex-col leading-none">
             <span className="text-[15px] font-bold tracking-[-0.03em] text-white">
