@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Zap, Menu, X, Check, Star, Play,
+  ArrowRight, Menu, X, Check, Star, Play,
   Mic, Brain, BarChart3, Users, TrendingUp, FileText,
   ChevronRight, Shield, Clock, Target, LayoutDashboard,
 } from "lucide-react";
@@ -54,6 +54,26 @@ function FadeIn({ children, delay = 0, className = "" }: { children: React.React
   );
 }
 
+// ─── Logo Component ────────────────────────────────────────────────────────
+function FixsenseLogo({ size = 32, borderRadius = 8 }: { size?: number; borderRadius?: number }) {
+  return (
+    <img
+      src="/fixsense_icon_logo.png"
+      alt="Fixsense"
+      width={size}
+      height={size}
+      style={{
+        width: size,
+        height: size,
+        borderRadius,
+        objectFit: "contain",
+        flexShrink: 0,
+        display: "block",
+      }}
+    />
+  );
+}
+
 export default function LandingPage() {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -68,14 +88,12 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  // Close mobile menu on resize to desktop
   useEffect(() => {
     const fn = () => { if (window.innerWidth >= 768) setMobileOpen(false); };
     window.addEventListener("resize", fn);
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  // Prevent body scroll when mobile menu open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -95,7 +113,7 @@ export default function LandingPage() {
   ];
 
   const steps = [
-    { num: "01", icon: <Zap className="w-6 h-6" />, title: "Connect your meetings", desc: "Connect Zoom or Google Meet and start calls directly from Fixsense in seconds.", color: "#2dd4bf" },
+    { num: "01", icon: <BarChart3 className="w-6 h-6" />, title: "Connect your meetings", desc: "Connect Zoom or Google Meet and start calls directly from Fixsense in seconds.", color: "#2dd4bf" },
     { num: "02", icon: <Brain className="w-6 h-6" />, title: "AI analyzes every conversation", desc: "Transcription, objection detection, talk ratio, and sentiment analysis happen automatically.", color: "#818cf8" },
     { num: "03", icon: <TrendingUp className="w-6 h-6" />, title: "Improve and close more deals", desc: "Get coaching insights, AI summaries, and action steps after every meeting.", color: "#34d399" },
   ];
@@ -124,13 +142,10 @@ export default function LandingPage() {
 
   const whyPoints = [
     { icon: <FileText className="w-5 h-5 text-teal-400" />, title: "No manual note-taking", desc: "Transcription and summaries are automatic. Your reps stay focused on the conversation." },
-    { icon: <Zap className="w-5 h-5 text-violet-400" />, title: "Real-time insights during calls", desc: "Objection alerts and engagement scores surface instantly — not in a post-mortem." },
+    { icon: <BarChart3 className="w-5 h-5 text-violet-400" />, title: "Real-time insights during calls", desc: "Objection alerts and engagement scores surface instantly — not in a post-mortem." },
     { icon: <Users className="w-5 h-5 text-emerald-400" />, title: "Coaching built into your workflow", desc: "Managers leave timestamped feedback on recordings. No more guesswork in 1:1s." },
     { icon: <Shield className="w-5 h-5 text-blue-400" />, title: "Works with tools you already use", desc: "Native Zoom, Google Meet, Slack, Salesforce, and HubSpot integrations." },
   ];
-
-  const bannerHeight = user ? 38 : 0;
-  const navTop = user ? bannerHeight : 0;
 
   return (
     <div className="lp-root">
@@ -147,7 +162,6 @@ export default function LandingPage() {
         }
         .lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
 
-        /* ── Typography ── */
         .df { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
 
         /* ── Logged-in banner ── */
@@ -188,12 +202,7 @@ export default function LandingPage() {
           max-width: 1200px; width: 100%; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between; gap: 16px;
         }
-        .lp-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
-        .lp-logo-mark {
-          width: 32px; height: 32px; border-radius: 8px;
-          background: linear-gradient(135deg, #2dd4bf, #0d9488);
-          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-        }
+        .lp-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
         .lp-logo-text { font-size: 17px; font-weight: 700; color: #fff; font-family: 'Bricolage Grotesque', sans-serif; }
         .lp-nav-links { display: flex; align-items: center; gap: 28px; }
         .lp-nav-link { font-size: 14px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; white-space: nowrap; }
@@ -593,7 +602,6 @@ export default function LandingPage() {
           0% { transform: scale(0.9); opacity: 0.8; }
           100% { transform: scale(1.8); opacity: 0; }
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .pulse-dot {
           position: relative; display: inline-block;
           width: 7px; height: 7px; border-radius: 50%; background: #f87171; flex-shrink: 0;
@@ -604,11 +612,7 @@ export default function LandingPage() {
           animation: pulse-ring 1.4s ease-out infinite;
         }
 
-        /* ════════════════════════════════════════
-           RESPONSIVE BREAKPOINTS
-        ════════════════════════════════════════ */
-
-        /* Tablet (640px+) */
+        /* ════ RESPONSIVE ════ */
         @media (min-width: 640px) {
           .stats-grid { grid-template-columns: repeat(4, 1fr); }
           .features-grid { grid-template-columns: repeat(2, 1fr); }
@@ -620,8 +624,6 @@ export default function LandingPage() {
           .footer-brand { grid-column: 1 / -1; }
           .footer-bottom { flex-direction: row; justify-content: space-between; text-align: left; }
         }
-
-        /* Desktop (768px+) */
         @media (min-width: 768px) {
           .lp-hamburger { display: none; }
           .lp-nav-links { display: flex; }
@@ -635,16 +637,12 @@ export default function LandingPage() {
           .footer-grid { grid-template-columns: 2fr repeat(3, 1fr); gap: 32px; }
           .footer-brand { grid-column: auto; }
         }
-
-        /* Large desktop (1024px+) */
         @media (min-width: 1024px) {
           .why-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
           .pricing-grid { grid-template-columns: repeat(4, 1fr); }
           .testimonials-grid { grid-template-columns: repeat(3, 1fr); }
           .stat-num { font-size: 42px; }
         }
-
-        /* Mobile-only overrides (<640px) */
         @media (max-width: 639px) {
           .lp-hamburger { display: flex; }
           .lp-nav-links { display: none; }
@@ -652,12 +650,9 @@ export default function LandingPage() {
           .hero { padding: 80px 16px 64px; }
           .section { padding: 60px 16px; }
           .section-sm { padding: 44px 16px; }
-          .lp-banner { font-size: 12px; }
           .hero-ctas { flex-direction: column; align-items: center; }
           .hero-ctas .btn-primary, .hero-ctas .btn-ghost { width: 100%; max-width: 320px; }
           .mock-stats { grid-template-columns: repeat(2, 1fr); }
-          .mock-stat-val { font-size: 11px; }
-          .step-card { padding: 22px; }
           .final-cta { padding: 72px 16px; }
           .final-cta-btns { flex-direction: column; align-items: center; }
           .final-cta-btns .btn-primary, .final-cta-btns .btn-ghost { width: 100%; max-width: 320px; }
@@ -666,7 +661,7 @@ export default function LandingPage() {
         }
       `}</style>
 
-      {/* ── Logged-in banner ─────────────────────────────────────────────── */}
+      {/* ── Logged-in banner ── */}
       {user && (
         <div className="lp-banner">
           <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
@@ -678,20 +673,18 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* ── Nav ──────────────────────────────────────────────────────────── */}
+      {/* ── Nav ── */}
       <nav className={`lp-nav${scrolled ? " scrolled" : ""}`}>
         <div className="lp-nav-inner">
           <Link to="/" className="lp-logo">
-            <div className="lp-logo-mark"><Zap style={{ width: 16, height: 16, color: "#030712" }} /></div>
+            <FixsenseLogo size={32} borderRadius={8} />
             <span className="lp-logo-text">Fixsense</span>
           </Link>
 
-          {/* Desktop links */}
           <div className="lp-nav-links">
             {navLinks.map(l => <a key={l.label} href={l.href} className="lp-nav-link">{l.label}</a>)}
           </div>
 
-          {/* Desktop actions */}
           <div className="lp-nav-actions">
             {user ? (
               <>
@@ -711,19 +704,18 @@ export default function LandingPage() {
             )}
           </div>
 
-          {/* Hamburger */}
           <button className="lp-hamburger" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu style={{ width: 22, height: 22 }} />
           </button>
         </div>
       </nav>
 
-      {/* ── Mobile Drawer ────────────────────────────────────────────────── */}
+      {/* ── Mobile Drawer ── */}
       <div className={`lp-drawer-overlay${mobileOpen ? " open" : ""}`} onClick={() => setMobileOpen(false)} />
       <div className={`lp-drawer${mobileOpen ? " open" : ""}`} role="dialog" aria-modal="true">
         <div className="lp-drawer-header">
           <Link to="/" className="lp-logo" onClick={() => setMobileOpen(false)}>
-            <div className="lp-logo-mark"><Zap style={{ width: 14, height: 14, color: "#030712" }} /></div>
+            <FixsenseLogo size={28} borderRadius={7} />
             <span className="lp-logo-text">Fixsense</span>
           </Link>
           <button className="lp-drawer-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
@@ -765,14 +757,12 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      {/* ── Hero ── */}
       <section className="hero">
-        {/* Orbs */}
         <div style={{ position: "absolute", top: 60, left: "15%", width: 300, height: 300, borderRadius: "50%", background: "rgba(45,212,191,0.05)", filter: "blur(80px)", pointerEvents: "none" }} />
         <div style={{ position: "absolute", top: 100, right: "10%", width: 250, height: 250, borderRadius: "50%", background: "rgba(129,140,248,0.05)", filter: "blur(70px)", pointerEvents: "none" }} />
 
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
-          {/* Pill */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
             <div className="tag-pill">
               <span className="live-dot" />
@@ -780,7 +770,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Title */}
           <h1 className="hero-title">
             {user ? (
               <>Your AI Sales Coach<br /><span className="hero-gradient-text">Is Waiting for You</span></>
@@ -789,14 +778,12 @@ export default function LandingPage() {
             )}
           </h1>
 
-          {/* Subtitle */}
           <p className="hero-sub">
             {user
               ? "Pick up where you left off — view calls, check analytics, or start a new live meeting with real-time AI coaching."
               : "Fixsense records, analyzes, and improves your sales meetings in real time — so your team closes more deals without guessing what works."}
           </p>
 
-          {/* CTAs */}
           <div className="hero-ctas">
             {user ? (
               <>
@@ -819,7 +806,6 @@ export default function LandingPage() {
             )}
           </div>
 
-          {/* Trust badges */}
           <div className="hero-badges">
             {(user
               ? ["Your data is safe and secure", "AI insights ready on every call", "Team analytics available now"]
@@ -841,7 +827,6 @@ export default function LandingPage() {
               </div>
               <div className="mock-url">fixsense.io/dashboard/live</div>
             </div>
-
             <div className="mock-body">
               <div className="mock-live-row">
                 <div className="mock-live-badge">
@@ -850,7 +835,6 @@ export default function LandingPage() {
                 </div>
                 <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>12:34</span>
               </div>
-
               <div className="mock-stats">
                 {[
                   { label: "Engagement", value: "87%", color: "#2dd4bf", pct: 87 },
@@ -867,7 +851,6 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-
               <div className="mock-content">
                 <div className="mock-transcript">
                   <div className="mock-section-label">Live Transcript</div>
@@ -882,7 +865,6 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-
                 <div className="mock-insights">
                   <div className="mock-section-label">AI Insights</div>
                   <div className="mock-insight" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
@@ -900,7 +882,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Stats ────────────────────────────────────────────────────────── */}
+      {/* ── Stats ── */}
       <div style={{ padding: "56px 20px", background: "rgba(255,255,255,0.01)", borderTop: "1px solid rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div className="container-sm">
           <div className="stats-grid">
@@ -919,7 +901,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── Problem / Solution ───────────────────────────────────────────── */}
+      {/* ── Problem / Solution ── */}
       <section className="section">
         <div className="container">
           <div className="ps-grid">
@@ -965,7 +947,7 @@ export default function LandingPage() {
 
       <div className="divider-line" />
 
-      {/* ── How It Works ─────────────────────────────────────────────────── */}
+      {/* ── How It Works ── */}
       <section className="section" id="how-it-works">
         <div className="container">
           <FadeIn className="df" style={{ textAlign: "center", marginBottom: 48 }}>
@@ -978,7 +960,7 @@ export default function LandingPage() {
           <div className="steps-grid">
             {steps.map((step, i) => (
               <FadeIn key={i} delay={i * 100}>
-                <div className="step-card card-glass" style={{ position: "relative" }}>
+                <div className="step-card card-glass">
                   <div className="step-num-bg">{step.num}</div>
                   <div className="step-icon" style={{ background: `${step.color}18`, border: `1px solid ${step.color}30`, color: step.color }}>
                     {step.icon}
@@ -986,11 +968,6 @@ export default function LandingPage() {
                   <div className="step-num-label" style={{ color: step.color }}>{step.num}</div>
                   <h3 className="df" style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</h3>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{step.desc}</p>
-                  {i < steps.length - 1 && (
-                    <div style={{ display: "none" }} className="step-arrow">
-                      <ChevronRight style={{ width: 20, height: 20, color: "rgba(255,255,255,0.2)" }} />
-                    </div>
-                  )}
                 </div>
               </FadeIn>
             ))}
@@ -1000,7 +977,7 @@ export default function LandingPage() {
 
       <div className="divider-line" />
 
-      {/* ── Features ─────────────────────────────────────────────────────── */}
+      {/* ── Features ── */}
       <section className="section" id="features">
         <div className="container">
           <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
@@ -1029,7 +1006,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Integrations strip ───────────────────────────────────────────── */}
+      {/* ── Integrations strip ── */}
       <div className="integrations-strip section-sm">
         <div className="container" style={{ textAlign: "center" }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 20 }}>
@@ -1043,7 +1020,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── Testimonials ─────────────────────────────────────────────────── */}
+      {/* ── Testimonials ── */}
       <section className="section" id="testimonials">
         <div className="container">
           <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
@@ -1079,7 +1056,7 @@ export default function LandingPage() {
 
       <div className="divider-line" />
 
-      {/* ── Pricing ──────────────────────────────────────────────────────── */}
+      {/* ── Pricing ── */}
       <section className="section" id="pricing">
         <div className="container">
           <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
@@ -1118,18 +1095,12 @@ export default function LandingPage() {
               </FadeIn>
             ))}
           </div>
-
-          <FadeIn style={{ textAlign: "center", marginTop: 28 }}>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
-              {user ? "Manage your subscription anytime from your billing page." : "All plans include a 7-day money-back guarantee. Billed in NGN via Paystack."}
-            </p>
-          </FadeIn>
         </div>
       </section>
 
       <div className="divider-line" />
 
-      {/* ── Why Fixsense ─────────────────────────────────────────────────── */}
+      {/* ── Why Fixsense ── */}
       <section className="section" style={{ background: "rgba(255,255,255,0.01)" }}>
         <div className="container">
           <div className="why-layout">
@@ -1165,7 +1136,7 @@ export default function LandingPage() {
 
       <div className="divider-line" />
 
-      {/* ── Final CTA ────────────────────────────────────────────────────── */}
+      {/* ── Final CTA ── */}
       <div className="final-cta">
         <div className="final-cta-inner">
           <FadeIn>
@@ -1198,14 +1169,14 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── Footer ───────────────────────────────────────────────────────── */}
+      {/* ── Footer ── */}
       <footer className="lp-footer">
         <div className="container">
           <div className="footer-grid">
             {/* Brand */}
             <div className="footer-brand">
               <Link to="/" className="lp-logo" style={{ marginBottom: 14, display: "inline-flex" }}>
-                <div className="lp-logo-mark"><Zap style={{ width: 14, height: 14, color: "#030712" }} /></div>
+                <FixsenseLogo size={28} borderRadius={7} />
                 <span className="lp-logo-text">Fixsense</span>
               </Link>
               <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", lineHeight: 1.6, maxWidth: 220, marginBottom: 16 }}>
