@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import {
   ArrowRight, Zap, Menu, X, Check, Star, Play,
@@ -9,7 +8,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Animation Hook ────────────────────────────────────────────────────────
-function useInView(threshold = 0.15) {
+function useInView(threshold = 0.1) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
@@ -22,39 +21,34 @@ function useInView(threshold = 0.15) {
   return { ref, inView };
 }
 
-// ─── Counter Component ─────────────────────────────────────────────────────
+// ─── Counter ───────────────────────────────────────────────────────────────
 function AnimatedCounter({ target, suffix = "" }: { target: number; suffix?: string }) {
   const [count, setCount] = useState(0);
-  const { ref, inView } = useInView(0.5);
+  const { ref, inView } = useInView(0.4);
   useEffect(() => {
     if (!inView) return;
     let start = 0;
     const duration = 1800;
-    const step = (timestamp: number) => {
-      if (!start) start = timestamp;
-      const progress = Math.min((timestamp - start) / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.floor(ease * target));
-      if (progress < 1) requestAnimationFrame(step);
+    const step = (ts: number) => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      setCount(Math.floor((1 - Math.pow(1 - p, 3)) * target));
+      if (p < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }, [inView, target]);
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-// ─── Section Wrapper ───────────────────────────────────────────────────────
+// ─── FadeIn ────────────────────────────────────────────────────────────────
 function FadeIn({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
   const { ref, inView } = useInView();
   return (
-    <div
-      ref={ref}
-      className={className}
-      style={{
-        opacity: inView ? 1 : 0,
-        transform: inView ? "translateY(0)" : "translateY(32px)",
-        transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`,
-      }}
-    >
+    <div ref={ref} className={className} style={{
+      opacity: inView ? 1 : 0,
+      transform: inView ? "translateY(0)" : "translateY(24px)",
+      transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`,
+    }}>
       {children}
     </div>
   );
@@ -64,7 +58,6 @@ export default function LandingPage() {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || null;
   const emailInitial = displayName?.[0]?.toUpperCase() || "U";
@@ -74,6 +67,19 @@ export default function LandingPage() {
     window.addEventListener("scroll", fn);
     return () => window.removeEventListener("scroll", fn);
   }, []);
+
+  // Close mobile menu on resize to desktop
+  useEffect(() => {
+    const fn = () => { if (window.innerWidth >= 768) setMobileOpen(false); };
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+
+  // Prevent body scroll when mobile menu open
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
 
   const navLinks = [
     { label: "Features", href: "#features" },
@@ -89,27 +95,9 @@ export default function LandingPage() {
   ];
 
   const steps = [
-    {
-      num: "01",
-      icon: <Zap className="w-7 h-7" />,
-      title: "Connect your meetings",
-      desc: "Connect Zoom or Google Meet and start calls directly from Fixsense in seconds.",
-      color: "#2dd4bf",
-    },
-    {
-      num: "02",
-      icon: <Brain className="w-7 h-7" />,
-      title: "AI analyzes every conversation",
-      desc: "Transcription, objection detection, talk ratio, and sentiment analysis happen automatically.",
-      color: "#818cf8",
-    },
-    {
-      num: "03",
-      icon: <TrendingUp className="w-7 h-7" />,
-      title: "Improve and close more deals",
-      desc: "Get coaching insights, AI summaries, and action steps after every meeting.",
-      color: "#34d399",
-    },
+    { num: "01", icon: <Zap className="w-6 h-6" />, title: "Connect your meetings", desc: "Connect Zoom or Google Meet and start calls directly from Fixsense in seconds.", color: "#2dd4bf" },
+    { num: "02", icon: <Brain className="w-6 h-6" />, title: "AI analyzes every conversation", desc: "Transcription, objection detection, talk ratio, and sentiment analysis happen automatically.", color: "#818cf8" },
+    { num: "03", icon: <TrendingUp className="w-6 h-6" />, title: "Improve and close more deals", desc: "Get coaching insights, AI summaries, and action steps after every meeting.", color: "#34d399" },
   ];
 
   const features = [
@@ -117,79 +105,21 @@ export default function LandingPage() {
     { icon: <Brain className="w-5 h-5" />, title: "AI Meeting Summaries", desc: "Auto-generated summaries with decisions, action items, and next steps delivered instantly.", color: "#818cf8" },
     { icon: <Target className="w-5 h-5" />, title: "Objection Detection", desc: "AI spots objections in real time and suggests battle-tested responses to keep deals alive.", color: "#f59e0b" },
     { icon: <TrendingUp className="w-5 h-5" />, title: "Engagement Scoring", desc: "Track buyer sentiment and engagement throughout the call to predict deal outcomes.", color: "#34d399" },
-    { icon: <BarChart3 className="w-5 h-5" />, title: "Team Analytics", desc: "Dashboards showing win rates, talk ratio trends, and performance comparisons across your team.", color: "#60a5fa" },
+    { icon: <BarChart3 className="w-5 h-5" />, title: "Team Analytics", desc: "Dashboards showing win rates, talk ratio trends, and performance comparisons.", color: "#60a5fa" },
     { icon: <Users className="w-5 h-5" />, title: "Sales Coaching", desc: "Managers can leave feedback on specific call moments. Turn every rep into a top performer.", color: "#f472b6" },
   ];
 
   const testimonials = [
-    {
-      quote: "Fixsense helped our team increase close rates by 30%. We finally understand what's happening in our sales calls and can coach proactively.",
-      name: "Marcus Reid",
-      role: "Head of Sales, Vantex SaaS",
-      avatar: "MR",
-      stars: 5,
-    },
-    {
-      quote: "Before Fixsense, we guessed at what was working. Now we have data on every call, and our ramp time for new reps is half what it used to be.",
-      name: "Sophia Chen",
-      role: "Founder, Launchflow",
-      avatar: "SC",
-      stars: 5,
-    },
-    {
-      quote: "The objection detection alone is worth it. Our reps get real-time suggestions during live calls. Game-changer for a remote team.",
-      name: "Daniel Osei",
-      role: "VP Sales, Cloudpath",
-      avatar: "DO",
-      stars: 5,
-    },
+    { quote: "Fixsense helped our team increase close rates by 30%. We finally understand what's happening in our sales calls and can coach proactively.", name: "Marcus Reid", role: "Head of Sales, Vantex SaaS", avatar: "MR", stars: 5 },
+    { quote: "Before Fixsense, we guessed at what was working. Now we have data on every call, and our ramp time for new reps is half what it used to be.", name: "Sophia Chen", role: "Founder, Launchflow", avatar: "SC", stars: 5 },
+    { quote: "The objection detection alone is worth it. Our reps get real-time suggestions during live calls. Game-changer for a remote team.", name: "Daniel Osei", role: "VP Sales, Cloudpath", avatar: "DO", stars: 5 },
   ];
 
   const plans = [
-    {
-      name: "Free",
-      price: "$0",
-      period: "/month",
-      desc: "Get started, no card needed",
-      features: ["5 meetings/month", "AI transcription", "Basic analytics", "1 user"],
-      cta: user ? "Go to Dashboard" : "Start Free",
-      popular: false,
-      ctaVariant: "outline" as const,
-      href: user ? "/dashboard" : "/login",
-    },
-    {
-      name: "Starter",
-      price: "$19",
-      period: "/month",
-      desc: "For individual sales reps",
-      features: ["50 meetings/month", "AI summaries", "Zoom + Google Meet", "Email support", "3 team members"],
-      cta: user ? "Go to Dashboard" : "Start Free Trial",
-      popular: false,
-      ctaVariant: "secondary" as const,
-      href: user ? "/dashboard/billing" : "/login",
-    },
-    {
-      name: "Growth",
-      price: "$49",
-      period: "/month",
-      desc: "For growing sales teams",
-      features: ["300 meetings/month", "Team analytics dashboard", "Coaching insights", "10 team members", "Priority support"],
-      cta: user ? "Upgrade Now" : "Start Free Trial",
-      popular: true,
-      ctaVariant: "default" as const,
-      href: user ? "/dashboard/billing" : "/login",
-    },
-    {
-      name: "Scale",
-      price: "$99",
-      period: "/month",
-      desc: "For high-volume teams",
-      features: ["Unlimited meetings", "Advanced analytics", "API access", "Unlimited members", "Dedicated support"],
-      cta: user ? "Upgrade Now" : "Contact Sales",
-      popular: false,
-      ctaVariant: "secondary" as const,
-      href: user ? "/dashboard/billing" : "/login",
-    },
+    { name: "Free", price: "$0", period: "/mo", desc: "Get started, no card needed", features: ["5 meetings/month", "AI transcription", "Basic analytics", "1 user"], cta: user ? "Go to Dashboard" : "Start Free", popular: false, href: user ? "/dashboard" : "/login" },
+    { name: "Starter", price: "$19", period: "/mo", desc: "For individual sales reps", features: ["50 meetings/month", "AI summaries", "Zoom + Google Meet", "Email support", "3 team members"], cta: user ? "Go to Dashboard" : "Start Free Trial", popular: false, href: user ? "/dashboard/billing" : "/login" },
+    { name: "Growth", price: "$49", period: "/mo", desc: "For growing sales teams", features: ["300 meetings/month", "Team analytics dashboard", "Coaching insights", "10 team members", "Priority support"], cta: user ? "Upgrade Now" : "Start Free Trial", popular: true, href: user ? "/dashboard/billing" : "/login" },
+    { name: "Scale", price: "$99", period: "/mo", desc: "For high-volume teams", features: ["Unlimited meetings", "Advanced analytics", "API access", "Unlimited members", "Dedicated support"], cta: user ? "Upgrade Now" : "Contact Sales", popular: false, href: user ? "/dashboard/billing" : "/login" },
   ];
 
   const whyPoints = [
@@ -199,528 +129,770 @@ export default function LandingPage() {
     { icon: <Shield className="w-5 h-5 text-blue-400" />, title: "Works with tools you already use", desc: "Native Zoom, Google Meet, Slack, Salesforce, and HubSpot integrations." },
   ];
 
+  const bannerHeight = user ? 38 : 0;
+  const navTop = user ? bannerHeight : 0;
+
   return (
-    <div className="min-h-screen bg-[#080c14] text-white overflow-x-hidden" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="lp-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Bricolage+Grotesque:wght@400;500;600;700;800&display=swap');
-        
-        * { box-sizing: border-box; }
-        
-        .display-font { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
-        
-        .glow-teal { box-shadow: 0 0 60px rgba(45, 212, 191, 0.15); }
-        .glow-teal-sm { box-shadow: 0 0 30px rgba(45, 212, 191, 0.1); }
-        
-        .hero-gradient {
-          background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(45,212,191,0.12) 0%, transparent 70%),
-                      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(129,140,248,0.08) 0%, transparent 60%),
-                      #080c14;
-        }
-        
-        .grid-bg {
-          background-image: linear-gradient(rgba(45,212,191,0.04) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(45,212,191,0.04) 1px, transparent 1px);
-          background-size: 60px 60px;
-        }
-        
-        .noise-overlay::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-          pointer-events: none;
-        }
-        
-        .card-glass {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          backdrop-filter: blur(12px);
-        }
-        
-        .card-glass:hover {
-          background: rgba(255,255,255,0.05);
-          border-color: rgba(45,212,191,0.2);
-          transition: all 0.3s ease;
-        }
-        
-        .popular-card {
-          background: linear-gradient(135deg, rgba(45,212,191,0.08), rgba(129,140,248,0.05));
-          border: 1px solid rgba(45,212,191,0.3);
-        }
-        
-        .tag-pill {
-          background: rgba(45,212,191,0.1);
-          border: 1px solid rgba(45,212,191,0.2);
-          color: #2dd4bf;
-          font-size: 12px;
-          font-weight: 500;
-          padding: 4px 12px;
-          border-radius: 100px;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          letter-spacing: 0.02em;
-        }
 
-        .user-pill {
-          background: rgba(45,212,191,0.08);
-          border: 1px solid rgba(45,212,191,0.18);
-          color: #2dd4bf;
-          font-size: 12px;
-          font-weight: 500;
-          padding: 4px 10px 4px 4px;
-          border-radius: 100px;
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          cursor: pointer;
-          transition: background 0.2s;
+        .lp-root {
+          min-height: 100svh;
+          background: #080c14;
+          color: #fff;
+          overflow-x: hidden;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          -webkit-font-smoothing: antialiased;
         }
-        .user-pill:hover { background: rgba(45,212,191,0.15); }
-        .user-pill-av {
+        .lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
+
+        /* ── Typography ── */
+        .df { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
+
+        /* ── Logged-in banner ── */
+        .lp-banner {
+          position: sticky; top: 0; z-index: 60;
+          background: rgba(45,212,191,0.07);
+          border-bottom: 1px solid rgba(45,212,191,0.14);
+          padding: 8px 16px;
+          display: flex; align-items: center; justify-content: center;
+          gap: 8px; flex-wrap: wrap;
+          font-size: 13px; color: rgba(255,255,255,0.65);
+          min-height: 38px;
+        }
+        .lp-banner strong { color: #2dd4bf; font-weight: 600; }
+        .lp-banner-link {
+          display: inline-flex; align-items: center; gap: 4px;
+          color: #2dd4bf; font-weight: 600; font-size: 12px;
+          background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.25);
+          padding: 3px 10px; border-radius: 20px; text-decoration: none;
+          white-space: nowrap; transition: background 0.2s;
+        }
+        .lp-banner-link:hover { background: rgba(45,212,191,0.2); }
+
+        /* ── Nav ── */
+        .lp-nav {
+          position: sticky; top: 0; z-index: 50;
+          height: 60px;
+          display: flex; align-items: center;
+          transition: background 0.3s, border-color 0.3s;
+          padding: 0 20px;
+        }
+        .lp-nav.scrolled {
+          background: rgba(8,12,20,0.92);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .lp-nav-inner {
+          max-width: 1200px; width: 100%; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .lp-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
+        .lp-logo-mark {
+          width: 32px; height: 32px; border-radius: 8px;
+          background: linear-gradient(135deg, #2dd4bf, #0d9488);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .lp-logo-text { font-size: 17px; font-weight: 700; color: #fff; font-family: 'Bricolage Grotesque', sans-serif; }
+        .lp-nav-links { display: flex; align-items: center; gap: 28px; }
+        .lp-nav-link { font-size: 14px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; white-space: nowrap; }
+        .lp-nav-link:hover { color: #fff; }
+        .lp-nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+        .lp-hamburger {
+          display: none; background: none; border: none; cursor: pointer;
+          color: rgba(255,255,255,0.6); padding: 4px; border-radius: 6px;
+          transition: color 0.2s;
+        }
+        .lp-hamburger:hover { color: #fff; }
+
+        /* Desktop user pill */
+        .lp-user-pill {
+          display: inline-flex; align-items: center; gap: 7px;
+          background: rgba(45,212,191,0.08); border: 1px solid rgba(45,212,191,0.18);
+          color: #2dd4bf; font-size: 12px; font-weight: 500;
+          padding: 4px 10px 4px 4px; border-radius: 100px;
+          text-decoration: none; transition: background 0.2s; white-space: nowrap;
+        }
+        .lp-user-pill:hover { background: rgba(45,212,191,0.15); }
+        .lp-user-av {
           width: 24px; height: 24px; border-radius: 50%;
           background: linear-gradient(135deg, #2dd4bf, #0d9488);
           display: flex; align-items: center; justify-content: center;
           font-size: 11px; font-weight: 700; color: #030712; flex-shrink: 0;
         }
-        
-        .cta-primary {
-          background: linear-gradient(135deg, #2dd4bf, #0d9488);
-          color: #030712;
-          font-weight: 600;
-          padding: 14px 28px;
-          border-radius: 10px;
-          border: none;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 15px;
-          transition: all 0.2s ease;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          text-decoration: none;
-        }
-        .cta-primary:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 30px rgba(45,212,191,0.35);
-        }
-        
-        .cta-ghost {
-          background: rgba(255,255,255,0.06);
-          color: #e2e8f0;
-          font-weight: 500;
-          padding: 14px 28px;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.1);
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 15px;
-          transition: all 0.2s ease;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          text-decoration: none;
-        }
-        .cta-ghost:hover {
-          background: rgba(255,255,255,0.1);
-          border-color: rgba(255,255,255,0.2);
-        }
 
-        .logged-in-banner {
-          background: rgba(45,212,191,0.06);
-          border-bottom: 1px solid rgba(45,212,191,0.12);
-          padding: 9px 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          font-size: 13px;
-          color: rgba(255,255,255,0.65);
-          font-family: 'DM Sans', sans-serif;
+        /* ── Mobile Drawer ── */
+        .lp-drawer-overlay {
+          display: none; position: fixed; inset: 0; z-index: 49;
+          background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
         }
-        .logged-in-banner strong { color: #2dd4bf; font-weight: 600; }
-        .logged-in-banner-link {
-          display: inline-flex; align-items: center; gap: 4px;
-          color: #2dd4bf; font-weight: 600; font-size: 12px;
-          background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.25);
-          padding: 3px 10px; border-radius: 20px; text-decoration: none;
-          transition: background 0.2s;
+        .lp-drawer {
+          position: fixed; top: 0; right: 0; bottom: 0; z-index: 55;
+          width: min(320px, 85vw);
+          background: #0d1120;
+          border-left: 1px solid rgba(255,255,255,0.08);
+          display: flex; flex-direction: column;
+          padding: 0;
+          transform: translateX(100%);
+          transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+          overflow-y: auto;
         }
-        .logged-in-banner-link:hover { background: rgba(45,212,191,0.2); }
-        
-        .step-line {
-          position: absolute;
-          top: 40px;
-          left: calc(50% + 48px);
-          width: calc(100% - 96px);
-          height: 1px;
-          background: linear-gradient(90deg, rgba(45,212,191,0.4), rgba(45,212,191,0.1));
-        }
-        
-        .dashboard-mock {
-          background: #0d1525;
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 16px;
-          overflow: hidden;
-        }
-        
-        .stat-badge {
-          background: rgba(45,212,191,0.08);
-          border: 1px solid rgba(45,212,191,0.15);
-          border-radius: 10px;
-          padding: 12px 16px;
-        }
-        
-        .problem-card {
-          background: rgba(239,68,68,0.05);
-          border: 1px solid rgba(239,68,68,0.12);
-          border-radius: 12px;
-          padding: 20px;
-          position: relative;
-          overflow: hidden;
-        }
-        .problem-card::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 3px;
-          height: 100%;
-          background: #ef4444;
-          opacity: 0.5;
-        }
-        
-        .solution-highlight {
-          background: rgba(45,212,191,0.05);
-          border: 1px solid rgba(45,212,191,0.15);
-          border-radius: 12px;
-          padding: 24px;
-          position: relative;
-          overflow: hidden;
-        }
-        .solution-highlight::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 3px;
-          height: 100%;
-          background: linear-gradient(180deg, #2dd4bf, #818cf8);
-        }
-
-        .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
-        
-        .testimonial-card {
-          background: rgba(255,255,255,0.025);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 16px;
-          padding: 28px;
-          transition: all 0.3s ease;
-        }
-        .testimonial-card:hover {
-          border-color: rgba(45,212,191,0.2);
-          background: rgba(255,255,255,0.04);
-          transform: translateY(-2px);
-        }
-        
-        .avatar-circle {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #2dd4bf, #818cf8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 700;
-          font-size: 14px;
-          color: #030712;
+        .lp-drawer.open { transform: translateX(0); }
+        .lp-drawer-overlay.open { display: block; }
+        .lp-drawer-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 16px 20px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
           flex-shrink: 0;
         }
-
-        .nav-blur {
-          background: rgba(8,12,20,0.85);
-          backdrop-filter: blur(20px);
+        .lp-drawer-close {
+          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px; width: 34px; height: 34px;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; color: rgba(255,255,255,0.6); transition: color 0.2s, background 0.2s;
+        }
+        .lp-drawer-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .lp-drawer-nav { padding: 12px 0; flex: 1; }
+        .lp-drawer-link {
+          display: block; padding: 13px 20px;
+          font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.65);
+          text-decoration: none; transition: color 0.2s, background 0.2s;
+          border-left: 2px solid transparent;
+        }
+        .lp-drawer-link:hover { color: #fff; background: rgba(255,255,255,0.04); border-left-color: rgba(45,212,191,0.4); }
+        .lp-drawer-footer {
+          padding: 16px 20px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          flex-shrink: 0;
+          display: flex; flex-direction: column; gap: 10px;
+        }
+        .lp-drawer-user-row {
+          display: flex; align-items: center; gap: 10px;
+          padding: 12px 0 14px;
           border-bottom: 1px solid rgba(255,255,255,0.06);
+          margin-bottom: 2px;
         }
-        
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-8px); }
+        .lp-drawer-user-av {
+          width: 36px; height: 36px; border-radius: 50%;
+          background: linear-gradient(135deg, #2dd4bf, #0d9488);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 14px; font-weight: 700; color: #030712; flex-shrink: 0;
         }
-        @keyframes pulse-ring {
-          0% { transform: scale(0.95); opacity: 0.7; }
-          100% { transform: scale(1.5); opacity: 0; }
+
+        /* ── Buttons ── */
+        .btn-primary {
+          display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+          background: linear-gradient(135deg, #2dd4bf, #0d9488);
+          color: #030712; font-weight: 600; font-size: 15px;
+          padding: 13px 24px; border-radius: 10px; border: none;
+          cursor: pointer; text-decoration: none; white-space: nowrap;
+          transition: transform 0.2s, box-shadow 0.2s;
+          font-family: 'DM Sans', sans-serif;
         }
-        .float { animation: float 6s ease-in-out infinite; }
-        .live-dot::after {
-          content: '';
-          position: absolute;
-          inset: -4px;
-          border-radius: 50%;
-          background: rgba(239,68,68,0.4);
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(45,212,191,0.35); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary.sm { font-size: 13px; padding: 9px 18px; border-radius: 8px; }
+        .btn-primary.full { width: 100%; }
+
+        .btn-ghost {
+          display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+          color: #e2e8f0; font-weight: 500; font-size: 15px;
+          padding: 13px 24px; border-radius: 10px;
+          cursor: pointer; text-decoration: none; white-space: nowrap;
+          transition: background 0.2s, border-color 0.2s;
+          font-family: 'DM Sans', sans-serif;
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        .btn-ghost.sm { font-size: 13px; padding: 9px 18px; border-radius: 8px; }
+        .btn-ghost.full { width: 100%; }
+
+        /* ── Tag pill ── */
+        .tag-pill {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: rgba(45,212,191,0.1); border: 1px solid rgba(45,212,191,0.2);
+          color: #2dd4bf; font-size: 12px; font-weight: 500;
+          padding: 5px 13px; border-radius: 100px; letter-spacing: 0.02em;
+        }
+        .tag-pill .live-dot {
+          position: relative; display: inline-block;
+          width: 8px; height: 8px; border-radius: 50%; background: #2dd4bf; flex-shrink: 0;
+        }
+        .tag-pill .live-dot::after {
+          content: ''; position: absolute; inset: -4px;
+          border-radius: 50%; background: rgba(45,212,191,0.4);
           animation: pulse-ring 1.5s ease-out infinite;
+        }
+
+        /* ── Cards ── */
+        .card-glass {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          backdrop-filter: blur(12px);
+          border-radius: 18px;
+        }
+        .card-glass:hover { background: rgba(255,255,255,0.05); border-color: rgba(45,212,191,0.2); }
+
+        /* ── Section utilities ── */
+        .section { padding: 80px 20px; }
+        .section-sm { padding: 56px 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .container-sm { max-width: 900px; margin: 0 auto; }
+        .divider-line { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
+
+        /* ── Hero ── */
+        .hero {
+          background:
+            radial-gradient(ellipse 100% 60% at 50% -10%, rgba(45,212,191,0.14) 0%, transparent 65%),
+            radial-gradient(ellipse 70% 50% at 80% 60%, rgba(129,140,248,0.08) 0%, transparent 55%),
+            #080c14;
+          background-image:
+            radial-gradient(ellipse 100% 60% at 50% -10%, rgba(45,212,191,0.14) 0%, transparent 65%),
+            radial-gradient(ellipse 70% 50% at 80% 60%, rgba(129,140,248,0.08) 0%, transparent 55%),
+            linear-gradient(rgba(45,212,191,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(45,212,191,0.03) 1px, transparent 1px);
+          background-size: auto, auto, 50px 50px, 50px 50px;
+          position: relative; overflow: hidden;
+          padding: 100px 20px 80px;
+          text-align: center;
+        }
+        .hero-title {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-weight: 800;
+          font-size: clamp(32px, 6vw, 68px);
+          line-height: 1.07;
+          color: #fff;
+          margin: 0 0 20px;
+        }
+        .hero-gradient-text {
+          background: linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        .hero-sub {
+          font-size: clamp(15px, 2.2vw, 18px);
+          color: rgba(255,255,255,0.5);
+          max-width: 560px; margin: 0 auto 36px;
+          line-height: 1.65;
+        }
+        .hero-ctas {
+          display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+          margin-bottom: 40px;
+        }
+        .hero-badges {
+          display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 24px;
+          margin-bottom: 56px;
+        }
+        .hero-badge {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 13px; color: rgba(255,255,255,0.4);
+        }
+
+        /* ── Dashboard Mock ── */
+        .mock-wrap {
+          max-width: 820px; width: 100%; margin: 0 auto;
+          background: #0d1525;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 14px; overflow: hidden;
+          animation: float 6s ease-in-out infinite;
+          box-shadow: 0 0 60px rgba(45,212,191,0.12);
+        }
+        .mock-bar {
+          display: flex; align-items: center; gap: 8px;
+          padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .mock-dots { display: flex; gap: 5px; }
+        .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .mock-url {
+          flex: 1; text-align: center;
+          background: rgba(255,255,255,0.04);
+          border-radius: 5px; padding: 4px 12px;
+          font-size: 11px; color: rgba(255,255,255,0.3);
+          max-width: 220px; margin: 0 auto;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .mock-body { background: #0a1120; padding: 16px; }
+        .mock-live-row {
+          display: flex; align-items: center; gap: 10px;
+          margin-bottom: 14px;
+        }
+        .mock-live-badge {
+          display: flex; align-items: center; gap: 6px;
+          background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2);
+          border-radius: 20px; padding: 4px 10px;
+          font-size: 11px; font-weight: 600; color: #f87171;
+        }
+        .mock-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 14px; }
+        .mock-stat {
+          background: rgba(45,212,191,0.06);
+          border: 1px solid rgba(45,212,191,0.12);
+          border-radius: 8px; padding: 10px 12px;
+        }
+        .mock-stat-label { font-size: 9px; color: rgba(255,255,255,0.35); margin-bottom: 3px; }
+        .mock-stat-val { font-size: 12px; font-weight: 700; }
+        .mock-stat-bar { height: 2px; background: rgba(255,255,255,0.05); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .mock-stat-fill { height: 100%; border-radius: 2px; }
+        .mock-content { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .mock-transcript, .mock-insights { display: flex; flex-direction: column; gap: 6px; }
+        .mock-section-label { font-size: 9px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+        .mock-line { display: flex; gap: 6px; background: rgba(255,255,255,0.02); border-radius: 6px; padding: 6px 8px; }
+        .mock-speaker { font-size: 9px; font-weight: 700; width: 40px; flex-shrink: 0; margin-top: 1px; }
+        .mock-text { font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.4; }
+        .mock-insight { border-radius: 6px; padding: 8px 10px; font-size: 10px; }
+
+        /* ── Stats section ── */
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
+        .stat-item { text-align: center; }
+        .stat-num { font-family: 'Bricolage Grotesque', sans-serif; font-size: 36px; font-weight: 800; color: #2dd4bf; line-height: 1; margin-bottom: 6px; }
+        .stat-label { font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.4; }
+
+        /* ── Problem / Solution ── */
+        .ps-grid { display: grid; grid-template-columns: 1fr; gap: 48px; }
+        .problem-card {
+          background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.12);
+          border-left: 3px solid rgba(239,68,68,0.5);
+          border-radius: 12px; padding: 16px 18px;
+        }
+        .solution-highlight {
+          background: rgba(45,212,191,0.04); border: 1px solid rgba(45,212,191,0.14);
+          border-left: 3px solid #2dd4bf;
+          border-radius: 12px; padding: 20px 22px; margin-bottom: 20px;
+        }
+        .check-row { display: flex; align-items: flex-start; gap: 10px; }
+        .check-icon {
+          width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+          background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.3);
+          display: flex; align-items: center; justify-content: center; margin-top: 1px;
+        }
+
+        /* ── How it works ── */
+        .steps-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        .step-card { position: relative; padding: 28px; border-radius: 18px; }
+        .step-num-bg {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: 72px; font-weight: 900;
+          position: absolute; top: -8px; right: 8px;
+          color: rgba(255,255,255,0.03); pointer-events: none; user-select: none;
+          line-height: 1;
+        }
+        .step-icon { width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+        .step-num-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+
+        /* ── Features grid ── */
+        .features-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .feature-card { padding: 22px; border-radius: 18px; }
+        .feature-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+
+        /* ── Integrations ── */
+        .integrations-strip {
+          background: rgba(255,255,255,0.01);
+          border-top: 1px solid rgba(255,255,255,0.04);
+          border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .integrations-inner { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 28px; }
+        .integration-name { font-family: 'Bricolage Grotesque', sans-serif; font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.22); transition: color 0.2s; cursor: default; }
+        .integration-name:hover { color: rgba(255,255,255,0.5); }
+
+        /* ── Testimonials ── */
+        .testimonials-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        .testimonial-card {
+          background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 16px; padding: 24px;
+          transition: border-color 0.3s, transform 0.3s;
+          display: flex; flex-direction: column;
+        }
+        .testimonial-card:hover { border-color: rgba(45,212,191,0.2); transform: translateY(-2px); }
+        .testimonial-quote { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.7; flex: 1; margin-bottom: 20px; }
+        .testimonial-av {
+          width: 40px; height: 40px; border-radius: 50%;
+          background: linear-gradient(135deg, #2dd4bf, #818cf8);
+          display: flex; align-items: center; justify-content: center;
+          font-weight: 700; font-size: 13px; color: #030712; flex-shrink: 0;
+        }
+        .stars { display: flex; gap: 2px; margin-bottom: 14px; }
+
+        /* ── Pricing ── */
+        .pricing-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        .pricing-card {
+          padding: 24px; border-radius: 18px;
+          display: flex; flex-direction: column;
+          position: relative;
+        }
+        .pricing-card-default { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); }
+        .pricing-card-popular {
+          background: linear-gradient(135deg, rgba(45,212,191,0.08), rgba(129,140,248,0.05));
+          border: 1px solid rgba(45,212,191,0.3);
+          box-shadow: 0 0 40px rgba(45,212,191,0.08);
+        }
+        .popular-badge {
+          position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+          background: linear-gradient(135deg, #2dd4bf, #0d9488);
+          color: #030712; font-size: 11px; font-weight: 700;
+          padding: 4px 14px; border-radius: 100px; white-space: nowrap;
+        }
+        .pricing-name { font-family: 'Bricolage Grotesque', sans-serif; font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+        .pricing-desc { font-size: 12px; color: rgba(255,255,255,0.35); margin-bottom: 16px; }
+        .pricing-price { display: flex; align-items: baseline; gap: 3px; margin-bottom: 20px; }
+        .pricing-amount { font-family: 'Bricolage Grotesque', sans-serif; font-size: 34px; font-weight: 800; color: #fff; }
+        .pricing-period { font-size: 13px; color: rgba(255,255,255,0.35); }
+        .pricing-features { list-style: none; padding: 0; margin: 0 0 24px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .pricing-feature { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.6); }
+
+        /* ── Why section ── */
+        .why-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .why-card { display: flex; gap: 16px; padding: 18px 20px; border-radius: 14px; }
+        .why-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,0.04); }
+
+        /* ── Final CTA ── */
+        .final-cta {
+          position: relative; overflow: hidden;
+          text-align: center; padding: 96px 20px;
+        }
+        .final-cta::before {
+          content: ''; position: absolute; inset: 0; pointer-events: none;
+          background: radial-gradient(ellipse 80% 70% at 50% 50%, rgba(45,212,191,0.07) 0%, transparent 70%);
+        }
+        .final-cta-inner { position: relative; z-index: 1; max-width: 600px; margin: 0 auto; }
+        .final-cta-title {
+          font-family: 'Bricolage Grotesque', sans-serif;
+          font-size: clamp(30px, 5vw, 50px);
+          font-weight: 800; color: #fff; line-height: 1.1; margin: 16px 0 16px;
+        }
+        .final-cta-sub { font-size: 15px; color: rgba(255,255,255,0.45); margin-bottom: 36px; line-height: 1.6; }
+        .final-cta-btns { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+
+        /* ── Footer ── */
+        .lp-footer { background: rgba(255,255,255,0.01); border-top: 1px solid rgba(255,255,255,0.05); padding: 56px 20px 32px; }
+        .footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px 20px; margin-bottom: 40px; }
+        .footer-brand { grid-column: 1 / -1; }
+        .footer-col-title { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 14px; }
+        .footer-link { display: block; font-size: 13px; color: rgba(255,255,255,0.35); text-decoration: none; margin-bottom: 10px; transition: color 0.2s; }
+        .footer-link:hover { color: rgba(255,255,255,0.7); }
+        .footer-link.accent { color: #2dd4bf; }
+        .footer-link.accent:hover { color: #5ee8d8; }
+        .footer-bottom { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; padding-top: 28px; border-top: 1px solid rgba(255,255,255,0.05); }
+        .footer-copy { font-size: 13px; color: rgba(255,255,255,0.25); }
+        .footer-signed-in { display: inline-flex; align-items: center; gap: 6px; background: rgba(45,212,191,0.07); border: 1px solid rgba(45,212,191,0.15); border-radius: 20px; padding: 5px 12px 5px 5px; font-size: 12px; color: rgba(45,212,191,0.8); }
+        .footer-signed-in-av { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, #2dd4bf, #0d9488); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #030712; }
+
+        /* ── Social icons ── */
+        .social-row { display: flex; gap: 10px; }
+        .social-icon {
+          width: 34px; height: 34px; border-radius: 8px;
+          background: rgba(255,255,255,0.05);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 14px; color: rgba(255,255,255,0.4);
+          text-decoration: none; transition: background 0.2s, color 0.2s;
+        }
+        .social-icon:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+
+        /* ── Animations ── */
+        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes pulse-ring {
+          0% { transform: scale(0.9); opacity: 0.8; }
+          100% { transform: scale(1.8); opacity: 0; }
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .pulse-dot {
+          position: relative; display: inline-block;
+          width: 7px; height: 7px; border-radius: 50%; background: #f87171; flex-shrink: 0;
+        }
+        .pulse-dot::after {
+          content: ''; position: absolute; inset: -3px;
+          border-radius: 50%; background: rgba(248,113,113,0.4);
+          animation: pulse-ring 1.4s ease-out infinite;
+        }
+
+        /* ════════════════════════════════════════
+           RESPONSIVE BREAKPOINTS
+        ════════════════════════════════════════ */
+
+        /* Tablet (640px+) */
+        @media (min-width: 640px) {
+          .stats-grid { grid-template-columns: repeat(4, 1fr); }
+          .features-grid { grid-template-columns: repeat(2, 1fr); }
+          .testimonials-grid { grid-template-columns: repeat(2, 1fr); }
+          .pricing-grid { grid-template-columns: repeat(2, 1fr); }
+          .steps-grid { grid-template-columns: repeat(3, 1fr); }
+          .mock-content { grid-template-columns: 2fr 1fr; }
+          .footer-grid { grid-template-columns: repeat(3, 1fr); }
+          .footer-brand { grid-column: 1 / -1; }
+          .footer-bottom { flex-direction: row; justify-content: space-between; text-align: left; }
+        }
+
+        /* Desktop (768px+) */
+        @media (min-width: 768px) {
+          .lp-hamburger { display: none; }
+          .lp-nav-links { display: flex; }
+          .lp-nav-actions { display: flex; }
+          .ps-grid { grid-template-columns: repeat(2, 1fr); gap: 64px; align-items: start; }
+          .why-grid { grid-template-columns: 1fr; }
+          .features-grid { grid-template-columns: repeat(3, 1fr); }
+          .hero { padding: 120px 20px 90px; }
+          .section { padding: 96px 20px; }
+          .integrations-inner { gap: 14px 40px; }
+          .footer-grid { grid-template-columns: 2fr repeat(3, 1fr); gap: 32px; }
+          .footer-brand { grid-column: auto; }
+        }
+
+        /* Large desktop (1024px+) */
+        @media (min-width: 1024px) {
+          .why-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+          .pricing-grid { grid-template-columns: repeat(4, 1fr); }
+          .testimonials-grid { grid-template-columns: repeat(3, 1fr); }
+          .stat-num { font-size: 42px; }
+        }
+
+        /* Mobile-only overrides (<640px) */
+        @media (max-width: 639px) {
+          .lp-hamburger { display: flex; }
+          .lp-nav-links { display: none; }
+          .lp-nav-actions { display: none; }
+          .hero { padding: 80px 16px 64px; }
+          .section { padding: 60px 16px; }
+          .section-sm { padding: 44px 16px; }
+          .lp-banner { font-size: 12px; }
+          .hero-ctas { flex-direction: column; align-items: center; }
+          .hero-ctas .btn-primary, .hero-ctas .btn-ghost { width: 100%; max-width: 320px; }
+          .mock-stats { grid-template-columns: repeat(2, 1fr); }
+          .mock-stat-val { font-size: 11px; }
+          .step-card { padding: 22px; }
+          .final-cta { padding: 72px 16px; }
+          .final-cta-btns { flex-direction: column; align-items: center; }
+          .final-cta-btns .btn-primary, .final-cta-btns .btn-ghost { width: 100%; max-width: 320px; }
+          .footer-grid { grid-template-columns: 1fr 1fr; }
+          .footer-brand { grid-column: 1 / -1; }
         }
       `}</style>
 
-      {/* ── Logged-in banner (top of page) ───────────────────────────────── */}
+      {/* ── Logged-in banner ─────────────────────────────────────────────── */}
       {user && (
-        <div className="logged-in-banner">
+        <div className="lp-banner">
           <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
           <span>Welcome back, <strong>{displayName}</strong> — you're signed in</span>
-          <a href="/dashboard" className="logged-in-banner-link">
+          <a href="/dashboard" className="lp-banner-link">
             <LayoutDashboard style={{ width: 12, height: 12 }} />
             Go to Dashboard
           </a>
         </div>
       )}
 
-      {/* ── NAV ──────────────────────────────────────────────────────────── */}
-      <nav className={`fixed left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "nav-blur" : ""} ${user ? "top-[37px]" : "top-0"}`}>
-        <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2dd4bf, #0d9488)" }}>
-              <Zap className="w-4 h-4 text-gray-900" />
-            </div>
-            <span className="text-[17px] font-bold display-font text-white">Fixsense</span>
+      {/* ── Nav ──────────────────────────────────────────────────────────── */}
+      <nav className={`lp-nav${scrolled ? " scrolled" : ""}`}>
+        <div className="lp-nav-inner">
+          <Link to="/" className="lp-logo">
+            <div className="lp-logo-mark"><Zap style={{ width: 16, height: 16, color: "#030712" }} /></div>
+            <span className="lp-logo-text">Fixsense</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-7">
-            {navLinks.map(l => (
-              <a key={l.label} href={l.href} className="text-sm text-gray-400 hover:text-white transition-colors font-medium">
-                {l.label}
-              </a>
-            ))}
+          {/* Desktop links */}
+          <div className="lp-nav-links">
+            {navLinks.map(l => <a key={l.label} href={l.href} className="lp-nav-link">{l.label}</a>)}
           </div>
 
-          <div className="hidden md:flex items-center gap-3">
+          {/* Desktop actions */}
+          <div className="lp-nav-actions">
             {user ? (
               <>
-                {/* User pill */}
-                <Link to="/dashboard/profile">
-                  <div className="user-pill">
-                    <div className="user-pill-av">{emailInitial}</div>
-                    <span>{displayName}</span>
-                  </div>
+                <Link to="/dashboard/profile" className="lp-user-pill">
+                  <div className="lp-user-av">{emailInitial}</div>
+                  <span>{displayName}</span>
                 </Link>
-                <Link to="/dashboard">
-                  <button className="cta-primary" style={{ padding: "10px 20px", fontSize: "14px" }}>
-                    Dashboard <LayoutDashboard className="w-4 h-4" />
-                  </button>
+                <Link to="/dashboard" className="btn-primary sm">
+                  <LayoutDashboard style={{ width: 15, height: 15 }} /> Dashboard
                 </Link>
               </>
             ) : (
               <>
-                <Link to="/login">
-                  <button className="cta-ghost" style={{ padding: "10px 20px", fontSize: "14px" }}>
-                    Sign in
-                  </button>
-                </Link>
-                <Link to="/login">
-                  <button className="cta-primary" style={{ padding: "10px 20px", fontSize: "14px" }}>
-                    Start Free Trial
-                  </button>
-                </Link>
+                <Link to="/login" className="btn-ghost sm">Sign in</Link>
+                <Link to="/login" className="btn-primary sm">Start Free Trial</Link>
               </>
             )}
           </div>
 
-          <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setMobileOpen(!mobileOpen)}>
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {/* Hamburger */}
+          <button className="lp-hamburger" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <Menu style={{ width: 22, height: 22 }} />
+          </button>
+        </div>
+      </nav>
+
+      {/* ── Mobile Drawer ────────────────────────────────────────────────── */}
+      <div className={`lp-drawer-overlay${mobileOpen ? " open" : ""}`} onClick={() => setMobileOpen(false)} />
+      <div className={`lp-drawer${mobileOpen ? " open" : ""}`} role="dialog" aria-modal="true">
+        <div className="lp-drawer-header">
+          <Link to="/" className="lp-logo" onClick={() => setMobileOpen(false)}>
+            <div className="lp-logo-mark"><Zap style={{ width: 14, height: 14, color: "#030712" }} /></div>
+            <span className="lp-logo-text">Fixsense</span>
+          </Link>
+          <button className="lp-drawer-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+            <X style={{ width: 16, height: 16 }} />
           </button>
         </div>
 
-        {mobileOpen && (
-          <div className="md:hidden nav-blur border-t border-white/5 px-5 py-5 space-y-4">
-            {navLinks.map(l => (
-              <a key={l.label} href={l.href} onClick={() => setMobileOpen(false)} className="block text-gray-300 font-medium py-1">{l.label}</a>
-            ))}
-            <div className="pt-3 flex flex-col gap-2">
-              {user ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div className="user-pill-av">{emailInitial}</div>
-                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Signed in as <strong style={{ color: "#2dd4bf" }}>{displayName}</strong></span>
-                  </div>
-                  <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
-                    <button className="cta-primary w-full justify-center">
-                      <LayoutDashboard className="w-4 h-4" /> Go to Dashboard
-                    </button>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" onClick={() => setMobileOpen(false)}>
-                    <button className="cta-ghost w-full justify-center">Sign in</button>
-                  </Link>
-                  <Link to="/login" onClick={() => setMobileOpen(false)}>
-                    <button className="cta-primary w-full justify-center">Start Free Trial</button>
-                  </Link>
-                </>
-              )}
+        <nav className="lp-drawer-nav">
+          {navLinks.map(l => (
+            <a key={l.label} href={l.href} className="lp-drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
+          ))}
+        </nav>
+
+        <div className="lp-drawer-footer">
+          {user ? (
+            <>
+              <div className="lp-drawer-user-row">
+                <div className="lp-drawer-user-av">{emailInitial}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{displayName}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{user.email}</div>
+                </div>
+              </div>
+              <Link to="/dashboard" className="btn-primary full" onClick={() => setMobileOpen(false)}>
+                <LayoutDashboard style={{ width: 16, height: 16 }} /> Go to Dashboard
+              </Link>
+              <Link to="/dashboard/live" className="btn-ghost full" onClick={() => setMobileOpen(false)}>
+                Start a Live Call <ArrowRight style={{ width: 15, height: 15 }} />
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn-primary full" onClick={() => setMobileOpen(false)}>
+                Start Free Trial <ArrowRight style={{ width: 15, height: 15 }} />
+              </Link>
+              <Link to="/login" className="btn-ghost full" onClick={() => setMobileOpen(false)}>Sign in</Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="hero">
+        {/* Orbs */}
+        <div style={{ position: "absolute", top: 60, left: "15%", width: 300, height: 300, borderRadius: "50%", background: "rgba(45,212,191,0.05)", filter: "blur(80px)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: 100, right: "10%", width: 250, height: 250, borderRadius: "50%", background: "rgba(129,140,248,0.05)", filter: "blur(70px)", pointerEvents: "none" }} />
+
+        <div className="container" style={{ position: "relative", zIndex: 1 }}>
+          {/* Pill */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
+            <div className="tag-pill">
+              <span className="live-dot" />
+              {user ? `Welcome back, ${displayName} — your dashboard is ready` : "Used by modern sales teams worldwide"}
             </div>
           </div>
-        )}
-      </nav>
 
-      {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="hero-gradient grid-bg noise-overlay relative pb-20 px-5 overflow-hidden" style={{ paddingTop: user ? "120px" : "112px" }}>
-        {/* Floating orbs */}
-        <div className="absolute top-24 left-1/4 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(45,212,191,0.06)" }} />
-        <div className="absolute top-40 right-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(129,140,248,0.06)" }} />
-
-        <div className="max-w-5xl mx-auto text-center relative z-10">
-          {/* Trust / Welcome pill */}
-          <div className="flex justify-center mb-8">
+          {/* Title */}
+          <h1 className="hero-title">
             {user ? (
-              <div className="tag-pill">
-                <span className="relative inline-block w-2 h-2 rounded-full bg-teal-400 live-dot flex-shrink-0" />
-                Welcome back, {displayName} — your dashboard is ready
-              </div>
+              <>Your AI Sales Coach<br /><span className="hero-gradient-text">Is Waiting for You</span></>
             ) : (
-              <div className="tag-pill">
-                <span className="relative inline-block w-2 h-2 rounded-full bg-teal-400 live-dot flex-shrink-0" />
-                Used by modern sales teams worldwide
-              </div>
-            )}
-          </div>
-
-          <h1 className="display-font font-extrabold text-white leading-[1.07] mb-6" style={{ fontSize: "clamp(36px, 5.5vw, 72px)" }}>
-            {user ? (
-              <>
-                Your AI Sales Coach
-                <br />
-                <span style={{ background: "linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                  Is Waiting for You
-                </span>
-              </>
-            ) : (
-              <>
-                Close More Deals With
-                <br />
-                <span style={{ background: "linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                  AI-Powered Sales Intelligence
-                </span>
-              </>
+              <>Close More Deals With<br /><span className="hero-gradient-text">AI-Powered Sales Intelligence</span></>
             )}
           </h1>
 
-          <p className="text-gray-400 mx-auto mb-10 leading-relaxed" style={{ fontSize: "clamp(16px, 2vw, 19px)", maxWidth: "620px" }}>
+          {/* Subtitle */}
+          <p className="hero-sub">
             {user
-              ? "Pick up where you left off — view your call history, check team analytics, or start a new live meeting with real-time AI coaching."
+              ? "Pick up where you left off — view calls, check analytics, or start a new live meeting with real-time AI coaching."
               : "Fixsense records, analyzes, and improves your sales meetings in real time — so your team closes more deals without guessing what works."}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-14">
+          {/* CTAs */}
+          <div className="hero-ctas">
             {user ? (
               <>
-                <Link to="/dashboard">
-                  <button className="cta-primary text-base px-8 py-4">
-                    <LayoutDashboard className="w-5 h-5" /> Go to Dashboard
-                  </button>
+                <Link to="/dashboard" className="btn-primary" style={{ fontSize: 15, padding: "14px 28px" }}>
+                  <LayoutDashboard style={{ width: 18, height: 18 }} /> Go to Dashboard
                 </Link>
-                <Link to="/dashboard/live">
-                  <button className="cta-ghost text-base px-8 py-4">
-                    Start a Live Call <ArrowRight className="w-5 h-5" />
-                  </button>
+                <Link to="/dashboard/live" className="btn-ghost" style={{ fontSize: 15, padding: "14px 28px" }}>
+                  Start a Live Call <ArrowRight style={{ width: 18, height: 18 }} />
                 </Link>
               </>
             ) : (
               <>
-                <Link to="/login">
-                  <button className="cta-primary text-base px-8 py-4">
-                    Start Free Trial <ArrowRight className="w-5 h-5" />
-                  </button>
+                <Link to="/login" className="btn-primary" style={{ fontSize: 15, padding: "14px 28px" }}>
+                  Start Free Trial <ArrowRight style={{ width: 18, height: 18 }} />
                 </Link>
-                <button className="cta-ghost text-base px-8 py-4">
-                  <Play className="w-4 h-4 fill-current" /> Watch Demo
+                <button className="btn-ghost" style={{ fontSize: 15, padding: "14px 28px" }}>
+                  <Play style={{ width: 15, height: 15 }} /> Watch Demo
                 </button>
               </>
             )}
           </div>
 
-          {/* Trust badges — different for logged-in */}
-          <div className="flex flex-wrap justify-center gap-6 mb-14 text-sm text-gray-500">
-            {user ? (
-              <>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> Your data is safe and secure</span>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> AI insights ready on every call</span>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> Team analytics available now</span>
-              </>
-            ) : (
-              <>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> No credit card required</span>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> 5 free meetings/month</span>
-                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> AI-powered insights in seconds</span>
-              </>
-            )}
+          {/* Trust badges */}
+          <div className="hero-badges">
+            {(user
+              ? ["Your data is safe and secure", "AI insights ready on every call", "Team analytics available now"]
+              : ["No credit card required", "5 free meetings/month", "AI-powered insights in seconds"]
+            ).map(badge => (
+              <span key={badge} className="hero-badge">
+                <Check style={{ width: 14, height: 14, color: "#2dd4bf", flexShrink: 0 }} />{badge}
+              </span>
+            ))}
           </div>
 
-          {/* Dashboard Mock */}
-          <div className="dashboard-mock glow-teal mx-auto float" style={{ maxWidth: "820px" }}>
-            {/* Mock top bar */}
-            <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-red-500/60" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
-                <div className="w-3 h-3 rounded-full bg-green-500/60" />
+          {/* Dashboard mockup */}
+          <div className="mock-wrap">
+            <div className="mock-bar">
+              <div className="mock-dots">
+                <div className="mock-dot" style={{ background: "rgba(239,68,68,0.5)" }} />
+                <div className="mock-dot" style={{ background: "rgba(234,179,8,0.5)" }} />
+                <div className="mock-dot" style={{ background: "rgba(34,197,94,0.5)" }} />
               </div>
-              <div className="flex-1 flex justify-center">
-                <div className="bg-white/5 rounded-md px-4 py-1 text-xs text-gray-500 w-48 text-center">fixsense.io/dashboard/live</div>
-              </div>
+              <div className="mock-url">fixsense.io/dashboard/live</div>
             </div>
 
-            {/* Mock dashboard content */}
-            <div className="p-5 grid grid-cols-12 gap-4" style={{ background: "#0a1120" }}>
-              {/* Live badge */}
-              <div className="col-span-12 flex items-center gap-3 mb-1">
-                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-full px-3 py-1">
-                  <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                  <span className="text-red-400 text-xs font-semibold">LIVE — Q4 Discovery Call</span>
+            <div className="mock-body">
+              <div className="mock-live-row">
+                <div className="mock-live-badge">
+                  <span className="pulse-dot" style={{ background: "#f87171" }} />
+                  LIVE — Q4 Discovery Call
                 </div>
-                <span className="text-gray-500 text-xs">12:34</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>12:34</span>
               </div>
 
-              {/* Stats row */}
-              <div className="col-span-12 grid grid-cols-4 gap-3">
+              <div className="mock-stats">
                 {[
                   { label: "Engagement", value: "87%", color: "#2dd4bf", pct: 87 },
                   { label: "Talk Ratio", value: "42:58", color: "#818cf8", pct: 42 },
                   { label: "Sentiment", value: "Positive", color: "#34d399", pct: 78 },
                   { label: "Objections", value: "2 handled", color: "#f59e0b", pct: 100 },
                 ].map(s => (
-                  <div key={s.label} className="stat-badge text-left">
-                    <div className="text-gray-500 text-[10px] mb-1">{s.label}</div>
-                    <div className="font-bold text-sm" style={{ color: s.color }}>{s.value}</div>
-                    <div className="mt-2 h-1 rounded-full bg-white/5">
-                      <div className="h-1 rounded-full" style={{ width: `${s.pct}%`, background: s.color, opacity: 0.7 }} />
+                  <div key={s.label} className="mock-stat">
+                    <div className="mock-stat-label">{s.label}</div>
+                    <div className="mock-stat-val" style={{ color: s.color }}>{s.value}</div>
+                    <div className="mock-stat-bar">
+                      <div className="mock-stat-fill" style={{ width: `${s.pct}%`, background: s.color, opacity: 0.6 }} />
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Transcript + objection side by side */}
-              <div className="col-span-8 space-y-2">
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Live Transcript</div>
-                {[
-                  { speaker: "Rep", text: "What's your biggest challenge with your current sales process?", color: "#2dd4bf" },
-                  { speaker: "Prospect", text: "Honestly, we lose track of follow-ups and our CRM data is always outdated.", color: "#94a3b8" },
-                  { speaker: "Rep", text: "That's exactly the problem Fixsense was built to solve. Let me show you how we handle that...", color: "#2dd4bf" },
-                ].map((line, i) => (
-                  <div key={i} className="flex gap-2 items-start p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                    <span className="text-[10px] font-bold shrink-0 mt-0.5 w-14" style={{ color: line.color }}>{line.speaker}</span>
-                    <span className="text-[11px] text-gray-400 leading-relaxed">{line.text}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="col-span-4 space-y-2">
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">AI Insights</div>
-                <div className="p-2.5 rounded-lg border border-amber-500/20 text-[10px]" style={{ background: "rgba(245,158,11,0.06)" }}>
-                  <div className="text-amber-400 font-semibold mb-0.5">⚡ Objection Detected</div>
-                  <div className="text-gray-400">Suggest ROI data to address CRM concerns</div>
+              <div className="mock-content">
+                <div className="mock-transcript">
+                  <div className="mock-section-label">Live Transcript</div>
+                  {[
+                    { speaker: "Rep", text: "What's your biggest challenge with your current sales process?", color: "#2dd4bf" },
+                    { speaker: "Prospect", text: "Honestly, we lose track of follow-ups and our CRM data is always outdated.", color: "#94a3b8" },
+                    { speaker: "Rep", text: "That's exactly the problem Fixsense was built to solve...", color: "#2dd4bf" },
+                  ].map((l, i) => (
+                    <div key={i} className="mock-line">
+                      <span className="mock-speaker" style={{ color: l.color }}>{l.speaker}</span>
+                      <span className="mock-text">{l.text}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="p-2.5 rounded-lg border border-teal-500/20 text-[10px]" style={{ background: "rgba(45,212,191,0.06)" }}>
-                  <div className="text-teal-400 font-semibold mb-0.5">💡 Buying Signal</div>
-                  <div className="text-gray-400">Prospect mentioned "current process" — explore pain</div>
+
+                <div className="mock-insights">
+                  <div className="mock-section-label">AI Insights</div>
+                  <div className="mock-insight" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#fbbf24", marginBottom: 3 }}>⚡ Objection Detected</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>Suggest ROI data to address CRM concerns</div>
+                  </div>
+                  <div className="mock-insight" style={{ background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.2)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#2dd4bf", marginBottom: 3 }}>💡 Buying Signal</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>Mentioned "current process" — explore pain</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -728,40 +900,40 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── STATS BANNER ─────────────────────────────────────────────────── */}
-      <section className="py-14 px-5 border-y" style={{ borderColor: "rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.01)" }}>
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {[
-            { value: 30, suffix: "%", label: "Average increase in close rate" },
-            { value: 10, suffix: "k+", label: "Sales meetings analyzed" },
-            { value: 50, suffix: "%", label: "Faster rep onboarding" },
-            { value: 99, suffix: "%", label: "Transcription accuracy" },
-          ].map((s, i) => (
-            <FadeIn key={i} delay={i * 80}>
-              <div className="text-4xl font-bold display-font mb-1" style={{ color: "#2dd4bf" }}>
-                <AnimatedCounter target={s.value} suffix={s.suffix} />
-              </div>
-              <div className="text-gray-500 text-sm leading-snug">{s.label}</div>
-            </FadeIn>
-          ))}
+      {/* ── Stats ────────────────────────────────────────────────────────── */}
+      <div style={{ padding: "56px 20px", background: "rgba(255,255,255,0.01)", borderTop: "1px solid rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+        <div className="container-sm">
+          <div className="stats-grid">
+            {[
+              { value: 30, suffix: "%", label: "Average increase in close rate" },
+              { value: 10, suffix: "k+", label: "Sales meetings analyzed" },
+              { value: 50, suffix: "%", label: "Faster rep onboarding" },
+              { value: 99, suffix: "%", label: "Transcription accuracy" },
+            ].map((s, i) => (
+              <FadeIn key={i} delay={i * 80} className="stat-item">
+                <div className="stat-num"><AnimatedCounter target={s.value} suffix={s.suffix} /></div>
+                <div className="stat-label">{s.label}</div>
+              </FadeIn>
+            ))}
+          </div>
         </div>
-      </section>
+      </div>
 
-      {/* ── PROBLEM → SOLUTION ────────────────────────────────────────────── */}
-      <section className="py-24 px-5">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+      {/* ── Problem / Solution ───────────────────────────────────────────── */}
+      <section className="section">
+        <div className="container">
+          <div className="ps-grid">
             <FadeIn>
-              <div className="tag-pill mb-5">The Problem</div>
-              <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-8 leading-tight">
+              <div className="tag-pill" style={{ marginBottom: 20 }}>The Problem</div>
+              <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", marginBottom: 24, lineHeight: 1.2 }}>
                 Sales teams are flying blind on their calls
               </h2>
-              <div className="space-y-4">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {problems.map((p, i) => (
                   <div key={i} className="problem-card">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{p.icon}</span>
-                      <span className="text-gray-300 text-[15px]">{p.text}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ fontSize: 22, flexShrink: 0 }}>{p.icon}</span>
+                      <span style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 1.4 }}>{p.text}</span>
                     </div>
                   </div>
                 ))}
@@ -769,22 +941,20 @@ export default function LandingPage() {
             </FadeIn>
 
             <FadeIn delay={150}>
-              <div className="tag-pill mb-5" style={{ background: "rgba(45,212,191,0.1)", borderColor: "rgba(45,212,191,0.2)", color: "#2dd4bf" }}>The Solution</div>
-              <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-6 leading-tight">
+              <div className="tag-pill" style={{ marginBottom: 20 }}>The Solution</div>
+              <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", marginBottom: 20, lineHeight: 1.2 }}>
                 Complete visibility into every conversation
               </h2>
-              <div className="solution-highlight mb-6">
-                <p className="text-gray-300 text-[15px] leading-relaxed">
-                  Fixsense automatically records and analyzes every sales call, giving you <strong className="text-white">clear insights on what works</strong> and what doesn't — so you can coach smarter, sell better, and close more.
+              <div className="solution-highlight">
+                <p style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", lineHeight: 1.65, margin: 0 }}>
+                  Fixsense automatically records and analyzes every sales call, giving you <strong style={{ color: "#fff" }}>clear insights on what works</strong> — so you can coach smarter, sell better, and close more.
                 </p>
               </div>
-              <div className="space-y-3">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {["Every call automatically transcribed", "AI detects objections in real time", "Post-call coaching insights delivered instantly", "Team performance trends at a glance"].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-gray-300 text-sm">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(45,212,191,0.15)", border: "1px solid rgba(45,212,191,0.3)" }}>
-                      <Check className="w-3 h-3 text-teal-400" />
-                    </div>
-                    {item}
+                  <div key={i} className="check-row">
+                    <div className="check-icon"><Check style={{ width: 11, height: 11, color: "#2dd4bf" }} /></div>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.65)" }}>{item}</span>
                   </div>
                 ))}
               </div>
@@ -793,32 +963,32 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className="divider" />
+      <div className="divider-line" />
 
-      {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
-      <section id="how-it-works" className="py-24 px-5">
-        <div className="max-w-5xl mx-auto">
-          <FadeIn className="text-center mb-16">
-            <div className="tag-pill inline-flex mb-5">How It Works</div>
-            <h2 className="display-font text-3xl md:text-4xl font-bold text-white">Three steps to better sales performance</h2>
+      {/* ── How It Works ─────────────────────────────────────────────────── */}
+      <section className="section" id="how-it-works">
+        <div className="container">
+          <FadeIn className="df" style={{ textAlign: "center", marginBottom: 48 }}>
+            <div className="tag-pill" style={{ marginBottom: 16, display: "inline-flex" }}>How It Works</div>
+            <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", margin: 0 }}>
+              Three steps to better sales performance
+            </h2>
           </FadeIn>
 
-          <div className="grid md:grid-cols-3 gap-6 relative">
+          <div className="steps-grid">
             {steps.map((step, i) => (
-              <FadeIn key={i} delay={i * 120}>
-                <div className="card-glass rounded-2xl p-7 relative text-center group cursor-default h-full">
-                  <div className="text-7xl font-black display-font absolute -top-4 -right-2 select-none pointer-events-none" style={{ color: "rgba(255,255,255,0.03)" }}>{step.num}</div>
-                  <div className="relative z-10">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: `${step.color}18`, border: `1px solid ${step.color}30`, color: step.color }}>
-                      {step.icon}
-                    </div>
-                    <div className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: step.color }}>{step.num}</div>
-                    <h3 className="display-font text-lg font-bold text-white mb-3">{step.title}</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed">{step.desc}</p>
+              <FadeIn key={i} delay={i * 100}>
+                <div className="step-card card-glass" style={{ position: "relative" }}>
+                  <div className="step-num-bg">{step.num}</div>
+                  <div className="step-icon" style={{ background: `${step.color}18`, border: `1px solid ${step.color}30`, color: step.color }}>
+                    {step.icon}
                   </div>
-                  {i < 2 && (
-                    <div className="hidden md:block absolute top-12 -right-4 z-20">
-                      <ChevronRight className="w-6 h-6 text-gray-700" />
+                  <div className="step-num-label" style={{ color: step.color }}>{step.num}</div>
+                  <h3 className="df" style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 8, lineHeight: 1.3 }}>{step.title}</h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{step.desc}</p>
+                  {i < steps.length - 1 && (
+                    <div style={{ display: "none" }} className="step-arrow">
+                      <ChevronRight style={{ width: 20, height: 20, color: "rgba(255,255,255,0.2)" }} />
                     </div>
                   )}
                 </div>
@@ -828,171 +998,162 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className="divider" />
+      <div className="divider-line" />
 
-      {/* ── FEATURES ──────────────────────────────────────────────────────── */}
-      <section id="features" className="py-24 px-5">
-        <div className="max-w-5xl mx-auto">
-          <FadeIn className="text-center mb-16">
-            <div className="tag-pill inline-flex mb-5">Features</div>
-            <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-4">Everything your team needs to win</h2>
-            <p className="text-gray-400 max-w-xl mx-auto text-[15px]">From live call intelligence to post-call analysis — Fixsense covers the entire sales conversation lifecycle.</p>
-          </FadeIn>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {features.map((f, i) => (
-              <FadeIn key={i} delay={i * 70}>
-                <div className="card-glass rounded-2xl p-6 h-full group cursor-default">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: `${f.color}18`, color: f.color }}>
-                    {f.icon}
-                  </div>
-                  <h3 className="display-font font-bold text-white text-[15px] mb-2">{f.title}</h3>
-                  <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── INTEGRATIONS ─────────────────────────────────────────────────── */}
-      <section className="py-12 px-5" style={{ background: "rgba(255,255,255,0.01)", borderTop: "1px solid rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-7">Integrates with your entire sales stack</p>
-          <div className="flex flex-wrap justify-center gap-5 md:gap-10">
-            {["Zoom", "Google Meet", "Microsoft Teams", "Salesforce", "HubSpot", "Slack"].map(name => (
-              <span key={name} className="display-font text-base font-semibold text-gray-600 hover:text-gray-400 transition-colors cursor-default">{name}</span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ─────────────────────────────────────────────────── */}
-      <section id="testimonials" className="py-24 px-5">
-        <div className="max-w-5xl mx-auto">
-          <FadeIn className="text-center mb-14">
-            <div className="tag-pill inline-flex mb-5">Testimonials</div>
-            <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-4">Teams that chose data over guesswork</h2>
-          </FadeIn>
-
-          <div className="grid md:grid-cols-3 gap-5">
-            {testimonials.map((t, i) => (
-              <FadeIn key={i} delay={i * 100}>
-                <div className="testimonial-card h-full flex flex-col">
-                  <div className="flex gap-0.5 mb-5">
-                    {Array.from({ length: t.stars }).map((_, j) => (
-                      <Star key={j} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
-                  <blockquote className="text-gray-300 text-sm leading-relaxed flex-1 mb-6">"{t.quote}"</blockquote>
-                  <div className="flex items-center gap-3">
-                    <div className="avatar-circle text-xs">{t.avatar}</div>
-                    <div>
-                      <div className="text-white text-sm font-semibold">{t.name}</div>
-                      <div className="text-gray-500 text-xs mt-0.5">{t.role}</div>
-                    </div>
-                  </div>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <div className="divider" />
-
-      {/* ── PRICING ───────────────────────────────────────────────────────── */}
-      <section id="pricing" className="py-24 px-5">
-        <div className="max-w-5xl mx-auto">
-          <FadeIn className="text-center mb-14">
-            <div className="tag-pill inline-flex mb-5">Pricing</div>
-            <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-4">Simple, transparent pricing</h2>
-            <p className="text-gray-400 text-[15px]">
-              {user ? "You're already on board — upgrade your plan anytime." : "Start free. Upgrade as your team grows. No surprises."}
+      {/* ── Features ─────────────────────────────────────────────────────── */}
+      <section className="section" id="features">
+        <div className="container">
+          <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
+            <div className="tag-pill" style={{ marginBottom: 16, display: "inline-flex" }}>Features</div>
+            <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", marginBottom: 12 }}>
+              Everything your team needs to win
+            </h2>
+            <p style={{ fontSize: 15, color: "rgba(255,255,255,0.4)", maxWidth: 500, margin: "0 auto" }}>
+              From live call intelligence to post-call analysis — Fixsense covers the entire sales conversation lifecycle.
             </p>
           </FadeIn>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {plans.map((plan, i) => (
-              <FadeIn key={i} delay={i * 80}>
-                <div className={`relative rounded-2xl p-6 h-full flex flex-col ${plan.popular ? "popular-card glow-teal-sm" : "card-glass"}`}>
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <span className="text-xs font-bold px-3 py-1 rounded-full text-gray-900" style={{ background: "linear-gradient(135deg, #2dd4bf, #0d9488)" }}>
-                        Most Popular
-                      </span>
+          <div className="features-grid">
+            {features.map((f, i) => (
+              <FadeIn key={i} delay={i * 60}>
+                <div className="feature-card card-glass" style={{ height: "100%" }}>
+                  <div className="feature-icon" style={{ background: `${f.color}18`, color: f.color }}>
+                    {f.icon}
+                  </div>
+                  <h3 className="df" style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 8 }}>{f.title}</h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{f.desc}</p>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Integrations strip ───────────────────────────────────────────── */}
+      <div className="integrations-strip section-sm">
+        <div className="container" style={{ textAlign: "center" }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 20 }}>
+            Integrates with your entire sales stack
+          </p>
+          <div className="integrations-inner">
+            {["Zoom", "Google Meet", "Microsoft Teams", "Salesforce", "HubSpot", "Slack"].map(n => (
+              <span key={n} className="integration-name">{n}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Testimonials ─────────────────────────────────────────────────── */}
+      <section className="section" id="testimonials">
+        <div className="container">
+          <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
+            <div className="tag-pill" style={{ marginBottom: 16, display: "inline-flex" }}>Testimonials</div>
+            <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff" }}>
+              Teams that chose data over guesswork
+            </h2>
+          </FadeIn>
+
+          <div className="testimonials-grid">
+            {testimonials.map((t, i) => (
+              <FadeIn key={i} delay={i * 100}>
+                <div className="testimonial-card">
+                  <div className="stars">
+                    {Array.from({ length: t.stars }).map((_, j) => (
+                      <Star key={j} style={{ width: 14, height: 14, fill: "#fbbf24", color: "#fbbf24" }} />
+                    ))}
+                  </div>
+                  <p className="testimonial-quote">"{t.quote}"</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="testimonial-av">{t.avatar}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{t.role}</div>
                     </div>
-                  )}
-                  <div className="mb-5">
-                    <h3 className="display-font font-bold text-white text-base mb-1">{plan.name}</h3>
-                    <p className="text-gray-500 text-xs">{plan.desc}</p>
                   </div>
-                  <div className="flex items-end gap-1 mb-6">
-                    <span className="display-font text-3xl font-extrabold text-white">{plan.price}</span>
-                    <span className="text-gray-500 text-sm mb-1">{plan.period}</span>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="divider-line" />
+
+      {/* ── Pricing ──────────────────────────────────────────────────────── */}
+      <section className="section" id="pricing">
+        <div className="container">
+          <FadeIn style={{ textAlign: "center", marginBottom: 48 }}>
+            <div className="tag-pill" style={{ marginBottom: 16, display: "inline-flex" }}>Pricing</div>
+            <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", marginBottom: 10 }}>
+              Simple, transparent pricing
+            </h2>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.35)" }}>
+              {user ? "You're already on board — upgrade anytime." : "Start free. Upgrade as your team grows. No surprises."}
+            </p>
+          </FadeIn>
+
+          <div className="pricing-grid">
+            {plans.map((plan, i) => (
+              <FadeIn key={i} delay={i * 70}>
+                <div className={`pricing-card ${plan.popular ? "pricing-card-popular" : "pricing-card-default"}`}>
+                  {plan.popular && <div className="popular-badge">Most Popular</div>}
+                  <div className="pricing-name">{plan.name}</div>
+                  <div className="pricing-desc">{plan.desc}</div>
+                  <div className="pricing-price">
+                    <span className="pricing-amount">{plan.price}</span>
+                    <span className="pricing-period">{plan.period}</span>
                   </div>
-                  <ul className="space-y-3 mb-8 flex-1">
+                  <ul className="pricing-features">
                     {plan.features.map((feat, j) => (
-                      <li key={j} className="flex items-center gap-2.5 text-gray-300 text-sm">
-                        <Check className="w-4 h-4 flex-shrink-0" style={{ color: plan.popular ? "#2dd4bf" : "#6b7280" }} />
+                      <li key={j} className="pricing-feature">
+                        <Check style={{ width: 14, height: 14, color: plan.popular ? "#2dd4bf" : "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                         {feat}
                       </li>
                     ))}
                   </ul>
-                  <Link to={plan.href}>
-                    <button
-                      className={`w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 ${plan.popular ? "cta-primary justify-center" : "cta-ghost justify-center"}`}
-                      style={{ width: "100%", justifyContent: "center" }}
-                    >
-                      {plan.cta}
-                    </button>
+                  <Link to={plan.href} className={plan.popular ? "btn-primary full" : "btn-ghost full"} style={{ fontSize: 14, padding: "12px 20px" }}>
+                    {plan.cta}
                   </Link>
                 </div>
               </FadeIn>
             ))}
           </div>
 
-          <FadeIn delay={200} className="text-center mt-7">
-            <p className="text-gray-600 text-xs">
-              {user
-                ? "Manage your subscription anytime from your billing page."
-                : "All plans include a 7-day money-back guarantee. Billed in NGN via Paystack."}
+          <FadeIn style={{ textAlign: "center", marginTop: 28 }}>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
+              {user ? "Manage your subscription anytime from your billing page." : "All plans include a 7-day money-back guarantee. Billed in NGN via Paystack."}
             </p>
           </FadeIn>
         </div>
       </section>
 
-      <div className="divider" />
+      <div className="divider-line" />
 
-      {/* ── WHY FIXSENSE ─────────────────────────────────────────────────── */}
-      <section className="py-24 px-5" style={{ background: "rgba(255,255,255,0.01)" }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+      {/* ── Why Fixsense ─────────────────────────────────────────────────── */}
+      <section className="section" style={{ background: "rgba(255,255,255,0.01)" }}>
+        <div className="container">
+          <div className="why-layout">
             <FadeIn>
-              <div className="tag-pill inline-flex mb-5">Why Fixsense</div>
-              <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-6 leading-tight">
+              <div className="tag-pill" style={{ marginBottom: 20, display: "inline-flex" }}>Why Fixsense</div>
+              <h2 className="df" style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, color: "#fff", lineHeight: 1.15, marginBottom: 18 }}>
                 A sales performance engine — not just a recorder
               </h2>
-              <p className="text-gray-400 text-[15px] leading-relaxed mb-8">
+              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", lineHeight: 1.65, marginBottom: 28, maxWidth: 440 }}>
                 Most tools just record calls. Fixsense turns every conversation into actionable intelligence that improves rep performance over time.
               </p>
-              <Link to={user ? "/dashboard" : "/login"}>
-                <button className="cta-primary">
-                  {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight className="w-4 h-4" />
-                </button>
+              <Link to={user ? "/dashboard" : "/login"} className="btn-primary">
+                {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>
             </FadeIn>
 
             <FadeIn delay={150}>
-              <div className="grid grid-cols-1 gap-4">
+              <div className="why-grid">
                 {whyPoints.map((p, i) => (
-                  <div key={i} className="card-glass rounded-xl p-5 flex gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.04)" }}>
-                      {p.icon}
-                    </div>
+                  <div key={i} className="why-card card-glass">
+                    <div className="why-icon">{p.icon}</div>
                     <div>
-                      <h4 className="text-white font-semibold text-sm mb-1">{p.title}</h4>
-                      <p className="text-gray-400 text-xs leading-relaxed">{p.desc}</p>
+                      <h4 style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 5 }}>{p.title}</h4>
+                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.55, margin: 0 }}>{p.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -1002,130 +1163,106 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className="divider" />
+      <div className="divider-line" />
 
-      {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
-      <section className="py-28 px-5 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(45,212,191,0.07) 0%, transparent 70%)" }} />
-        <div className="max-w-2xl mx-auto text-center relative z-10">
+      {/* ── Final CTA ────────────────────────────────────────────────────── */}
+      <div className="final-cta">
+        <div className="final-cta-inner">
           <FadeIn>
-            <div className="tag-pill inline-flex mb-7">
+            <div className="tag-pill" style={{ display: "inline-flex", marginBottom: 16 }}>
               {user ? "You're already here" : "Get started today"}
             </div>
-            <h2 className="display-font text-4xl md:text-5xl font-extrabold text-white mb-5 leading-tight">
-              {user ? (
-                <>Your dashboard<br />is ready</>
-              ) : (
-                <>Start closing more<br />deals today</>
-              )}
+            <h2 className="final-cta-title">
+              {user ? <>Your dashboard<br />is ready</> : <>Start closing more<br />deals today</>}
             </h2>
-            <p className="text-gray-400 text-[16px] mb-10 leading-relaxed">
+            <p className="final-cta-sub">
               {user
                 ? "Head to your dashboard to view calls, check analytics, or start a new live meeting right now."
                 : "Join sales teams that have replaced guesswork with data. 5 free meetings per month — no credit card required."}
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link to={user ? "/dashboard" : "/login"}>
-                <button className="cta-primary text-base px-9 py-4">
-                  {user ? <><LayoutDashboard className="w-5 h-5" /> Open Dashboard</> : <>Start Free Trial <ArrowRight className="w-5 h-5" /></>}
-                </button>
+            <div className="final-cta-btns">
+              <Link to={user ? "/dashboard" : "/login"} className="btn-primary" style={{ fontSize: 15, padding: "14px 30px" }}>
+                {user ? <><LayoutDashboard style={{ width: 18, height: 18 }} /> Open Dashboard</> : <>Start Free Trial <ArrowRight style={{ width: 18, height: 18 }} /></>}
               </Link>
-              {!user && (
-                <a href="#how-it-works">
-                  <button className="cta-ghost text-base px-9 py-4">
-                    See How It Works
-                  </button>
-                </a>
-              )}
-              {user && (
-                <Link to="/dashboard/live">
-                  <button className="cta-ghost text-base px-9 py-4">
-                    Start a Live Call <ArrowRight className="w-5 h-5" />
-                  </button>
+              {user ? (
+                <Link to="/dashboard/live" className="btn-ghost" style={{ fontSize: 15, padding: "14px 30px" }}>
+                  Start a Live Call <ArrowRight style={{ width: 18, height: 18 }} />
                 </Link>
+              ) : (
+                <a href="#how-it-works" className="btn-ghost" style={{ fontSize: 15, padding: "14px 30px" }}>
+                  See How It Works
+                </a>
               )}
             </div>
           </FadeIn>
         </div>
-      </section>
+      </div>
 
-      {/* ── FOOTER ────────────────────────────────────────────────────────── */}
-      <footer style={{ background: "rgba(255,255,255,0.01)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <div className="max-w-6xl mx-auto px-5 py-14">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
+      {/* ── Footer ───────────────────────────────────────────────────────── */}
+      <footer className="lp-footer">
+        <div className="container">
+          <div className="footer-grid">
             {/* Brand */}
-            <div className="col-span-2">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2dd4bf, #0d9488)" }}>
-                  <Zap className="w-4 h-4 text-gray-900" />
-                </div>
-                <span className="text-[17px] font-bold display-font text-white">Fixsense</span>
-              </div>
-              <p className="text-gray-500 text-sm leading-relaxed max-w-[220px] mb-5">
+            <div className="footer-brand">
+              <Link to="/" className="lp-logo" style={{ marginBottom: 14, display: "inline-flex" }}>
+                <div className="lp-logo-mark"><Zap style={{ width: 14, height: 14, color: "#030712" }} /></div>
+                <span className="lp-logo-text">Fixsense</span>
+              </Link>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", lineHeight: 1.6, maxWidth: 220, marginBottom: 16 }}>
                 AI-powered sales call intelligence for modern sales teams.
               </p>
-              <div className="flex gap-4">
-                {["𝕏", "in", "📧"].map((s, i) => (
-                  <a key={i} href="#" className="w-8 h-8 rounded-lg flex items-center justify-center text-sm text-gray-500 hover:text-white transition-colors" style={{ background: "rgba(255,255,255,0.05)" }}>
-                    {s}
-                  </a>
+              <div className="social-row">
+                {[{ icon: "𝕏", label: "X / Twitter" }, { icon: "in", label: "LinkedIn" }, { icon: "✉", label: "Email" }].map((s, i) => (
+                  <a key={i} href="#" className="social-icon" aria-label={s.label}>{s.icon}</a>
                 ))}
               </div>
             </div>
 
             {/* Product */}
             <div>
-              <h5 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">Product</h5>
-              <ul className="space-y-3">
-                {["Features", "Pricing", "How It Works", "Integrations"].map(l => (
-                  <li key={l}><a href="#" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">{l}</a></li>
-                ))}
-              </ul>
+              <div className="footer-col-title">Product</div>
+              {["Features", "Pricing", "How It Works", "Integrations"].map(l => (
+                <a key={l} href="#" className="footer-link">{l}</a>
+              ))}
             </div>
 
             {/* Company */}
             <div>
-              <h5 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">Company</h5>
-              <ul className="space-y-3">
-                {["About", "Blog", "Careers", "Contact"].map(l => (
-                  <li key={l}><a href="#" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">{l}</a></li>
-                ))}
-              </ul>
+              <div className="footer-col-title">Company</div>
+              {["About", "Blog", "Careers", "Contact"].map(l => (
+                <a key={l} href="#" className="footer-link">{l}</a>
+              ))}
             </div>
 
-            {/* Account */}
+            {/* Account / Legal */}
             <div>
-              <h5 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">
-                {user ? "Account" : "Legal"}
-              </h5>
-              <ul className="space-y-3">
-                {user ? (
-                  <>
-                    <li><Link to="/dashboard" className="text-teal-400 text-sm hover:text-teal-300 transition-colors">Dashboard</Link></li>
-                    <li><Link to="/dashboard/billing" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Billing</Link></li>
-                    <li><Link to="/dashboard/profile" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Profile</Link></li>
-                    <li><Link to="/dashboard/settings" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Settings</Link></li>
-                  </>
-                ) : (
-                  ["Privacy Policy", "Terms of Service", "Security", "GDPR"].map(l => (
-                    <li key={l}><a href="#" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">{l}</a></li>
-                  ))
-                )}
-              </ul>
+              <div className="footer-col-title">{user ? "Account" : "Legal"}</div>
+              {user ? (
+                <>
+                  <Link to="/dashboard" className="footer-link accent">Dashboard</Link>
+                  <Link to="/dashboard/billing" className="footer-link">Billing</Link>
+                  <Link to="/dashboard/profile" className="footer-link">Profile</Link>
+                  <Link to="/dashboard/settings" className="footer-link">Settings</Link>
+                </>
+              ) : (
+                ["Privacy Policy", "Terms of Service", "Security", "GDPR"].map(l => (
+                  <a key={l} href="#" className="footer-link">{l}</a>
+                ))
+              )}
             </div>
           </div>
 
-          <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-            <p className="text-gray-600 text-sm">© {new Date().getFullYear()} Fixsense. All rights reserved.</p>
+          <div className="footer-bottom">
+            <p className="footer-copy">© {new Date().getFullYear()} Fixsense. All rights reserved.</p>
             {user ? (
-              <div className="flex items-center gap-2 user-pill">
-                <div className="user-pill-av" style={{ width: 20, height: 20, fontSize: 9 }}>{emailInitial}</div>
-                <span style={{ fontSize: 12 }}>Signed in as {displayName}</span>
+              <div className="footer-signed-in">
+                <div className="footer-signed-in-av">{emailInitial}</div>
+                <span>Signed in as {displayName}</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-gray-600" />
-                <span className="text-gray-600 text-xs">Response time under 10 seconds</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Clock style={{ width: 13, height: 13, color: "rgba(255,255,255,0.2)" }} />
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>Response time under 10 seconds</span>
               </div>
             )}
           </div>
