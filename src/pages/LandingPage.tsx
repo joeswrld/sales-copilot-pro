@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import {
   ArrowRight, Zap, Menu, X, Check, Star, Play,
   Mic, Brain, BarChart3, Users, TrendingUp, FileText,
-  ChevronRight, Shield, Clock, Target
+  ChevronRight, Shield, Clock, Target, LayoutDashboard,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -65,6 +65,9 @@ export default function LandingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
+
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || null;
+  const emailInitial = displayName?.[0]?.toUpperCase() || "U";
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20);
@@ -149,9 +152,10 @@ export default function LandingPage() {
       period: "/month",
       desc: "Get started, no card needed",
       features: ["5 meetings/month", "AI transcription", "Basic analytics", "1 user"],
-      cta: "Start Free",
+      cta: user ? "Go to Dashboard" : "Start Free",
       popular: false,
       ctaVariant: "outline" as const,
+      href: user ? "/dashboard" : "/login",
     },
     {
       name: "Starter",
@@ -159,9 +163,10 @@ export default function LandingPage() {
       period: "/month",
       desc: "For individual sales reps",
       features: ["50 meetings/month", "AI summaries", "Zoom + Google Meet", "Email support", "3 team members"],
-      cta: "Start Free Trial",
+      cta: user ? "Go to Dashboard" : "Start Free Trial",
       popular: false,
       ctaVariant: "secondary" as const,
+      href: user ? "/dashboard/billing" : "/login",
     },
     {
       name: "Growth",
@@ -169,9 +174,10 @@ export default function LandingPage() {
       period: "/month",
       desc: "For growing sales teams",
       features: ["300 meetings/month", "Team analytics dashboard", "Coaching insights", "10 team members", "Priority support"],
-      cta: "Start Free Trial",
+      cta: user ? "Upgrade Now" : "Start Free Trial",
       popular: true,
       ctaVariant: "default" as const,
+      href: user ? "/dashboard/billing" : "/login",
     },
     {
       name: "Scale",
@@ -179,9 +185,10 @@ export default function LandingPage() {
       period: "/month",
       desc: "For high-volume teams",
       features: ["Unlimited meetings", "Advanced analytics", "API access", "Unlimited members", "Dedicated support"],
-      cta: "Contact Sales",
+      cta: user ? "Upgrade Now" : "Contact Sales",
       popular: false,
       ctaVariant: "secondary" as const,
+      href: user ? "/dashboard/billing" : "/login",
     },
   ];
 
@@ -254,6 +261,28 @@ export default function LandingPage() {
           gap: 6px;
           letter-spacing: 0.02em;
         }
+
+        .user-pill {
+          background: rgba(45,212,191,0.08);
+          border: 1px solid rgba(45,212,191,0.18);
+          color: #2dd4bf;
+          font-size: 12px;
+          font-weight: 500;
+          padding: 4px 10px 4px 4px;
+          border-radius: 100px;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        .user-pill:hover { background: rgba(45,212,191,0.15); }
+        .user-pill-av {
+          width: 24px; height: 24px; border-radius: 50%;
+          background: linear-gradient(135deg, #2dd4bf, #0d9488);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 11px; font-weight: 700; color: #030712; flex-shrink: 0;
+        }
         
         .cta-primary {
           background: linear-gradient(135deg, #2dd4bf, #0d9488);
@@ -269,6 +298,7 @@ export default function LandingPage() {
           font-size: 15px;
           transition: all 0.2s ease;
           font-family: 'DM Sans', system-ui, sans-serif;
+          text-decoration: none;
         }
         .cta-primary:hover {
           transform: translateY(-1px);
@@ -289,11 +319,34 @@ export default function LandingPage() {
           font-size: 15px;
           transition: all 0.2s ease;
           font-family: 'DM Sans', system-ui, sans-serif;
+          text-decoration: none;
         }
         .cta-ghost:hover {
           background: rgba(255,255,255,0.1);
           border-color: rgba(255,255,255,0.2);
         }
+
+        .logged-in-banner {
+          background: rgba(45,212,191,0.06);
+          border-bottom: 1px solid rgba(45,212,191,0.12);
+          padding: 9px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.65);
+          font-family: 'DM Sans', sans-serif;
+        }
+        .logged-in-banner strong { color: #2dd4bf; font-weight: 600; }
+        .logged-in-banner-link {
+          display: inline-flex; align-items: center; gap: 4px;
+          color: #2dd4bf; font-weight: 600; font-size: 12px;
+          background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.25);
+          padding: 3px 10px; border-radius: 20px; text-decoration: none;
+          transition: background 0.2s;
+        }
+        .logged-in-banner-link:hover { background: rgba(45,212,191,0.2); }
         
         .step-line {
           position: absolute;
@@ -409,8 +462,20 @@ export default function LandingPage() {
         }
       `}</style>
 
+      {/* ── Logged-in banner (top of page) ───────────────────────────────── */}
+      {user && (
+        <div className="logged-in-banner">
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
+          <span>Welcome back, <strong>{displayName}</strong> — you're signed in</span>
+          <a href="/dashboard" className="logged-in-banner-link">
+            <LayoutDashboard style={{ width: 12, height: 12 }} />
+            Go to Dashboard
+          </a>
+        </div>
+      )}
+
       {/* ── NAV ──────────────────────────────────────────────────────────── */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "nav-blur" : ""}`}>
+      <nav className={`fixed left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "nav-blur" : ""} ${user ? "top-[37px]" : "top-0"}`}>
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2dd4bf, #0d9488)" }}>
@@ -429,11 +494,20 @@ export default function LandingPage() {
 
           <div className="hidden md:flex items-center gap-3">
             {user ? (
-              <Link to="/dashboard">
-                <button className="cta-primary" style={{ padding: "10px 20px", fontSize: "14px" }}>
-                  Go to Dashboard <ArrowRight className="w-4 h-4" />
-                </button>
-              </Link>
+              <>
+                {/* User pill */}
+                <Link to="/dashboard/profile">
+                  <div className="user-pill">
+                    <div className="user-pill-av">{emailInitial}</div>
+                    <span>{displayName}</span>
+                  </div>
+                </Link>
+                <Link to="/dashboard">
+                  <button className="cta-primary" style={{ padding: "10px 20px", fontSize: "14px" }}>
+                    Dashboard <LayoutDashboard className="w-4 h-4" />
+                  </button>
+                </Link>
+              </>
             ) : (
               <>
                 <Link to="/login">
@@ -461,60 +535,124 @@ export default function LandingPage() {
               <a key={l.label} href={l.href} onClick={() => setMobileOpen(false)} className="block text-gray-300 font-medium py-1">{l.label}</a>
             ))}
             <div className="pt-3 flex flex-col gap-2">
-              <Link to="/login" onClick={() => setMobileOpen(false)}>
-                <button className="cta-ghost w-full justify-center">Sign in</button>
-              </Link>
-              <Link to="/login" onClick={() => setMobileOpen(false)}>
-                <button className="cta-primary w-full justify-center">Start Free Trial</button>
-              </Link>
+              {user ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="user-pill-av">{emailInitial}</div>
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Signed in as <strong style={{ color: "#2dd4bf" }}>{displayName}</strong></span>
+                  </div>
+                  <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
+                    <button className="cta-primary w-full justify-center">
+                      <LayoutDashboard className="w-4 h-4" /> Go to Dashboard
+                    </button>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setMobileOpen(false)}>
+                    <button className="cta-ghost w-full justify-center">Sign in</button>
+                  </Link>
+                  <Link to="/login" onClick={() => setMobileOpen(false)}>
+                    <button className="cta-primary w-full justify-center">Start Free Trial</button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}
       </nav>
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="hero-gradient grid-bg noise-overlay relative pt-28 pb-20 px-5 overflow-hidden">
+      <section className="hero-gradient grid-bg noise-overlay relative pb-20 px-5 overflow-hidden" style={{ paddingTop: user ? "120px" : "112px" }}>
         {/* Floating orbs */}
         <div className="absolute top-24 left-1/4 w-72 h-72 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(45,212,191,0.06)" }} />
         <div className="absolute top-40 right-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(129,140,248,0.06)" }} />
 
         <div className="max-w-5xl mx-auto text-center relative z-10">
-          {/* Trust pill */}
-          <div className="flex justify-center mb-8" style={{ animationDelay: "0ms" }}>
-            <div className="tag-pill">
-              <span className="relative inline-block w-2 h-2 rounded-full bg-teal-400 live-dot flex-shrink-0" />
-              Used by modern sales teams worldwide
-            </div>
+          {/* Trust / Welcome pill */}
+          <div className="flex justify-center mb-8">
+            {user ? (
+              <div className="tag-pill">
+                <span className="relative inline-block w-2 h-2 rounded-full bg-teal-400 live-dot flex-shrink-0" />
+                Welcome back, {displayName} — your dashboard is ready
+              </div>
+            ) : (
+              <div className="tag-pill">
+                <span className="relative inline-block w-2 h-2 rounded-full bg-teal-400 live-dot flex-shrink-0" />
+                Used by modern sales teams worldwide
+              </div>
+            )}
           </div>
 
           <h1 className="display-font font-extrabold text-white leading-[1.07] mb-6" style={{ fontSize: "clamp(36px, 5.5vw, 72px)" }}>
-            Close More Deals With
-            <br />
-            <span style={{ background: "linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-              AI-Powered Sales Intelligence
-            </span>
+            {user ? (
+              <>
+                Your AI Sales Coach
+                <br />
+                <span style={{ background: "linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                  Is Waiting for You
+                </span>
+              </>
+            ) : (
+              <>
+                Close More Deals With
+                <br />
+                <span style={{ background: "linear-gradient(135deg, #2dd4bf 0%, #818cf8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                  AI-Powered Sales Intelligence
+                </span>
+              </>
+            )}
           </h1>
 
           <p className="text-gray-400 mx-auto mb-10 leading-relaxed" style={{ fontSize: "clamp(16px, 2vw, 19px)", maxWidth: "620px" }}>
-            Fixsense records, analyzes, and improves your sales meetings in real time — so your team closes more deals without guessing what works.
+            {user
+              ? "Pick up where you left off — view your call history, check team analytics, or start a new live meeting with real-time AI coaching."
+              : "Fixsense records, analyzes, and improves your sales meetings in real time — so your team closes more deals without guessing what works."}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-14">
-            <Link to={user ? "/dashboard" : "/login"}>
-              <button className="cta-primary text-base px-8 py-4">
-                Start Free Trial <ArrowRight className="w-5 h-5" />
-              </button>
-            </Link>
-            <button className="cta-ghost text-base px-8 py-4">
-              <Play className="w-4 h-4 fill-current" /> Watch Demo
-            </button>
+            {user ? (
+              <>
+                <Link to="/dashboard">
+                  <button className="cta-primary text-base px-8 py-4">
+                    <LayoutDashboard className="w-5 h-5" /> Go to Dashboard
+                  </button>
+                </Link>
+                <Link to="/dashboard/live">
+                  <button className="cta-ghost text-base px-8 py-4">
+                    Start a Live Call <ArrowRight className="w-5 h-5" />
+                  </button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/login">
+                  <button className="cta-primary text-base px-8 py-4">
+                    Start Free Trial <ArrowRight className="w-5 h-5" />
+                  </button>
+                </Link>
+                <button className="cta-ghost text-base px-8 py-4">
+                  <Play className="w-4 h-4 fill-current" /> Watch Demo
+                </button>
+              </>
+            )}
           </div>
 
-          {/* Trust badges */}
+          {/* Trust badges — different for logged-in */}
           <div className="flex flex-wrap justify-center gap-6 mb-14 text-sm text-gray-500">
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> No credit card required</span>
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> 5 free meetings/month</span>
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> AI-powered insights in seconds</span>
+            {user ? (
+              <>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> Your data is safe and secure</span>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> AI insights ready on every call</span>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> Team analytics available now</span>
+              </>
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> No credit card required</span>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> 5 free meetings/month</span>
+                <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-teal-400" /> AI-powered insights in seconds</span>
+              </>
+            )}
           </div>
 
           {/* Dashboard Mock */}
@@ -769,7 +907,9 @@ export default function LandingPage() {
           <FadeIn className="text-center mb-14">
             <div className="tag-pill inline-flex mb-5">Pricing</div>
             <h2 className="display-font text-3xl md:text-4xl font-bold text-white mb-4">Simple, transparent pricing</h2>
-            <p className="text-gray-400 text-[15px]">Start free. Upgrade as your team grows. No surprises.</p>
+            <p className="text-gray-400 text-[15px]">
+              {user ? "You're already on board — upgrade your plan anytime." : "Start free. Upgrade as your team grows. No surprises."}
+            </p>
           </FadeIn>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -799,10 +939,10 @@ export default function LandingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link to="/login">
+                  <Link to={plan.href}>
                     <button
                       className={`w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 ${plan.popular ? "cta-primary justify-center" : "cta-ghost justify-center"}`}
-                      style={{ width: "100%" }}
+                      style={{ width: "100%", justifyContent: "center" }}
                     >
                       {plan.cta}
                     </button>
@@ -813,7 +953,11 @@ export default function LandingPage() {
           </div>
 
           <FadeIn delay={200} className="text-center mt-7">
-            <p className="text-gray-600 text-xs">All plans include a 7-day money-back guarantee. Billed in NGN via Paystack.</p>
+            <p className="text-gray-600 text-xs">
+              {user
+                ? "Manage your subscription anytime from your billing page."
+                : "All plans include a 7-day money-back guarantee. Billed in NGN via Paystack."}
+            </p>
           </FadeIn>
         </div>
       </section>
@@ -832,9 +976,9 @@ export default function LandingPage() {
               <p className="text-gray-400 text-[15px] leading-relaxed mb-8">
                 Most tools just record calls. Fixsense turns every conversation into actionable intelligence that improves rep performance over time.
               </p>
-              <Link to="/login">
+              <Link to={user ? "/dashboard" : "/login"}>
                 <button className="cta-primary">
-                  Start Free Trial <ArrowRight className="w-4 h-4" />
+                  {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight className="w-4 h-4" />
                 </button>
               </Link>
             </FadeIn>
@@ -865,25 +1009,41 @@ export default function LandingPage() {
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(45,212,191,0.07) 0%, transparent 70%)" }} />
         <div className="max-w-2xl mx-auto text-center relative z-10">
           <FadeIn>
-            <div className="tag-pill inline-flex mb-7">Get started today</div>
+            <div className="tag-pill inline-flex mb-7">
+              {user ? "You're already here" : "Get started today"}
+            </div>
             <h2 className="display-font text-4xl md:text-5xl font-extrabold text-white mb-5 leading-tight">
-              Start closing more
-              <br />deals today
+              {user ? (
+                <>Your dashboard<br />is ready</>
+              ) : (
+                <>Start closing more<br />deals today</>
+              )}
             </h2>
             <p className="text-gray-400 text-[16px] mb-10 leading-relaxed">
-              Join sales teams that have replaced guesswork with data. 5 free meetings per month — no credit card required.
+              {user
+                ? "Head to your dashboard to view calls, check analytics, or start a new live meeting right now."
+                : "Join sales teams that have replaced guesswork with data. 5 free meetings per month — no credit card required."}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link to="/login">
+              <Link to={user ? "/dashboard" : "/login"}>
                 <button className="cta-primary text-base px-9 py-4">
-                  Start Free Trial <ArrowRight className="w-5 h-5" />
+                  {user ? <><LayoutDashboard className="w-5 h-5" /> Open Dashboard</> : <>Start Free Trial <ArrowRight className="w-5 h-5" /></>}
                 </button>
               </Link>
-              <a href="#how-it-works">
-                <button className="cta-ghost text-base px-9 py-4">
-                  See How It Works
-                </button>
-              </a>
+              {!user && (
+                <a href="#how-it-works">
+                  <button className="cta-ghost text-base px-9 py-4">
+                    See How It Works
+                  </button>
+                </a>
+              )}
+              {user && (
+                <Link to="/dashboard/live">
+                  <button className="cta-ghost text-base px-9 py-4">
+                    Start a Live Call <ArrowRight className="w-5 h-5" />
+                  </button>
+                </Link>
+              )}
             </div>
           </FadeIn>
         </div>
@@ -933,23 +1093,41 @@ export default function LandingPage() {
               </ul>
             </div>
 
-            {/* Legal */}
+            {/* Account */}
             <div>
-              <h5 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">Legal</h5>
+              <h5 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">
+                {user ? "Account" : "Legal"}
+              </h5>
               <ul className="space-y-3">
-                {["Privacy Policy", "Terms of Service", "Security", "GDPR"].map(l => (
-                  <li key={l}><a href="#" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">{l}</a></li>
-                ))}
+                {user ? (
+                  <>
+                    <li><Link to="/dashboard" className="text-teal-400 text-sm hover:text-teal-300 transition-colors">Dashboard</Link></li>
+                    <li><Link to="/dashboard/billing" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Billing</Link></li>
+                    <li><Link to="/dashboard/profile" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Profile</Link></li>
+                    <li><Link to="/dashboard/settings" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">Settings</Link></li>
+                  </>
+                ) : (
+                  ["Privacy Policy", "Terms of Service", "Security", "GDPR"].map(l => (
+                    <li key={l}><a href="#" className="text-gray-500 text-sm hover:text-gray-300 transition-colors">{l}</a></li>
+                  ))
+                )}
               </ul>
             </div>
           </div>
 
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
             <p className="text-gray-600 text-sm">© {new Date().getFullYear()} Fixsense. All rights reserved.</p>
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-gray-600 text-xs">Response time under 10 seconds</span>
-            </div>
+            {user ? (
+              <div className="flex items-center gap-2 user-pill">
+                <div className="user-pill-av" style={{ width: 20, height: 20, fontSize: 9 }}>{emailInitial}</div>
+                <span style={{ fontSize: 12 }}>Signed in as {displayName}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-gray-600" />
+                <span className="text-gray-600 text-xs">Response time under 10 seconds</span>
+              </div>
+            )}
           </div>
         </div>
       </footer>
