@@ -1,5 +1,28 @@
-import { useState, useEffect, useRef } from "react"; import { useNavigate } from "react-router-dom"; import { supabase } from "@/integrations/supabase/client"; 
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+// ─── Shared Logo Component ─────────────────────────────────────────────────
+function FixsenseLogo({ size = 36, borderRadius = 10 }: { size?: number; borderRadius?: number }) {
+  return (
+    <img
+      src="/fixsense_icon_logo (2).png"
+      alt="Fixsense"
+      width={size}
+      height={size}
+      style={{
+        width: size,
+        height: size,
+        borderRadius,
+        objectFit: "cover",
+        flexShrink: 0,
+        display: "block",
+      }}
+    />
+  );
+}
 
 const testimonials = [
   { quote: "Fixsense helped us increase close rates by 30%. Our team now knows exactly what works in every call — no more guessing.", name: "Marcus Reid", role: "Head of Sales, Vantex SaaS", avatar: "MR", metric: "30% increase in close rate" },
@@ -64,20 +87,6 @@ function AnimatedTestimonials() {
   );
 }
 
-// Mobile-specific stats bar
-function MobileStatsBanner() {
-  return (
-    <div style={{ display: "flex", gap: "0", overflowX: "auto", padding: "0 20px", scrollbarWidth: "none" }}>
-      {[{ value: "10k+", label: "Meetings" }, { value: "30%", label: "Close rate lift" }, { value: "99%", label: "Accuracy" }].map((s, i) => (
-        <div key={i} style={{ flex: "0 0 auto", textAlign: "center", padding: "0 16px", borderRight: i < 2 ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
-          <div style={{ fontSize: "18px", fontWeight: 800, color: "#2dd4bf", fontFamily: "'Bricolage Grotesque', sans-serif" }}>{s.value}</div>
-          <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>{s.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [email, setEmail] = useState("");
@@ -85,7 +94,6 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -94,8 +102,6 @@ export default function LoginPage() {
     link.rel = "stylesheet";
     link.href = "https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Bricolage+Grotesque:wght@400;600;700;800&display=swap";
     document.head.appendChild(link);
-    const timer = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(timer);
   }, []);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -129,7 +135,6 @@ export default function LoginPage() {
   };
 
   const titles = { login: "Welcome back", signup: "Create your account", forgot: "Reset password" };
-  const subtitles = { login: "Sign in to continue", signup: "Start for free, no card needed", forgot: "We'll send a reset link" };
 
   return (
     <>
@@ -141,7 +146,6 @@ export default function LoginPage() {
         @keyframes mobileSlideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── shared input style ── */
         .auth-input {
           width: 100%; padding: 12px 14px 12px 42px;
           background: rgba(255,255,255,0.04);
@@ -154,7 +158,6 @@ export default function LoginPage() {
         .auth-input:focus { border-color: rgba(45,212,191,0.5); background: rgba(45,212,191,0.04); box-shadow: 0 0 0 3px rgba(45,212,191,0.08); }
         .auth-input:hover:not(:focus) { border-color: rgba(255,255,255,0.18); }
 
-        /* ── primary button ── */
         .primary-btn {
           width: 100%; padding: 13px 20px;
           background: linear-gradient(135deg, #2dd4bf, #0d9488);
@@ -167,7 +170,6 @@ export default function LoginPage() {
         .primary-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(45,212,191,0.4); }
         .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* ── google button ── */
         .google-btn {
           width: 100%; padding: 12px 20px;
           background: rgba(255,255,255,0.06);
@@ -220,7 +222,6 @@ export default function LoginPage() {
           overflow-x: hidden;
         }
 
-        /* mobile hero strip */
         .mobile-hero {
           position: relative;
           padding: 52px 20px 32px;
@@ -237,11 +238,6 @@ export default function LoginPage() {
           display: inline-flex; align-items: center; gap: 10px;
           margin-bottom: 28px;
           animation: mobileSlideUp 0.5s ease forwards;
-        }
-        .mobile-hero-logomark {
-          width: 38px; height: 38px; border-radius: 11px;
-          background: linear-gradient(135deg, #2dd4bf, #0d9488);
-          display: flex; align-items: center; justify-content: center;
         }
         .mobile-hero-wordmark {
           font-size: 20px; font-weight: 800; color: #fff;
@@ -262,7 +258,6 @@ export default function LoginPage() {
           line-height: 1.5; margin: 0;
         }
 
-        /* mobile card */
         .mobile-card {
           margin: 0 12px;
           background: rgba(11,17,32,0.95);
@@ -273,20 +268,6 @@ export default function LoginPage() {
           position: relative; z-index: 2;
         }
 
-        /* mobile card header */
-        .mobile-card-header {
-          margin-bottom: 20px;
-        }
-        .mobile-card-header h2 {
-          font-size: 20px; font-weight: 700;
-          font-family: 'Bricolage Grotesque', sans-serif;
-          color: #fff; margin: 0 0 4px;
-        }
-        .mobile-card-header p {
-          font-size: 13px; color: rgba(255,255,255,0.38); margin: 0;
-        }
-
-        /* mobile mode tabs */
         .mobile-mode-tabs {
           display: flex; gap: 4px;
           background: rgba(255,255,255,0.04);
@@ -307,7 +288,6 @@ export default function LoginPage() {
           color: #2dd4bf;
         }
 
-        /* mobile social proof strip */
         .mobile-social {
           margin: 20px 12px 8px;
           padding: 16px 20px;
@@ -321,9 +301,7 @@ export default function LoginPage() {
           font-style: italic; line-height: 1.5; margin: 0 0 10px;
           font-family: 'DM Sans', sans-serif;
         }
-        .mobile-social-person {
-          display: flex; align-items: center; gap: 8px;
-        }
+        .mobile-social-person { display: flex; align-items: center; gap: 8px; }
         .mobile-social-av {
           width: 28px; height: 28px; border-radius: 50%;
           background: linear-gradient(135deg, #2dd4bf, #818cf8);
@@ -333,7 +311,6 @@ export default function LoginPage() {
         .mobile-social-name { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.6); }
         .mobile-social-role { font-size: 10px; color: rgba(255,255,255,0.3); }
 
-        /* mobile stats */
         .mobile-stats {
           display: flex;
           margin: 0 12px 24px;
@@ -351,7 +328,6 @@ export default function LoginPage() {
         .mobile-stat-val { font-size: 18px; font-weight: 800; color: #2dd4bf; font-family: 'Bricolage Grotesque', sans-serif; }
         .mobile-stat-lbl { font-size: 9px; color: rgba(255,255,255,0.3); margin-top: 1px; letter-spacing: 0.04em; text-transform: uppercase; }
 
-        /* mobile footer trust */
         .mobile-footer {
           padding: 16px 20px 32px;
           text-align: center;
@@ -359,11 +335,9 @@ export default function LoginPage() {
         }
         .mobile-footer p {
           font-size: 11px; color: rgba(255,255,255,0.2);
-          font-family: 'DM Sans', sans-serif; margin: 0;
-          line-height: 1.5;
+          font-family: 'DM Sans', sans-serif; margin: 0; line-height: 1.5;
         }
 
-        /* responsive breakpoint */
         @media (max-width: 767px) {
           .login-desktop { display: none !important; }
           .login-mobile { display: flex !important; }
@@ -374,18 +348,18 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* ═══════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════
           DESKTOP LAYOUT (768px+)
-      ═══════════════════════════════════════════════════════ */}
+      ═══════════════════════════════════ */}
       <div className="login-desktop">
         {/* Left panel – auth form */}
         <div className="left-panel">
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1px", background: "linear-gradient(90deg, transparent, rgba(45,212,191,0.4), transparent)" }} />
 
-          {/* Logo */}
+          {/* ── LOGO – Desktop left panel ── */}
           <div style={{ marginBottom: "40px" }}>
             <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
-          <img src="/fixsense_icon_logo (2).png" alt="Fixsense" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain", flexShrink: 0 }} />
+              <FixsenseLogo size={36} borderRadius={10} />
               <span style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: "-0.02em" }}>Fixsense</span>
             </a>
           </div>
@@ -393,7 +367,9 @@ export default function LoginPage() {
           {/* Headline */}
           <div style={{ marginBottom: "28px" }}>
             <h1 style={{ fontSize: "24px", fontWeight: 800, color: "#ffffff", fontFamily: "'Bricolage Grotesque', sans-serif", marginBottom: "6px", letterSpacing: "-0.02em", lineHeight: 1.2 }}>{titles[mode]}</h1>
-            <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>{mode === "login" ? "Sign in to your Fixsense dashboard" : mode === "signup" ? "Start closing more deals with AI intelligence" : "Enter your email to receive a reset link"}</p>
+            <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
+              {mode === "login" ? "Sign in to your Fixsense dashboard" : mode === "signup" ? "Start closing more deals with AI intelligence" : "Enter your email to receive a reset link"}
+            </p>
           </div>
 
           {/* Google OAuth */}
@@ -432,7 +408,11 @@ export default function LoginPage() {
               </div>
             )}
             <button type="submit" className="primary-btn" disabled={loading} style={{ marginTop: "4px" }}>
-              {loading ? <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(3,7,18,0.3)", borderTopColor: "#030712", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Processing...</> : mode === "forgot" ? "Send Reset Link" : mode === "signup" ? <><span>Start Free Trial</span><ArrowRight style={{ width: "15px", height: "15px" }} /></> : <><span>Sign In</span><ArrowRight style={{ width: "15px", height: "15px" }} /></>}
+              {loading
+                ? <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(3,7,18,0.3)", borderTopColor: "#030712", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Processing...</>
+                : mode === "forgot" ? "Send Reset Link"
+                : mode === "signup" ? <><span>Start Free Trial</span><ArrowRight style={{ width: "15px", height: "15px" }} /></>
+                : <><span>Sign In</span><ArrowRight style={{ width: "15px", height: "15px" }} /></>}
             </button>
           </form>
 
@@ -485,22 +465,23 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════
           MOBILE LAYOUT (< 768px)
-      ═══════════════════════════════════════════════════════ */}
+      ═══════════════════════════════════ */}
       <div className="login-mobile">
 
-        {/* Hero strip */}
+        {/* Mobile hero strip with LOGO */}
         <div className="mobile-hero">
           <div className="mobile-hero-logo">
-            <div className="mobile-hero-logomark" style={{ background: "none", padding: 0 }}>
-  <img src="/fixsense_icon_logo.png" alt="Fixsense" style={{ width: 38, height: 38, borderRadius: 11, objectFit: "contain", display: "block" }} />
-</div>
+            {/* ── LOGO – Mobile hero ── */}
+            <FixsenseLogo size={38} borderRadius={11} />
             <span className="mobile-hero-wordmark">Fixsense</span>
           </div>
           <div className="mobile-hero-tagline">
             <h1>
-              {mode === "login" ? "Welcome back" : mode === "signup" ? <>Start closing <span style={{ background: "linear-gradient(135deg, #2dd4bf, #818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>more deals</span></> : "Reset your password"}
+              {mode === "login" ? "Welcome back"
+                : mode === "signup" ? <>Start closing <span style={{ background: "linear-gradient(135deg, #2dd4bf, #818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>more deals</span></>
+                : "Reset your password"}
             </h1>
             <p>{mode === "login" ? "Sign in to your dashboard" : mode === "signup" ? "Free forever. No credit card." : "Enter your email below"}</p>
           </div>
@@ -508,7 +489,6 @@ export default function LoginPage() {
 
         {/* Auth card */}
         <div className="mobile-card">
-          {/* Tab switcher – only for login/signup */}
           {mode !== "forgot" && (
             <div className="mobile-mode-tabs">
               <button className={`mobile-mode-tab ${mode === "login" ? "mobile-mode-tab--active" : ""}`} onClick={() => setMode("login")}>Sign In</button>
@@ -516,7 +496,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Google */}
           {mode !== "forgot" && (
             <>
               <button className="google-btn" onClick={handleGoogleSignIn} type="button" style={{ marginBottom: "4px" }}>
@@ -527,7 +506,6 @@ export default function LoginPage() {
             </>
           )}
 
-          {/* Form */}
           <form onSubmit={handleEmailAuth} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {mode === "signup" && (
               <div className="input-group">
@@ -560,7 +538,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Back from forgot */}
           {mode === "forgot" && (
             <div style={{ textAlign: "center", marginTop: "16px" }}>
               <button className="mode-link" onClick={() => setMode("login")} style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>← Back to sign in</button>
@@ -568,7 +545,6 @@ export default function LoginPage() {
           )}
         </div>
 
-        {/* Trust badges */}
         {mode === "signup" && (
           <div style={{ display: "flex", justifyContent: "center", gap: "16px", margin: "12px 20px 0", flexWrap: "wrap" }}>
             {["5 free meetings", "No card needed", "Setup in seconds"].map((feat) => (
@@ -580,7 +556,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Stats strip */}
         <div className="mobile-stats" style={{ marginTop: "20px" }}>
           {[{ value: "10k+", label: "MEETINGS" }, { value: "30%", label: "CLOSE LIFT" }, { value: "99%", label: "ACCURACY" }].map((s, i) => (
             <div key={i} className="mobile-stat">
@@ -590,7 +565,6 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* Mini testimonial */}
         <div className="mobile-social">
           <p className="mobile-social-quote">"Fixsense helped us increase close rates by 30%. We finally understand what's happening in our sales calls."</p>
           <div className="mobile-social-person">
@@ -602,7 +576,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mobile-footer">
           <p>Works with Zoom · Google Meet · Slack · Salesforce</p>
           <p style={{ marginTop: "6px" }}>© {new Date().getFullYear()} Fixsense · Secure payments by Paystack</p>
