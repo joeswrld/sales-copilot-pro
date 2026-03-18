@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search, Send, MessageSquare, Bell, Plus, Users, FileText,
   Image as ImageIcon, Paperclip, X, Check, CheckCheck, TrendingUp,
-  AtSign, AlertCircle, ArrowLeft
+  AtSign, AlertCircle, ArrowLeft, Copy, Trash2, Pencil, MoreHorizontal,
+  Hash, ChevronRight, Loader2, Mic
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -62,11 +63,100 @@ const notifTypeIcons: Record<string, typeof Bell> = {
 };
 
 const notifTypeColors: Record<string, string> = {
-  comment: "bg-blue-500/10 text-blue-400",
+  comment: "bg-indigo-500/10 text-indigo-400",
   coaching: "bg-emerald-500/10 text-emerald-400",
   mention: "bg-amber-500/10 text-amber-400",
-  system: "bg-muted text-muted-foreground",
+  system: "bg-slate-500/10 text-slate-400",
 };
+
+// ─── Message Context Menu ────────────────────────────────────────────────────
+
+interface MessageMenuProps {
+  isMe: boolean;
+  messageText: string;
+  onCopy: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onClose: () => void;
+  position: { x: number; y: number };
+}
+
+function MessageContextMenu({ isMe, messageText, onCopy, onEdit, onDelete, onClose, position }: MessageMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const actions = [
+    { icon: Copy, label: "Copy text", action: onCopy, always: true },
+    ...(isMe ? [
+      { icon: Pencil, label: "Edit message", action: onEdit!, always: false },
+      { icon: Trash2, label: "Delete message", action: onDelete!, always: false, danger: true },
+    ] : []),
+  ];
+
+  return (
+    <div
+      ref={menuRef}
+      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 9999 }}
+      className="w-44 rounded-xl border border-white/[0.08] shadow-2xl overflow-hidden"
+      style={{
+        position: "fixed",
+        left: position.x,
+        top: position.y,
+        zIndex: 9999,
+        background: "rgba(10, 14, 26, 0.97)",
+        backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "12px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
+        width: "172px",
+        overflow: "hidden",
+      }}
+    >
+      {actions.map((action, i) => (
+        <button
+          key={i}
+          onClick={() => { action.action?.(); onClose(); }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            width: "100%",
+            padding: "9px 14px",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            color: action.danger ? "#f87171" : "rgba(255,255,255,0.75)",
+            fontSize: "13px",
+            fontWeight: 500,
+            fontFamily: "'DM Sans', system-ui, sans-serif",
+            transition: "background 0.15s, color 0.15s",
+            borderBottom: i < actions.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = action.danger
+              ? "rgba(248,113,113,0.1)"
+              : "rgba(255,255,255,0.06)";
+            (e.currentTarget as HTMLElement).style.color = action.danger ? "#f87171" : "#ffffff";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = "transparent";
+            (e.currentTarget as HTMLElement).style.color = action.danger ? "#f87171" : "rgba(255,255,255,0.75)";
+          }}
+        >
+          <action.icon style={{ width: "14px", height: "14px", flexShrink: 0 }} />
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ─── New Conversation Dialog ─────────────────────────────────────────────────
 
@@ -106,9 +196,9 @@ function NewConversationDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) { setSelectedIds([]); onClose(); } }}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" style={{ background: "rgba(10,14,26,0.98)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px" }}>
         <DialogHeader>
-          <DialogTitle>New Conversation</DialogTitle>
+          <DialogTitle style={{ color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif" }}>New Conversation</DialogTitle>
         </DialogHeader>
         {selectedIds.length > 1 && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
@@ -123,17 +213,21 @@ function NewConversationDialog({
             const checked = selectedIds.includes(m.user_id);
             return (
               <div key={m.id} onClick={() => toggle(m.user_id)}
-                className={cn("flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors",
-                  checked ? "bg-secondary/50" : "hover:bg-secondary/30")}>
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all",
+                  checked
+                    ? "bg-indigo-500/15 border border-indigo-500/30"
+                    : "hover:bg-white/[0.04] border border-transparent"
+                )}>
                 <Checkbox checked={checked} className="pointer-events-none" />
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+                  <AvatarFallback className="bg-indigo-500/20 text-indigo-400 text-xs font-bold">
                     {getInitials(m.profile?.full_name)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="text-sm font-medium">{name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{m.role}</p>
+                  <p className="text-sm font-medium text-slate-200">{name}</p>
+                  <p className="text-xs text-slate-500 capitalize">{m.role}</p>
                 </div>
               </div>
             );
@@ -141,7 +235,8 @@ function NewConversationDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => { setSelectedIds([]); onClose(); }}>Cancel</Button>
-          <Button size="sm" onClick={handleStart} disabled={!selectedIds.length || startConversation.isPending}>
+          <Button size="sm" onClick={handleStart} disabled={!selectedIds.length || startConversation.isPending}
+            style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)" }}>
             {selectedIds.length > 1 ? "Create Group" : "Start Chat"}
           </Button>
         </DialogFooter>
@@ -163,8 +258,12 @@ function ChatThread({
   const [input, setInput] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ msgId: string; x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const myName = user?.user_metadata?.full_name || user?.email || "You";
 
@@ -175,6 +274,12 @@ function ChatThread({
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingId]);
 
   const handleInputChange = (val: string) => {
     setInput(val);
@@ -216,6 +321,54 @@ function ChatThread({
     }
   };
 
+  const handleCopyMessage = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({ title: "Copied to clipboard" });
+    });
+  };
+
+  const handleStartEdit = (msgId: string, text: string) => {
+    setEditingId(msgId);
+    setEditText(text);
+  };
+
+  const handleSaveEdit = async (msgId: string) => {
+    if (!editText.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("team_messages")
+        .update({ message_text: editText.trim() })
+        .eq("id", msgId);
+      if (error) throw error;
+      toast({ title: "Message updated" });
+    } catch {
+      toast({ title: "Failed to update message", variant: "destructive" });
+    } finally {
+      setEditingId(null);
+      setEditText("");
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    try {
+      const { error } = await supabase
+        .from("team_messages")
+        .delete()
+        .eq("id", msgId);
+      if (error) throw error;
+      toast({ title: "Message deleted" });
+    } catch {
+      toast({ title: "Failed to delete message", variant: "destructive" });
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, msgId: string) => {
+    e.preventDefault();
+    const x = Math.min(e.clientX, window.innerWidth - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 140);
+    setContextMenu({ msgId, x, y });
+  };
+
   // Group messages by date
   const grouped = useMemo(() => {
     const groups: { label: string; msgs: typeof messages }[] = [];
@@ -230,156 +383,440 @@ function ChatThread({
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ background: "rgba(8,11,20,0.6)" }}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border bg-card/80 shrink-0">
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "14px 20px",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "rgba(10,14,26,0.8)",
+        backdropFilter: "blur(20px)",
+        flexShrink: 0,
+      }}>
         {onBack && (
-          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+          <button
+            className="md:hidden"
+            onClick={onBack}
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "8px",
+              width: "32px",
+              height: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            <ArrowLeft style={{ width: "14px", height: "14px" }} />
+          </button>
         )}
-        <Avatar className="h-9 w-9 shrink-0">
-          <AvatarFallback className={cn("text-xs font-bold",
-            isGroup ? "bg-accent/20 text-accent-foreground" : "bg-primary/20 text-primary")}>
-            {isGroup ? <Users className="w-4 h-4" /> : (convo ? getConversationInitials(convo) : "?")}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <p className="font-semibold text-sm truncate">{chatName}</p>
+
+        <div style={{
+          width: "38px",
+          height: "38px",
+          borderRadius: "10px",
+          background: isGroup
+            ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(99,102,241,0.3))"
+            : "linear-gradient(135deg, rgba(99,102,241,0.3), rgba(79,70,229,0.3))",
+          border: "1px solid rgba(99,102,241,0.3)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}>
+          {isGroup
+            ? <Users style={{ width: "16px", height: "16px", color: "#818cf8" }} />
+            : <span style={{ fontSize: "13px", fontWeight: 700, color: "#818cf8" }}>
+                {convo ? getConversationInitials(convo) : "?"}
+              </span>
+          }
+        </div>
+
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {chatName}
+          </p>
           {isGroup && (
-            <p className="text-[11px] text-muted-foreground">{(convo?.participants.length ?? 0) + 1} members</p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>
+              {(convo?.participants.length ?? 0) + 1} members
+            </p>
           )}
         </div>
+
         {typingUsers.length > 0 && (
-          <p className="ml-auto text-xs text-muted-foreground italic animate-pulse">
-            {typingUsers.map(u => u.name.split(" ")[0]).join(", ")} typing…
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: "3px" }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{
+                  width: "5px", height: "5px", borderRadius: "50%",
+                  background: "#6366f1",
+                  animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                }} />
+              ))}
+            </div>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", fontStyle: "italic" }}>
+              {typingUsers.map(u => u.name.split(" ")[0]).join(", ")} typing
+            </p>
+          </div>
         )}
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-5 py-4">
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
         {messagesLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+            <Loader2 style={{ width: "20px", height: "20px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-              <MessageSquare className="w-5 h-5 text-primary" />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+            <div style={{
+              width: "56px", height: "56px", borderRadius: "16px",
+              background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))",
+              border: "1px solid rgba(99,102,241,0.2)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: "16px",
+            }}>
+              <MessageSquare style={{ width: "22px", height: "22px", color: "#6366f1" }} />
             </div>
-            <p className="text-sm font-medium">No messages yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Send the first message to start the conversation.</p>
+            <p style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>No messages yet</p>
+            <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)" }}>Send the first message to get the conversation going.</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {grouped.map(group => (
               <div key={group.label}>
-                <div className="flex items-center gap-3 my-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-2">{group.label}</span>
-                  <div className="flex-1 h-px bg-border" />
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "20px 0 12px" }}>
+                  <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                  <span style={{
+                    fontSize: "10px", color: "rgba(255,255,255,0.25)",
+                    fontWeight: 600, letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    padding: "3px 10px",
+                    background: "rgba(255,255,255,0.04)",
+                    borderRadius: "20px",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    fontFamily: "'DM Sans', system-ui, sans-serif",
+                  }}>
+                    {group.label}
+                  </span>
+                  <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.06)" }} />
                 </div>
-                <div className="space-y-1">
-                  {group.msgs.map((msg, idx) => {
-                    const isMe = msg.sender_id === user?.id;
-                    const status = getReadStatus(msg.created_at, msg.sender_id, user?.id ?? "", readReceipts);
-                    const nextMsg = group.msgs[idx + 1];
-                    const showReceipt = isMe && (!nextMsg || nextMsg.sender_id !== user?.id);
-                    const prevMsg = group.msgs[idx - 1];
-                    const sameSenderAsPrev = prevMsg?.sender_id === msg.sender_id;
 
-                    return (
-                      <div key={msg.id} className={cn("flex gap-2.5", isMe ? "justify-end" : "justify-start", sameSenderAsPrev ? "mt-0.5" : "mt-3")}>
-                        {!isMe && !sameSenderAsPrev && (
-                          <Avatar className="h-7 w-7 shrink-0 mt-0.5">
-                            <AvatarFallback className="bg-secondary text-foreground text-[10px] font-bold">
-                              {getInitials(msg.sender?.full_name || msg.sender?.email)}
-                            </AvatarFallback>
-                          </Avatar>
+                {group.msgs.map((msg, idx) => {
+                  const isMe = msg.sender_id === user?.id;
+                  const status = getReadStatus(msg.created_at, msg.sender_id, user?.id ?? "", readReceipts);
+                  const nextMsg = group.msgs[idx + 1];
+                  const showReceipt = isMe && (!nextMsg || nextMsg.sender_id !== user?.id);
+                  const prevMsg = group.msgs[idx - 1];
+                  const sameSender = prevMsg?.sender_id === msg.sender_id;
+                  const isEditing = editingId === msg.id;
+                  const isContextMsg = contextMenu?.msgId === msg.id;
+
+                  return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: isMe ? "flex-end" : "flex-start",
+                        marginTop: sameSender ? "2px" : "12px",
+                        position: "relative",
+                      }}
+                      onContextMenu={e => handleContextMenu(e, msg.id)}
+                    >
+                      {!isMe && !sameSender && (
+                        <div style={{
+                          width: "30px", height: "30px", borderRadius: "8px",
+                          background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))",
+                          border: "1px solid rgba(99,102,241,0.2)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0, marginRight: "8px", marginTop: "2px",
+                          fontSize: "11px", fontWeight: 700, color: "#818cf8",
+                        }}>
+                          {getInitials(msg.sender?.full_name || msg.sender?.email)}
+                        </div>
+                      )}
+                      {!isMe && sameSender && <div style={{ width: "38px", flexShrink: 0 }} />}
+
+                      <div style={{
+                        maxWidth: "68%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: isMe ? "flex-end" : "flex-start",
+                      }}>
+                        {!isMe && !sameSender && (
+                          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginBottom: "3px", marginLeft: "2px", fontWeight: 500 }}>
+                            {msg.sender?.full_name || msg.sender?.email || "Unknown"}
+                          </p>
                         )}
-                        {!isMe && sameSenderAsPrev && <div className="w-7 shrink-0" />}
-                        <div className={cn("max-w-[72%]", isMe ? "items-end" : "items-start", "flex flex-col gap-0.5")}>
-                          {!isMe && !sameSenderAsPrev && (
-                            <p className="text-[10px] font-medium text-muted-foreground ml-1">
-                              {msg.sender?.full_name || msg.sender?.email || "Unknown"}
-                            </p>
-                          )}
-                          <div className={cn(
-                            "rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
-                            isMe
-                              ? "bg-primary text-primary-foreground rounded-br-sm"
-                              : "bg-secondary text-foreground rounded-bl-sm"
-                          )}>
+
+                        {isEditing ? (
+                          <div style={{
+                            display: "flex",
+                            gap: "6px",
+                            alignItems: "center",
+                            background: "rgba(99,102,241,0.1)",
+                            border: "1px solid rgba(99,102,241,0.3)",
+                            borderRadius: "12px",
+                            padding: "6px 10px",
+                          }}>
+                            <input
+                              ref={editInputRef}
+                              value={editText}
+                              onChange={e => setEditText(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") handleSaveEdit(msg.id);
+                                if (e.key === "Escape") { setEditingId(null); setEditText(""); }
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                outline: "none",
+                                color: "#f1f5f9",
+                                fontSize: "13px",
+                                minWidth: "120px",
+                                fontFamily: "'DM Sans', system-ui, sans-serif",
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveEdit(msg.id)}
+                              style={{ background: "#6366f1", border: "none", borderRadius: "6px", padding: "3px 8px", color: "#fff", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => { setEditingId(null); setEditText(""); }}
+                              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "11px" }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              padding: "9px 13px",
+                              borderRadius: isMe ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                              background: isMe
+                                ? "linear-gradient(135deg, #6366f1, #4f46e5)"
+                                : "rgba(255,255,255,0.06)",
+                              border: isMe
+                                ? "1px solid rgba(99,102,241,0.4)"
+                                : "1px solid rgba(255,255,255,0.07)",
+                              cursor: "context-menu",
+                              boxShadow: isContextMsg
+                                ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                : isMe
+                                ? "0 4px 20px rgba(99,102,241,0.3)"
+                                : "none",
+                              transition: "box-shadow 0.15s",
+                            }}
+                          >
                             {msg.file_url && (
-                              <div className="mb-1.5">
+                              <div style={{ marginBottom: "8px" }}>
                                 {isImageFile(msg.file_type) ? (
                                   <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
-                                    <img src={msg.file_url} alt={msg.file_name ?? "image"} className="rounded-lg max-w-full max-h-40 object-cover" />
+                                    <img src={msg.file_url} alt={msg.file_name ?? "image"} style={{ borderRadius: "8px", maxWidth: "100%", maxHeight: "160px", objectFit: "cover", display: "block" }} />
                                   </a>
                                 ) : (
                                   <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
-                                    className={cn("flex items-center gap-2 p-2 rounded-lg text-xs", isMe ? "bg-primary-foreground/10" : "bg-background/50")}>
-                                    <FileText className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate">{msg.file_name ?? "File"}</span>
+                                    style={{
+                                      display: "flex", alignItems: "center", gap: "8px",
+                                      padding: "8px 10px", borderRadius: "8px",
+                                      background: isMe ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
+                                      textDecoration: "none",
+                                    }}>
+                                    <FileText style={{ width: "14px", height: "14px", color: isMe ? "rgba(255,255,255,0.8)" : "#818cf8", flexShrink: 0 }} />
+                                    <span style={{ fontSize: "12px", color: isMe ? "rgba(255,255,255,0.9)" : "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {msg.file_name ?? "File"}
+                                    </span>
                                   </a>
                                 )}
                               </div>
                             )}
-                            {(!msg.file_url || msg.message_text !== msg.file_name) && msg.message_text}
+                            {(!msg.file_url || msg.message_text !== msg.file_name) && (
+                              <p style={{
+                                fontSize: "13px",
+                                lineHeight: "1.55",
+                                color: isMe ? "#fff" : "rgba(255,255,255,0.82)",
+                                margin: 0,
+                                fontFamily: "'DM Sans', system-ui, sans-serif",
+                              }}>
+                                {msg.message_text}
+                              </p>
+                            )}
                           </div>
-                          <div className={cn("flex items-center gap-1", isMe ? "justify-end" : "")}>
-                            <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "h:mm a")}</span>
-                            {showReceipt && status === "read" && <CheckCheck className="w-3 h-3 text-primary" />}
-                            {showReceipt && status === "sent" && <Check className="w-3 h-3 text-muted-foreground" />}
-                          </div>
+                        )}
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "3px" }}>
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>
+                            {format(new Date(msg.created_at), "h:mm a")}
+                          </span>
+                          {showReceipt && status === "read" && (
+                            <CheckCheck style={{ width: "12px", height: "12px", color: "#818cf8" }} />
+                          )}
+                          {showReceipt && status === "sent" && (
+                            <Check style={{ width: "12px", height: "12px", color: "rgba(255,255,255,0.3)" }} />
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Inline action buttons on hover */}
+                      {isMe && !isEditing && (
+                        <div
+                          className="msg-actions"
+                          style={{
+                            display: "flex",
+                            gap: "4px",
+                            alignItems: "center",
+                            marginRight: "8px",
+                            opacity: 0,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          <button
+                            onClick={() => handleCopyMessage(msg.message_text)}
+                            title="Copy"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex", alignItems: "center" }}
+                          >
+                            <Copy style={{ width: "11px", height: "11px" }} />
+                          </button>
+                          <button
+                            onClick={() => handleStartEdit(msg.id, msg.message_text)}
+                            title="Edit"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex", alignItems: "center" }}
+                          >
+                            <Pencil style={{ width: "11px", height: "11px" }} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMessage(msg.id)}
+                            title="Delete"
+                            style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.15)", borderRadius: "6px", padding: "4px 6px", cursor: "pointer", color: "rgba(248,113,113,0.6)", display: "flex", alignItems: "center" }}
+                          >
+                            <Trash2 style={{ width: "11px", height: "11px" }} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ))}
             <div ref={scrollRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <MessageContextMenu
+          isMe={messages.find(m => m.id === contextMenu.msgId)?.sender_id === user?.id}
+          messageText={messages.find(m => m.id === contextMenu.msgId)?.message_text ?? ""}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onCopy={() => handleCopyMessage(messages.find(m => m.id === contextMenu.msgId)?.message_text ?? "")}
+          onEdit={() => {
+            const msg = messages.find(m => m.id === contextMenu.msgId);
+            if (msg) handleStartEdit(msg.id, msg.message_text);
+          }}
+          onDelete={() => handleDeleteMessage(contextMenu.msgId)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* File preview */}
       {pendingFile && (
-        <div className="px-5 pt-2 shrink-0">
-          <div className="flex items-center gap-2 bg-secondary/60 rounded-xl p-2.5 text-sm">
-            {pendingFile.type.startsWith("image/") ? <ImageIcon className="w-4 h-4 text-primary shrink-0" /> : <FileText className="w-4 h-4 text-primary shrink-0" />}
-            <span className="truncate flex-1 text-xs">{pendingFile.name}</span>
-            <span className="text-[10px] text-muted-foreground shrink-0">{(pendingFile.size / 1024).toFixed(0)} KB</span>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setPendingFile(null)}>
-              <X className="w-3 h-3" />
-            </Button>
+        <div style={{ padding: "8px 20px 0", flexShrink: 0 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: "8px",
+            background: "rgba(99,102,241,0.08)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            borderRadius: "10px", padding: "8px 12px",
+          }}>
+            {pendingFile.type.startsWith("image/")
+              ? <ImageIcon style={{ width: "14px", height: "14px", color: "#818cf8", flexShrink: 0 }} />
+              : <FileText style={{ width: "14px", height: "14px", color: "#818cf8", flexShrink: 0 }} />
+            }
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "12px", color: "#94a3b8" }}>{pendingFile.name}</span>
+            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+              {(pendingFile.size / 1024).toFixed(0)} KB
+            </span>
+            <button onClick={() => setPendingFile(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center" }}>
+              <X style={{ width: "13px", height: "13px" }} />
+            </button>
           </div>
         </div>
       )}
 
       {/* Input */}
-      <div className="px-5 py-3.5 border-t border-border bg-card/50 shrink-0">
-        <input type="file" ref={fileInputRef} className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f && f.size <= 20 * 1024 * 1024) setPendingFile(f); e.target.value = ""; }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
-        <div className="flex items-center gap-2 bg-secondary/40 rounded-2xl px-3 py-1.5 border border-border/60 focus-within:border-primary/40 transition-colors">
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            <Paperclip className="w-4 h-4" />
-          </Button>
+      <div style={{
+        padding: "12px 20px 16px",
+        borderTop: "1px solid rgba(255,255,255,0.05)",
+        background: "rgba(10,14,26,0.6)",
+        backdropFilter: "blur(12px)",
+        flexShrink: 0,
+      }}>
+        <input type="file" ref={fileInputRef} className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f && f.size <= 20 * 1024 * 1024) setPendingFile(f); e.target.value = ""; }}
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "14px",
+          padding: "6px 8px 6px 14px",
+          transition: "border-color 0.2s",
+        }}
+          onFocus={() => {}}
+        >
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", padding: "4px", borderRadius: "6px", transition: "color 0.15s" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
+          >
+            <Paperclip style={{ width: "16px", height: "16px" }} />
+          </button>
           <input
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 py-1"
-            placeholder="Write a message..."
+            style={{
+              flex: 1, background: "transparent", border: "none", outline: "none",
+              color: "#f1f5f9", fontSize: "13px",
+              padding: "6px 0",
+              fontFamily: "'DM Sans', system-ui, sans-serif",
+            }}
+            placeholder="Type a message..."
             value={input}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
             disabled={uploading}
           />
-          <Button size="icon" className="h-8 w-8 shrink-0 rounded-xl"
+          <button
             onClick={handleSend}
-            disabled={(!input.trim() && !pendingFile) || sendMessage.isPending || uploading}>
-            <Send className="w-3.5 h-3.5" />
-          </Button>
+            disabled={(!input.trim() && !pendingFile) || sendMessage.isPending || uploading}
+            style={{
+              width: "34px", height: "34px", borderRadius: "10px",
+              background: ((!input.trim() && !pendingFile) || sendMessage.isPending || uploading)
+                ? "rgba(99,102,241,0.3)"
+                : "linear-gradient(135deg, #6366f1, #4f46e5)",
+              border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.2s",
+              boxShadow: ((!input.trim() && !pendingFile) || sendMessage.isPending || uploading)
+                ? "none"
+                : "0 4px 12px rgba(99,102,241,0.4)",
+            }}
+          >
+            <Send style={{ width: "14px", height: "14px", color: "#fff" }} />
+          </button>
         </div>
+        <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)", marginTop: "6px", textAlign: "center", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+          Right-click any message to copy, edit, or delete · Enter to send
+        </p>
       </div>
     </div>
   );
@@ -394,61 +831,134 @@ function NotificationsPanel() {
   const filtered = notifications.filter(n => filter === "all" || !n.is_read);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-sm">Notifications</h3>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "rgba(10,14,26,0.8)", flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", margin: 0 }}>Notifications</h3>
           {unreadCount > 0 && (
-            <Badge className="bg-primary/15 text-primary border-0 text-[10px] h-4 px-1.5">{unreadCount} new</Badge>
+            <span style={{
+              background: "rgba(99,102,241,0.2)", color: "#818cf8",
+              fontSize: "10px", fontWeight: 700, padding: "2px 8px",
+              borderRadius: "20px", border: "1px solid rgba(99,102,241,0.3)",
+            }}>
+              {unreadCount} new
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className={cn("h-7 text-xs", filter === "all" ? "text-foreground" : "text-muted-foreground")} onClick={() => setFilter("all")}>All</Button>
-          <Button variant="ghost" size="sm" className={cn("h-7 text-xs", filter === "unread" ? "text-foreground" : "text-muted-foreground")} onClick={() => setFilter("unread")}>Unread</Button>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {["all", "unread"].map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f as "all" | "unread")}
+              style={{
+                background: filter === f ? "rgba(99,102,241,0.15)" : "transparent",
+                border: filter === f ? "1px solid rgba(99,102,241,0.3)" : "1px solid transparent",
+                borderRadius: "6px", padding: "3px 10px",
+                color: filter === f ? "#818cf8" : "rgba(255,255,255,0.4)",
+                fontSize: "11px", fontWeight: 500, cursor: "pointer",
+                transition: "all 0.15s",
+                textTransform: "capitalize",
+                fontFamily: "'DM Sans', system-ui, sans-serif",
+              }}
+            >
+              {f}
+            </button>
+          ))}
           {unreadCount > 0 && (
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
-              <CheckCheck className="w-3 h-3" />
+            <button
+              onClick={() => markAllRead.mutate()}
+              disabled={markAllRead.isPending}
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "6px", padding: "3px 10px",
+                color: "rgba(255,255,255,0.5)",
+                fontSize: "11px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: "5px",
+                fontFamily: "'DM Sans', system-ui, sans-serif",
+              }}
+            >
+              <CheckCheck style={{ width: "11px", height: "11px" }} />
               Mark all read
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div style={{ flex: 1, overflowY: "auto" }}>
         {notificationsLoading ? (
-          <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+            <Loader2 style={{ width: "20px", height: "20px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-              <Bell className="w-5 h-5 text-primary" />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 24px", textAlign: "center" }}>
+            <div style={{
+              width: "48px", height: "48px", borderRadius: "14px",
+              background: "rgba(99,102,241,0.1)",
+              border: "1px solid rgba(99,102,241,0.2)",
+              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "14px",
+            }}>
+              <Bell style={{ width: "20px", height: "20px", color: "#6366f1" }} />
             </div>
-            <p className="text-sm font-medium">{filter === "unread" ? "No unread notifications" : "You're all caught up"}</p>
-            <p className="text-xs text-muted-foreground mt-1">Notifications from coaching feedback, team mentions, and performance updates will appear here.</p>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "#64748b", marginBottom: "4px" }}>
+              {filter === "unread" ? "No unread notifications" : "All caught up"}
+            </p>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)" }}>
+              Coaching feedback, mentions, and updates will appear here.
+            </p>
           </div>
         ) : (
-          <div className="divide-y divide-border/50">
+          <div>
             {filtered.map(n => {
               const Icon = notifTypeIcons[n.type] ?? Bell;
               const colorClass = notifTypeColors[n.type] ?? notifTypeColors.system;
               return (
-                <div key={n.id}
+                <div
+                  key={n.id}
                   onClick={() => !n.is_read && markRead.mutate(n.id)}
-                  className={cn("flex gap-3.5 p-4 transition-colors cursor-pointer",
-                    !n.is_read ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-secondary/30")}>
-                  <div className={cn("p-2 rounded-xl shrink-0 mt-0.5", colorClass)}>
-                    <Icon className="w-4 h-4" />
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    padding: "14px 20px",
+                    borderBottom: "1px solid rgba(255,255,255,0.04)",
+                    cursor: "pointer",
+                    background: !n.is_read ? "rgba(99,102,241,0.04)" : "transparent",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = !n.is_read ? "rgba(99,102,241,0.04)" : "transparent")}
+                >
+                  <div className={cn("p-2 rounded-xl shrink-0 mt-0.5", colorClass)} style={{ width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon style={{ width: "15px", height: "15px" }} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={cn("text-sm leading-snug", !n.is_read ? "font-medium text-foreground" : "text-muted-foreground")}>{n.message}</p>
-                    <p className="text-[10px] text-muted-foreground/70 mt-1">{format(new Date(n.created_at), "MMM d, h:mm a")}</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: "13px",
+                      lineHeight: "1.5",
+                      color: !n.is_read ? "#e2e8f0" : "rgba(255,255,255,0.45)",
+                      fontWeight: !n.is_read ? 500 : 400,
+                      fontFamily: "'DM Sans', system-ui, sans-serif",
+                      margin: 0,
+                    }}>
+                      {n.message}
+                    </p>
+                    <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", marginTop: "3px" }}>
+                      {format(new Date(n.created_at), "MMM d, h:mm a")}
+                    </p>
                   </div>
-                  {!n.is_read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />}
+                  {!n.is_read && (
+                    <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#6366f1", flexShrink: 0, marginTop: "6px" }} />
+                  )}
                 </div>
               );
             })}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -488,190 +998,392 @@ export default function MessagesPage() {
   const totalBadge = totalUnread + notifUnreadCount;
 
   return (
-    <DashboardLayout>
-      <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] -m-4 md:-m-6">
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
-        {/* ── Top bar ── */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-card/60 backdrop-blur-sm shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4 text-primary" />
+        @keyframes bounce {
+          0%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-4px); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-row:hover .msg-actions {
+          opacity: 1 !important;
+        }
+        .convo-item:hover {
+          background: rgba(255,255,255,0.03) !important;
+        }
+        .convo-item.active {
+          background: rgba(99,102,241,0.1) !important;
+          border-color: rgba(99,102,241,0.2) !important;
+        }
+      `}</style>
+
+      <DashboardLayout>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "calc(100vh - 4rem)",
+            margin: "-24px",
+            background: "rgba(6,9,18,0.98)",
+            overflow: "hidden",
+          }}
+        >
+          {/* ── Top Header Bar ── */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 24px",
+            height: "60px",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(10,14,26,0.95)",
+            backdropFilter: "blur(20px)",
+            flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              <div style={{
+                width: "32px", height: "32px", borderRadius: "9px",
+                background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.25))",
+                border: "1px solid rgba(99,102,241,0.3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <MessageSquare style={{ width: "15px", height: "15px", color: "#818cf8" }} />
+              </div>
+              <div>
+                <h1 style={{ fontSize: "15px", fontWeight: 700, color: "#f1f5f9", fontFamily: "'Bricolage Grotesque', sans-serif", margin: 0, lineHeight: 1.2 }}>
+                  Messages
+                </h1>
+                <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", margin: 0, display: "none" }}
+                  className="sm:block">
+                  Team workspace communications
+                </p>
+              </div>
+              {totalBadge > 0 && (
+                <span style={{
+                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  color: "#fff",
+                  fontSize: "10px", fontWeight: 700,
+                  padding: "2px 8px", borderRadius: "20px",
+                  boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
+                }}>
+                  {totalBadge}
+                </span>
+              )}
             </div>
-            <div>
-              <h1 className="text-base font-semibold">Messages</h1>
-              <p className="text-[11px] text-muted-foreground hidden sm:block">Team conversations & notifications</p>
-            </div>
-            {totalBadge > 0 && (
-              <Badge className="bg-primary text-primary-foreground text-[10px] h-5 px-1.5 ml-1">{totalBadge}</Badge>
-            )}
+
+            <button
+              onClick={() => setNewConvoOpen(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: "7px",
+                background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                border: "none", borderRadius: "9px",
+                padding: "7px 14px",
+                color: "#fff", fontSize: "12px", fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+                transition: "all 0.2s",
+                fontFamily: "'DM Sans', system-ui, sans-serif",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 20px rgba(99,102,241,0.5)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 14px rgba(99,102,241,0.35)"; }}
+            >
+              <Plus style={{ width: "13px", height: "13px" }} />
+              <span>New Message</span>
+            </button>
           </div>
-          <Button size="sm" className="gap-2 h-8" onClick={() => setNewConvoOpen(true)}>
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline text-xs">New Message</span>
-          </Button>
-        </div>
 
-        {/* ── Body ── */}
-        <div className="flex flex-1 min-h-0">
+          {/* ── Body ── */}
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
 
-          {/* ── Left sidebar ── */}
-          <div className={cn(
-            "flex flex-col w-full md:w-72 lg:w-80 border-r border-border bg-card/40 shrink-0",
-            mobileView === "thread" ? "hidden md:flex" : "flex"
-          )}>
-            {/* Tab switcher */}
-            <div className="flex border-b border-border shrink-0">
-              <button
-                onClick={() => setActiveTab("messages")}
-                className={cn("flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors",
-                  activeTab === "messages" ? "text-foreground border-b-2 border-primary -mb-px" : "text-muted-foreground hover:text-foreground")}>
-                <MessageSquare className="w-3.5 h-3.5" />
-                Messages
-                {totalUnread > 0 && <Badge className="bg-primary/15 text-primary border-0 text-[10px] h-4 px-1">{totalUnread}</Badge>}
-              </button>
-              <button
-                onClick={() => setActiveTab("notifications")}
-                className={cn("flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors",
-                  activeTab === "notifications" ? "text-foreground border-b-2 border-primary -mb-px" : "text-muted-foreground hover:text-foreground")}>
-                <Bell className="w-3.5 h-3.5" />
-                Alerts
-                {notifUnreadCount > 0 && <Badge className="bg-primary/15 text-primary border-0 text-[10px] h-4 px-1">{notifUnreadCount}</Badge>}
-              </button>
-            </div>
+            {/* ── Left Sidebar ── */}
+            <div
+              style={{
+                width: "300px",
+                flexShrink: 0,
+                display: mobileView === "thread" ? "none" : "flex",
+                flexDirection: "column",
+                borderRight: "1px solid rgba(255,255,255,0.05)",
+                background: "rgba(8,11,20,0.8)",
+              }}
+              className="md:flex"
+            >
+              {/* Tabs */}
+              <div style={{
+                display: "flex",
+                padding: "10px 12px",
+                gap: "4px",
+                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                flexShrink: 0,
+              }}>
+                {[
+                  { id: "messages" as const, label: "Chats", icon: MessageSquare, badge: totalUnread },
+                  { id: "notifications" as const, label: "Alerts", icon: Bell, badge: notifUnreadCount },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      flex: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                      padding: "7px 12px",
+                      borderRadius: "8px",
+                      background: activeTab === tab.id ? "rgba(99,102,241,0.15)" : "transparent",
+                      border: activeTab === tab.id ? "1px solid rgba(99,102,241,0.25)" : "1px solid transparent",
+                      color: activeTab === tab.id ? "#818cf8" : "rgba(255,255,255,0.35)",
+                      fontSize: "12px", fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      fontFamily: "'DM Sans', system-ui, sans-serif",
+                    }}
+                  >
+                    <tab.icon style={{ width: "13px", height: "13px" }} />
+                    {tab.label}
+                    {tab.badge > 0 && (
+                      <span style={{
+                        background: activeTab === tab.id ? "#6366f1" : "rgba(99,102,241,0.4)",
+                        color: "#fff",
+                        fontSize: "9px", fontWeight: 700,
+                        padding: "1px 6px", borderRadius: "10px",
+                        minWidth: "16px", textAlign: "center",
+                      }}>
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
-            {activeTab === "messages" ? (
-              <>
-                {/* Search */}
-                <div className="px-3 py-2.5 border-b border-border/50 shrink-0">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <input
-                      className="w-full h-8 bg-secondary/50 rounded-lg pl-8 pr-3 text-xs outline-none placeholder:text-muted-foreground/60 focus:bg-secondary/80 transition-colors"
-                      placeholder="Search conversations..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Conversation list */}
-                <ScrollArea className="flex-1">
-                  {conversationsLoading ? (
-                    <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-                  ) : filteredConvos.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-                        <MessageSquare className="w-4 h-4 text-primary" />
-                      </div>
-                      <p className="text-xs font-medium">{searchQuery ? "No results" : "No conversations"}</p>
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        {searchQuery ? "Try a different search term." : "Start a new conversation with your team."}
-                      </p>
+              {activeTab === "messages" ? (
+                <>
+                  {/* Search */}
+                  <div style={{ padding: "10px 12px", flexShrink: 0 }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: "8px",
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.07)",
+                      borderRadius: "9px", padding: "7px 12px",
+                    }}>
+                      <Search style={{ width: "13px", height: "13px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                      <input
+                        style={{
+                          flex: 1, background: "transparent", border: "none", outline: "none",
+                          color: "#f1f5f9", fontSize: "12px",
+                          fontFamily: "'DM Sans', system-ui, sans-serif",
+                        }}
+                        placeholder="Search conversations..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                      />
+                      {searchQuery && (
+                        <button onClick={() => setSearchQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", display: "flex" }}>
+                          <X style={{ width: "12px", height: "12px" }} />
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <div className="py-1">
-                      {filteredConvos.map(c => {
-                        const name = getConversationName(c);
-                        const isSelected = selectedConvo === c.id;
-                        const initials = getConversationInitials(c);
-                        return (
-                          <button
-                            key={c.id}
-                            onClick={() => handleSelectConvo(c.id)}
-                            className={cn(
-                              "w-full flex items-center gap-3 px-3 py-3 transition-colors text-left",
-                              isSelected ? "bg-primary/10" : c.unread_count > 0 ? "hover:bg-secondary/50" : "hover:bg-secondary/30"
-                            )}
-                          >
-                            <div className="relative shrink-0">
-                              <Avatar className="h-9 w-9">
-                                <AvatarFallback className={cn("text-xs font-bold",
-                                  c.is_group ? "bg-accent/20 text-accent-foreground" : "bg-primary/20 text-primary")}>
-                                  {c.is_group ? <Users className="w-4 h-4" /> : initials}
-                                </AvatarFallback>
-                              </Avatar>
-                              {c.unread_count > 0 && (
-                                <div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-                                  <span className="text-[9px] font-bold text-primary-foreground">{c.unread_count}</span>
+                  </div>
+
+                  {/* Conversation List */}
+                  <div style={{ flex: 1, overflowY: "auto" }}>
+                    {conversationsLoading ? (
+                      <div style={{ display: "flex", justifyContent: "center", padding: "30px 0" }}>
+                        <Loader2 style={{ width: "18px", height: "18px", color: "#6366f1", animation: "spin 1s linear infinite" }} />
+                      </div>
+                    ) : filteredConvos.length === 0 ? (
+                      <div style={{ padding: "30px 20px", textAlign: "center" }}>
+                        <MessageSquare style={{ width: "28px", height: "28px", color: "rgba(99,102,241,0.3)", margin: "0 auto 10px" }} />
+                        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+                          {searchQuery ? "No results found" : "No conversations yet"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{ padding: "6px 8px" }}>
+                        {filteredConvos.map(c => {
+                          const name = getConversationName(c);
+                          const isSelected = selectedConvo === c.id;
+                          const initials = getConversationInitials(c);
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => handleSelectConvo(c.id)}
+                              className={`convo-item ${isSelected ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                display: "flex", alignItems: "center", gap: "10px",
+                                padding: "10px 10px",
+                                borderRadius: "10px",
+                                border: isSelected ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
+                                background: isSelected ? "rgba(99,102,241,0.1)" : "transparent",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                transition: "all 0.15s",
+                                marginBottom: "2px",
+                              }}
+                            >
+                              <div style={{ position: "relative", flexShrink: 0 }}>
+                                <div style={{
+                                  width: "36px", height: "36px", borderRadius: "10px",
+                                  background: c.is_group
+                                    ? "linear-gradient(135deg, rgba(139,92,246,0.25), rgba(99,102,241,0.25))"
+                                    : "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(79,70,229,0.2))",
+                                  border: `1px solid ${c.is_group ? "rgba(139,92,246,0.2)" : "rgba(99,102,241,0.2)"}`,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: "12px", fontWeight: 700,
+                                  color: c.is_group ? "#a78bfa" : "#818cf8",
+                                }}>
+                                  {c.is_group ? <Users style={{ width: "15px", height: "15px" }} /> : initials}
                                 </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <p className={cn("text-xs truncate", c.unread_count > 0 ? "font-semibold text-foreground" : "font-medium text-foreground/90")}>{name}</p>
-                                {c.last_message && (
-                                  <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(c.last_message.created_at)}</span>
+                                {c.unread_count > 0 && (
+                                  <div style={{
+                                    position: "absolute", top: "-3px", right: "-3px",
+                                    width: "16px", height: "16px",
+                                    background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                                    borderRadius: "50%",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: "9px", fontWeight: 700, color: "#fff",
+                                    boxShadow: "0 2px 6px rgba(99,102,241,0.5)",
+                                  }}>
+                                    {c.unread_count > 9 ? "9+" : c.unread_count}
+                                  </div>
                                 )}
                               </div>
-                              {c.last_message && (
-                                <p className={cn("text-[11px] truncate mt-0.5", c.unread_count > 0 ? "text-foreground/70 font-medium" : "text-muted-foreground")}>
-                                  {c.last_message.message_text}
-                                </p>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </ScrollArea>
-              </>
-            ) : (
-              <NotificationsPanel />
-            )}
-          </div>
 
-          {/* ── Right panel ── */}
-          <div className={cn(
-            "flex-1 flex flex-col min-w-0 bg-background",
-            mobileView === "list" ? "hidden md:flex" : "flex"
-          )}>
-            {activeTab === "messages" ? (
-              selectedConvo ? (
-                <ChatThread
-                  conversationId={selectedConvo}
-                  conversations={conversations}
-                  onBack={handleBack}
-                />
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                    <MessageSquare className="w-7 h-7 text-primary" />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "4px" }}>
+                                  <p style={{
+                                    fontSize: "13px",
+                                    fontWeight: c.unread_count > 0 ? 600 : 500,
+                                    color: c.unread_count > 0 ? "#f1f5f9" : "rgba(255,255,255,0.7)",
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                    fontFamily: "'DM Sans', system-ui, sans-serif",
+                                    margin: 0,
+                                  }}>
+                                    {name}
+                                  </p>
+                                  {c.last_message && (
+                                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }}>
+                                      {formatTime(c.last_message.created_at)}
+                                    </span>
+                                  )}
+                                </div>
+                                {c.last_message && (
+                                  <p style={{
+                                    fontSize: "11px",
+                                    color: c.unread_count > 0 ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)",
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                    marginTop: "1px",
+                                    fontFamily: "'DM Sans', system-ui, sans-serif",
+                                    fontWeight: c.unread_count > 0 ? 500 : 400,
+                                  }}>
+                                    {c.last_message.message_text}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <h3 className="text-base font-semibold mb-1">Select a conversation</h3>
-                  <p className="text-sm text-muted-foreground max-w-xs">Choose a conversation from the left panel to view messages, or start a new one with your team.</p>
-                  <Button className="mt-5 gap-2" size="sm" onClick={() => setNewConvoOpen(true)}>
-                    <Plus className="w-3.5 h-3.5" />
-                    New Message
-                  </Button>
-                </div>
-              )
-            ) : (
-              <div className="flex-1 min-h-0 overflow-hidden">
+                </>
+              ) : (
                 <NotificationsPanel />
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* ── Right Panel ── */}
+            <div
+              style={{
+                flex: 1,
+                display: (mobileView === "list" && !selectedConvo) ? "none" : "flex",
+                flexDirection: "column",
+                minWidth: 0,
+                background: "rgba(6,9,18,0.7)",
+              }}
+              className="md:flex"
+            >
+              {activeTab === "messages" ? (
+                selectedConvo ? (
+                  <ChatThread
+                    conversationId={selectedConvo}
+                    conversations={conversations}
+                    onBack={handleBack}
+                  />
+                ) : (
+                  <div style={{
+                    flex: 1,
+                    display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center",
+                    textAlign: "center", padding: "40px",
+                  }}>
+                    <div style={{
+                      width: "72px", height: "72px", borderRadius: "20px",
+                      background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.12))",
+                      border: "1px solid rgba(99,102,241,0.15)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: "20px",
+                      boxShadow: "0 0 40px rgba(99,102,241,0.08)",
+                    }}>
+                      <MessageSquare style={{ width: "28px", height: "28px", color: "#6366f1" }} />
+                    </div>
+                    <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#94a3b8", fontFamily: "'Bricolage Grotesque', sans-serif", marginBottom: "8px" }}>
+                      Select a conversation
+                    </h3>
+                    <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.25)", maxWidth: "280px", lineHeight: 1.6, fontFamily: "'DM Sans', system-ui, sans-serif", marginBottom: "24px" }}>
+                      Choose a thread from the sidebar or start a new conversation with your team.
+                    </p>
+                    <button
+                      onClick={() => setNewConvoOpen(true)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "8px",
+                        background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                        border: "none", borderRadius: "10px",
+                        padding: "10px 20px",
+                        color: "#fff", fontSize: "13px", fontWeight: 600,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 16px rgba(99,102,241,0.35)",
+                        fontFamily: "'DM Sans', system-ui, sans-serif",
+                      }}
+                    >
+                      <Plus style={{ width: "15px", height: "15px" }} />
+                      New Message
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div style={{ flex: 1, overflowY: "hidden" }}>
+                  <NotificationsPanel />
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* New conversation dialog */}
-      {team && (
-        <NewConversationDialog
-          open={newConvoOpen}
-          onClose={() => setNewConvoOpen(false)}
-          members={members}
-          currentUserId={user?.id ?? ""}
-          teamId={team.id}
-          conversations={conversations}
-          refetchConversations={refetchConversations}
-          onCreated={id => {
-            setNewConvoOpen(false);
-            setActiveTab("messages");
-            handleSelectConvo(id);
-          }}
-        />
-      )}
-    </DashboardLayout>
+        {team && (
+          <NewConversationDialog
+            open={newConvoOpen}
+            onClose={() => setNewConvoOpen(false)}
+            members={members}
+            currentUserId={user?.id ?? ""}
+            teamId={team.id}
+            conversations={conversations}
+            refetchConversations={refetchConversations}
+            onCreated={id => {
+              setNewConvoOpen(false);
+              setActiveTab("messages");
+              handleSelectConvo(id);
+            }}
+          />
+        )}
+      </DashboardLayout>
+    </>
   );
 }
