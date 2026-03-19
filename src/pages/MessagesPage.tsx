@@ -1,9 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search, Send, MessageSquare, Bell, Plus, Users, FileText,
@@ -18,7 +16,7 @@ import {
   getConversationName, getConversationInitials,
 } from "@/hooks/useTeamMessaging";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useOnlinePresence } from "@/hooks/useOnlinePresence";
+
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -29,6 +27,50 @@ import { cn } from "@/lib/utils";
 import type { Conversation, ReadReceipt } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
+
+/* ─── Online Presence Hook ────────────────────────────────── */
+function useOnlinePresence(teamId: string | undefined, currentUserId: string | undefined) {
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  useEffect(() => {
+    if (!teamId || !currentUserId) return;
+
+    const channel = supabase.channel(`presence:team:${teamId}`, {
+      config: { presence: { key: currentUserId } },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        setOnlineUsers(new Set(Object.keys(state)));
+      })
+      .on("presence", { event: "join" }, ({ key }: { key: string }) => {
+        setOnlineUsers(prev => new Set([...prev, key]));
+      })
+      .on("presence", { event: "leave" }, ({ key }: { key: string }) => {
+        setOnlineUsers(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      })
+      .subscribe(async (status: string) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ user_id: currentUserId, online_at: new Date().toISOString() });
+        }
+      });
+
+    channelRef.current = channel;
+    return () => {
+      channel.untrack();
+      supabase.removeChannel(channel);
+    };
+  }, [teamId, currentUserId]);
+
+  const isOnline = useCallback((userId: string) => onlineUsers.has(userId), [onlineUsers]);
+  return { onlineUsers, isOnline };
+}
 
 /* ─── helpers ─────────────────────────────────────────────── */
 function formatTime(dateStr: string): string {
@@ -400,7 +442,7 @@ function ChatThread({ conversationId, conversations, onBack, isOnline }: {
       {/* desktop context menu */}
       {ctx && (
         <CtxMenu
-          isMe={messages.find(m => m.id === ctx.id)?.sender_id === user?.id ?? false}
+          isMe={(rawMessages.find(m => m.id === ctx.id)?.sender_id === user?.id) ?? false}
           pos={{ x: ctx.x, y: ctx.y }}
           onCopy={()   => copyMsg(messages.find(m => m.id === ctx.id)?.message_text ?? "")}
           onEdit={()   => { const m = messages.find(x => x.id === ctx.id); if (m) startEdit(m.id, m.message_text); }}
@@ -595,7 +637,7 @@ export default function MessagesPage() {
   const { unreadCount: notifCount } = useNotifications();
 
   // ── Online presence for the whole team ──
-  const { isOnline } = useOnlinePresence(team?.id);
+  const { isOnline } = useOnlinePresence(team?.id, user?.id);
 
   const [selected, setSelected]   = useState<string | null>(null);
   const [newOpen, setNewOpen]      = useState(false);
