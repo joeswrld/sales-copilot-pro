@@ -18,6 +18,7 @@ import {
   getConversationName, getConversationInitials,
 } from "@/hooks/useTeamMessaging";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useOnlinePresence } from "@/hooks/useOnlinePresence";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -49,6 +50,22 @@ function getReadStatus(at: string, sid: string, uid: string, rr: ReadReceipt[]):
   return rr.some(r => r.last_read_at && new Date(r.last_read_at) >= new Date(at)) ? "read" : "sent";
 }
 const notifIcons: Record<string, typeof Bell> = { comment: MessageSquare, coaching: TrendingUp, mention: AtSign, system: AlertCircle };
+
+/* ─── Online dot ──────────────────────────────────────────── */
+function OnlineDot({ online, size = "sm" }: { online: boolean; size?: "sm" | "md" }) {
+  const sz = size === "md" ? "w-3 h-3" : "w-2 h-2";
+  const offset = size === "md" ? "-bottom-0.5 -right-0.5" : "-bottom-px -right-px";
+  return (
+    <span
+      className={cn(
+        "absolute rounded-full border-2 border-[#0b0f1c] transition-colors duration-300",
+        sz, offset,
+        online ? "bg-emerald-400" : "bg-slate-600"
+      )}
+      title={online ? "Online" : "Offline"}
+    />
+  );
+}
 
 /* ─── context menu ────────────────────────────────────────── */
 function CtxMenu({ isMe, pos, onCopy, onEdit, onDelete, onClose }: {
@@ -83,11 +100,12 @@ function CtxMenu({ isMe, pos, onCopy, onEdit, onDelete, onClose }: {
 }
 
 /* ─── new convo dialog ────────────────────────────────────── */
-function NewConvoDialog({ open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onCreated }: {
+function NewConvoDialog({ open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onCreated, isOnline }: {
   open: boolean; onClose(): void; members: TeamMember[];
   currentUserId: string; teamId: string;
   conversations: Conversation[]; refetchConversations(): void;
   onCreated(id: string): void;
+  isOnline(uid: string): boolean;
 }) {
   const { startConversation } = useConversationMessages(null);
   const [sel, setSel] = useState<string[]>([]);
@@ -118,17 +136,23 @@ function NewConvoDialog({ open, onClose, members, currentUserId, teamId, convers
             : others.map(m => {
               const name = m.profile?.full_name || m.invited_email || "Unknown";
               const chk  = sel.includes(m.user_id);
+              const online = isOnline(m.user_id);
               return (
                 <div key={m.id} onClick={() => toggle(m.user_id)}
                   className={cn("flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all select-none",
                     chk ? "bg-violet-500/15 border border-violet-500/30" : "hover:bg-white/[0.04] border border-transparent")}>
                   <Checkbox checked={chk} className="pointer-events-none" />
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{getInitials(name)}</AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{getInitials(name)}</AvatarFallback>
+                    </Avatar>
+                    <OnlineDot online={online} />
+                  </div>
                   <div>
                     <p className="text-sm font-medium text-slate-200">{name}</p>
-                    <p className="text-xs text-slate-500 capitalize">{m.role}</p>
+                    <p className={cn("text-xs capitalize", online ? "text-emerald-400" : "text-slate-500")}>
+                      {online ? "Online" : m.role}
+                    </p>
                   </div>
                 </div>
               );
@@ -147,11 +171,12 @@ function NewConvoDialog({ open, onClose, members, currentUserId, teamId, convers
 }
 
 /* ─── chat thread ─────────────────────────────────────────── */
-function ChatThread({ conversationId, conversations, onBack }: {
+function ChatThread({ conversationId, conversations, onBack, isOnline }: {
   conversationId: string; conversations: Conversation[]; onBack?(): void;
+  isOnline(uid: string): boolean;
 }) {
   const { user } = useAuth();
-  const { messages, messagesLoading, sendMessage, readReceipts } = useConversationMessages(conversationId);
+  const { messages: rawMessages, messagesLoading, sendMessage, readReceipts } = useConversationMessages(conversationId);
   const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
   const [input, setInput]         = useState("");
   const [pendingFile, setPF]      = useState<File | null>(null);
@@ -160,6 +185,10 @@ function ChatThread({ conversationId, conversations, onBack }: {
   const [editTxt, setEditTxt]     = useState("");
   const [ctx, setCtx]             = useState<{ id: string; x: number; y: number } | null>(null);
   const [lpId, setLpId]           = useState<string | null>(null);
+
+  // ── Optimistic deletes: track locally deleted IDs ──
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
   const scrollRef   = useRef<HTMLDivElement>(null);
   const fileRef     = useRef<HTMLInputElement>(null);
   const editRef     = useRef<HTMLInputElement>(null);
@@ -169,6 +198,16 @@ function ChatThread({ conversationId, conversations, onBack }: {
   const convo   = conversations.find(c => c.id === conversationId);
   const chatName = convo ? getConversationName(convo) : "Chat";
   const isGroup  = convo?.is_group ?? false;
+
+  // Filter out optimistically deleted messages
+  const messages = useMemo(
+    () => rawMessages.filter(m => !deletedIds.has(m.id)),
+    [rawMessages, deletedIds]
+  );
+
+  // Get the other participant's userId for online status (1-on-1 chats)
+  const otherUserId = !isGroup && convo?.participants?.[0]?.user_id;
+  const otherOnline = otherUserId ? isOnline(otherUserId) : false;
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
   useEffect(() => { if (editId && editRef.current) editRef.current.focus(); }, [editId]);
@@ -210,9 +249,23 @@ function ChatThread({ conversationId, conversations, onBack }: {
     catch { toast({ title: "Failed to update", variant: "destructive" }); }
     finally { setEditId(null); setEditTxt(""); }
   };
+
+  // ── Optimistic delete: remove from UI immediately ──
   const delMsg = async (id: string) => {
-    try { await supabase.from("team_messages").delete().eq("id", id); toast({ title: "Deleted" }); }
-    catch { toast({ title: "Failed to delete", variant: "destructive" }); }
+    // Optimistically hide it right away
+    setDeletedIds(prev => new Set([...prev, id]));
+    try {
+      await supabase.from("team_messages").delete().eq("id", id);
+      toast({ title: "Deleted" });
+    } catch {
+      // Rollback on failure
+      setDeletedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({ title: "Failed to delete", variant: "destructive" });
+    }
   };
 
   const onCtx = (e: React.MouseEvent, id: string) => { e.preventDefault(); setCtx({ id, x: e.clientX, y: e.clientY }); };
@@ -238,17 +291,27 @@ function ChatThread({ conversationId, conversations, onBack }: {
       {/* header */}
       <div className="mp-thread-header">
         <button className="mp-back-btn" onClick={onBack}><ArrowLeft style={{ width: 16, height: 16 }} /></button>
-        <div className="mp-thread-av">
-          {isGroup ? <Users style={{ width: 14, height: 14, color: "#a78bfa" }} />
-            : <span style={{ fontSize: 12, fontWeight: 700, color: "#818cf8" }}>{convo ? getConversationInitials(convo) : "?"}</span>}
+        <div className="relative">
+          <div className="mp-thread-av">
+            {isGroup ? <Users style={{ width: 14, height: 14, color: "#a78bfa" }} />
+              : <span style={{ fontSize: 12, fontWeight: 700, color: "#818cf8" }}>{convo ? getConversationInitials(convo) : "?"}</span>}
+          </div>
+          {/* Online indicator on avatar in header */}
+          {!isGroup && (
+            <OnlineDot online={otherOnline} size="md" />
+          )}
         </div>
         <div className="mp-thread-info">
           <p className="mp-thread-name">{chatName}</p>
-          {isGroup
-            ? <p className="mp-thread-sub">{(convo?.participants.length ?? 0) + 1} members</p>
-            : typingUsers.length > 0
-              ? <p className="mp-thread-typing">typing…</p>
-              : <p className="mp-thread-sub">Online</p>}
+          {typingUsers.length > 0 ? (
+            <p className="mp-thread-typing">typing…</p>
+          ) : isGroup ? (
+            <p className="mp-thread-sub">{(convo?.participants.length ?? 0) + 1} members</p>
+          ) : (
+            <p className={cn("mp-thread-sub", otherOnline && "mp-thread-online")}>
+              {otherOnline ? "● Online" : "Offline"}
+            </p>
+          )}
         </div>
         {typingUsers.length > 0 && (
           <div className="mp-typing-dots"><span /><span /><span /></div>
@@ -454,9 +517,10 @@ function NotifsPanel() {
 }
 
 /* ─── convo list panel ────────────────────────────────────── */
-function ConvoListPanel({ convos, loading, selected, onSelect, search, onSearchChange }: {
+function ConvoListPanel({ convos, loading, selected, onSelect, search, onSearchChange, isOnline }: {
   convos: Conversation[]; loading: boolean; selected: string | null;
   onSelect(id: string): void; search: string; onSearchChange(v: string): void;
+  isOnline(uid: string): boolean;
 }) {
   return (
     <div className="mp-convo-panel">
@@ -477,20 +541,40 @@ function ConvoListPanel({ convos, loading, selected, onSelect, search, onSearchC
           const name = getConversationName(c);
           const init = getConversationInitials(c);
           const isSel = selected === c.id;
+          // For 1-on-1 chats, check if the other person is online
+          const otherParticipant = !c.is_group && c.participants[0];
+          const participantOnline = otherParticipant ? isOnline(otherParticipant.user_id) : false;
+
           return (
             <button key={c.id} className={cn("mp-convo-item", isSel && "mp-convo-item--active")} onClick={() => onSelect(c.id)}>
               <div className="mp-convo-av-wrap">
                 <div className={cn("mp-convo-av", c.is_group && "mp-convo-av--group")}>
                   {c.is_group ? <Users style={{ width: 14, height: 14 }} /> : init}
                 </div>
-                {c.unread_count > 0 && <div className="mp-convo-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>}
+                {/* Online indicator dot on conversation avatar */}
+                {!c.is_group && (
+                  <span
+                    className={cn(
+                      "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#0b0f1c] transition-colors duration-300",
+                      participantOnline ? "bg-emerald-400" : "bg-slate-600"
+                    )}
+                  />
+                )}
+                {c.unread_count > 0 && (
+                  <div className="mp-convo-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>
+                )}
               </div>
               <div className="mp-convo-info">
                 <div className="mp-convo-row1">
                   <span className={cn("mp-convo-name", c.unread_count > 0 && "mp-convo-name--unread")}>{name}</span>
                   {c.last_message && <span className="mp-convo-time">{formatTime(c.last_message.created_at)}</span>}
                 </div>
-                {c.last_message && (
+                {/* Show online status text for 1-on-1 chats */}
+                {!c.is_group ? (
+                  <p className={cn("mp-convo-preview text-[10px] font-medium", participantOnline ? "text-emerald-400" : "text-slate-600")}>
+                    {participantOnline ? "● Online" : c.last_message?.message_text ?? ""}
+                  </p>
+                ) : c.last_message && (
                   <p className={cn("mp-convo-preview", c.unread_count > 0 && "mp-convo-preview--unread")}>{c.last_message.message_text}</p>
                 )}
               </div>
@@ -509,6 +593,10 @@ export default function MessagesPage() {
   const { team, members } = useTeam();
   const { conversations, conversationsLoading, totalUnread, refetchConversations } = useTeamMessaging(team?.id);
   const { unreadCount: notifCount } = useNotifications();
+
+  // ── Online presence for the whole team ──
+  const { isOnline } = useOnlinePresence(team?.id);
+
   const [selected, setSelected]   = useState<string | null>(null);
   const [newOpen, setNewOpen]      = useState(false);
   const [search, setSearch]        = useState("");
@@ -540,6 +628,7 @@ export default function MessagesPage() {
         @keyframes mpSlideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes mpSheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
         @keyframes mpFade{from{opacity:0}to{opacity:1}}
+        @keyframes mpMsgIn{from{opacity:0;transform:translateY(6px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 
         .mp-page{display:flex;flex-direction:column;height:calc(100dvh - 4rem);margin:-24px;overflow:hidden;background:var(--bg0);font-family:'DM Sans',system-ui,sans-serif;}
         @media(max-width:767px){.mp-page{margin:-16px;height:calc(100dvh - 3.5rem);padding-bottom:58px;}}
@@ -613,6 +702,7 @@ export default function MessagesPage() {
         .mp-thread-info{flex:1;min-width:0;}
         .mp-thread-name{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .mp-thread-sub{font-size:11px;color:var(--t3);margin:0;}
+        .mp-thread-online{color:#34d399!important;font-weight:500;}
         .mp-thread-typing{font-size:11px;color:#a78bfa;font-style:italic;margin:0;}
         .mp-typing-dots{display:flex;gap:3px;align-items:center;flex-shrink:0;}
         .mp-typing-dots span{width:5px;height:5px;border-radius:50%;background:#7c3aed;display:block;}
@@ -636,7 +726,7 @@ export default function MessagesPage() {
         .mp-div-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:20px;white-space:nowrap;}
 
         /* message rows */
-        .mp-msg-row{display:flex;margin-bottom:2px;position:relative;}
+        .mp-msg-row{display:flex;margin-bottom:2px;position:relative;animation:mpMsgIn .2s ease;}
         .mp-msg-row--me{justify-content:flex-end;margin-top:3px;}
         .mp-msg-row--them{justify-content:flex-start;margin-top:3px;}
         .mp-msg-row--same{margin-bottom:1px;}
@@ -794,7 +884,7 @@ export default function MessagesPage() {
                 ))}
               </div>
               {tab === "chats"
-                ? <ConvoListPanel convos={filtered} loading={conversationsLoading} selected={selected} onSelect={selectConvo} search={search} onSearchChange={setSearch} />
+                ? <ConvoListPanel convos={filtered} loading={conversationsLoading} selected={selected} onSelect={selectConvo} search={search} onSearchChange={setSearch} isOnline={isOnline} />
                 : <NotifsPanel />}
             </div>
 
@@ -802,7 +892,7 @@ export default function MessagesPage() {
             <div className={cn("mp-right", mobileScr === "list" && "mp-right--hidden")}>
               {tab === "chats"
                 ? selected
-                  ? <ChatThread conversationId={selected} conversations={conversations} onBack={goBack} />
+                  ? <ChatThread conversationId={selected} conversations={conversations} onBack={goBack} isOnline={isOnline} />
                   : (
                     <div className="mp-right-empty">
                       <div className="mp-re-icon"><MessageSquare style={{ width: 26, height: 26, color: "#7c3aed" }} /></div>
@@ -846,6 +936,7 @@ export default function MessagesPage() {
             members={members} currentUserId={user?.id ?? ""}
             teamId={team.id} conversations={conversations}
             refetchConversations={refetchConversations}
+            isOnline={isOnline}
             onCreated={id => { setNewOpen(false); setTab("chats"); selectConvo(id); }}
           />
         )}
