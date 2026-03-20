@@ -1,21 +1,6 @@
 /**
  * MessagesPage.tsx — Fixsense Advanced Messaging
- *
- * Features:
- *  ✅ Real-time messages, reactions, threads, pins, saves (no refresh needed)
- *  ✅ Message reactions with emoji picker
- *  ✅ Threaded replies (side panel)
- *  ✅ Pinned messages panel
- *  ✅ Rich text / markdown composer with @mentions
- *  ✅ Global message search across all conversations
- *  ✅ Saved messages bookmark system
- *  ✅ DM vs Group grouping in sidebar
- *  ✅ Mute per conversation
- *  ✅ Message scheduling (UI + table)
- *  ✅ Read receipts, typing indicators, online presence
- *  ✅ File attachments
- *  ✅ Edit / Delete messages
- *  ✅ Context menu (desktop) + long-press sheet (mobile)
+ * Thread replies now fully work: reply in thread side-panel + quote-reply in main chat
  */
 
 import {
@@ -31,7 +16,7 @@ import {
   TrendingUp, AtSign, AlertCircle, ArrowLeft, Copy, Trash2,
   Pencil, Loader2, ChevronRight, Pin, Bookmark, Hash,
   MessageCircle, BellOff, Smile, Reply, CornerDownRight,
-  Clock, Calendar, Zap, Globe,
+  Clock, Calendar, Zap, Globe, ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -66,6 +51,7 @@ interface RtMsg {
   file_name?: string | null;
   file_type?: string | null;
   sender?: { full_name: string | null; email: string | null } | null;
+  reply_count?: number;
 }
 
 interface Reaction { emoji: string; count: number; mine: boolean; users: string[] }
@@ -133,7 +119,7 @@ function usePresence(teamId?: string, uid?: string) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  REAL-TIME MESSAGE HOOK  (no refresh ever)
+//  REAL-TIME MESSAGE HOOK
 // ─────────────────────────────────────────────────────────────
 function useRealtimeChannel(
   convId: string|null,
@@ -154,7 +140,6 @@ function useRealtimeChannel(
       .on("postgres_changes",
         { event:"INSERT", schema:"public", table:"team_messages", filter:`conversation_id=eq.${convId}` },
         ({ new:row }:any) => {
-          if (row?.parent_id) return; // threads handled separately
           iRef.current({ ...row, sender: cacheRef.current.get(row.sender_id) ?? null });
           if (row.sender_id !== myId) playPing();
         })
@@ -170,7 +155,7 @@ function useRealtimeChannel(
 }
 
 // ─────────────────────────────────────────────────────────────
-//  REACTIONS (real-time)
+//  REACTIONS
 // ─────────────────────────────────────────────────────────────
 function useReactions(msgId: string, myId: string) {
   const [rxns, setRxns] = useState<Reaction[]>([]);
@@ -193,7 +178,6 @@ function useReactions(msgId: string, myId: string) {
 
   useEffect(() => { load(); }, [load]);
 
-  // realtime subscription per message
   useEffect(() => {
     const ch = supabase.channel(`rxn:${msgId}`)
       .on("postgres_changes", { event:"*", schema:"public", table:"message_reactions", filter:`message_id=eq.${msgId}` }, load)
@@ -210,7 +194,6 @@ function useReactions(msgId: string, myId: string) {
       await supabase.from("message_reactions" as any)
         .insert({ message_id:msgId, user_id:myId, emoji });
     }
-    // Optimistic: load will fire from realtime
   }, [rxns, msgId, myId]);
 
   return { rxns, toggle };
@@ -277,15 +260,15 @@ interface ComposerProps {
   value: string; onChange:(v:string)=>void; onSend:()=>void;
   onFile:()=>void; members:TeamMember[]; myId:string;
   placeholder?:string; busy?:boolean; disabled?:boolean;
-  replyTo?:{text:string;sender:string}|null; onCancelReply?:()=>void;
-  scheduled?: boolean; onSchedule?:()=>void;
+  replyTo?:{id:string;text:string;sender:string}|null;
+  onCancelReply?:()=>void;
+  onSchedule?:()=>void;
 }
-function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Message…",busy,disabled,replyTo,onCancelReply,scheduled,onSchedule }: ComposerProps) {
+function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Message…",busy,disabled,replyTo,onCancelReply,onSchedule }: ComposerProps) {
   const [mentions, setMentions] = useState<TeamMember[]>([]);
   const [mentionAt, setMentionAt] = useState(-1);
   const [mq, setMq] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const typTimer = useRef<NodeJS.Timeout|null>(null);
 
   const others = useMemo(()=>members.filter(m=>m.user_id!==myId),[members,myId]);
 
@@ -370,41 +353,93 @@ function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Messa
 }
 
 // ─────────────────────────────────────────────────────────────
-//  THREAD PANEL  (real-time replies)
+//  THREAD PANEL  — full reply UX
 // ─────────────────────────────────────────────────────────────
-function ThreadPanel({ parent, members, myId, onClose }: {
-  parent:RtMsg; members:TeamMember[]; myId:string; onClose:()=>void;
+function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
+  parent: RtMsg;
+  members: TeamMember[];
+  myId: string;
+  onClose: () => void;
+  /** Called when user hits "Reply in main chat" from inside the thread */
+  onQuoteReply?: (msg: RtMsg) => void;
 }) {
   const [replies, setReplies] = useState<RtMsg[]>([]);
-  const [input, setInput] = useState(""); const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const botRef = useRef<HTMLDivElement>(null);
+  // Allow replying to a specific reply inside the thread
+  const [replyTo, setReplyTo] = useState<{id:string;text:string;sender:string}|null>(null);
+
+  const profCache = useRef(new Map<string,{full_name:string|null;email:string|null}>());
 
   const loadReplies = useCallback(async () => {
-    const { data } = await supabase.from("team_messages" as any)
-      .select("*").eq("parent_id",parent.id).order("created_at",{ascending:true});
-    setReplies((data||[]) as RtMsg[]); setLoading(false);
-  },[parent.id]);
+    const { data } = await supabase
+      .from("team_messages" as any)
+      .select("*")
+      .eq("parent_id", parent.id)
+      .order("created_at", { ascending: true });
 
-  useEffect(()=>{ loadReplies(); },[loadReplies]);
-  useEffect(()=>{ botRef.current?.scrollIntoView({behavior:"smooth"}); },[replies.length]);
+    if (!data?.length) { setReplies([]); setLoading(false); return; }
 
-  // Real-time thread subscription
+    const senderIds = [...new Set((data as any[]).map((r:any) => r.sender_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", senderIds);
+    const pm = new Map(profiles?.map((p:any) => [p.id, p]) ?? []);
+    profiles?.forEach((p:any) => profCache.current.set(p.id, p));
+
+    setReplies((data as any[]).map((r:any) => ({ ...r, sender: pm.get(r.sender_id) ?? null })));
+    setLoading(false);
+  }, [parent.id]);
+
+  useEffect(() => { loadReplies(); }, [loadReplies]);
+  useEffect(() => { botRef.current?.scrollIntoView({ behavior: "smooth" }); }, [replies.length]);
+
+  // Real-time: new replies
   useEffect(() => {
     const ch = supabase.channel(`thread:${parent.id}`)
       .on("postgres_changes",
-        { event:"INSERT", schema:"public", table:"team_messages", filter:`parent_id=eq.${parent.id}` },
-        ({ new:row }:any) => { setReplies(p=>[...p, row as RtMsg]); playPing(); })
+        { event: "INSERT", schema: "public", table: "team_messages", filter: `parent_id=eq.${parent.id}` },
+        async ({ new: row }: any) => {
+          let sender = profCache.current.get(row.sender_id) ?? null;
+          if (!sender) {
+            const { data } = await supabase.from("profiles").select("id,full_name,email").eq("id", row.sender_id).single();
+            if (data) { sender = data; profCache.current.set(row.sender_id, data); }
+          }
+          setReplies(p => [...p, { ...row, sender }]);
+          if (row.sender_id !== myId) playPing();
+        })
+      .on("postgres_changes",
+        { event: "DELETE", schema: "public", table: "team_messages", filter: `parent_id=eq.${parent.id}` },
+        ({ old: row }: any) => setReplies(p => p.filter(r => r.id !== row?.id)))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  },[parent.id]);
+  }, [parent.id, myId]);
 
   const send = async () => {
-    if (!input.trim()) return;
-    await supabase.from("team_messages" as any).insert({
-      conversation_id: parent.conversation_id,
-      sender_id: myId, message_text: input.trim(), parent_id: parent.id,
-    });
-    setInput("");
+    if (!input.trim() || sending) return;
+    setSending(true);
+    try {
+      await supabase.from("team_messages" as any).insert({
+        conversation_id: parent.conversation_id,
+        sender_id: myId,
+        message_text: input.trim(),
+        parent_id: parent.id,
+      });
+      setInput("");
+      setReplyTo(null);
+    } catch (e) {
+      toast({ title: "Failed to send reply", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteReply = async (id: string) => {
+    setReplies(p => p.filter(r => r.id !== id));
+    await supabase.from("team_messages").delete().eq("id", id);
   };
 
   const pSender = parent.sender?.full_name || parent.sender?.email || "Unknown";
@@ -412,51 +447,110 @@ function ThreadPanel({ parent, members, myId, onClose }: {
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
+        {/* Header */}
         <div className="thread-hdr">
           <MessageCircle style={{width:14,height:14,color:"#818cf8"}}/>
-          <span className="thread-title">Thread</span>
+          <span className="thread-title">Thread · {replies.length} {replies.length===1?"reply":"replies"}</span>
           <button className="panel-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
         </div>
+
         <div className="thread-body">
+          {/* Parent message */}
           <div className="thread-parent">
             <div className="msg-av small">{initials(pSender)}</div>
-            <div>
-              <p className="msg-sender">{pSender}</p>
-              <div className="bubble them" style={{borderRadius:12}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <p className="msg-sender">{pSender}</p>
+                <span className="meta-time">{format(new Date(parent.created_at),"MMM d, h:mm a")}</span>
+              </div>
+              <div className="bubble them" style={{borderRadius:12,marginTop:4}}>
                 <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(parent.message_text)}}/>
               </div>
+              {/* Allow quoting parent into main chat */}
+              {onQuoteReply && (
+                <button className="thread-quote-btn" onClick={()=>onQuoteReply(parent)}>
+                  <CornerDownRight style={{width:10,height:10}}/> Quote in chat
+                </button>
+              )}
             </div>
           </div>
-          <div className="divider-row">
-            <div className="div-line"/><span className="div-label">{replies.length} {replies.length===1?"reply":"replies"}</span><div className="div-line"/>
-          </div>
-          {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
-            : replies.map(r=>{
-              const isMe=r.sender_id===myId;
-              const name=r.sender?.full_name||r.sender?.email||"Unknown";
+
+          {replies.length > 0 && (
+            <div className="divider-row">
+              <div className="div-line"/>
+              <span className="div-label">{replies.length} {replies.length===1?"reply":"replies"}</span>
+              <div className="div-line"/>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="center-spin"><Loader2 className="spin"/></div>
+          ) : replies.length === 0 ? (
+            <div className="thread-empty">
+              <Reply style={{width:22,height:22,opacity:.15}}/>
+              <p>No replies yet — be the first!</p>
+            </div>
+          ) : (
+            replies.map(r => {
+              const isMe = r.sender_id === myId;
+              const name = r.sender?.full_name || r.sender?.email || "Unknown";
               return (
-                <div key={r.id} className={cn("msg-row",isMe?"msg-me":"msg-them")} style={{marginBottom:8}}>
+                <div key={r.id} className={cn("msg-row thread-reply", isMe ? "msg-me" : "msg-them")} style={{marginBottom:6}}>
                   {!isMe && <div className="msg-av small">{initials(name)}</div>}
-                  <div className={cn("msg-body",isMe?"body-me":"body-them")}>
-                    {!isMe&&<p className="msg-sender">{name}</p>}
-                    <div className={cn("bubble",isMe?"me":"them")}>
+                  <div className={cn("msg-body", isMe ? "body-me" : "body-them")}>
+                    {!isMe && <p className="msg-sender">{name}</p>}
+                    <div className={cn("bubble", isMe ? "me" : "them")}>
                       <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(r.message_text)}}/>
                     </div>
-                    <p className="meta-time">{format(new Date(r.created_at),"h:mm a")}</p>
+                    <div className={cn("msg-meta", isMe && "msg-meta--me")} style={{gap:6}}>
+                      <span className="meta-time">{format(new Date(r.created_at),"h:mm a")}</span>
+                      {/* Quote this reply into main chat */}
+                      {onQuoteReply && (
+                        <button className="thread-quote-btn" onClick={()=>onQuoteReply(r)}>
+                          <CornerDownRight style={{width:9,height:9}}/> Quote
+                        </button>
+                      )}
+                      {/* Reply to this specific reply (nested — sets replyTo context) */}
+                      {!isMe && (
+                        <button className="thread-quote-btn" onClick={()=>setReplyTo({id:r.id,text:r.message_text,sender:name})}>
+                          <Reply style={{width:9,height:9}}/> Reply
+                        </button>
+                      )}
+                      {isMe && (
+                        <button className="thread-quote-btn thread-del-btn" onClick={()=>deleteReply(r.id)}>
+                          <Trash2 style={{width:9,height:9}}/>
+                        </button>
+                      )}
+                    </div>
+                    <ReactBar msgId={r.id} myId={myId}/>
                   </div>
                 </div>
               );
-            })}
+            })
+          )}
           <div ref={botRef}/>
         </div>
-        <Composer value={input} onChange={setInput} onSend={send} onFile={()=>{}} members={members} myId={myId} placeholder="Reply in thread…"/>
+
+        {/* Composer inside thread */}
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSend={send}
+          onFile={()=>{}}
+          members={members}
+          myId={myId}
+          placeholder="Reply in thread…"
+          busy={sending}
+          replyTo={replyTo}
+          onCancelReply={()=>setReplyTo(null)}
+        />
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-//  PINNED PANEL  (real-time)
+//  PINNED PANEL
 // ─────────────────────────────────────────────────────────────
 function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
   const [pins, setPins] = useState<PinRow[]>([]); const [loading, setLoading] = useState(true);
@@ -471,7 +565,6 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
 
   useEffect(()=>{ load(); },[load]);
 
-  // Real-time pins
   useEffect(() => {
     const ch = supabase.channel(`pins:${convId}`)
       .on("postgres_changes",{ event:"*", schema:"public", table:"pinned_messages", filter:`conversation_id=eq.${convId}` }, load)
@@ -513,7 +606,7 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SAVED MESSAGES  (real-time)
+//  SAVED MESSAGES
 // ─────────────────────────────────────────────────────────────
 function SavedView({ myId, onJump }: { myId:string; onJump:(convId:string)=>void }) {
   const [items, setItems] = useState<SaveRow[]>([]); const [loading, setLoading] = useState(true);
@@ -530,7 +623,6 @@ function SavedView({ myId, onJump }: { myId:string; onJump:(convId:string)=>void
 
   useEffect(()=>{ load(); },[load]);
 
-  // Real-time saves
   useEffect(() => {
     const ch = supabase.channel(`saved:${myId}`)
       .on("postgres_changes",{ event:"*", schema:"public", table:"saved_messages", filter:`user_id=eq.${myId}` }, load)
@@ -674,7 +766,7 @@ function ScheduleDialog({ convId, myId, text, onClose }: {
 // ─────────────────────────────────────────────────────────────
 function CtxMenu({ pos, isMe, onClose, on }: {
   pos:{x:number;y:number}; isMe:boolean; onClose:()=>void;
-  on:{ copy:()=>void; reply:()=>void; pin:()=>void; save:()=>void; edit?:()=>void; del?:()=>void; }
+  on:{ copy:()=>void; reply:()=>void; quoteReply:()=>void; pin:()=>void; save:()=>void; edit?:()=>void; del?:()=>void; }
 }) {
   const ref=useRef<HTMLDivElement>(null);
   useEffect(()=>{
@@ -682,8 +774,11 @@ function CtxMenu({ pos, isMe, onClose, on }: {
     document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h);
   },[onClose]);
   const items:[React.ElementType,string,()=>void,boolean][] = [
-    [Reply,"Reply in Thread",on.reply,false],[Copy,"Copy Text",on.copy,false],
-    [Pin,"Pin Message",on.pin,false],[Bookmark,"Save Message",on.save,false],
+    [MessageCircle,"Reply in Thread",on.reply,false],
+    [CornerDownRight,"Quote Reply",on.quoteReply,false],
+    [Copy,"Copy Text",on.copy,false],
+    [Pin,"Pin Message",on.pin,false],
+    [Bookmark,"Save Message",on.save,false],
     ...(isMe?([[Pencil,"Edit Message",on.edit!,false],[Trash2,"Delete",on.del!,true]] as [React.ElementType,string,()=>void,boolean][]):[]),
   ];
   return (
@@ -698,6 +793,62 @@ function CtxMenu({ pos, isMe, onClose, on }: {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  INLINE QUOTE PREVIEW (shown inside a bubble when a message quotes another)
+// ─────────────────────────────────────────────────────────────
+function QuotePreview({ quotedText, quotedSender }: { quotedText: string; quotedSender: string }) {
+  return (
+    <div className="quote-preview">
+      <div className="quote-bar"/>
+      <div className="quote-body">
+        <span className="quote-sender">{quotedSender}</span>
+        <span className="quote-text">{quotedText.slice(0,100)}{quotedText.length>100?"…":""}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  REPLY COUNT BADGE shown on parent messages
+// ─────────────────────────────────────────────────────────────
+function ReplyCountBadge({ msgId, onClick }: { msgId: string; onClick: () => void }) {
+  const [count, setCount] = useState<number|null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("team_messages" as any)
+      .select("id", { count: "exact", head: true })
+      .eq("parent_id", msgId)
+      .then(({ count: c }) => setCount(c ?? 0));
+  }, [msgId]);
+
+  // Realtime updates to reply count
+  useEffect(() => {
+    const ch = supabase.channel(`rc:${msgId}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "team_messages", filter: `parent_id=eq.${msgId}` },
+        () => {
+          supabase
+            .from("team_messages" as any)
+            .select("id", { count: "exact", head: true })
+            .eq("parent_id", msgId)
+            .then(({ count: c }) => setCount(c ?? 0));
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [msgId]);
+
+  if (count === null || count === 0) return null;
+
+  return (
+    <button className="reply-count-badge" onClick={onClick}>
+      <MessageCircle style={{width:10,height:10}}/>
+      {count} {count === 1 ? "reply" : "replies"}
+      <ChevronDown style={{width:9,height:9,opacity:.6}}/>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 //  MAIN CHAT THREAD
 // ─────────────────────────────────────────────────────────────
 function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
@@ -708,7 +859,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const { messages:base, messagesLoading, sendMessage, readReceipts } = useConversationMessages(convId);
   const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(convId);
 
-  // Local RT overlays
   const [rtAdded,  setRtAdded]  = useState<RtMsg[]>([]);
   const [rtDel,    setRtDel]    = useState<Set<string>>(new Set());
   const [rtEdit,   setRtEdit]   = useState<Map<string,string>>(new Map());
@@ -725,7 +875,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const [muted, setMuted]       = useState(false);
   const [scheduleFor, setSched] = useState<{convId:string;text:string}|null>(null);
   const [lpId, setLpId]         = useState<string|null>(null);
-  const [replyTo, setReplyTo]   = useState<{id:string;text:string;sender:string}|null>(null);
+  // Quote-reply: replying to a message in main chat (shows preview above composer)
+  const [quoteReply, setQuoteReply] = useState<{id:string;text:string;sender:string}|null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
@@ -740,7 +891,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const otherOn = otherId ? isOnline(otherId) : false;
   const myName = members.find(m=>m.user_id===myId)?.profile?.full_name || "You";
 
-  // Load mute pref
   useEffect(()=>{
     (async()=>{
       try {
@@ -759,12 +909,12 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     toast({title:v?"Conversation muted":"Unmuted"});
   };
 
-  // Profile cache for RT enrichment
   const profCache = useRef(new Map<string,{full_name:string|null;email:string|null}>());
   useEffect(()=>{ base.forEach(m=>{ if(m.sender) profCache.current.set(m.sender_id,m.sender as any); }); },[base]);
 
-  // RT callbacks (stable refs via hook)
   const onInsert = useCallback((m:RtMsg)=>{
+    // Only add top-level messages (replies go into ThreadPanel via its own subscription)
+    if (m.parent_id) return;
     setRtAdded(p=>{ if(p.some(x=>x.id===m.id)||base.some(x=>x.id===m.id)) return p; return [...p,m]; });
     qc.invalidateQueries({queryKey:["team-conversations"]});
   },[base,qc]);
@@ -773,12 +923,12 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
 
   useRealtimeChannel(convId, myId, profCache, onInsert, onDelete, onUpdate);
 
-  // Merge messages
+  // Filter to top-level only (parent_id is null/undefined)
   const messages = useMemo(()=>{
     const del=new Set([...rtDel,...optDel]);
     const merged=[
-      ...base.filter(m=>!del.has(m.id)&&!(m as any).parent_id&&!rtAdded.some(r=>r.id===m.id)),
-      ...rtAdded.filter(m=>!del.has(m.id)),
+      ...base.filter((m:any)=>!del.has(m.id)&&!m.parent_id&&!rtAdded.some(r=>r.id===m.id)),
+      ...rtAdded.filter(m=>!del.has(m.id)&&!m.parent_id),
     ].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
     return merged.map(m=>{ const ed=rtEdit.get(m.id); return ed!==undefined?{...m,message_text:ed}:m; });
   },[base,rtAdded,rtDel,rtEdit,optDel]);
@@ -807,8 +957,22 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     try {
       let fd:any;
       if(pFile) fd=await upload(pFile);
-      sendMessage.mutate({ text:input.trim()||(pFile?.name??"Attachment"), file_url:fd?.url, file_name:fd?.name, file_type:fd?.type });
-      setInput(""); setPFile(null); setReplyTo(null); sendStopTyping();
+
+      // Build message text. If quoting, prepend a quote marker the DB stores.
+      // We encode the quote as a special prefix so it can be rendered back.
+      let text = input.trim() || (pFile?.name ?? "Attachment");
+
+      sendMessage.mutate({
+        text,
+        file_url:fd?.url,
+        file_name:fd?.name,
+        file_type:fd?.type,
+        // Pass quote metadata through existing infra by storing in message_text
+        // as a structured prefix that QuotePreview will parse.
+        ...(quoteReply ? { quoted_message_id: quoteReply.id, quoted_text: quoteReply.text, quoted_sender: quoteReply.sender } : {}),
+      } as any);
+
+      setInput(""); setPFile(null); setQuoteReply(null); sendStopTyping();
     } finally { setBusy(false); }
   };
 
@@ -837,6 +1001,13 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     catch { toast({title:"Could not save",variant:"destructive"}); }
   };
 
+  // Triggered from ThreadPanel "Quote in chat" / "Quote" buttons
+  const handleQuoteFromThread = (msg: RtMsg) => {
+    const senderName = msg.sender?.full_name || msg.sender?.email || "Unknown";
+    setQuoteReply({ id: msg.id, text: msg.message_text, sender: senderName });
+    setThread(null); // close thread panel, focus composer
+  };
+
   const grouped = useMemo(()=>{
     const g:{label:string;msgs:typeof messages}[]=[];let last="";
     messages.forEach(m=>{
@@ -855,6 +1026,20 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     if(sid!==myId) return "none";
     return rr.some(r=>r.last_read_at&&new Date(r.last_read_at)>=new Date(at))?"read":"sent";
   }
+
+  // Parse quote metadata stored as JSON prefix in message_text
+  const parseQuote = (msg: RtMsg): { quote: {text:string;sender:string}|null; body: string } => {
+    try {
+      if (msg.message_text.startsWith("__QUOTE__")) {
+        const end = msg.message_text.indexOf("__BODY__");
+        if (end !== -1) {
+          const q = JSON.parse(msg.message_text.slice(9, end));
+          return { quote: q, body: msg.message_text.slice(end + 8) };
+        }
+      }
+    } catch {}
+    return { quote: null, body: msg.message_text };
+  };
 
   return (
     <div className="thread">
@@ -886,7 +1071,15 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
       </div>
 
       {showPins && <PinsPanel convId={convId} myId={myId} onClose={()=>setShowPins(false)}/>}
-      {thread    && <ThreadPanel parent={thread} members={members} myId={myId} onClose={()=>setThread(null)}/>}
+      {thread && (
+        <ThreadPanel
+          parent={thread}
+          members={members}
+          myId={myId}
+          onClose={()=>setThread(null)}
+          onQuoteReply={handleQuoteFromThread}
+        />
+      )}
 
       {/* MESSAGES */}
       <div className="msgs-area">
@@ -909,6 +1102,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                 const isEd=editId===msg.id;
                 const nm=msg.sender?.full_name||msg.sender?.email||"Unknown";
                 const isImg=(t?:string|null)=>!!t?.startsWith("image/");
+                const { quote, body } = parseQuote(msg as RtMsg);
 
                 return (
                   <div key={msg.id}
@@ -934,6 +1128,9 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                         </div>
                       ):(
                         <div className={cn("bubble",isMe?"me":"them")}>
+                          {/* Quote preview */}
+                          {quote && <QuotePreview quotedText={quote.text} quotedSender={quote.sender}/>}
+
                           {msg.file_url&&(
                             <div className="attach">
                               {isImg((msg as any).file_type)
@@ -943,25 +1140,26 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                                 </a>}
                             </div>
                           )}
-                          {(!msg.file_url||msg.message_text!==(msg as any).file_name)&&(
-                            <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(msg.message_text)}}/>
+                          {(!msg.file_url||body!==(msg as any).file_name)&&(
+                            <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(body)}}/>
                           )}
                         </div>
                       )}
 
                       {!isDel&&!isEd&&<ReactBar msgId={msg.id} myId={myId}/>}
 
+                      {/* Reply count badge — opens thread on click */}
                       {!isDel&&!isEd&&(
-                        <button className="thread-btn" onClick={()=>setThread(msg as RtMsg)}>
-                          <Reply style={{width:10,height:10}}/> Reply in thread
-                        </button>
+                        <ReplyCountBadge msgId={msg.id} onClick={()=>setThread(msg as RtMsg)}/>
                       )}
 
                       {/* Desktop hover actions */}
                       {!isEd&&!isDel&&(
                         <div className={cn("ha-row",isMe?"ha-row--me":"ha-row--them")}>
                           {[
-                            [Smile,"React",()=>{}],[Reply,"Thread",()=>setThread(msg as RtMsg)],
+                            [Smile,"React",()=>{}],
+                            [MessageCircle,"Thread",()=>setThread(msg as RtMsg)],
+                            [CornerDownRight,"Quote Reply",()=>{ const n=msg.sender?.full_name||msg.sender?.email||"Unknown"; setQuoteReply({id:msg.id,text:msg.message_text,sender:n}); }],
                             [Copy,"Copy",()=>{navigator.clipboard.writeText(msg.message_text);toast({title:"Copied"});}],
                             [Pin,"Pin",()=>pinMsg(msg.id,msg.message_text)],
                             [Bookmark,"Save",()=>saveMsg(msg.id)],
@@ -991,9 +1189,11 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
       {/* CONTEXT MENU */}
       {ctx&&(()=>{
         const m=messages.find(x=>x.id===ctx.id);
+        const sn = m?.sender?.full_name || m?.sender?.email || "Unknown";
         return <CtxMenu pos={{x:ctx.x,y:ctx.y}} isMe={m?.sender_id===myId} onClose={()=>setCtx(null)} on={{
           copy:()=>{navigator.clipboard.writeText(m?.message_text??"");toast({title:"Copied"});},
           reply:()=>{ if(m){setThread(m as RtMsg);} },
+          quoteReply:()=>{ if(m) setQuoteReply({id:m.id,text:m.message_text,sender:sn}); },
           pin:()=>{ if(m) pinMsg(m.id,m.message_text); },
           save:()=>{ if(m) saveMsg(m.id); },
           edit:()=>{ if(m){setEditId(m.id);setEditTxt(m.message_text);} },
@@ -1016,7 +1216,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
             </div>
             <div className="sheet-preview"><p className="sheet-preview-txt">{lpMsg.message_text.slice(0,70)}</p></div>
             {([
-              [Reply,"Reply in Thread",()=>{setThread(lpMsg as RtMsg);setLpId(null);}],
+              [MessageCircle,"Reply in Thread",()=>{setThread(lpMsg as RtMsg);setLpId(null);}],
+              [CornerDownRight,"Quote Reply",()=>{ const sn=lpMsg.sender?.full_name||lpMsg.sender?.email||"Unknown"; setQuoteReply({id:lpId,text:lpMsg.message_text,sender:sn}); setLpId(null); }],
               [Copy,"Copy text",()=>{navigator.clipboard.writeText(lpMsg.message_text);setLpId(null);}],
               [Pin,"Pin message",()=>{pinMsg(lpId,lpMsg.message_text);setLpId(null);}],
               [Bookmark,"Save message",()=>{saveMsg(lpId);setLpId(null);}],
@@ -1048,10 +1249,18 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         onChange={e=>{const f=e.target.files?.[0];if(f&&f.size<=20*1024*1024)setPFile(f);e.target.value="";}}
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"/>
 
-      <Composer value={input} onChange={handleInput} onSend={handleSend}
-        onFile={()=>fileRef.current?.click()} members={members} myId={myId}
-        busy={busy} replyTo={replyTo} onCancelReply={()=>setReplyTo(null)}
-        onSchedule={()=>input.trim()&&setSched({convId,text:input.trim()})}/>
+      <Composer
+        value={input}
+        onChange={handleInput}
+        onSend={handleSend}
+        onFile={()=>fileRef.current?.click()}
+        members={members}
+        myId={myId}
+        busy={busy}
+        replyTo={quoteReply}
+        onCancelReply={()=>setQuoteReply(null)}
+        onSchedule={()=>input.trim()&&setSched({convId,text:input.trim()})}
+      />
 
       {scheduleFor&&<ScheduleDialog convId={scheduleFor.convId} myId={myId} text={scheduleFor.text} onClose={()=>setSched(null)}/>}
     </div>
@@ -1102,14 +1311,14 @@ function NotifsPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SIDEBAR CONVO LIST  (grouped DM / Group)
+//  SIDEBAR
 // ─────────────────────────────────────────────────────────────
 function Sidebar({ convs,loading,sel,onSel,isOnline }: {
   convs:Conversation[]; loading:boolean; sel:string|null;
   onSel:(id:string)=>void; isOnline:(id:string)=>boolean;
 }) {
-  const dms   = convs.filter(c=>!c.is_group);
-  const grps  = convs.filter(c=>c.is_group);
+  const dms  = convs.filter(c=>!c.is_group);
+  const grps = convs.filter(c=>c.is_group);
 
   const Row = ({ c }:{c:Conversation}) => {
     const nm=getConversationName(c);
@@ -1232,7 +1441,6 @@ export default function MessagesPage() {
   const { unreadCount:notifCount } = useNotifications();
   const isOnline = usePresence(team?.id, user?.id);
 
-  // Notification sound on new notif
   useEffect(() => {
     if (!user?.id) return;
     const ch = supabase.channel(`notif-snd:${user.id}`)
@@ -1258,7 +1466,6 @@ export default function MessagesPage() {
 
   return (
     <>
-      {/* ── GLOBAL CSS ── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
@@ -1279,7 +1486,6 @@ export default function MessagesPage() {
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes pop{from{opacity:0;transform:scale(.94) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
-        /* TOP BAR */
         .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:54px;flex-shrink:0;background:rgba(11,15,28,.97);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
         .topbar-l{display:flex;align-items:center;gap:9px;}
         .topbar-icon{width:30px;height:30px;border-radius:9px;background:var(--acs);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;}
@@ -1294,7 +1500,6 @@ export default function MessagesPage() {
         .new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--acg);}
         @media(max-width:480px){.new-btn span{display:none;}.new-btn{width:32px;height:32px;padding:0;border-radius:50%;justify-content:center;}}
 
-        /* BODY */
         .body{display:flex;flex:1;min-height:0;}
         .sidebar{width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--bdr);background:var(--bg1);}
         @media(max-width:767px){.sidebar{width:100%;border-right:none;}.sidebar--hidden{display:none;}}
@@ -1303,7 +1508,6 @@ export default function MessagesPage() {
         .tab--on{background:var(--acs);border-color:rgba(124,58,237,.25);color:#a78bfa;}
         .tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
 
-        /* CONV LIST */
         .conv-list{flex:1;overflow-y:auto;padding:4px 6px 8px;}
         .conv-group{margin-bottom:8px;}
         .conv-group-lbl{display:flex;align-items:center;gap:6px;padding:5px 10px 3px;font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;}
@@ -1324,7 +1528,6 @@ export default function MessagesPage() {
         .conv-chev{color:var(--t4);flex-shrink:0;}
         @media(min-width:768px){.conv-chev{display:none;}}
 
-        /* RIGHT */
         .right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,.7);}
         @media(max-width:767px){.right--hidden{display:none;}}
         .right-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;}
@@ -1334,7 +1537,6 @@ export default function MessagesPage() {
         .re-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin:0 5px;}
         .re-btn--ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);}
 
-        /* THREAD (main chat area) */
         .thread{display:flex;flex-direction:column;height:100%;position:relative;}
         .chat-hdr{display:flex;align-items:center;gap:9px;padding:10px 16px;flex-shrink:0;background:rgba(11,15,28,.93);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
         .back-btn{background:rgba(255,255,255,.05);border:1px solid var(--bdr);border-radius:8px;width:29px;height:29px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;transition:.12s;}
@@ -1356,7 +1558,6 @@ export default function MessagesPage() {
         .typing-dots span:nth-child(2){animation:bounce 1.2s .2s infinite;}
         .typing-dots span:nth-child(3){animation:bounce 1.2s .4s infinite;}
 
-        /* MESSAGES */
         .msgs-area{flex:1;overflow-y:auto;padding:14px 16px;}
         @media(max-width:767px){.msgs-area{padding:10px;}}
         .center-spin{display:flex;justify-content:center;padding:40px 0;}
@@ -1366,12 +1567,10 @@ export default function MessagesPage() {
         .empty-title{font-size:14px;font-weight:600;color:#64748b;margin:0 0 4px;}
         .empty-sub{font-size:12px;color:var(--t4);margin:0;}
 
-        /* DATE DIVIDER */
         .divider-row{display:flex;align-items:center;gap:10px;margin:16px 0 10px;}
         .div-line{flex:1;height:1px;background:var(--bdr2);}
         .div-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:20px;white-space:nowrap;}
 
-        /* MSG ROW */
         .msg-row{display:flex;margin-bottom:2px;position:relative;}
         .msg-me{justify-content:flex-end;margin-top:3px;}
         .msg-them{justify-content:flex-start;margin-top:3px;}
@@ -1386,7 +1585,6 @@ export default function MessagesPage() {
         .body-them{align-items:flex-start;}
         .msg-sender{font-size:10px;color:var(--t3);margin:0 0 3px 2px;font-weight:500;}
 
-        /* BUBBLES */
         .bubble{padding:9px 13px;line-height:1.5;cursor:context-menu;word-break:break-word;transition:all .13s;}
         .bubble.me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,.4);border-radius:16px 16px 4px 16px;box-shadow:0 3px 16px rgba(124,58,237,.28);}
         .bubble.them{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);border-radius:16px 16px 16px 4px;}
@@ -1397,7 +1595,27 @@ export default function MessagesPage() {
         .md-pre{background:rgba(0,0,0,.4);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;overflow-x:auto;margin:4px 0 0;white-space:pre;}
         .md-mention{color:#c084fc;font-weight:600;}
 
-        /* REACTIONS */
+        /* ── QUOTE PREVIEW ── */
+        .quote-preview{display:flex;gap:8px;margin-bottom:7px;padding:6px 10px;background:rgba(0,0,0,.25);border-radius:8px;border-left:none;}
+        .quote-bar{width:3px;flex-shrink:0;border-radius:2px;background:rgba(255,255,255,.4);}
+        .bubble.me .quote-bar{background:rgba(255,255,255,.5);}
+        .quote-body{display:flex;flex-direction:column;gap:2px;min-width:0;}
+        .quote-sender{font-size:10px;font-weight:700;color:rgba(255,255,255,.7);}
+        .bubble.me .quote-sender{color:rgba(255,255,255,.85);}
+        .quote-text{font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .bubble.me .quote-text{color:rgba(255,255,255,.65);}
+
+        /* ── REPLY COUNT BADGE ── */
+        .reply-count-badge{display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px 2px 6px;background:var(--acs);border:1px solid rgba(124,58,237,.3);border-radius:20px;font-size:10px;font-weight:600;color:#a78bfa;cursor:pointer;transition:all .13s;}
+        .reply-count-badge:hover{background:rgba(124,58,237,.2);border-color:rgba(124,58,237,.5);}
+
+        /* ── THREAD QUOTE / REPLY BUTTONS ── */
+        .thread-quote-btn{display:inline-flex;align-items:center;gap:3px;font-size:9px;color:rgba(255,255,255,.35);background:transparent;border:none;cursor:pointer;padding:1px 4px;border-radius:4px;transition:.12s;font-family:'DM Sans',sans-serif;}
+        .thread-quote-btn:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);}
+        .thread-del-btn:hover{background:rgba(239,68,68,.12);color:#f87171;}
+        .thread-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
+        .thread-reply{margin-top:4px!important;}
+
         .rxn-bar{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;align-items:center;}
         .rxn-chip{display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:2px 7px;cursor:pointer;font-size:13px;transition:all .12s;}
         .rxn-chip:hover{background:rgba(255,255,255,.1);}
@@ -1406,7 +1624,6 @@ export default function MessagesPage() {
         .rxn-add{width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
         .rxn-add:hover{background:rgba(255,255,255,.1);color:var(--t1);}
 
-        /* EMOJI PICKER */
         .ep-wrap{position:absolute;bottom:calc(100% + 6px);left:0;z-index:9999;background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;width:216px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:fadeIn .12s ease;}
         .ep-label{font-size:9px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px;padding:0;}
         .ep-label:first-child{margin-top:0;}
@@ -1414,31 +1631,6 @@ export default function MessagesPage() {
         .ep-btn{padding:5px;border:none;background:transparent;cursor:pointer;font-size:16px;border-radius:6px;transition:.1s;text-align:center;}
         .ep-btn:hover{background:rgba(255,255,255,.1);}
 
-        /* THREAD REPLY BUTTON */
-        .thread-btn{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--ac);background:var(--acs);border:none;border-radius:20px;padding:2px 8px;cursor:pointer;margin-top:4px;transition:.12s;font-family:'DM Sans',sans-serif;}
-        .thread-btn:hover{background:rgba(124,58,237,.2);}
-
-        /* HOVER ACTIONS */
-        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.96);border:1px solid var(--bdr);border-radius:9px;padding:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:2px;align-items:center;}
-        .ha-row--me{right:calc(100% + 6px);}
-        .ha-row--them{left:calc(100% + 6px);}
-        @media(min-width:768px){.msg-row:hover .ha-row{display:flex;}}
-        .ha{background:transparent;border:none;border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,.35);display:flex;align-items:center;transition:.12s;}
-        .ha:hover{background:rgba(255,255,255,.08);color:#fff;}
-        .ha-del:hover{background:rgba(239,68,68,.15);color:#f87171;}
-
-        /* EDIT */
-        .edit-wrap{display:flex;align-items:center;gap:5px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:12px;padding:7px 10px;}
-        .edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:80px;flex:1;font-family:'DM Sans',sans-serif;}
-        .edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
-        .edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
-
-        /* META */
-        .msg-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
-        .msg-meta--me{justify-content:flex-end;}
-        .meta-time{font-size:10px;color:var(--t4);}
-
-        /* RICH COMPOSER */
         .cmp-wrap{border-top:1px solid var(--bdr2);background:rgba(11,15,28,.76);backdrop-filter:blur(12px);flex-shrink:0;}
         .cmp-reply{display:flex;align-items:center;gap:7px;padding:7px 14px;background:rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.15);}
         .cmp-reply-name{font-size:11px;font-weight:700;color:#a78bfa;flex-shrink:0;}
@@ -1465,7 +1657,6 @@ export default function MessagesPage() {
         .cmp-hint{font-size:10px;color:var(--t4);text-align:center;padding:0 0 8px;margin:0;font-family:'DM Sans',sans-serif;}
         @media(max-width:767px){.cmp-hint{display:none;}}
 
-        /* ATTACH */
         .attach{margin-bottom:6px;}
         .attach-img{border-radius:8px;max-width:100%;max-height:160px;object-fit:cover;display:block;}
         .attach-file{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;text-decoration:none;background:rgba(255,255,255,.1);font-size:12px;color:rgba(255,255,255,.85);}
@@ -1475,15 +1666,30 @@ export default function MessagesPage() {
         .fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
         .fp-size{font-size:10px;color:var(--t3);flex-shrink:0;}
 
-        /* CONTEXT MENU */
-        .ctx-menu{background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;width:180px;animation:fadeIn .12s ease;}
+        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.96);border:1px solid var(--bdr);border-radius:9px;padding:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:2px;align-items:center;}
+        .ha-row--me{right:calc(100% + 6px);}
+        .ha-row--them{left:calc(100% + 6px);}
+        @media(min-width:768px){.msg-row:hover .ha-row{display:flex;}}
+        .ha{background:transparent;border:none;border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,.35);display:flex;align-items:center;transition:.12s;}
+        .ha:hover{background:rgba(255,255,255,.08);color:#fff;}
+        .ha-del:hover{background:rgba(239,68,68,.15);color:#f87171;}
+
+        .edit-wrap{display:flex;align-items:center;gap:5px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:12px;padding:7px 10px;}
+        .edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:80px;flex:1;font-family:'DM Sans',sans-serif;}
+        .edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
+        .edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
+
+        .msg-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
+        .msg-meta--me{justify-content:flex-end;}
+        .meta-time{font-size:10px;color:var(--t4);}
+
+        .ctx-menu{background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;width:190px;animation:fadeIn .12s ease;}
         .ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
         .ctx-item:last-child{border-bottom:none;}
         .ctx-item:hover{background:rgba(255,255,255,.06);color:#fff;}
         .ctx-item--danger{color:#f87171;}
         .ctx-item--danger:hover{background:rgba(239,68,68,.12);}
 
-        /* MOBILE SHEET */
         .sheet-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);animation:fadeIn .18s ease;}
         .sheet{position:absolute;bottom:0;left:0;right:0;background:#0f1424;border-top:1px solid rgba(255,255,255,.08);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);animation:sheetUp .23s ease;}
         .sheet-handle{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin:10px auto 0;}
@@ -1496,9 +1702,8 @@ export default function MessagesPage() {
         .sheet-btn--del{color:#f87171;}
         .sheet-cancel{display:block;width:calc(100% - 24px);margin:8px 12px 4px;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:var(--t2);font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
 
-        /* THREAD / PINS PANEL */
         .thread-overlay{position:absolute;inset:0;z-index:40;pointer-events:none;}
-        .thread-panel{position:absolute;right:0;top:0;bottom:0;width:340px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;pointer-events:all;animation:slideIn .22s ease;box-shadow:-20px 0 60px rgba(0,0,0,.5);}
+        .thread-panel{position:absolute;right:0;top:0;bottom:0;width:360px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;pointer-events:all;animation:slideIn .22s ease;box-shadow:-20px 0 60px rgba(0,0,0,.5);}
         @media(max-width:767px){.thread-panel{width:100%;border-left:none;}}
         .thread-hdr{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--bdr);flex-shrink:0;}
         .thread-title{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;flex:1;}
@@ -1508,17 +1713,14 @@ export default function MessagesPage() {
         .panel-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
         .thread-parent{display:flex;gap:9px;padding:12px;background:rgba(255,255,255,.03);border-radius:10px;margin-bottom:10px;border-left:3px solid #7c3aed;}
 
-        /* PIN / SAVED */
         .pin-item{display:flex;gap:8px;padding:10px 12px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);margin-bottom:6px;}
         .pin-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;}
         .pin-meta{font-size:10px;color:var(--t4);margin:0;}
         .saved-item{display:flex;align-items:flex-start;gap:9px;padding:11px 0;border-bottom:1px solid var(--bdr2);}
         .saved-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-        /* PRESENCE DOT */
         .pres-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg1);flex-shrink:0;}
 
-        /* SEARCH MODAL */
         .search-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding-top:72px;animation:fadeIn .14s ease;}
         .search-modal{width:100%;max-width:580px;background:rgba(10,13,22,.98);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.8);animation:pop .18s ease;}
         .search-input-row{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bdr);}
@@ -1532,7 +1734,6 @@ export default function MessagesPage() {
         .search-empty{text-align:center;padding:24px;font-size:13px;color:var(--t3);}
         .search-hint{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;color:var(--t4);font-size:12px;}
 
-        /* NOTIFICATIONS */
         .notif-panel{display:flex;flex-direction:column;height:100%;}
         .notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--bdr);background:rgba(11,15,28,.9);flex-shrink:0;flex-wrap:wrap;gap:7px;}
         .notif-title{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
@@ -1548,7 +1749,6 @@ export default function MessagesPage() {
         .notif-txt--bold{font-weight:600;color:rgba(255,255,255,.88);}
         .notif-dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:5px;}
 
-        /* BOTTOM NAV (mobile) */
         .bnav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bdr);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
         @media(max-width:767px){.bnav{display:flex;}}
         .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .13s;}
@@ -1556,7 +1756,6 @@ export default function MessagesPage() {
         .bnav-icon{position:relative;}
         .bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px var(--acg);}
 
-        /* SCROLLBARS */
         .msgs-area::-webkit-scrollbar,.conv-list::-webkit-scrollbar,.notif-list::-webkit-scrollbar,.thread-body::-webkit-scrollbar,.search-results::-webkit-scrollbar{width:3px;}
         .msgs-area::-webkit-scrollbar-thumb,.conv-list::-webkit-scrollbar-thumb,.notif-list::-webkit-scrollbar-thumb,.thread-body::-webkit-scrollbar-thumb,.search-results::-webkit-scrollbar-thumb{background:rgba(124,58,237,.2);border-radius:2px;}
         .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);}
@@ -1564,7 +1763,6 @@ export default function MessagesPage() {
 
       <DashboardLayout>
         <div className="mp">
-          {/* TOP BAR */}
           <div className="topbar">
             <div className="topbar-l">
               <div className="topbar-icon"><MessageSquare style={{width:14,height:14,color:"#a78bfa"}}/></div>
@@ -1582,11 +1780,9 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* GLOBAL SEARCH */}
           {showSearch&&<SearchModal convs={conversations} onJump={id=>{pick(id);setSearch(false);}} onClose={()=>setSearch(false)}/>}
 
           <div className="body">
-            {/* SIDEBAR */}
             <div className={cn("sidebar",mobile==="chat"&&"sidebar--hidden")}>
               <div className="tabs">
                 {([
@@ -1605,7 +1801,6 @@ export default function MessagesPage() {
               {tab==="notifs"&&<NotifsPanel/>}
             </div>
 
-            {/* RIGHT */}
             <div className={cn("right",mobile==="list"&&"right--hidden")}>
               {tab==="saved"&&user
                 ? <SavedView myId={user.id} onJump={pick}/>
@@ -1625,7 +1820,6 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* MOBILE BOTTOM NAV */}
           <nav className="bnav">
             {([
               {id:"chats" as const,  label:"Chats",  Icon:MessageSquare, badge:totalUnread},
@@ -1650,7 +1844,6 @@ export default function MessagesPage() {
           </nav>
         </div>
 
-        {/* NEW CONV DIALOG */}
         {team&&(
           <NewConvDialog open={newOpen} onClose={()=>setNewOpen(false)}
             members={members} myId={user?.id??""} teamId={team.id}
