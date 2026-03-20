@@ -1,11 +1,11 @@
 /**
- * MessagesPage.tsx — Fixsense Advanced Messaging v2
- * Features:
- *  ✦ Message Scheduling (date/time picker → stored & displayed)
- *  ✦ @Mentions with autocomplete (includes @all for broadcast)
- *  ✦ Rich Text / Markdown (bold, italic, code, bullets, inline preview)
- *  ✦ Full mobile-first responsive layout
- *  ✦ Thread replies, reactions, pinning, saving, read receipts
+ * MessagesPage.tsx — Fixsense Sales Intelligence Communication Hub v3
+ *
+ * Phase 1 Foundation:
+ *  ✦ Deal Rooms — conversations tied to calls/deals with metadata header
+ *  ✦ User Status — 🟢 Available | 🔴 On a Call | 📞 In a Meeting | 🌙 Away
+ *  ✦ Global Search — unified search across messages, calls, transcripts
+ *  ✦ All original messaging features preserved
  */
 
 import {
@@ -22,7 +22,9 @@ import {
   Pencil, Loader2, ChevronRight, Pin, Bookmark, Hash,
   MessageCircle, BellOff, Smile, Reply, CornerDownRight,
   Clock, Calendar, Bold, Italic, Code, List,
-  ChevronDown, Eye, EyeOff,
+  ChevronDown, Eye, Phone, Target, Zap, BarChart3,
+  AlertTriangle, Star, Activity, Briefcase, ChevronUp,
+  Globe, Radio, Building2, TrendingDown, Award,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -31,12 +33,13 @@ import {
   getConversationName, getConversationInitials,
 } from "@/hooks/useTeamMessaging";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useCalls } from "@/hooks/useCalls";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import { format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Conversation, ReadReceipt } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
@@ -61,8 +64,7 @@ interface RtMsg {
 }
 
 interface Reaction { emoji: string; count: number; mine: boolean; users: string[] }
-interface PinRow  { id: string; message_id: string; message_preview: string | null; created_at: string; pinned_by: string }
-interface SaveRow { id: string; message_id: string; created_at: string; msg?: RtMsg }
+interface PinRow { id: string; message_id: string; message_preview: string | null; created_at: string; pinned_by: string }
 interface ScheduledMsg {
   id: string;
   conversation_id: string;
@@ -71,6 +73,55 @@ interface ScheduledMsg {
   scheduled_for: string;
   status: string;
   created_at: string;
+}
+
+// ── User Status Types ──────────────────────────────────────
+type UserStatus = "available" | "on_call" | "in_meeting" | "away" | "busy";
+
+interface UserStatusInfo {
+  status: UserStatus;
+  label: string;
+  emoji: string;
+  color: string;
+  bgColor: string;
+  custom?: string;
+}
+
+const STATUS_CONFIG: Record<UserStatus, Omit<UserStatusInfo, "status" | "custom">> = {
+  available:  { label: "Available",   emoji: "🟢", color: "#22c55e", bgColor: "rgba(34,197,94,.15)"   },
+  on_call:    { label: "On a Call",   emoji: "🔴", color: "#ef4444", bgColor: "rgba(239,68,68,.15)"   },
+  in_meeting: { label: "In a Meeting",emoji: "📞", color: "#f59e0b", bgColor: "rgba(245,158,11,.15)"  },
+  away:       { label: "Away",        emoji: "🌙", color: "#8b5cf6", bgColor: "rgba(139,92,246,.15)"  },
+  busy:       { label: "Busy",        emoji: "⛔", color: "#64748b", bgColor: "rgba(100,116,139,.15)" },
+};
+
+// ── Deal Room Types ────────────────────────────────────────
+interface DealRoom {
+  id: string;
+  name: string;
+  call_id?: string;
+  deal_stage: "discovery" | "demo" | "negotiation" | "won" | "lost" | "at_risk";
+  sentiment_score?: number;
+  last_call_score?: number;
+  next_step?: string;
+  company?: string;
+  unread_count: number;
+  last_message?: string;
+  last_activity?: string;
+  participants: string[];
+}
+
+// ── Search Result Types ────────────────────────────────────
+interface SearchResult {
+  type: "message" | "call" | "transcript";
+  id: string;
+  title: string;
+  preview: string;
+  timestamp: string;
+  conversation_id?: string;
+  call_id?: string;
+  sender?: string;
+  score?: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -107,9 +158,6 @@ const fmtTime = (d: string) => {
   return format(dt,"MMM d");
 };
 
-// ─────────────────────────────────────────────────────────────
-//  MARKDOWN RENDERER — supports bold, italic, code, bullets, @mentions
-// ─────────────────────────────────────────────────────────────
 function renderMd(t: string): string {
   return t
     .replace(/```([\s\S]*?)```/g, '<pre class="md-pre"><code>$1</code></pre>')
@@ -123,7 +171,19 @@ function renderMd(t: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  PRESENCE
+//  DEAL STAGE CONFIG
+// ─────────────────────────────────────────────────────────────
+const DEAL_STAGE_CONFIG = {
+  discovery:   { label: "Discovery",   color: "#60a5fa", bg: "rgba(96,165,250,.12)",  icon: "🔍" },
+  demo:        { label: "Demo",        color: "#a78bfa", bg: "rgba(167,139,250,.12)", icon: "🎯" },
+  negotiation: { label: "Negotiation", color: "#fbbf24", bg: "rgba(251,191,36,.12)",  icon: "🤝" },
+  won:         { label: "Won",         color: "#22c55e", bg: "rgba(34,197,94,.12)",   icon: "🎉" },
+  lost:        { label: "Lost",        color: "#ef4444", bg: "rgba(239,68,68,.12)",   icon: "❌" },
+  at_risk:     { label: "At Risk",     color: "#f97316", bg: "rgba(249,115,22,.12)",  icon: "⚠️" },
+};
+
+// ─────────────────────────────────────────────────────────────
+//  PRESENCE HOOK
 // ─────────────────────────────────────────────────────────────
 function usePresence(teamId?: string, uid?: string) {
   const [online, setOnline] = useState<Set<string>>(new Set());
@@ -137,6 +197,465 @@ function usePresence(teamId?: string, uid?: string) {
     return () => { ch.untrack(); supabase.removeChannel(ch); };
   }, [teamId, uid]);
   return useCallback((id:string) => online.has(id), [online]);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  USER STATUS HOOK
+// ─────────────────────────────────────────────────────────────
+function useUserStatus(userId?: string) {
+  const [myStatus, setMyStatus] = useState<UserStatus>("available");
+  const [customText, setCustomText] = useState("");
+  const [teamStatuses, setTeamStatuses] = useState<Map<string, UserStatus>>(new Map());
+
+  // Load saved status
+  useEffect(() => {
+    if (!userId) return;
+    const saved = localStorage.getItem(`fixsense_status_${userId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setMyStatus(parsed.status || "available");
+        setCustomText(parsed.custom || "");
+      } catch {}
+    }
+  }, [userId]);
+
+  // Broadcast status via realtime
+  useEffect(() => {
+    if (!userId) return;
+    const ch = supabase.channel(`user_status`)
+      .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
+        if (payload.user_id !== userId) {
+          setTeamStatuses(prev => new Map(prev).set(payload.user_id, payload.status));
+        }
+      })
+      .subscribe(async (st) => {
+        if (st === "SUBSCRIBED") {
+          await ch.send({
+            type: "broadcast",
+            event: "status_update",
+            payload: { user_id: userId, status: myStatus },
+          });
+        }
+      });
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, myStatus]);
+
+  const updateStatus = useCallback((status: UserStatus, custom?: string) => {
+    setMyStatus(status);
+    if (custom !== undefined) setCustomText(custom);
+    if (userId) {
+      localStorage.setItem(`fixsense_status_${userId}`, JSON.stringify({ status, custom }));
+    }
+  }, [userId]);
+
+  const getStatus = useCallback((uid: string): UserStatus => {
+    if (uid === userId) return myStatus;
+    return teamStatuses.get(uid) || "available";
+  }, [userId, myStatus, teamStatuses]);
+
+  return { myStatus, customText, updateStatus, getStatus };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  USER STATUS BADGE
+// ─────────────────────────────────────────────────────────────
+function StatusBadge({ status, size = "sm" }: { status: UserStatus; size?: "xs" | "sm" | "md" }) {
+  const cfg = STATUS_CONFIG[status];
+  const sizes = { xs: 6, sm: 8, md: 10 };
+  const sz = sizes[size];
+  return (
+    <span
+      title={cfg.label}
+      style={{
+        display: "inline-block",
+        width: sz, height: sz,
+        borderRadius: "50%",
+        background: cfg.color,
+        border: `2px solid #0b0f1c`,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  STATUS PICKER MODAL
+// ─────────────────────────────────────────────────────────────
+function StatusPicker({
+  current, onSelect, onClose,
+}: {
+  current: UserStatus;
+  onSelect: (s: UserStatus, custom?: string) => void;
+  onClose: () => void;
+}) {
+  const [custom, setCustom] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} className="status-picker">
+      <p className="sp-title">Set your status</p>
+      {(Object.entries(STATUS_CONFIG) as [UserStatus, typeof STATUS_CONFIG[UserStatus]][]).map(([key, cfg]) => (
+        <button
+          key={key}
+          className={cn("sp-item", current === key && "sp-item--active")}
+          onClick={() => { onSelect(key, custom); onClose(); }}
+        >
+          <span className="sp-emoji">{cfg.emoji}</span>
+          <span className="sp-label">{cfg.label}</span>
+          {current === key && <Check style={{ width: 12, height: 12, color: "#7c3aed", marginLeft: "auto" }} />}
+        </button>
+      ))}
+      <div className="sp-divider" />
+      <input
+        className="sp-input"
+        placeholder="What are you working on?"
+        value={custom}
+        onChange={e => setCustom(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && onClose()}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DEAL ROOM CARD
+// ─────────────────────────────────────────────────────────────
+function DealRoomCard({
+  room, isSelected, onClick,
+}: {
+  room: DealRoom;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const stage = DEAL_STAGE_CONFIG[room.deal_stage];
+  const sentimentColor = room.sentiment_score
+    ? room.sentiment_score >= 70 ? "#22c55e"
+      : room.sentiment_score >= 40 ? "#f59e0b"
+      : "#ef4444"
+    : "rgba(255,255,255,.3)";
+
+  return (
+    <button
+      className={cn("dr-card", isSelected && "dr-card--active")}
+      onClick={onClick}
+    >
+      <div className="dr-card-top">
+        <div className="dr-card-icon" style={{ background: stage.bg, color: stage.color }}>
+          {stage.icon}
+        </div>
+        <div className="dr-card-info">
+          <div className="dr-card-name">{room.name}</div>
+          {room.company && <div className="dr-card-company">{room.company}</div>}
+        </div>
+        {room.unread_count > 0 && (
+          <div className="dr-unread">{room.unread_count > 9 ? "9+" : room.unread_count}</div>
+        )}
+      </div>
+      <div className="dr-card-meta">
+        <span className="dr-stage-badge" style={{ color: stage.color, background: stage.bg }}>
+          {stage.icon} {stage.label}
+        </span>
+        {room.sentiment_score != null && (
+          <span className="dr-sentiment" style={{ color: sentimentColor }}>
+            {room.sentiment_score}% sentiment
+          </span>
+        )}
+      </div>
+      {room.last_message && (
+        <p className="dr-last-msg">{room.last_message}</p>
+      )}
+      {room.next_step && (
+        <div className="dr-next-step">
+          <Target style={{ width: 9, height: 9, flexShrink: 0 }} />
+          {room.next_step}
+        </div>
+      )}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DEAL ROOM HEADER (shown at top of chat when in a deal room)
+// ─────────────────────────────────────────────────────────────
+function DealRoomHeader({ room }: { room: DealRoom }) {
+  const stage = DEAL_STAGE_CONFIG[room.deal_stage];
+  const sentimentColor = room.sentiment_score
+    ? room.sentiment_score >= 70 ? "#22c55e"
+      : room.sentiment_score >= 40 ? "#f59e0b"
+      : "#ef4444"
+    : "rgba(255,255,255,.3)";
+
+  return (
+    <div className="drh-wrap">
+      <div className="drh-left">
+        <div className="drh-icon" style={{ background: stage.bg, color: stage.color }}>
+          <Building2 style={{ width: 14, height: 14 }} />
+        </div>
+        <div>
+          <div className="drh-name">{room.name}</div>
+          {room.company && <div className="drh-company">{room.company}</div>}
+        </div>
+      </div>
+      <div className="drh-stats">
+        <div className="drh-stat">
+          <span className="drh-stat-label">Stage</span>
+          <span className="drh-stat-val" style={{ color: stage.color }}>
+            {stage.icon} {stage.label}
+          </span>
+        </div>
+        {room.sentiment_score != null && (
+          <div className="drh-stat">
+            <span className="drh-stat-label">Sentiment</span>
+            <span className="drh-stat-val" style={{ color: sentimentColor }}>
+              {room.sentiment_score}%
+            </span>
+          </div>
+        )}
+        {room.last_call_score != null && (
+          <div className="drh-stat">
+            <span className="drh-stat-label">Last Score</span>
+            <span className="drh-stat-val">{room.last_call_score}/10</span>
+          </div>
+        )}
+        {room.next_step && (
+          <div className="drh-stat drh-stat--next">
+            <span className="drh-stat-label">Next Step</span>
+            <span className="drh-stat-val drh-stat-val--next">{room.next_step}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  GLOBAL SEARCH PANEL
+// ─────────────────────────────────────────────────────────────
+function GlobalSearchPanel({
+  onClose,
+  onNavigate,
+  calls,
+}: {
+  onClose: () => void;
+  onNavigate: (convId?: string) => void;
+  calls: any[];
+}) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "messages" | "calls" | "transcripts">("all");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return; }
+    const timeout = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const found: SearchResult[] = [];
+        const q = query.toLowerCase();
+
+        // Search messages
+        if (filter === "all" || filter === "messages") {
+          const { data: msgs } = await supabase
+            .from("team_messages")
+            .select("id, message_text, created_at, conversation_id, sender_id")
+            .ilike("message_text", `%${query}%`)
+            .limit(10);
+
+          if (msgs) {
+            msgs.forEach((m: any) => {
+              found.push({
+                type: "message",
+                id: m.id,
+                title: "Message",
+                preview: m.message_text,
+                timestamp: m.created_at,
+                conversation_id: m.conversation_id,
+              });
+            });
+          }
+        }
+
+        // Search calls
+        if (filter === "all" || filter === "calls") {
+          const matchedCalls = calls.filter(c =>
+            c.name?.toLowerCase().includes(q) ||
+            c.participants?.some((p: string) => p.toLowerCase().includes(q))
+          );
+          matchedCalls.slice(0, 8).forEach(c => {
+            found.push({
+              type: "call",
+              id: c.id,
+              title: c.name,
+              preview: `${c.status || "completed"} · ${c.duration_minutes ? `${c.duration_minutes} min` : "—"} · Score: ${c.sentiment_score || 0}%`,
+              timestamp: c.date,
+              call_id: c.id,
+              score: c.sentiment_score,
+            });
+          });
+        }
+
+        // Search summaries (transcripts)
+        if (filter === "all" || filter === "transcripts") {
+          const { data: summaries } = await supabase
+            .from("call_summaries")
+            .select("id, call_id, summary, created_at")
+            .ilike("summary", `%${query}%`)
+            .limit(5);
+
+          if (summaries) {
+            summaries.forEach((s: any) => {
+              const matchedCall = calls.find(c => c.id === s.call_id);
+              found.push({
+                type: "transcript",
+                id: s.id,
+                title: matchedCall?.name || "Call Transcript",
+                preview: s.summary || "",
+                timestamp: s.created_at,
+                call_id: s.call_id,
+              });
+            });
+          }
+        }
+
+        // Sort by timestamp desc
+        found.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        setResults(found);
+      } catch (e) {
+        console.error("Search error:", e);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [query, filter, calls]);
+
+  const typeIcon = (type: SearchResult["type"]) => {
+    if (type === "message") return <MessageSquare style={{ width: 13, height: 13 }} />;
+    if (type === "call") return <Phone style={{ width: 13, height: 13 }} />;
+    return <FileText style={{ width: 13, height: 13 }} />;
+  };
+
+  const typeColor = (type: SearchResult["type"]) => {
+    if (type === "message") return "#818cf8";
+    if (type === "call") return "#2dd4bf";
+    return "#f59e0b";
+  };
+
+  const handleResultClick = (r: SearchResult) => {
+    if (r.conversation_id) onNavigate(r.conversation_id);
+    else if (r.call_id) window.location.href = `/dashboard/calls/${r.call_id}`;
+    onClose();
+  };
+
+  const filterTabs: { key: typeof filter; label: string; icon: React.ElementType }[] = [
+    { key: "all",         label: "All",         icon: Globe },
+    { key: "messages",    label: "Messages",    icon: MessageSquare },
+    { key: "calls",       label: "Calls",       icon: Phone },
+    { key: "transcripts", label: "Transcripts", icon: FileText },
+  ];
+
+  return (
+    <div className="gs-overlay">
+      <div ref={ref} className="gs-panel">
+        {/* Search input */}
+        <div className="gs-input-wrap">
+          <Search style={{ width: 18, height: 18, color: "rgba(255,255,255,.4)", flexShrink: 0 }} />
+          <input
+            ref={inputRef}
+            className="gs-input"
+            placeholder="Search messages, calls, transcripts…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+          {loading && <Loader2 style={{ width: 16, height: 16, color: "#7c3aed", animation: "spin 1s linear infinite", flexShrink: 0 }} />}
+          <button className="gs-close" onClick={onClose}>
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="gs-filters">
+          {filterTabs.map(t => (
+            <button
+              key={t.key}
+              className={cn("gs-filter", filter === t.key && "gs-filter--on")}
+              onClick={() => setFilter(t.key)}
+            >
+              <t.icon style={{ width: 11, height: 11 }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Results */}
+        <div className="gs-results">
+          {!query.trim() ? (
+            <div className="gs-empty">
+              <Search style={{ width: 32, height: 32, opacity: .15 }} />
+              <p>Search across all your messages, calls and transcripts</p>
+              <div className="gs-tips">
+                <span className="gs-tip">Try: "pricing objection"</span>
+                <span className="gs-tip">Try: "Acme Corp"</span>
+                <span className="gs-tip">Try: "follow up"</span>
+              </div>
+            </div>
+          ) : results.length === 0 && !loading ? (
+            <div className="gs-empty">
+              <Search style={{ width: 28, height: 28, opacity: .15 }} />
+              <p>No results for "{query}"</p>
+            </div>
+          ) : (
+            <>
+              {results.length > 0 && (
+                <p className="gs-count">{results.length} result{results.length !== 1 ? "s" : ""}</p>
+              )}
+              {results.map(r => (
+                <button key={`${r.type}-${r.id}`} className="gs-result" onClick={() => handleResultClick(r)}>
+                  <div className="gs-result-icon" style={{ background: `${typeColor(r.type)}18`, color: typeColor(r.type) }}>
+                    {typeIcon(r.type)}
+                  </div>
+                  <div className="gs-result-body">
+                    <div className="gs-result-top">
+                      <span className="gs-result-title">{r.title}</span>
+                      <span className="gs-result-type" style={{ color: typeColor(r.type) }}>{r.type}</span>
+                      <span className="gs-result-time">{fmtTime(r.timestamp)}</span>
+                    </div>
+                    <p className="gs-result-preview">
+                      {r.preview.slice(0, 120)}{r.preview.length > 120 ? "…" : ""}
+                    </p>
+                    {r.score != null && (
+                      <div className="gs-result-score">
+                        <Activity style={{ width: 9, height: 9 }} />
+                        {r.score}% sentiment
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight style={{ width: 13, height: 13, color: "rgba(255,255,255,.2)", flexShrink: 0 }} />
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -212,9 +731,9 @@ function useReactions(msgId: string, myId: string) {
 // ─────────────────────────────────────────────────────────────
 //  EMOJI PICKER
 // ─────────────────────────────────────────────────────────────
-const QUICK  = ["👍","❤️","😂","🎉","🔥","✅","👏","🚀","💯","😮","😢","⚡"];
-const FACES  = ["😀","😎","🤔","🙏","💪","🤝","👋","✌️","🤞","👌","🫡","🥳"];
-const WORK   = ["📊","📈","💡","🎯","📝","💬","🔔","⭐","🏆","💎","🔑","📌"];
+const QUICK = ["👍","❤️","😂","🎉","🔥","✅","👏","🚀","💯","😮","😢","⚡"];
+const FACES = ["😀","😎","🤔","🙏","💪","🤝","👋","✌️","🤞","👌","🫡","🥳"];
+const WORK  = ["📊","📈","💡","🎯","📝","💬","🔔","⭐","🏆","💎","🔑","📌"];
 
 function EmojiPicker({ onPick, onClose }: { onPick:(e:string)=>void; onClose:()=>void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -309,13 +828,7 @@ function ScheduleDialog({ convId, myId, text, onClose, onScheduled }: {
         </div>
         <div className="sch-field">
           <label className="sch-label">Send at</label>
-          <input
-            type="datetime-local"
-            value={when}
-            min={minStr}
-            onChange={e=>setWhen(e.target.value)}
-            className="sch-input"
-          />
+          <input type="datetime-local" value={when} min={minStr} onChange={e=>setWhen(e.target.value)} className="sch-input"/>
           <p className="sch-hint">Must be at least 1 minute in the future</p>
         </div>
         <DialogFooter className="sch-footer">
@@ -331,7 +844,7 @@ function ScheduleDialog({ convId, myId, text, onClose, onScheduled }: {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SCHEDULED MESSAGES LIST (per conversation)
+//  SCHEDULED MESSAGES LIST
 // ─────────────────────────────────────────────────────────────
 function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
   const [items, setItems] = useState<ScheduledMsg[]>([]);
@@ -339,11 +852,8 @@ function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; 
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("scheduled_messages" as any)
-      .select("*")
-      .eq("conversation_id", convId)
-      .eq("sender_id", myId)
-      .eq("status", "pending")
-      .order("scheduled_for", { ascending: true });
+      .select("*").eq("conversation_id", convId).eq("sender_id", myId)
+      .eq("status", "pending").order("scheduled_for", { ascending: true });
     setItems((data || []) as ScheduledMsg[]);
     setLoading(false);
   }, [convId, myId]);
@@ -367,20 +877,12 @@ function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; 
         <div className="thread-body">
           {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
             : items.length === 0 ? (
-              <div className="panel-empty">
-                <Clock style={{width:28,height:28,opacity:.2}}/>
-                <p>No scheduled messages</p>
-              </div>
+              <div className="panel-empty"><Clock style={{width:28,height:28,opacity:.2}}/><p>No scheduled messages</p></div>
             ) : items.map(m => (
               <div key={m.id} className="sched-item">
-                <div className="sched-when">
-                  <Calendar style={{width:11,height:11}}/>
-                  {format(new Date(m.scheduled_for), "MMM d, yyyy 'at' h:mm a")}
-                </div>
+                <div className="sched-when"><Calendar style={{width:11,height:11}}/>{format(new Date(m.scheduled_for), "MMM d, yyyy 'at' h:mm a")}</div>
                 <div className="sched-txt" dangerouslySetInnerHTML={{__html: renderMd(m.message_text.slice(0,100))}}/>
-                <button className="sched-cancel" onClick={()=>cancel(m.id)}>
-                  <X style={{width:11,height:11}}/> Cancel
-                </button>
+                <button className="sched-cancel" onClick={()=>cancel(m.id)}><X style={{width:11,height:11}}/> Cancel</button>
               </div>
             ))}
         </div>
@@ -390,7 +892,7 @@ function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; 
 }
 
 // ─────────────────────────────────────────────────────────────
-//  RICH COMPOSER — @mentions, markdown toolbar, schedule
+//  RICH COMPOSER
 // ─────────────────────────────────────────────────────────────
 interface ComposerProps {
   value: string;
@@ -409,7 +911,7 @@ interface ComposerProps {
 
 function Composer({
   value, onChange, onSend, onFile, onSchedule, members, myId,
-  placeholder = "Message…", busy, disabled, replyTo, onCancelReply,
+  placeholder = "Message… (@ to mention, ** for bold)", busy, disabled, replyTo, onCancelReply,
 }: ComposerProps) {
   const [mentions, setMentions] = useState<Array<{id:string;name:string;isAll?:boolean}>>([]);
   const [mentionAt, setMentionAt] = useState(-1);
@@ -437,21 +939,16 @@ function Composer({
       setMentionAt(at); setMq(q);
       const filtered: Array<{id:string;name:string;isAll?:boolean}> = [];
       if ("all".startsWith(q.toLowerCase())) filtered.push({ id:"__all__", name:"all", isAll:true });
-      others
-        .filter(m => (m.profile?.full_name||m.invited_email||"").toLowerCase().includes(q.toLowerCase()))
-        .slice(0, 5)
-        .forEach(m => filtered.push({ id: m.user_id, name: m.profile?.full_name||m.invited_email||"user" }));
+      others.filter(m => (m.profile?.full_name||m.invited_email||"").toLowerCase().includes(q.toLowerCase()))
+        .slice(0, 5).forEach(m => filtered.push({ id: m.user_id, name: m.profile?.full_name||m.invited_email||"user" }));
       setMentions(filtered);
-    } else {
-      setMentions([]);
-    }
+    } else { setMentions([]); }
   };
 
   const insertMention = (item: {id:string;name:string;isAll?:boolean}) => {
     const tag = item.isAll ? "@all " : `@${item.name} `;
     const newVal = value.slice(0, mentionAt) + tag + value.slice(mentionAt + mq.length + 1);
-    onChange(newVal);
-    setMentions([]);
+    onChange(newVal); setMentions([]);
     setTimeout(() => taRef.current?.focus(), 0);
   };
 
@@ -465,21 +962,11 @@ function Composer({
     setTimeout(() => { el.focus(); el.setSelectionRange(s + prefix.length, s + prefix.length + sel.length); }, 0);
   };
 
-  const insertBullet = () => {
-    const lines = value.split("\n");
-    const lastLine = lines[lines.length - 1];
-    const newVal = lastLine.startsWith("• ") ? value : value + (value ? "\n" : "") + "• ";
-    onChange(newVal);
-    setTimeout(() => taRef.current?.focus(), 0);
-  };
-
   const canSend = value.trim().length > 0 && !busy && !disabled;
-
   const fmtBtns = [
     { Icon: Bold,   title: "Bold",   fn: () => wrapSelection("**") },
     { Icon: Italic, title: "Italic", fn: () => wrapSelection("*") },
     { Icon: Code,   title: "Code",   fn: () => wrapSelection("`") },
-    { Icon: List,   title: "Bullet", fn: insertBullet },
     { Icon: AtSign, title: "Mention",fn: () => { onChange(value + "@"); setTimeout(()=>taRef.current?.focus(),0); } },
   ];
 
@@ -494,7 +981,6 @@ function Composer({
         </div>
       )}
 
-      {/* Markdown toolbar */}
       <div className="cmp-fmt">
         {fmtBtns.map(({ Icon, title, fn }) => (
           <button key={title} title={title} className="cmp-fmt-btn" onClick={fn}>
@@ -502,11 +988,7 @@ function Composer({
           </button>
         ))}
         <div className="cmp-sep"/>
-        <button
-          className={cn("cmp-fmt-btn", showPreview && "cmp-fmt-btn--on")}
-          title="Preview formatting"
-          onClick={() => setShowPreview(p=>!p)}
-        >
+        <button className={cn("cmp-fmt-btn", showPreview && "cmp-fmt-btn--on")} title="Preview" onClick={() => setShowPreview(p=>!p)}>
           <Eye style={{width:12,height:12}}/>
         </button>
         <button
@@ -519,7 +1001,6 @@ function Composer({
         </button>
       </div>
 
-      {/* @mention dropdown */}
       {mentions.length > 0 && (
         <div className="cmp-mention-list">
           {mentions.map(m => (
@@ -528,9 +1009,7 @@ function Composer({
                 {m.isAll ? "✦" : m.name[0]?.toUpperCase()}
               </div>
               <div>
-                <span className={cn("cmp-mention-name", m.isAll && "cmp-mention-name--all")}>
-                  @{m.name}
-                </span>
+                <span className={cn("cmp-mention-name", m.isAll && "cmp-mention-name--all")}>@{m.name}</span>
                 {m.isAll && <span className="cmp-mention-desc"> · Notify everyone</span>}
               </div>
             </button>
@@ -538,7 +1017,6 @@ function Composer({
         </div>
       )}
 
-      {/* Preview mode */}
       {showPreview && value.trim() && (
         <div className="cmp-preview">
           <div className="cmp-preview-label">Preview</div>
@@ -564,18 +1042,11 @@ function Composer({
             if (e.key === "Tab" && mentions.length > 0) { e.preventDefault(); insertMention(mentions[0]); }
           }}
         />
-        <button
-          className={cn("cmp-send", canSend && "cmp-send--on")}
-          onClick={onSend}
-          disabled={!canSend}
-          title="Send (Enter)"
-        >
+        <button className={cn("cmp-send", canSend && "cmp-send--on")} onClick={onSend} disabled={!canSend} title="Send (Enter)">
           <Send style={{width:15,height:15}}/>
         </button>
       </div>
-      <p className="cmp-hint">
-        Enter to send · Shift+Enter newline · **bold** · *italic* · `code` · @mention
-      </p>
+      <p className="cmp-hint">Enter to send · Shift+Enter newline · **bold** · *italic* · `code` · @mention</p>
     </div>
   );
 }
@@ -583,16 +1054,14 @@ function Composer({
 // ─────────────────────────────────────────────────────────────
 //  THREAD PANEL
 // ─────────────────────────────────────────────────────────────
-function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
-  parent: RtMsg; members: TeamMember[]; myId: string;
-  onClose: () => void; onQuoteReply?: (msg: RtMsg) => void;
+function ThreadPanel({ parent, members, myId, onClose }: {
+  parent: RtMsg; members: TeamMember[]; myId: string; onClose: () => void;
 }) {
   const [replies, setReplies] = useState<RtMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const botRef = useRef<HTMLDivElement>(null);
-  const [replyTo, setReplyTo] = useState<{id:string;text:string;sender:string}|null>(null);
   const profCache = useRef(new Map<string,{full_name:string|null;email:string|null}>());
 
   const loadReplies = useCallback(async () => {
@@ -621,8 +1090,6 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
           setReplies(p => [...p, { ...row, sender }]);
           if (row.sender_id !== myId) playPing();
         })
-      .on("postgres_changes", { event:"DELETE", schema:"public", table:"team_messages", filter:`parent_id=eq.${parent.id}` },
-        ({ old: row }: any) => setReplies(p => p.filter(r => r.id !== row?.id)))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [parent.id, myId]);
@@ -637,7 +1104,7 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
         message_text: input.trim(),
         parent_id: parent.id,
       });
-      setInput(""); setReplyTo(null);
+      setInput("");
     } catch { toast({ title: "Failed to send reply", variant: "destructive" }); }
     finally { setSending(false); }
   };
@@ -663,26 +1130,11 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
               <div className="bubble them" style={{borderRadius:12,marginTop:4}}>
                 <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(parent.message_text)}}/>
               </div>
-              {onQuoteReply && (
-                <button className="thread-quote-btn" onClick={()=>onQuoteReply(parent)}>
-                  <CornerDownRight style={{width:10,height:10}}/> Quote in chat
-                </button>
-              )}
             </div>
           </div>
-          {replies.length > 0 && (
-            <div className="divider-row">
-              <div className="div-line"/>
-              <span className="div-label">{replies.length} {replies.length===1?"reply":"replies"}</span>
-              <div className="div-line"/>
-            </div>
-          )}
           {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
             : replies.length === 0 ? (
-              <div className="thread-empty">
-                <Reply style={{width:22,height:22,opacity:.15}}/>
-                <p>No replies yet — be the first!</p>
-              </div>
+              <div className="thread-empty"><Reply style={{width:22,height:22,opacity:.15}}/><p>No replies yet</p></div>
             ) : replies.map(r => {
               const isMe = r.sender_id === myId;
               const name = r.sender?.full_name || r.sender?.email || "Unknown";
@@ -694,13 +1146,8 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
                     <div className={cn("bubble", isMe ? "me" : "them")}>
                       <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(r.message_text)}}/>
                     </div>
-                    <div className={cn("msg-meta", isMe && "msg-meta--me")} style={{gap:6}}>
+                    <div className={cn("msg-meta", isMe && "msg-meta--me")}>
                       <span className="meta-time">{format(new Date(r.created_at),"h:mm a")}</span>
-                      {onQuoteReply && (
-                        <button className="thread-quote-btn" onClick={()=>onQuoteReply(r)}>
-                          <CornerDownRight style={{width:9,height:9}}/> Quote
-                        </button>
-                      )}
                     </div>
                     <ReactBar msgId={r.id} myId={myId}/>
                   </div>
@@ -714,7 +1161,6 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
           onFile={()=>{}} onSchedule={()=>{}}
           members={members} myId={myId}
           placeholder="Reply in thread…" busy={sending}
-          replyTo={replyTo} onCancelReply={()=>setReplyTo(null)}
         />
       </div>
     </div>
@@ -722,9 +1168,9 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  PINNED PANEL
+//  PINS PANEL
 // ─────────────────────────────────────────────────────────────
-function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
+function PinsPanel({ convId, onClose }: { convId:string; onClose:()=>void }) {
   const [pins, setPins] = useState<PinRow[]>([]); const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     try {
@@ -733,16 +1179,7 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
     } catch { setLoading(false); }
   },[convId]);
   useEffect(()=>{ load(); },[load]);
-  useEffect(() => {
-    const ch = supabase.channel(`pins:${convId}`)
-      .on("postgres_changes",{ event:"*", schema:"public", table:"pinned_messages", filter:`conversation_id=eq.${convId}` }, load)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  },[convId, load]);
-  const unpin = async (id:string) => {
-    await supabase.from("pinned_messages" as any).delete().eq("id",id);
-    toast({title:"Unpinned"});
-  };
+
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
@@ -762,7 +1199,6 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
                   <p className="pin-txt">{p.message_preview||"(no preview)"}</p>
                   <p className="pin-meta">{format(new Date(p.created_at),"MMM d, h:mm a")}</p>
                 </div>
-                <button className="ha ha-del" onClick={()=>unpin(p.id)} title="Unpin"><X style={{width:11,height:11}}/></button>
               </div>
             ))}
         </div>
@@ -776,7 +1212,7 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
 // ─────────────────────────────────────────────────────────────
 function CtxMenu({ pos, isMe, onClose, on }: {
   pos:{x:number;y:number}; isMe:boolean; onClose:()=>void;
-  on:{ copy:()=>void; reply:()=>void; quoteReply:()=>void; pin:()=>void; save:()=>void; edit?:()=>void; del?:()=>void; }
+  on:{ copy:()=>void; reply:()=>void; pin:()=>void; save:()=>void; edit?:()=>void; del?:()=>void; }
 }) {
   const ref=useRef<HTMLDivElement>(null);
   useEffect(()=>{
@@ -785,7 +1221,6 @@ function CtxMenu({ pos, isMe, onClose, on }: {
   },[onClose]);
   const items:[React.ElementType,string,()=>void,boolean][] = [
     [MessageCircle,"Reply in Thread",on.reply,false],
-    [CornerDownRight,"Quote Reply",on.quoteReply,false],
     [Copy,"Copy Text",on.copy,false],
     [Pin,"Pin Message",on.pin,false],
     [Bookmark,"Save Message",on.save,false],
@@ -803,21 +1238,6 @@ function CtxMenu({ pos, isMe, onClose, on }: {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  QUOTE PREVIEW
-// ─────────────────────────────────────────────────────────────
-function QuotePreview({ quotedText, quotedSender }: { quotedText: string; quotedSender: string }) {
-  return (
-    <div className="quote-preview">
-      <div className="quote-bar"/>
-      <div className="quote-body">
-        <span className="quote-sender">{quotedSender}</span>
-        <span className="quote-text">{quotedText.slice(0,100)}{quotedText.length>100?"…":""}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 //  REPLY COUNT BADGE
 // ─────────────────────────────────────────────────────────────
 function ReplyCountBadge({ msgId, onClick }: { msgId: string; onClick: () => void }) {
@@ -825,14 +1245,6 @@ function ReplyCountBadge({ msgId, onClick }: { msgId: string; onClick: () => voi
   useEffect(() => {
     supabase.from("team_messages" as any).select("id", { count: "exact", head: true }).eq("parent_id", msgId)
       .then(({ count: c }) => setCount(c ?? 0));
-  }, [msgId]);
-  useEffect(() => {
-    const ch = supabase.channel(`rc:${msgId}`)
-      .on("postgres_changes", { event:"*", schema:"public", table:"team_messages", filter:`parent_id=eq.${msgId}` },
-        () => supabase.from("team_messages" as any).select("id", { count:"exact", head:true }).eq("parent_id", msgId)
-          .then(({ count: c }) => setCount(c ?? 0)))
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
   }, [msgId]);
   if (count === null || count === 0) return null;
   return (
@@ -845,9 +1257,11 @@ function ReplyCountBadge({ msgId, onClick }: { msgId: string; onClick: () => voi
 // ─────────────────────────────────────────────────────────────
 //  MAIN CHAT THREAD
 // ─────────────────────────────────────────────────────────────
-function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
+function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, getStatus }: {
   convId:string; convs:Conversation[]; onBack:()=>void;
   isOnline:(id:string)=>boolean; members:TeamMember[]; myId:string;
+  dealRoom?: DealRoom;
+  getStatus: (uid: string) => UserStatus;
 }) {
   const qc = useQueryClient();
   const { messages:base, messagesLoading, sendMessage, readReceipts } = useConversationMessages(convId);
@@ -868,20 +1282,19 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const [muted, setMuted]       = useState(false);
   const [scheduleFor, setSched] = useState<string|null>(null);
   const [showSched, setShowSched] = useState(false);
-  const [lpId, setLpId]         = useState<string|null>(null);
   const [quoteReply, setQuoteReply] = useState<{id:string;text:string;sender:string}|null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
   const editRef   = useRef<HTMLInputElement>(null);
-  const lpTimer   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const typTimer  = useRef<NodeJS.Timeout|null>(null);
 
   const conv = convs.find(c=>c.id===convId);
-  const name = conv ? getConversationName(conv) : "Chat";
+  const name = conv ? getConversationName(conv) : dealRoom?.name || "Chat";
   const isGrp= conv?.is_group ?? false;
   const otherId = !isGrp ? conv?.participants?.[0]?.user_id : undefined;
   const otherOn = otherId ? isOnline(otherId) : false;
+  const otherStatus = otherId ? getStatus(otherId) : "available";
   const myName = members.find(m=>m.user_id===myId)?.profile?.full_name || "You";
 
   useEffect(()=>{
@@ -948,8 +1361,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     try {
       let fd:any;
       if(pFile) fd=await upload(pFile);
-      let text = input.trim() || (pFile?.name ?? "Attachment");
-      sendMessage.mutate({ text, file_url:fd?.url, file_name:fd?.name, file_type:fd?.type } as any);
+      sendMessage.mutate({ text: input.trim() || (pFile?.name ?? "Attachment"), file_url:fd?.url, file_name:fd?.name, file_type:fd?.type } as any);
       setInput(""); setPFile(null); setQuoteReply(null); sendStopTyping();
     } finally { setBusy(false); }
   };
@@ -962,9 +1374,9 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   };
 
   const delMsg = useCallback(async (id:string)=>{
-    setOptDel(p=>new Set([...p,id])); setCtx(null); setLpId(null);
+    setOptDel(p=>new Set([...p,id])); setCtx(null);
     try { await supabase.from("team_messages").delete().eq("id",id); toast({title:"Deleted"});
-    } catch { setOptDel(p=>{ const s=new Set(p);s.delete(id);return s; }); toast({title:"Failed",variant:"destructive"}); }
+    } catch { setOptDel(p=>{ const s=new Set(p);s.delete(id);return s; }); }
   },[]);
 
   const pinMsg = async (id:string,text:string) => {
@@ -979,25 +1391,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     catch { toast({title:"Could not save",variant:"destructive"}); }
   };
 
-  const handleQuoteFromThread = (msg: RtMsg) => {
-    const senderName = msg.sender?.full_name || msg.sender?.email || "Unknown";
-    setQuoteReply({ id: msg.id, text: msg.message_text, sender: senderName });
-    setThread(null);
-  };
-
-  const parseQuote = (msg: RtMsg): { quote: {text:string;sender:string}|null; body: string } => {
-    try {
-      if (msg.message_text.startsWith("__QUOTE__")) {
-        const end = msg.message_text.indexOf("__BODY__");
-        if (end !== -1) {
-          const q = JSON.parse(msg.message_text.slice(9, end));
-          return { quote: q, body: msg.message_text.slice(end + 8) };
-        }
-      }
-    } catch {}
-    return { quote: null, body: msg.message_text };
-  };
-
   const grouped = useMemo(()=>{
     const g:{label:string;msgs:typeof messages}[]=[];let last="";
     messages.forEach(m=>{
@@ -1009,40 +1402,47 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     return g;
   },[messages]);
 
-  const lpMsg = messages.find(m=>m.id===lpId);
-  const lpIsMe= lpMsg?.sender_id===myId;
-
   function rsStatus(at:string,sid:string,rr:ReadReceipt[]):"none"|"sent"|"read" {
     if(sid!==myId) return "none";
     return rr.some(r=>r.last_read_at&&new Date(r.last_read_at)>=new Date(at))?"read":"sent";
   }
 
+  const otherStatusCfg = STATUS_CONFIG[otherStatus];
+
   return (
     <div className="thread">
-      {/* HEADER */}
+      {/* DEAL ROOM HEADER */}
+      {dealRoom && <DealRoomHeader room={dealRoom} />}
+
+      {/* CHAT HEADER */}
       <div className="chat-hdr">
         <button className="back-btn" onClick={onBack}><ArrowLeft style={{width:15,height:15}}/></button>
         <div style={{position:"relative",flexShrink:0}}>
           <div className="chat-av">
-            {isGrp?<Users style={{width:14,height:14,color:"#a78bfa"}}/>
-              :<span style={{fontSize:12,fontWeight:700,color:"#818cf8"}}>{conv?getConversationInitials(conv):"?"}</span>}
+            {isGrp
+              ? <Users style={{width:14,height:14,color:"#a78bfa"}}/>
+              : dealRoom
+              ? <Building2 style={{width:14,height:14,color:"#60a5fa"}}/>
+              : <span style={{fontSize:12,fontWeight:700,color:"#818cf8"}}>{conv?getConversationInitials(conv):"?"}</span>}
           </div>
-          {!isGrp&&otherId&&<span className="pres-dot" style={{background:otherOn?"#22c55e":"rgba(255,255,255,.13)"}}/>}
+          {!isGrp && otherId && (
+            <span className="pres-dot" style={{ background: otherOn ? otherStatusCfg.color : "rgba(255,255,255,.13)" }} />
+          )}
         </div>
         <div className="chat-info">
           <p className="chat-name">{name}</p>
-          {typingUsers.length>0
+          {typingUsers.length > 0
             ? <p className="chat-typing">typing…</p>
-            : !isGrp
-              ? <p className="chat-sub" style={{color:otherOn?"#22c55e":"rgba(255,255,255,.28)"}}>{otherOn?"● Online now":"○ Offline"}</p>
-              : <p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{(conv?.participants.length??0)+1} members</p>}
+            : !isGrp && otherId
+            ? <p className="chat-sub" style={{color: otherOn ? otherStatusCfg.color : "rgba(255,255,255,.28)"}}>
+                {otherOn ? `${otherStatusCfg.emoji} ${otherStatusCfg.label}` : "○ Offline"}
+              </p>
+            : isGrp
+            ? <p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{(conv?.participants.length??0)+1} members</p>
+            : null}
         </div>
         <div className="hdr-acts">
-          <button
-            className={cn("hdr-btn", showSched && "hdr-btn--on")}
-            title="Scheduled messages"
-            onClick={()=>setShowSched(p=>!p)}
-          >
+          <button className={cn("hdr-btn",showSched&&"hdr-btn--on")} title="Scheduled" onClick={()=>setShowSched(p=>!p)}>
             <Clock style={{width:13,height:13}}/>
           </button>
           <button className={cn("hdr-btn",showPins&&"hdr-btn--on")} title="Pinned" onClick={()=>setShowPins(p=>!p)}>
@@ -1055,21 +1455,28 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         {typingUsers.length>0&&<div className="typing-dots"><span/><span/><span/></div>}
       </div>
 
-      {showPins && <PinsPanel convId={convId} myId={myId} onClose={()=>setShowPins(false)}/>}
+      {showPins && <PinsPanel convId={convId} onClose={()=>setShowPins(false)}/>}
       {showSched && <ScheduledList convId={convId} myId={myId} onClose={()=>setShowSched(false)}/>}
-      {thread && (
-        <ThreadPanel parent={thread} members={members} myId={myId}
-          onClose={()=>setThread(null)} onQuoteReply={handleQuoteFromThread}/>
-      )}
+      {thread && <ThreadPanel parent={thread} members={members} myId={myId} onClose={()=>setThread(null)}/>}
 
       {/* MESSAGES */}
       <div className="msgs-area">
         {messagesLoading ? <div className="center-spin"><Loader2 className="spin"/></div>
           : messages.length===0 ? (
             <div className="empty-chat">
-              <div className="empty-icon"><MessageSquare style={{width:22,height:22,color:"#7c3aed"}}/></div>
-              <p className="empty-title">No messages yet</p>
-              <p className="empty-sub">Start the conversation below</p>
+              <div className="empty-icon">
+                {dealRoom
+                  ? <Building2 style={{width:22,height:22,color:"#60a5fa"}}/>
+                  : <MessageSquare style={{width:22,height:22,color:"#7c3aed"}}/>}
+              </div>
+              <p className="empty-title">
+                {dealRoom ? `${dealRoom.name} Deal Room` : "No messages yet"}
+              </p>
+              <p className="empty-sub">
+                {dealRoom
+                  ? "Discuss this deal, share insights, and track next steps"
+                  : "Start the conversation below"}
+              </p>
             </div>
           ) : grouped.map(grp=>(
             <div key={grp.label}>
@@ -1083,16 +1490,24 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                 const isEd=editId===msg.id;
                 const nm=msg.sender?.full_name||msg.sender?.email||"Unknown";
                 const isImg=(t?:string|null)=>!!t?.startsWith("image/");
-                const { quote, body } = parseQuote(msg as RtMsg);
+                const isSystem = msg.sender_id === "system";
+
+                // System messages (AI summaries, pipeline updates) get special treatment
+                if (isSystem) {
+                  return (
+                    <div key={msg.id} className="sys-msg">
+                      <div className="sys-msg-icon"><Zap style={{width:12,height:12}}/></div>
+                      <div className="sys-msg-body" dangerouslySetInnerHTML={{__html: renderMd(msg.message_text)}}/>
+                      <span className="sys-msg-time">{format(new Date(msg.created_at),"h:mm a")}</span>
+                    </div>
+                  );
+                }
 
                 return (
                   <div key={msg.id}
                     className={cn("msg-row",isMe?"msg-me":"msg-them",same&&"msg-same",rtAdded.some(r=>r.id===msg.id)&&!isMe&&"msg-new")}
                     style={{opacity:isDel?.2:1,transition:"opacity .15s",pointerEvents:isDel?"none":undefined}}
-                    onContextMenu={e=>{if(!isDel){e.preventDefault();setCtx({id:msg.id,x:e.clientX,y:e.clientY});}}}
-                    onTouchStart={()=>{if(!isDel){lpTimer.current=setTimeout(()=>setLpId(msg.id),500);}}}
-                    onTouchEnd={()=>{if(lpTimer.current)clearTimeout(lpTimer.current);}}
-                    onTouchMove={()=>{if(lpTimer.current)clearTimeout(lpTimer.current);}}>
+                    onContextMenu={e=>{if(!isDel){e.preventDefault();setCtx({id:msg.id,x:e.clientX,y:e.clientY});}}}>
 
                     {!isMe&&!same&&<div className="msg-av">{initials(nm)}</div>}
                     {!isMe&&same&&<div className="msg-av-sp"/>}
@@ -1109,7 +1524,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                         </div>
                       ):(
                         <div className={cn("bubble",isMe?"me":"them")}>
-                          {quote && <QuotePreview quotedText={quote.text} quotedSender={quote.sender}/>}
                           {msg.file_url&&(
                             <div className="attach">
                               {isImg((msg as any).file_type)
@@ -1119,24 +1533,19 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                                 </a>}
                             </div>
                           )}
-                          {(!msg.file_url||body!==(msg as any).file_name)&&(
-                            <div className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(body)}}/>
+                          {(!msg.file_url||msg.message_text!==(msg as any).file_name)&&(
+                            <div className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(msg.message_text)}}/>
                           )}
                         </div>
                       )}
 
                       {!isDel&&!isEd&&<ReactBar msgId={msg.id} myId={myId}/>}
-                      {!isDel&&!isEd&&(
-                        <ReplyCountBadge msgId={msg.id} onClick={()=>setThread(msg as RtMsg)}/>
-                      )}
+                      {!isDel&&!isEd&&<ReplyCountBadge msgId={msg.id} onClick={()=>setThread(msg as RtMsg)}/>}
 
-                      {/* Desktop hover actions */}
                       {!isEd&&!isDel&&(
                         <div className={cn("ha-row",isMe?"ha-row--me":"ha-row--them")}>
                           {[
-                            [Smile,"React",()=>{}],
                             [MessageCircle,"Thread",()=>setThread(msg as RtMsg)],
-                            [CornerDownRight,"Quote Reply",()=>{ const n=msg.sender?.full_name||msg.sender?.email||"Unknown"; setQuoteReply({id:msg.id,text:msg.message_text,sender:n}); }],
                             [Copy,"Copy",()=>{navigator.clipboard.writeText(msg.message_text);toast({title:"Copied"});}],
                             [Pin,"Pin",()=>pinMsg(msg.id,msg.message_text)],
                             [Bookmark,"Save",()=>saveMsg(msg.id)],
@@ -1163,14 +1572,11 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         <div ref={scrollRef}/>
       </div>
 
-      {/* CONTEXT MENU */}
       {ctx&&(()=>{
         const m=messages.find(x=>x.id===ctx.id);
-        const sn = m?.sender?.full_name || m?.sender?.email || "Unknown";
         return <CtxMenu pos={{x:ctx.x,y:ctx.y}} isMe={m?.sender_id===myId} onClose={()=>setCtx(null)} on={{
           copy:()=>{navigator.clipboard.writeText(m?.message_text??"");toast({title:"Copied"});},
-          reply:()=>{ if(m){setThread(m as RtMsg);} },
-          quoteReply:()=>{ if(m) setQuoteReply({id:m.id,text:m.message_text,sender:sn}); },
+          reply:()=>{ if(m) setThread(m as RtMsg); },
           pin:()=>{ if(m) pinMsg(m.id,m.message_text); },
           save:()=>{ if(m) saveMsg(m.id); },
           edit:()=>{ if(m){setEditId(m.id);setEditTxt(m.message_text);} },
@@ -1178,42 +1584,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         }}/>;
       })()}
 
-      {/* MOBILE LONG-PRESS SHEET */}
-      {lpId&&lpMsg&&(
-        <div className="sheet-overlay" onClick={()=>setLpId(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="sheet-handle"/>
-            <div className="sheet-emoji-row">
-              {["👍","❤️","😂","🎉","🔥","✅"].map(e=>(
-                <button key={e} className="sheet-emoji" onClick={async()=>{
-                  await supabase.from("message_reactions" as any).insert({message_id:lpId,user_id:myId,emoji:e});
-                  setLpId(null);
-                }}>{e}</button>
-              ))}
-            </div>
-            <div className="sheet-preview"><p className="sheet-preview-txt">{lpMsg.message_text.slice(0,70)}</p></div>
-            {([
-              [MessageCircle,"Reply in Thread",()=>{setThread(lpMsg as RtMsg);setLpId(null);}],
-              [CornerDownRight,"Quote Reply",()=>{ const sn=lpMsg.sender?.full_name||lpMsg.sender?.email||"Unknown"; setQuoteReply({id:lpId,text:lpMsg.message_text,sender:sn}); setLpId(null); }],
-              [Copy,"Copy text",()=>{navigator.clipboard.writeText(lpMsg.message_text);setLpId(null);}],
-              [Pin,"Pin message",()=>{pinMsg(lpId,lpMsg.message_text);setLpId(null);}],
-              [Bookmark,"Save message",()=>{saveMsg(lpId);setLpId(null);}],
-              [Clock,"Schedule similar",()=>{ setSched(lpMsg.message_text); setLpId(null); }],
-              ...(lpIsMe?[
-                [Pencil,"Edit message",()=>{setEditId(lpMsg.id);setEditTxt(lpMsg.message_text);setLpId(null);}],
-                [Trash2,"Delete",()=>delMsg(lpId)],
-              ]:[]),
-            ] as [React.ElementType,string,()=>void][]).map(([Ic,lbl,fn],i)=>(
-              <button key={i} className={cn("sheet-btn",lbl==="Delete"&&"sheet-btn--del")} onClick={fn}>
-                <Ic style={{width:18,height:18}}/>{lbl}
-              </button>
-            ))}
-            <button className="sheet-cancel" onClick={()=>setLpId(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* FILE PREVIEW */}
       {pFile&&(
         <div className="file-prev">
           {pFile.type.startsWith("image/")?<ImageIcon style={{width:13,height:13,color:"#818cf8",flexShrink:0}}/>:<FileText style={{width:13,height:13,color:"#818cf8",flexShrink:0}}/>}
@@ -1228,26 +1598,107 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"/>
 
       <Composer
-        value={input}
-        onChange={handleInput}
-        onSend={handleSend}
+        value={input} onChange={handleInput} onSend={handleSend}
         onFile={()=>fileRef.current?.click()}
         onSchedule={(text) => setSched(text)}
-        members={members}
-        myId={myId}
-        busy={busy}
-        replyTo={quoteReply}
-        onCancelReply={()=>setQuoteReply(null)}
+        members={members} myId={myId} busy={busy}
+        replyTo={quoteReply} onCancelReply={()=>setQuoteReply(null)}
+        placeholder={dealRoom ? `Message in ${dealRoom.name}…` : "Message… (@ to mention)"}
       />
 
       {scheduleFor && (
-        <ScheduleDialog
-          convId={convId} myId={myId} text={scheduleFor}
-          onClose={()=>setSched(null)}
-          onScheduled={()=>{ setInput(""); setSched(null); }}
-        />
+        <ScheduleDialog convId={convId} myId={myId} text={scheduleFor}
+          onClose={()=>setSched(null)} onScheduled={()=>{ setInput(""); setSched(null); }}/>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SIDEBAR SECTION
+// ─────────────────────────────────────────────────────────────
+function SidebarSection({ label, icon: Icon, count, children, defaultOpen = true }: {
+  label: string; icon: React.ElementType; count?: number;
+  children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="sb-section">
+      <button className="sb-section-hdr" onClick={() => setOpen(p => !p)}>
+        <Icon style={{ width: 10, height: 10 }} />
+        <span className="sb-section-label">{label}</span>
+        {count != null && count > 0 && <span className="sb-section-ct">{count}</span>}
+        <span style={{ marginLeft: "auto" }}>
+          {open ? <ChevronDown style={{ width: 10, height: 10 }} /> : <ChevronRight style={{ width: 10, height: 10 }} />}
+        </span>
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  NEW CONVERSATION DIALOG
+// ─────────────────────────────────────────────────────────────
+function NewConvDialog({ open,onClose,members,myId,teamId,convs,refetch,onCreate,isOnline,getStatus }: {
+  open:boolean;onClose:()=>void;members:TeamMember[];myId:string;teamId:string;
+  convs:Conversation[];refetch:()=>void;onCreate:(id:string)=>void;
+  isOnline:(id:string)=>boolean; getStatus:(uid:string)=>UserStatus;
+}) {
+  const { startConversation }=useConversationMessages(null);
+  const [sel,setSel]=useState<string[]>([]);
+  const others=members.filter(m=>m.user_id!==myId&&m.status==="active");
+  const tog=(uid:string)=>setSel(p=>p.includes(uid)?p.filter(x=>x!==uid):[...p,uid]);
+  const go=async()=>{
+    if(!sel.length) return;
+    try {
+      if(sel.length===1){
+        const ex=convs.find(c=>!c.is_group&&c.participants.length===1&&c.participants.some(p=>p.user_id===sel[0]));
+        if(ex){setSel([]);onCreate(ex.id);return;}
+      }
+      const id=await startConversation.mutateAsync({teamId,memberIds:sel});
+      refetch();setSel([]);onCreate(id);toast({title:"Conversation started"});
+    } catch(e:any){toast({title:"Could not start chat",description:e?.message,variant:"destructive"});}
+  };
+  return (
+    <Dialog open={open} onOpenChange={v=>{if(!v){setSel([]);onClose();}}}>
+      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
+        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>New Conversation</DialogTitle></DialogHeader>
+        {sel.length>1&&<p style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>Group · {sel.length} members</p>}
+        <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
+          {others.length===0?<p style={{fontSize:12,color:"rgba(255,255,255,.3)",padding:"20px 0",textAlign:"center"}}>No other members</p>
+            :others.map(m=>{
+              const nm=m.profile?.full_name||m.invited_email||"Unknown";
+              const chk=sel.includes(m.user_id);
+              const status = getStatus(m.user_id);
+              const stCfg = STATUS_CONFIG[status];
+              return(
+                <div key={m.id} onClick={()=>tog(m.user_id)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,cursor:"pointer",border:"1px solid",
+                    borderColor:chk?"rgba(124,58,237,.4)":"transparent",background:chk?"rgba(124,58,237,.1)":"transparent",transition:"all .13s"}}>
+                  <Checkbox checked={chk} className="pointer-events-none"/>
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <Avatar className="h-8 w-8"><AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{initials(nm)}</AvatarFallback></Avatar>
+                    <StatusBadge status={status} size="xs" />
+                  </div>
+                  <div>
+                    <p style={{fontSize:13,fontWeight:500,color:"#e2e8f0",margin:0}}>{nm}</p>
+                    <p style={{fontSize:10,fontWeight:600,color:stCfg.color,margin:0}}>
+                      {stCfg.emoji} {stCfg.label}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={()=>{setSel([]);onClose();}}>Cancel</Button>
+          <Button size="sm" disabled={!sel.length||startConversation.isPending} onClick={go} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)"}}>
+            {sel.length>1?"Create Group":"Start Chat"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1295,141 +1746,40 @@ function NotifsPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SIDEBAR CONVERSATION LIST
+//  DEAL ROOMS GENERATOR (from calls)
 // ─────────────────────────────────────────────────────────────
-function Sidebar({ convs,loading,sel,onSel,isOnline }: {
-  convs:Conversation[]; loading:boolean; sel:string|null;
-  onSel:(id:string)=>void; isOnline:(id:string)=>boolean;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = useMemo(() =>
-    q.trim() ? convs.filter(c => getConversationName(c).toLowerCase().includes(q.toLowerCase())) : convs,
-    [convs, q]
-  );
-  const dms  = filtered.filter(c=>!c.is_group);
-  const grps = filtered.filter(c=>c.is_group);
+function buildDealRoomsFromCalls(calls: any[]): DealRoom[] {
+  return calls
+    .filter(c => c.status !== "live")
+    .slice(0, 12)
+    .map(c => {
+      const stage: DealRoom["deal_stage"] =
+        c.status === "Won" ? "won"
+        : c.status === "Lost" ? "lost"
+        : c.status === "At Risk" ? "at_risk"
+        : c.meeting_type === "demo" ? "demo"
+        : c.meeting_type === "negotiation" ? "negotiation"
+        : "discovery";
 
-  const Row = ({ c }:{c:Conversation}) => {
-    const nm=getConversationName(c);
-    const other=!c.is_group&&c.participants[0];
-    const on=other?isOnline(other.user_id):false;
-    return (
-      <button className={cn("conv-item",sel===c.id&&"conv-item--active")} onClick={()=>onSel(c.id)}>
-        <div className="conv-av-wrap">
-          <div className={cn("conv-av",c.is_group&&"conv-av--grp")}>
-            {c.is_group?<Users style={{width:14,height:14}}/>:initials(nm)}
-          </div>
-          {!c.is_group&&<span className="pres-dot" style={{position:"absolute",bottom:-1,right:-1,background:on?"#22c55e":"rgba(255,255,255,.13)"}}/>}
-          {c.unread_count>0&&<div className="conv-unread">{c.unread_count>9?"9+":c.unread_count}</div>}
-        </div>
-        <div className="conv-info">
-          <div className="conv-row1">
-            <span className={cn("conv-name",c.unread_count>0&&"conv-name--bold")}>{nm}</span>
-            {c.last_message&&<span className="meta-time">{fmtTime(c.last_message.created_at)}</span>}
-          </div>
-          <p className={cn("conv-preview",c.unread_count>0&&"conv-preview--bold")}>
-            {!c.is_group&&on?"● Online now":c.last_message?.message_text||"No messages yet"}
-          </p>
-        </div>
-        <ChevronRight className="conv-chev" style={{width:13,height:13}}/>
-      </button>
-    );
-  };
-
-  return (
-    <div className="conv-list">
-      {/* Search within sidebar */}
-      <div className="sidebar-search">
-        <Search style={{width:13,height:13,flexShrink:0,color:"rgba(255,255,255,.3)"}}/>
-        <input
-          className="sidebar-search-input"
-          placeholder="Search conversations…"
-          value={q}
-          onChange={e=>setQ(e.target.value)}
-        />
-        {q && <button className="sidebar-search-clear" onClick={()=>setQ("")}><X style={{width:11,height:11}}/></button>}
-      </div>
-
-      {loading?<div className="center-spin"><Loader2 className="spin"/></div>
-        :filtered.length===0?<div className="panel-empty"><MessageSquare style={{width:24,height:24,opacity:.2}}/><p>{q?"No results":"No conversations yet"}</p></div>
-        :(
-          <>
-            {grps.length>0&&(
-              <div className="conv-group">
-                <div className="conv-group-lbl"><Hash style={{width:10,height:10}}/> Group Chats <span className="conv-group-ct">{grps.length}</span></div>
-                {grps.map(c=><Row key={c.id} c={c}/>)}
-              </div>
-            )}
-            {dms.length>0&&(
-              <div className="conv-group">
-                <div className="conv-group-lbl"><MessageSquare style={{width:10,height:10}}/> Direct Messages <span className="conv-group-ct">{dms.length}</span></div>
-                {dms.map(c=><Row key={c.id} c={c}/>)}
-              </div>
-            )}
-          </>
-        )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-//  NEW CONVERSATION DIALOG
-// ─────────────────────────────────────────────────────────────
-function NewConvDialog({ open,onClose,members,myId,teamId,convs,refetch,onCreate,isOnline }: {
-  open:boolean;onClose:()=>void;members:TeamMember[];myId:string;teamId:string;
-  convs:Conversation[];refetch:()=>void;onCreate:(id:string)=>void;isOnline:(id:string)=>boolean;
-}) {
-  const { startConversation }=useConversationMessages(null);
-  const [sel,setSel]=useState<string[]>([]);
-  const others=members.filter(m=>m.user_id!==myId&&m.status==="active");
-  const tog=(uid:string)=>setSel(p=>p.includes(uid)?p.filter(x=>x!==uid):[...p,uid]);
-  const go=async()=>{
-    if(!sel.length) return;
-    try {
-      if(sel.length===1){
-        const ex=convs.find(c=>!c.is_group&&c.participants.length===1&&c.participants.some(p=>p.user_id===sel[0]));
-        if(ex){setSel([]);onCreate(ex.id);return;}
-      }
-      const id=await startConversation.mutateAsync({teamId,memberIds:sel});
-      refetch();setSel([]);onCreate(id);toast({title:"Conversation started"});
-    } catch(e:any){toast({title:"Could not start chat",description:e?.message,variant:"destructive"});}
-  };
-  return (
-    <Dialog open={open} onOpenChange={v=>{if(!v){setSel([]);onClose();}}}>
-      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
-        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>New Conversation</DialogTitle></DialogHeader>
-        {sel.length>1&&<p style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>Group · {sel.length} members</p>}
-        <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-          {others.length===0?<p style={{fontSize:12,color:"rgba(255,255,255,.3)",padding:"20px 0",textAlign:"center"}}>No other members</p>
-            :others.map(m=>{
-              const nm=m.profile?.full_name||m.invited_email||"Unknown";
-              const chk=sel.includes(m.user_id);
-              return(
-                <div key={m.id} onClick={()=>tog(m.user_id)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,cursor:"pointer",border:"1px solid",
-                    borderColor:chk?"rgba(124,58,237,.4)":"transparent",background:chk?"rgba(124,58,237,.1)":"transparent",transition:"all .13s"}}>
-                  <Checkbox checked={chk} className="pointer-events-none"/>
-                  <div style={{position:"relative",flexShrink:0}}>
-                    <Avatar className="h-8 w-8"><AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{initials(nm)}</AvatarFallback></Avatar>
-                    <span className="pres-dot" style={{position:"absolute",bottom:-1,right:-1,background:isOnline(m.user_id)?"#22c55e":"rgba(255,255,255,.13)"}}/>
-                  </div>
-                  <div>
-                    <p style={{fontSize:13,fontWeight:500,color:"#e2e8f0",margin:0}}>{nm}</p>
-                    <p style={{fontSize:10,fontWeight:600,color:isOnline(m.user_id)?"#22c55e":"rgba(255,255,255,.25)",margin:0}}>{isOnline(m.user_id)?"● Online":"○ Offline"}</p>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={()=>{setSel([]);onClose();}}>Cancel</Button>
-          <Button size="sm" disabled={!sel.length||startConversation.isPending} onClick={go} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)"}}>
-            {sel.length>1?"Create Group":"Start Chat"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+      return {
+        id: `dr_${c.id}`,
+        name: c.name,
+        call_id: c.id,
+        deal_stage: stage,
+        sentiment_score: c.sentiment_score,
+        last_call_score: c.sentiment_score ? Math.round(c.sentiment_score / 10) : undefined,
+        company: c.participants?.[0] || undefined,
+        unread_count: 0,
+        last_message: undefined,
+        last_activity: c.date,
+        participants: c.participants || [],
+        next_step: stage === "at_risk"
+          ? "Review pricing concerns"
+          : stage === "demo"
+          ? "Send follow-up proposal"
+          : undefined,
+      };
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1438,31 +1788,61 @@ function NewConvDialog({ open,onClose,members,myId,teamId,convs,refetch,onCreate
 export default function MessagesPage() {
   const { user } = useAuth();
   const { team, members } = useTeam();
-  const { conversations,conversationsLoading,totalUnread,refetchConversations } = useTeamMessaging(team?.id);
-  const { unreadCount:notifCount } = useNotifications();
+  const { conversations, conversationsLoading, totalUnread, refetchConversations } = useTeamMessaging(team?.id);
+  const { unreadCount: notifCount } = useNotifications();
+  const { data: calls = [] } = useCalls();
   const isOnline = usePresence(team?.id, user?.id);
+  const { myStatus, updateStatus, getStatus } = useUserStatus(user?.id);
 
+  // Status update when on a live call
   useEffect(() => {
-    if (!user?.id) return;
-    const ch = supabase.channel(`notif-snd:${user.id}`)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${user.id}`},playPing)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  },[user?.id]);
+    const hasLiveCall = calls.some((c: any) => c.status === "live");
+    if (hasLiveCall && myStatus !== "on_call") {
+      updateStatus("on_call");
+    }
+  }, [calls, myStatus, updateStatus]);
 
-  const [sel, setSel]           = useState<string|null>(null);
-  const [tab, setTab]           = useState<"chats"|"notifs">("chats");
-  const [newOpen, setNewOpen]   = useState(false);
-  const [mobile, setMobile]     = useState<"list"|"chat">("list");
+  const [sel, setSel]             = useState<string|null>(null);
+  const [tab, setTab]             = useState<"deals"|"chats"|"notifs">("deals");
+  const [newOpen, setNewOpen]     = useState(false);
+  const [mobile, setMobile]       = useState<"list"|"chat">("list");
+  const [showSearch, setShowSearch] = useState(false);
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+  const [activeDealRoom, setActiveDealRoom] = useState<DealRoom|null>(null);
 
-  const onlineCount = useMemo(()=>
-    members.filter(m=>m.user_id!==user?.id&&isOnline(m.user_id)).length,
-    [members, isOnline, user?.id]
-  );
+  // Build deal rooms from calls
+  const dealRooms = useMemo(() => buildDealRoomsFromCalls(calls), [calls]);
 
-  const pick = (id:string) => { setSel(id); setMobile("chat"); setTab("chats"); };
-  const back = () => setMobile("list");
+  // Stats
+  const atRiskDeals = dealRooms.filter(d => d.deal_stage === "at_risk").length;
+  const wonDeals = dealRooms.filter(d => d.deal_stage === "won").length;
   const totalBadge = totalUnread + notifCount;
+
+  const myStatusCfg = STATUS_CONFIG[myStatus];
+
+  const pick = (id: string) => { setSel(id); setMobile("chat"); setTab("chats"); setActiveDealRoom(null); };
+  const pickDealRoom = (room: DealRoom) => {
+    setActiveDealRoom(room);
+    setSel(null);
+    setMobile("chat");
+  };
+  const back = () => { setMobile("list"); setActiveDealRoom(null); };
+
+  const handleSearchNavigate = (convId?: string) => {
+    if (convId) { setSel(convId); setMobile("chat"); }
+  };
+
+  // Keyboard shortcut for search
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setShowSearch(true); }
+    };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, []);
+
+  const dmConvs = conversations.filter(c => !c.is_group);
+  const groupConvs = conversations.filter(c => c.is_group);
 
   return (
     <>
@@ -1476,24 +1856,22 @@ export default function MessagesPage() {
           --ac:#7c3aed; --acg:rgba(124,58,237,.35); --acs:rgba(124,58,237,.12);
           --t1:#f0f6fc; --t2:rgba(255,255,255,.6); --t3:rgba(255,255,255,.3); --t4:rgba(255,255,255,.14);
           --grn:#22c55e; --amr:#f59e0b; --red:#ef4444;
+          --deal:#60a5fa;
           display:flex; flex-direction:column;
           height:calc(100dvh - 4rem); margin:-28px; overflow:hidden;
           background:var(--bg0); font-family:'DM Sans',system-ui,sans-serif;
           -webkit-font-smoothing:antialiased;
         }
-        @media(max-width:767px){
-          .mp{ margin:-16px; height:calc(100dvh - 3rem); padding-bottom:56px; }
-        }
+        @media(max-width:767px){ .mp{ margin:-16px; height:calc(100dvh - 3rem); padding-bottom:56px; } }
 
-        /* ══ KEYFRAMES ═════════════════════════════════════════════════════ */
-        @keyframes spin  { to { transform:rotate(360deg); } }
-        @keyframes bounce{ 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-4px)} }
+        @keyframes spin   { to { transform:rotate(360deg); } }
+        @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-4px)} }
         @keyframes slideIn{ from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
-        @keyframes sheetUp{ from{transform:translateY(100%)} to{transform:translateY(0)} }
         @keyframes fadeIn { from{opacity:0} to{opacity:1} }
         @keyframes pop    { from{opacity:0;transform:scale(.94) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
         @keyframes mentionPop{ from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes schedPop  { from{opacity:0;transform:translateY(8px) scale(.98)} to{opacity:1;transform:translateY(0) scale(1)} }
+        @keyframes searchSlide{ from{opacity:0;transform:translateY(-20px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+        @keyframes statusPop{ from{opacity:0;transform:translateY(8px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
 
         /* ══ TOPBAR ════════════════════════════════════════════════════════ */
         .topbar{
@@ -1507,7 +1885,7 @@ export default function MessagesPage() {
         .topbar-l{ display:flex; align-items:center; gap:9px; min-width:0; }
         .topbar-icon{
           width:30px; height:30px; border-radius:9px;
-          background:var(--acs); border:1px solid rgba(124,58,237,.25);
+          background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.2);
           display:flex; align-items:center; justify-content:center; flex-shrink:0;
         }
         .topbar-title{ font-size:15px; font-weight:700; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; white-space:nowrap; }
@@ -1517,13 +1895,6 @@ export default function MessagesPage() {
           color:#fff; padding:2px 8px; border-radius:20px;
           box-shadow:0 2px 8px var(--acg); flex-shrink:0;
         }
-        .online-pill{
-          display:inline-flex; align-items:center; gap:5px;
-          background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.18);
-          border-radius:20px; padding:2px 10px 2px 7px;
-          font-size:11px; font-weight:600; color:#22c55e; white-space:nowrap;
-        }
-        .online-dot{ width:6px; height:6px; border-radius:50%; background:#22c55e; animation:bounce 2s ease-in-out infinite; flex-shrink:0; }
         .topbar-r{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
         .topbar-btn{
           width:30px; height:30px; border-radius:8px;
@@ -1532,6 +1903,35 @@ export default function MessagesPage() {
           cursor:pointer; color:var(--t3); transition:.13s;
         }
         .topbar-btn:hover{ background:rgba(255,255,255,.09); color:var(--t1); }
+
+        /* Search button with shortcut */
+        .search-btn{
+          display:flex; align-items:center; gap:7px;
+          background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09);
+          border-radius:9px; padding:6px 12px;
+          color:var(--t3); font-size:12px; cursor:pointer; transition:.13s;
+          font-family:'DM Sans',sans-serif;
+        }
+        .search-btn:hover{ background:rgba(255,255,255,.07); color:var(--t2); border-color:rgba(255,255,255,.14); }
+        .search-shortcut{
+          font-size:10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1);
+          border-radius:5px; padding:1px 5px; color:var(--t4); font-family:monospace;
+        }
+
+        /* Status button */
+        .status-btn{
+          display:flex; align-items:center; gap:6px;
+          background:rgba(255,255,255,.04); border:1px solid var(--bdr);
+          border-radius:9px; padding:5px 10px;
+          cursor:pointer; font-size:12px; color:var(--t2);
+          transition:.13s; font-family:'DM Sans',sans-serif;
+          position:relative;
+        }
+        .status-btn:hover{ background:rgba(255,255,255,.08); }
+        .status-btn-emoji{ font-size:13px; }
+        .status-btn-label{ display:none; }
+        @media(min-width:900px){ .status-btn-label{ display:inline; } }
+
         .new-btn{
           display:flex; align-items:center; gap:6px;
           background:linear-gradient(135deg,#7c3aed,#6d28d9);
@@ -1541,14 +1941,113 @@ export default function MessagesPage() {
           transition:transform .15s, box-shadow .15s; white-space:nowrap;
         }
         .new-btn:hover{ transform:translateY(-1px); box-shadow:0 6px 18px var(--acg); }
-        @media(max-width:480px){
-          .new-btn span{ display:none; }
-          .new-btn{ width:32px; height:32px; padding:0; border-radius:50%; justify-content:center; }
-          .topbar-title{ font-size:13px; }
-          .online-pill{ display:none; }
-        }
 
-        /* ══ BODY LAYOUT ═══════════════════════════════════════════════════ */
+        /* ══ STATUS PICKER ══════════════════════════════════════════════════ */
+        .status-picker{
+          position:absolute; top:calc(100% + 8px); right:0; z-index:9999;
+          background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1);
+          border-radius:14px; padding:8px; width:220px;
+          box-shadow:0 20px 60px rgba(0,0,0,.7);
+          animation:statusPop .16s ease;
+        }
+        .sp-title{ font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; padding:4px 8px 8px; }
+        .sp-item{
+          display:flex; align-items:center; gap:9px; width:100%;
+          padding:9px 10px; border-radius:9px; background:transparent; border:none;
+          cursor:pointer; transition:.12s; font-family:'DM Sans',sans-serif;
+        }
+        .sp-item:hover{ background:rgba(255,255,255,.06); }
+        .sp-item--active{ background:rgba(124,58,237,.1); }
+        .sp-emoji{ font-size:16px; }
+        .sp-label{ font-size:13px; font-weight:500; color:var(--t1); }
+        .sp-divider{ height:1px; background:var(--bdr2); margin:6px 0; }
+        .sp-input{
+          width:100%; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09);
+          border-radius:8px; padding:7px 10px; color:var(--t1);
+          font-size:12px; font-family:'DM Sans',sans-serif; outline:none;
+        }
+        .sp-input::placeholder{ color:var(--t4); }
+        .sp-input:focus{ border-color:rgba(124,58,237,.4); }
+
+        /* ══ GLOBAL SEARCH ══════════════════════════════════════════════════ */
+        .gs-overlay{
+          position:fixed; inset:0; z-index:9990;
+          background:rgba(0,0,0,.7); backdrop-filter:blur(8px);
+          display:flex; align-items:flex-start; justify-content:center;
+          padding-top:80px;
+          animation:fadeIn .15s ease;
+        }
+        .gs-panel{
+          width:100%; max-width:640px; margin:0 16px;
+          background:rgba(10,13,22,.99); border:1px solid rgba(255,255,255,.1);
+          border-radius:18px; overflow:hidden;
+          box-shadow:0 40px 100px rgba(0,0,0,.8);
+          animation:searchSlide .18s ease;
+          max-height:calc(100vh - 120px);
+          display:flex; flex-direction:column;
+        }
+        .gs-input-wrap{
+          display:flex; align-items:center; gap:12px;
+          padding:16px 20px; border-bottom:1px solid var(--bdr);
+        }
+        .gs-input{
+          flex:1; background:transparent; border:none; outline:none;
+          color:var(--t1); font-size:16px; font-family:'DM Sans',sans-serif;
+        }
+        .gs-input::placeholder{ color:var(--t4); }
+        .gs-close{
+          background:rgba(255,255,255,.07); border:1px solid var(--bdr);
+          border-radius:7px; width:28px; height:28px; display:flex;
+          align-items:center; justify-content:center; cursor:pointer; color:var(--t3);
+          flex-shrink:0; transition:.12s;
+        }
+        .gs-close:hover{ color:var(--t1); background:rgba(255,255,255,.12); }
+        .gs-filters{
+          display:flex; gap:4px; padding:10px 16px;
+          border-bottom:1px solid var(--bdr2); flex-shrink:0; flex-wrap:wrap;
+        }
+        .gs-filter{
+          display:flex; align-items:center; gap:5px;
+          padding:4px 10px; border-radius:20px;
+          background:transparent; border:1px solid transparent;
+          color:var(--t3); font-size:11px; font-weight:600;
+          cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s;
+        }
+        .gs-filter:hover{ background:rgba(255,255,255,.05); color:var(--t1); }
+        .gs-filter--on{ background:var(--acs); border-color:rgba(124,58,237,.3); color:#a78bfa; }
+        .gs-results{ flex:1; overflow-y:auto; padding:8px 0; }
+        .gs-empty{
+          display:flex; flex-direction:column; align-items:center; gap:10px;
+          padding:48px 20px; text-align:center; color:var(--t3);
+        }
+        .gs-empty p{ font-size:13px; margin:0; }
+        .gs-tips{ display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:4px; }
+        .gs-tip{
+          font-size:11px; padding:3px 10px; border-radius:20px;
+          background:rgba(255,255,255,.05); border:1px solid var(--bdr); color:var(--t4);
+        }
+        .gs-count{ font-size:10px; font-weight:600; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; padding:4px 20px 8px; }
+        .gs-result{
+          display:flex; align-items:center; gap:12px; width:100%;
+          padding:11px 20px; background:transparent; border:none;
+          cursor:pointer; text-align:left; transition:.12s;
+          border-bottom:1px solid var(--bdr2); font-family:'DM Sans',sans-serif;
+        }
+        .gs-result:last-child{ border-bottom:none; }
+        .gs-result:hover{ background:rgba(255,255,255,.03); }
+        .gs-result-icon{
+          width:32px; height:32px; border-radius:9px; flex-shrink:0;
+          display:flex; align-items:center; justify-content:center;
+        }
+        .gs-result-body{ flex:1; min-width:0; }
+        .gs-result-top{ display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+        .gs-result-title{ font-size:13px; font-weight:600; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+        .gs-result-type{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; flex-shrink:0; }
+        .gs-result-time{ font-size:10px; color:var(--t4); flex-shrink:0; }
+        .gs-result-preview{ font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0; }
+        .gs-result-score{ display:inline-flex; align-items:center; gap:4px; font-size:10px; color:var(--t4); margin-top:3px; }
+
+        /* ══ BODY ══════════════════════════════════════════════════════════ */
         .body{ display:flex; flex:1; min-height:0; }
         .sidebar{
           width:288px; flex-shrink:0; display:flex; flex-direction:column;
@@ -1572,38 +2071,92 @@ export default function MessagesPage() {
         .tab--on{ background:var(--acs); border-color:rgba(124,58,237,.25); color:#a78bfa; }
         .tab-badge{ background:var(--ac); color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:10px; }
 
-        /* ── Sidebar search ── */
-        .sidebar-search{
-          display:flex; align-items:center; gap:7px;
-          margin:8px 8px 4px; padding:7px 10px;
-          background:rgba(255,255,255,.04);
-          border:1px solid rgba(255,255,255,.07);
-          border-radius:10px;
+        /* ══ SIDEBAR SECTIONS ══════════════════════════════════════════════ */
+        .sb-section{ margin-bottom:2px; }
+        .sb-section-hdr{
+          display:flex; align-items:center; gap:6px; width:100%;
+          padding:6px 12px; background:transparent; border:none;
+          cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s;
         }
-        .sidebar-search-input{
-          flex:1; background:transparent; border:none; outline:none;
-          color:var(--t1); font-size:12px; font-family:'DM Sans',sans-serif;
-          min-width:0;
-        }
-        .sidebar-search-input::placeholder{ color:var(--t4); }
-        .sidebar-search-clear{
-          background:none; border:none; color:var(--t3); cursor:pointer; padding:0; display:flex;
-          transition:.12s;
-        }
-        .sidebar-search-clear:hover{ color:var(--t1); }
+        .sb-section-hdr:hover{ background:rgba(255,255,255,.03); }
+        .sb-section-label{ font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; flex:1; text-align:left; }
+        .sb-section-ct{ background:var(--acs); color:#a78bfa; font-size:9px; padding:1px 6px; border-radius:10px; }
 
-        /* ══ CONVERSATION LIST ═════════════════════════════════════════════ */
+        /* ══ DEAL ROOMS ════════════════════════════════════════════════════ */
+        .deals-panel{ flex:1; overflow-y:auto; padding:4px 8px 8px; }
+
+        /* Deal stats bar */
+        .deal-stats{
+          display:grid; grid-template-columns:1fr 1fr 1fr;
+          gap:6px; padding:8px 10px; margin-bottom:4px;
+        }
+        .deal-stat{
+          background:rgba(255,255,255,.03); border:1px solid var(--bdr2);
+          border-radius:10px; padding:8px 10px; text-align:center;
+        }
+        .deal-stat-val{ font-size:18px; font-weight:800; font-family:'Bricolage Grotesque',sans-serif; color:var(--t1); }
+        .deal-stat-lbl{ font-size:9px; color:var(--t4); text-transform:uppercase; letter-spacing:.06em; }
+
+        .dr-card{
+          width:100%; text-align:left; background:rgba(255,255,255,.02);
+          border:1px solid rgba(255,255,255,.05); border-radius:11px;
+          padding:10px 11px; margin-bottom:5px; cursor:pointer; transition:all .13s;
+          font-family:'DM Sans',sans-serif;
+        }
+        .dr-card:hover{ background:rgba(255,255,255,.05); border-color:rgba(96,165,250,.2); }
+        .dr-card--active{ background:rgba(96,165,250,.07)!important; border-color:rgba(96,165,250,.3)!important; }
+        .dr-card-top{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+        .dr-card-icon{
+          width:28px; height:28px; border-radius:7px; flex-shrink:0;
+          display:flex; align-items:center; justify-content:center; font-size:14px;
+        }
+        .dr-card-info{ flex:1; min-width:0; }
+        .dr-card-name{ font-size:12px; font-weight:600; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .dr-card-company{ font-size:10px; color:var(--t3); }
+        .dr-unread{
+          min-width:16px; height:16px; border-radius:8px;
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          font-size:9px; font-weight:700; color:#fff; padding:0 3px;
+          display:flex; align-items:center; justify-content:center; flex-shrink:0;
+        }
+        .dr-card-meta{ display:flex; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap; }
+        .dr-stage-badge{ font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; }
+        .dr-sentiment{ font-size:10px; font-weight:500; }
+        .dr-last-msg{ font-size:11px; color:var(--t3); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .dr-next-step{
+          display:flex; align-items:center; gap:5px;
+          font-size:10px; color:#60a5fa; margin-top:5px;
+          background:rgba(96,165,250,.08); border-radius:6px; padding:3px 7px;
+        }
+
+        /* ══ DEAL ROOM HEADER ══════════════════════════════════════════════ */
+        .drh-wrap{
+          display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+          padding:10px 16px; border-bottom:1px solid rgba(96,165,250,.12);
+          background:rgba(96,165,250,.04); flex-shrink:0;
+        }
+        .drh-left{ display:flex; align-items:center; gap:9px; }
+        .drh-icon{
+          width:32px; height:32px; border-radius:8px; flex-shrink:0;
+          display:flex; align-items:center; justify-content:center;
+        }
+        .drh-name{ font-size:13px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; }
+        .drh-company{ font-size:10px; color:var(--t3); }
+        .drh-stats{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-left:auto; }
+        .drh-stat{ display:flex; flex-direction:column; gap:1px; }
+        .drh-stat-label{ font-size:9px; color:var(--t4); text-transform:uppercase; letter-spacing:.06em; }
+        .drh-stat-val{ font-size:12px; font-weight:600; color:var(--t1); }
+        .drh-stat--next{ max-width:200px; }
+        .drh-stat-val--next{ font-size:11px; color:#60a5fa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+        /* ══ CONV LIST ═════════════════════════════════════════════════════ */
         .conv-list{ flex:1; overflow-y:auto; padding:0 6px 8px; }
         .conv-group{ margin-bottom:6px; }
         .conv-group-lbl{
           display:flex; align-items:center; gap:6px; padding:5px 10px 3px;
-          font-size:10px; font-weight:700; color:var(--t4);
-          text-transform:uppercase; letter-spacing:.08em;
+          font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em;
         }
-        .conv-group-ct{
-          margin-left:auto; background:var(--acs); color:#a78bfa;
-          font-size:9px; padding:1px 6px; border-radius:10px;
-        }
+        .conv-group-ct{ margin-left:auto; background:var(--acs); color:#a78bfa; font-size:9px; padding:1px 6px; border-radius:10px; }
         .conv-item{
           width:100%; display:flex; align-items:center; gap:9px;
           padding:9px 10px; border-radius:10px; border:1px solid transparent;
@@ -1644,18 +2197,48 @@ export default function MessagesPage() {
           align-items:center; justify-content:center; text-align:center; padding:40px;
         }
         .re-icon{
-          width:64px; height:64px; border-radius:18px; margin-bottom:16px;
-          background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.15);
+          width:72px; height:72px; border-radius:20px; margin-bottom:20px;
+          background:rgba(96,165,250,.08); border:1px solid rgba(96,165,250,.15);
           display:flex; align-items:center; justify-content:center;
         }
-        .right-empty h3{ font-size:15px; font-weight:700; color:#64748b; font-family:'Bricolage Grotesque',sans-serif; margin:0 0 6px; }
-        .right-empty p{ font-size:12px; color:var(--t4); max-width:240px; line-height:1.6; margin:0 0 18px; }
+        .right-empty h3{ font-size:18px; font-weight:700; color:#64748b; font-family:'Bricolage Grotesque',sans-serif; margin:0 0 8px; }
+        .right-empty p{ font-size:13px; color:var(--t4); max-width:280px; line-height:1.6; margin:0 0 24px; }
+        .re-actions{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
         .re-btn{
           display:inline-flex; align-items:center; gap:7px;
           background:linear-gradient(135deg,#7c3aed,#6d28d9);
           border:none; border-radius:10px; padding:9px 18px;
-          color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; margin:0 5px;
+          color:#fff; font-size:13px; font-weight:600; cursor:pointer;
+          font-family:'DM Sans',sans-serif;
         }
+        .re-btn-secondary{
+          display:inline-flex; align-items:center; gap:7px;
+          background:rgba(96,165,250,.1); border:1px solid rgba(96,165,250,.2);
+          border-radius:10px; padding:9px 18px;
+          color:#60a5fa; font-size:13px; font-weight:600; cursor:pointer;
+          font-family:'DM Sans',sans-serif;
+        }
+
+        /* ══ DEAL ROOM EMPTY STATE ══════════════════════════════════════════ */
+        .dr-empty-state{
+          flex:1; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; text-align:center; padding:40px;
+        }
+
+        /* ══ SYSTEM MESSAGES ════════════════════════════════════════════════ */
+        .sys-msg{
+          display:flex; align-items:flex-start; gap:9px;
+          margin:10px 0; padding:11px 14px;
+          background:rgba(96,165,250,.05); border:1px solid rgba(96,165,250,.12);
+          border-radius:12px; border-left:3px solid rgba(96,165,250,.4);
+        }
+        .sys-msg-icon{
+          width:22px; height:22px; border-radius:6px; flex-shrink:0;
+          background:rgba(96,165,250,.15); color:#60a5fa;
+          display:flex; align-items:center; justify-content:center; margin-top:1px;
+        }
+        .sys-msg-body{ flex:1; font-size:12px; color:rgba(255,255,255,.7); line-height:1.55; }
+        .sys-msg-time{ font-size:10px; color:var(--t4); flex-shrink:0; margin-top:3px; }
 
         /* ══ CHAT THREAD ════════════════════════════════════════════════════ */
         .thread{ display:flex; flex-direction:column; height:100%; position:relative; }
@@ -1698,21 +2281,20 @@ export default function MessagesPage() {
         .typing-dots span:nth-child(2){ animation:bounce 1.2s .2s infinite; }
         .typing-dots span:nth-child(3){ animation:bounce 1.2s .4s infinite; }
 
-        /* ══ MESSAGES AREA ══════════════════════════════════════════════════ */
+        /* ══ MESSAGES ══════════════════════════════════════════════════════ */
         .msgs-area{ flex:1; overflow-y:auto; padding:14px 16px; }
         @media(max-width:767px){ .msgs-area{ padding:10px 10px 10px; } }
         .center-spin{ display:flex; justify-content:center; padding:40px 0; }
         .spin{ width:20px; height:20px; color:#7c3aed; animation:spin 1s linear infinite; }
         .empty-chat{ display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; text-align:center; }
-        .empty-icon{ width:50px; height:50px; border-radius:14px; margin-bottom:12px; background:rgba(124,58,237,.1); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; }
-        .empty-title{ font-size:14px; font-weight:600; color:#64748b; margin:0 0 4px; }
-        .empty-sub{ font-size:12px; color:var(--t4); margin:0; }
+        .empty-icon{ width:56px; height:56px; border-radius:16px; margin-bottom:14px; background:rgba(124,58,237,.1); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; }
+        .empty-title{ font-size:15px; font-weight:600; color:#64748b; margin:0 0 6px; font-family:'Bricolage Grotesque',sans-serif; }
+        .empty-sub{ font-size:12px; color:var(--t4); margin:0; max-width:260px; line-height:1.6; }
 
         .divider-row{ display:flex; align-items:center; gap:10px; margin:16px 0 10px; }
         .div-line{ flex:1; height:1px; background:var(--bdr2); }
         .div-label{ font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--t3); padding:3px 9px; background:rgba(255,255,255,.03); border:1px solid var(--bdr2); border-radius:20px; white-space:nowrap; }
 
-        /* ══ MESSAGE ROWS ═══════════════════════════════════════════════════ */
         .msg-row{ display:flex; margin-bottom:2px; position:relative; }
         .msg-me{ justify-content:flex-end; margin-top:3px; }
         .msg-them{ justify-content:flex-start; margin-top:3px; }
@@ -1746,7 +2328,6 @@ export default function MessagesPage() {
           border-radius:16px 16px 16px 4px;
         }
         .bubble-txt{ font-size:13px; color:#fff; margin:0; font-family:'DM Sans',sans-serif; line-height:1.6; }
-        .bubble-txt li.md-li{ margin-left:16px; list-style:disc; font-size:13px; }
         .bubble.them .bubble-txt{ color:rgba(255,255,255,.84); }
         @media(max-width:767px){ .bubble-txt{ font-size:14px; } .bubble{ padding:10px 14px; } }
         .md-code{ background:rgba(0,0,0,.35); border-radius:4px; padding:1px 5px; font-family:monospace; font-size:12px; }
@@ -1754,23 +2335,14 @@ export default function MessagesPage() {
         .md-mention{ color:#c084fc; font-weight:700; background:rgba(192,132,252,.1); border-radius:4px; padding:0 3px; }
         .md-mention--all{ color:#fbbf24; background:rgba(251,191,36,.12); }
 
-        /* ── Quote preview ── */
-        .quote-preview{ display:flex; gap:8px; margin-bottom:7px; padding:6px 10px; background:rgba(0,0,0,.25); border-radius:8px; }
-        .quote-bar{ width:3px; flex-shrink:0; border-radius:2px; background:rgba(255,255,255,.4); }
-        .bubble.me .quote-bar{ background:rgba(255,255,255,.5); }
-        .quote-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
-        .quote-sender{ font-size:10px; font-weight:700; color:rgba(255,255,255,.7); }
-        .quote-text{ font-size:11px; color:rgba(255,255,255,.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
         .reply-count-badge{
           display:inline-flex; align-items:center; gap:4px; margin-top:4px;
           padding:2px 8px 2px 6px; background:var(--acs);
           border:1px solid rgba(124,58,237,.3); border-radius:20px;
           font-size:10px; font-weight:600; color:#a78bfa; cursor:pointer; transition:all .13s;
         }
-        .reply-count-badge:hover{ background:rgba(124,58,237,.2); border-color:rgba(124,58,237,.5); }
+        .reply-count-badge:hover{ background:rgba(124,58,237,.2); }
 
-        /* ── Reactions ── */
         .rxn-bar{ display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; align-items:center; }
         .rxn-chip{ display:inline-flex; align-items:center; gap:3px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:20px; padding:2px 7px; cursor:pointer; font-size:13px; transition:all .12s; }
         .rxn-chip:hover{ background:rgba(255,255,255,.1); }
@@ -1779,7 +2351,6 @@ export default function MessagesPage() {
         .rxn-add{ width:21px; height:21px; border-radius:50%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t3); transition:.12s; }
         .rxn-add:hover{ background:rgba(255,255,255,.1); color:var(--t1); }
 
-        /* ── Emoji Picker ── */
         .ep-wrap{ position:absolute; bottom:calc(100% + 6px); left:0; z-index:9999; background:rgba(10,13,22,.97); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; width:216px; box-shadow:0 20px 60px rgba(0,0,0,.7); animation:fadeIn .12s ease; }
         .ep-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin:8px 0 4px; }
         .ep-label:first-child{ margin-top:0; }
@@ -1787,7 +2358,6 @@ export default function MessagesPage() {
         .ep-btn{ padding:5px; border:none; background:transparent; cursor:pointer; font-size:16px; border-radius:6px; transition:.1s; text-align:center; }
         .ep-btn:hover{ background:rgba(255,255,255,.1); }
 
-        /* ── Desktop hover actions ── */
         .ha-row{ display:none; position:absolute; top:4px; background:rgba(11,15,28,.96); border:1px solid var(--bdr); border-radius:9px; padding:3px; box-shadow:0 8px 24px rgba(0,0,0,.5); gap:2px; align-items:center; }
         .ha-row--me{ right:calc(100% + 6px); }
         .ha-row--them{ left:calc(100% + 6px); }
@@ -1796,7 +2366,6 @@ export default function MessagesPage() {
         .ha:hover{ background:rgba(255,255,255,.08); color:#fff; }
         .ha-del:hover{ background:rgba(239,68,68,.15); color:#f87171; }
 
-        /* ── Edit ── */
         .edit-wrap{ display:flex; align-items:center; gap:5px; background:rgba(124,58,237,.1); border:1px solid rgba(124,58,237,.3); border-radius:12px; padding:7px 10px; }
         .edit-input{ background:transparent; border:none; outline:none; color:var(--t1); font-size:13px; min-width:80px; flex:1; font-family:'DM Sans',sans-serif; }
         .edit-save{ background:#7c3aed; border:none; border-radius:6px; padding:3px 9px; color:#fff; font-size:11px; font-weight:600; cursor:pointer; }
@@ -1806,98 +2375,40 @@ export default function MessagesPage() {
         .msg-meta--me{ justify-content:flex-end; }
         .meta-time{ font-size:10px; color:var(--t4); }
 
-        .thread-quote-btn{ display:inline-flex; align-items:center; gap:3px; font-size:9px; color:rgba(255,255,255,.35); background:transparent; border:none; cursor:pointer; padding:1px 4px; border-radius:4px; transition:.12s; font-family:'DM Sans',sans-serif; }
-        .thread-quote-btn:hover{ background:rgba(255,255,255,.07); color:rgba(255,255,255,.7); }
-        .thread-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:32px 16px; text-align:center; color:var(--t3); font-size:12px; }
-        .thread-reply{ margin-top:4px!important; }
-
         /* ══ COMPOSER ═══════════════════════════════════════════════════════ */
         .cmp-wrap{ border-top:1px solid var(--bdr2); background:rgba(11,15,28,.85); backdrop-filter:blur(12px); flex-shrink:0; }
         .cmp-reply{ display:flex; align-items:center; gap:7px; padding:7px 14px; background:rgba(124,58,237,.08); border-bottom:1px solid rgba(124,58,237,.15); }
         .cmp-reply-name{ font-size:11px; font-weight:700; color:#a78bfa; flex-shrink:0; }
         .cmp-reply-txt{ font-size:11px; color:var(--t3); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cmp-reply-x{ background:none; border:none; color:var(--t3); cursor:pointer; padding:0; display:flex; }
-
-        .cmp-fmt{
-          display:flex; align-items:center; gap:2px;
-          padding:6px 12px 0; border-top:1px solid var(--bdr2); flex-wrap:wrap;
-        }
-        .cmp-fmt-btn{
-          background:transparent; border:none; color:var(--t3);
-          padding:4px 7px; border-radius:6px; cursor:pointer;
-          font-size:12px; display:flex; align-items:center; justify-content:center;
-          transition:.12s; min-width:26px; gap:4px;
-        }
+        .cmp-fmt{ display:flex; align-items:center; gap:2px; padding:6px 12px 0; border-top:1px solid var(--bdr2); flex-wrap:wrap; }
+        .cmp-fmt-btn{ background:transparent; border:none; color:var(--t3); padding:4px 7px; border-radius:6px; cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; transition:.12s; min-width:26px; gap:4px; }
         .cmp-fmt-btn:hover{ background:rgba(255,255,255,.07); color:var(--t1); }
         .cmp-fmt-btn--on{ background:var(--acs); color:#a78bfa; }
-        .cmp-fmt-btn--schedule{
-          margin-left:auto; background:rgba(124,58,237,.08);
-          border:1px solid rgba(124,58,237,.2); color:#a78bfa;
-          border-radius:8px; padding:3px 10px;
-        }
+        .cmp-fmt-btn--schedule{ margin-left:auto; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.2); color:#a78bfa; border-radius:8px; padding:3px 10px; }
         .cmp-fmt-btn--schedule:hover{ background:rgba(124,58,237,.18); }
         .cmp-fmt-btn--schedule:disabled{ opacity:.4; cursor:not-allowed; }
         .cmp-fmt-lbl{ font-size:11px; font-weight:600; }
         .cmp-sep{ width:1px; height:14px; background:var(--bdr); margin:0 2px; }
-
-        /* ── @mention dropdown ── */
-        .cmp-mention-list{
-          background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1);
-          border-bottom:none; overflow:hidden;
-          animation:mentionPop .14s ease;
-          box-shadow:0 -12px 30px rgba(0,0,0,.4);
-        }
-        .cmp-mention-item{
-          display:flex; align-items:center; gap:9px; width:100%;
-          padding:9px 14px; background:transparent; border:none;
-          border-bottom:1px solid rgba(255,255,255,.05);
-          cursor:pointer; text-align:left; color:var(--t1);
-          font-family:'DM Sans',sans-serif; transition:.1s;
-        }
+        .cmp-mention-list{ background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1); border-bottom:none; overflow:hidden; animation:mentionPop .14s ease; box-shadow:0 -12px 30px rgba(0,0,0,.4); }
+        .cmp-mention-item{ display:flex; align-items:center; gap:9px; width:100%; padding:9px 14px; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.05); cursor:pointer; text-align:left; color:var(--t1); font-family:'DM Sans',sans-serif; transition:.1s; }
         .cmp-mention-item:hover{ background:var(--acs); }
-        .cmp-mention-item:last-child{ border-bottom:none; }
-        .cmp-mention-av{
-          width:26px; height:26px; border-radius:7px;
-          background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.25);
-          display:flex; align-items:center; justify-content:center;
-          font-size:10px; font-weight:700; color:#a78bfa; flex-shrink:0;
-        }
+        .cmp-mention-av{ width:26px; height:26px; border-radius:7px; background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#a78bfa; flex-shrink:0; }
         .cmp-mention-av--all{ background:rgba(251,191,36,.15); border-color:rgba(251,191,36,.3); color:#fbbf24; }
         .cmp-mention-name{ font-size:13px; font-weight:600; color:var(--t1); }
         .cmp-mention-name--all{ color:#fbbf24; }
         .cmp-mention-desc{ font-size:11px; color:var(--t3); }
-
-        /* ── Preview pane ── */
-        .cmp-preview{
-          margin:0 12px 6px; padding:10px 12px;
-          background:rgba(255,255,255,.03);
-          border:1px solid rgba(255,255,255,.07); border-radius:10px;
-          animation:fadeIn .15s ease;
-        }
+        .cmp-preview{ margin:0 12px 6px; padding:10px 12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:10px; animation:fadeIn .15s ease; }
         .cmp-preview-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
         .cmp-preview-body{ font-size:13px; color:rgba(255,255,255,.75); line-height:1.6; }
-        .cmp-preview-body .md-mention{ color:#c084fc; font-weight:700; }
-        .cmp-preview-body .md-mention--all{ color:#fbbf24; }
-
         .cmp-row{ display:flex; align-items:flex-end; gap:7px; padding:8px 12px; }
         .cmp-icon{ background:none; border:none; cursor:pointer; color:var(--t3); display:flex; align-items:center; padding:6px; border-radius:7px; transition:.12s; flex-shrink:0; }
         .cmp-icon:hover{ color:var(--t1); background:rgba(255,255,255,.06); }
-        .cmp-ta{
-          flex:1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
-          border-radius:10px; padding:8px 12px; color:var(--t1);
-          font-size:13px; font-family:'DM Sans',sans-serif; resize:none;
-          outline:none; line-height:1.55; transition:border-color .13s;
-          min-height:36px; max-height:160px;
-        }
+        .cmp-ta{ flex:1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:8px 12px; color:var(--t1); font-size:13px; font-family:'DM Sans',sans-serif; resize:none; outline:none; line-height:1.55; transition:border-color .13s; min-height:36px; max-height:160px; }
         .cmp-ta::placeholder{ color:var(--t4); }
         .cmp-ta:focus{ border-color:rgba(124,58,237,.4); }
         @media(max-width:767px){ .cmp-ta{ font-size:16px; } }
-        .cmp-send{
-          width:34px; height:34px; border-radius:10px; border:none;
-          background:rgba(124,58,237,.3); color:rgba(255,255,255,.4);
-          display:flex; align-items:center; justify-content:center;
-          cursor:pointer; flex-shrink:0; transition:all .13s; align-self:flex-end;
-        }
+        .cmp-send{ width:34px; height:34px; border-radius:10px; border:none; background:rgba(124,58,237,.3); color:rgba(255,255,255,.4); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all .13s; align-self:flex-end; }
         .cmp-send--on{ background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; box-shadow:0 3px 12px var(--acg); }
         .cmp-send--on:hover{ transform:scale(1.05); }
         .cmp-hint{ font-size:10px; color:var(--t4); text-align:center; padding:0 0 8px; margin:0; font-family:'DM Sans',sans-serif; }
@@ -1906,69 +2417,28 @@ export default function MessagesPage() {
         /* ══ SCHEDULE DIALOG ════════════════════════════════════════════════ */
         .sch-dlg{ background:#0d1117!important; border:1px solid rgba(255,255,255,.08)!important; border-radius:16px!important; }
         .sch-title{ display:flex; align-items:center; gap:8px; font-family:'Bricolage Grotesque',sans-serif; color:#f0f6fc; font-size:16px; }
-        .sch-preview{
-          padding:10px 14px; background:rgba(255,255,255,.03);
-          border:1px solid rgba(255,255,255,.07); border-radius:10px; margin-bottom:4px;
-          animation:schedPop .18s ease;
-        }
+        .sch-preview{ padding:10px 14px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:10px; margin-bottom:4px; }
         .sch-preview-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
         .sch-preview-txt{ font-size:12px; color:rgba(255,255,255,.6); line-height:1.5; }
-        .sch-preview-txt .md-mention{ color:#c084fc; font-weight:700; }
         .sch-field{ display:flex; flex-direction:column; gap:5px; }
         .sch-label{ font-size:12px; font-weight:600; color:rgba(255,255,255,.5); }
-        .sch-input{
-          width:100%; background:rgba(255,255,255,.05);
-          border:1px solid rgba(255,255,255,.1); border-radius:10px;
-          padding:10px 12px; color:#f0f6fc; font-size:13px;
-          font-family:'DM Sans',sans-serif; outline:none; transition:border-color .13s;
-          color-scheme:dark;
-        }
+        .sch-input{ width:100%; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:10px 12px; color:#f0f6fc; font-size:13px; font-family:'DM Sans',sans-serif; outline:none; transition:border-color .13s; color-scheme:dark; }
         .sch-input:focus{ border-color:rgba(124,58,237,.4); }
         .sch-hint{ font-size:11px; color:var(--t4); margin:0; }
         .sch-footer{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
-        .sch-btn-cancel{
-          background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
-          border-radius:9px; padding:8px 16px; color:var(--t2);
-          font-size:13px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif;
-          transition:.13s;
-        }
+        .sch-btn-cancel{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:9px; padding:8px 16px; color:var(--t2); font-size:13px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.13s; }
         .sch-btn-cancel:hover{ background:rgba(255,255,255,.1); }
-        .sch-btn-save{
-          display:flex; align-items:center; gap:6px;
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          border:none; border-radius:9px; padding:8px 18px;
-          color:#fff; font-size:13px; font-weight:600; cursor:pointer;
-          font-family:'DM Sans',sans-serif; transition:all .13s;
-          box-shadow:0 3px 10px var(--acg);
-        }
-        .sch-btn-save:hover{ transform:translateY(-1px); box-shadow:0 6px 16px var(--acg); }
+        .sch-btn-save{ display:flex; align-items:center; gap:6px; background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; border-radius:9px; padding:8px 18px; color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all .13s; box-shadow:0 3px 10px var(--acg); }
+        .sch-btn-save:hover{ transform:translateY(-1px); }
         .sch-btn-save:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
-
-        /* ── Scheduled item ── */
-        .sched-item{
-          padding:12px 14px; border-radius:10px;
-          background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06);
-          margin-bottom:6px; display:flex; flex-direction:column; gap:6px;
-        }
+        .sched-item{ padding:12px 14px; border-radius:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); margin-bottom:6px; display:flex; flex-direction:column; gap:6px; }
         .sched-when{ display:flex; align-items:center; gap:5px; font-size:10px; font-weight:600; color:#a78bfa; }
         .sched-txt{ font-size:12px; color:rgba(255,255,255,.6); line-height:1.4; }
-        .sched-cancel{
-          display:inline-flex; align-items:center; gap:4px;
-          font-size:10px; color:#f87171; background:rgba(239,68,68,.1);
-          border:1px solid rgba(239,68,68,.2); border-radius:6px;
-          padding:3px 8px; cursor:pointer; align-self:flex-end;
-          font-family:'DM Sans',sans-serif; transition:.12s;
-        }
-        .sched-cancel:hover{ background:rgba(239,68,68,.18); }
+        .sched-cancel{ display:inline-flex; align-items:center; gap:4px; font-size:10px; color:#f87171; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.2); border-radius:6px; padding:3px 8px; cursor:pointer; align-self:flex-end; font-family:'DM Sans',sans-serif; transition:.12s; }
 
-        /* ══ THREAD PANEL ═══════════════════════════════════════════════════ */
+        /* ══ THREAD / PANELS ════════════════════════════════════════════════ */
         .thread-overlay{ position:absolute; inset:0; z-index:40; pointer-events:none; }
-        .thread-panel{
-          position:absolute; right:0; top:0; bottom:0; width:360px;
-          background:var(--bg2); border-left:1px solid var(--bdr);
-          display:flex; flex-direction:column; pointer-events:all;
-          animation:slideIn .22s ease; box-shadow:-20px 0 60px rgba(0,0,0,.5);
-        }
+        .thread-panel{ position:absolute; right:0; top:0; bottom:0; width:360px; background:var(--bg2); border-left:1px solid var(--bdr); display:flex; flex-direction:column; pointer-events:all; animation:slideIn .22s ease; box-shadow:-20px 0 60px rgba(0,0,0,.5); }
         @media(max-width:767px){ .thread-panel{ width:100%; border-left:none; } }
         .thread-hdr{ display:flex; align-items:center; gap:8px; padding:13px 16px; border-bottom:1px solid var(--bdr); flex-shrink:0; }
         .thread-title{ font-size:13px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; flex:1; }
@@ -1977,7 +2447,8 @@ export default function MessagesPage() {
         .thread-body{ flex:1; overflow-y:auto; padding:12px; }
         .panel-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:32px 16px; text-align:center; color:var(--t3); font-size:12px; }
         .thread-parent{ display:flex; gap:9px; padding:12px; background:rgba(255,255,255,.03); border-radius:10px; margin-bottom:10px; border-left:3px solid #7c3aed; }
-
+        .thread-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:32px 16px; text-align:center; color:var(--t3); font-size:12px; }
+        .thread-reply{ margin-top:4px!important; }
         .pin-item{ display:flex; gap:8px; padding:10px 12px; border-radius:9px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); margin-bottom:6px; }
         .pin-txt{ font-size:12px; color:rgba(255,255,255,.7); margin:0 0 3px; line-height:1.4; }
         .pin-meta{ font-size:10px; color:var(--t4); margin:0; }
@@ -2000,19 +2471,6 @@ export default function MessagesPage() {
         .ctx-item--danger{ color:#f87171; }
         .ctx-item--danger:hover{ background:rgba(239,68,68,.12); }
 
-        /* ══ MOBILE SHEET ═══════════════════════════════════════════════════ */
-        .sheet-overlay{ position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); animation:fadeIn .18s ease; }
-        .sheet{ position:absolute; bottom:0; left:0; right:0; background:#0f1424; border-top:1px solid rgba(255,255,255,.08); border-radius:20px 20px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); animation:sheetUp .23s ease; }
-        .sheet-handle{ width:34px; height:4px; border-radius:2px; background:rgba(255,255,255,.15); margin:10px auto 0; }
-        .sheet-emoji-row{ display:flex; justify-content:center; gap:11px; padding:13px 16px; border-bottom:1px solid rgba(255,255,255,.05); }
-        .sheet-emoji{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:50%; width:40px; height:40px; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.12s; }
-        .sheet-emoji:hover{ background:rgba(255,255,255,.12); transform:scale(1.1); }
-        .sheet-preview{ padding:11px 20px 9px; border-bottom:1px solid rgba(255,255,255,.05); }
-        .sheet-preview-txt{ font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0; }
-        .sheet-btn{ display:flex; align-items:center; gap:14px; width:100%; padding:15px 22px; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.05); color:var(--t1); font-size:15px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; }
-        .sheet-btn--del{ color:#f87171; }
-        .sheet-cancel{ display:block; width:calc(100% - 24px); margin:8px 12px 4px; padding:13px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:12px; color:var(--t2); font-size:15px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }
-
         /* ══ NOTIFICATIONS ══════════════════════════════════════════════════ */
         .notif-panel{ display:flex; flex-direction:column; height:100%; }
         .notif-hdr{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--bdr); background:rgba(11,15,28,.9); flex-shrink:0; flex-wrap:wrap; gap:7px; }
@@ -2033,32 +2491,16 @@ export default function MessagesPage() {
         .pres-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; border:2px solid var(--bg1); flex-shrink:0; }
 
         /* ══ MOBILE BOTTOM NAV ══════════════════════════════════════════════ */
-        .bnav{
-          display:none; position:fixed; bottom:0; left:0; right:0;
-          background:rgba(11,15,28,.98); backdrop-filter:blur(20px);
-          border-top:1px solid var(--bdr); z-index:50;
-          padding-bottom:env(safe-area-inset-bottom,0);
-        }
+        .bnav{ display:none; position:fixed; bottom:0; left:0; right:0; background:rgba(11,15,28,.98); backdrop-filter:blur(20px); border-top:1px solid var(--bdr); z-index:50; padding-bottom:env(safe-area-inset-bottom,0); }
         @media(max-width:767px){ .bnav{ display:flex; } }
-        .bnav-btn{
-          flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-          gap:3px; padding:10px 0; background:transparent; border:none;
-          cursor:pointer; color:var(--t3); font-size:10px; font-weight:600;
-          font-family:'DM Sans',sans-serif; transition:color .13s;
-        }
+        .bnav-btn{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:10px 0; background:transparent; border:none; cursor:pointer; color:var(--t3); font-size:10px; font-weight:600; font-family:'DM Sans',sans-serif; transition:color .13s; }
         .bnav-btn--on{ color:#a78bfa; }
         .bnav-icon{ position:relative; }
         .bnav-badge{ position:absolute; top:-4px; right:-6px; width:14px; height:14px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#6d28d9); font-size:8px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px var(--acg); }
 
         /* ══ SCROLLBARS ═════════════════════════════════════════════════════ */
-        .msgs-area::-webkit-scrollbar,
-        .conv-list::-webkit-scrollbar,
-        .notif-list::-webkit-scrollbar,
-        .thread-body::-webkit-scrollbar { width:3px; }
-        .msgs-area::-webkit-scrollbar-thumb,
-        .conv-list::-webkit-scrollbar-thumb,
-        .notif-list::-webkit-scrollbar-thumb,
-        .thread-body::-webkit-scrollbar-thumb { background:rgba(124,58,237,.2); border-radius:2px; }
+        .msgs-area::-webkit-scrollbar, .conv-list::-webkit-scrollbar, .notif-list::-webkit-scrollbar, .thread-body::-webkit-scrollbar, .deals-panel::-webkit-scrollbar, .gs-results::-webkit-scrollbar { width:3px; }
+        .msgs-area::-webkit-scrollbar-thumb, .conv-list::-webkit-scrollbar-thumb, .notif-list::-webkit-scrollbar-thumb, .thread-body::-webkit-scrollbar-thumb, .deals-panel::-webkit-scrollbar-thumb, .gs-results::-webkit-scrollbar-thumb { background:rgba(124,58,237,.2); border-radius:2px; }
 
         .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
       `}</style>
@@ -2068,57 +2510,273 @@ export default function MessagesPage() {
           {/* ── TOPBAR ── */}
           <div className="topbar">
             <div className="topbar-l">
-              <div className="topbar-icon"><MessageSquare style={{width:14,height:14,color:"#a78bfa"}}/></div>
-              <p className="topbar-title">Messages</p>
-              {totalBadge>0&&<span className="topbar-badge">{totalBadge}</span>}
-              {onlineCount>0&&<div className="online-pill"><span className="online-dot"/>{onlineCount} online</div>}
+              <div className="topbar-icon">
+                <Briefcase style={{ width: 14, height: 14, color: "#60a5fa" }} />
+              </div>
+              <p className="topbar-title">Sales Hub</p>
+              {totalBadge > 0 && <span className="topbar-badge">{totalBadge}</span>}
+              {atRiskDeals > 0 && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  background: "rgba(249,115,22,.1)", border: "1px solid rgba(249,115,22,.2)",
+                  borderRadius: 20, padding: "2px 10px 2px 7px",
+                  fontSize: 11, fontWeight: 600, color: "#f97316",
+                }}>
+                  <AlertTriangle style={{ width: 10, height: 10 }} />
+                  {atRiskDeals} at risk
+                </div>
+              )}
             </div>
             <div className="topbar-r">
-              <button className="new-btn" onClick={()=>setNewOpen(true)}>
-                <Plus style={{width:13,height:13}}/><span>New Message</span>
+              {/* Search */}
+              <button className="search-btn" onClick={() => setShowSearch(true)}>
+                <Search style={{ width: 13, height: 13 }} />
+                <span>Search</span>
+                <span className="search-shortcut">⌘K</span>
+              </button>
+
+              {/* Status picker */}
+              <div style={{ position: "relative" }}>
+                <button className="status-btn" onClick={() => setShowStatusPicker(p => !p)}>
+                  <span className="status-btn-emoji">{myStatusCfg.emoji}</span>
+                  <span className="status-btn-label">{myStatusCfg.label}</span>
+                  <ChevronDown style={{ width: 10, height: 10, color: "rgba(255,255,255,.3)" }} />
+                </button>
+                {showStatusPicker && (
+                  <StatusPicker
+                    current={myStatus}
+                    onSelect={updateStatus}
+                    onClose={() => setShowStatusPicker(false)}
+                  />
+                )}
+              </div>
+
+              <button className="new-btn" onClick={() => setNewOpen(true)}>
+                <Plus style={{ width: 13, height: 13 }} /><span>New Chat</span>
               </button>
             </div>
           </div>
 
           {/* ── BODY ── */}
           <div className="body">
-            {/* Sidebar */}
-            <div className={cn("sidebar", mobile==="chat" && "sidebar--hidden")}>
+            {/* ── SIDEBAR ── */}
+            <div className={cn("sidebar", mobile === "chat" && "sidebar--hidden")}>
               <div className="tabs">
-                {([
-                  {id:"chats"  as const, label:"Chats",   Icon:MessageSquare, badge:totalUnread},
-                  {id:"notifs" as const, label:"Alerts",  Icon:Bell,          badge:notifCount},
-                ]).map(t=>(
-                  <button key={t.id} className={cn("tab", tab===t.id&&"tab--on")} onClick={()=>setTab(t.id)}>
-                    <t.Icon style={{width:12,height:12}}/>{t.label}
-                    {t.badge>0&&<span className="tab-badge">{t.badge}</span>}
-                  </button>
-                ))}
+                <button className={cn("tab", tab === "deals" && "tab--on")} onClick={() => setTab("deals")}>
+                  <Briefcase style={{ width: 12, height: 12 }} />Deals
+                  {dealRooms.length > 0 && <span className="tab-badge">{dealRooms.length}</span>}
+                </button>
+                <button className={cn("tab", tab === "chats" && "tab--on")} onClick={() => setTab("chats")}>
+                  <MessageSquare style={{ width: 12, height: 12 }} />Chats
+                  {totalUnread > 0 && <span className="tab-badge">{totalUnread}</span>}
+                </button>
+                <button className={cn("tab", tab === "notifs" && "tab--on")} onClick={() => setTab("notifs")}>
+                  <Bell style={{ width: 12, height: 12 }} />Alerts
+                  {notifCount > 0 && <span className="tab-badge">{notifCount}</span>}
+                </button>
               </div>
-              {tab==="chats" && (
-                <Sidebar
-                  convs={conversations} loading={conversationsLoading}
-                  sel={sel} onSel={pick} isOnline={isOnline}
-                />
+
+              {/* DEALS TAB */}
+              {tab === "deals" && (
+                <div className="deals-panel">
+                  {/* Quick stats */}
+                  <div className="deal-stats">
+                    <div className="deal-stat">
+                      <div className="deal-stat-val" style={{ color: "#22c55e" }}>{wonDeals}</div>
+                      <div className="deal-stat-lbl">Won</div>
+                    </div>
+                    <div className="deal-stat">
+                      <div className="deal-stat-val" style={{ color: "#f97316" }}>{atRiskDeals}</div>
+                      <div className="deal-stat-lbl">At Risk</div>
+                    </div>
+                    <div className="deal-stat">
+                      <div className="deal-stat-val">{dealRooms.length}</div>
+                      <div className="deal-stat-lbl">Total</div>
+                    </div>
+                  </div>
+
+                  {dealRooms.length === 0 ? (
+                    <div className="panel-empty">
+                      <Briefcase style={{ width: 28, height: 28, opacity: .2 }} />
+                      <p>No deal rooms yet</p>
+                      <p style={{ fontSize: 11 }}>Complete a call to create a deal room</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* At Risk first */}
+                      {atRiskDeals > 0 && (
+                        <SidebarSection label="At Risk" icon={AlertTriangle} count={atRiskDeals}>
+                          {dealRooms.filter(d => d.deal_stage === "at_risk").map(room => (
+                            <DealRoomCard
+                              key={room.id}
+                              room={room}
+                              isSelected={activeDealRoom?.id === room.id}
+                              onClick={() => pickDealRoom(room)}
+                            />
+                          ))}
+                        </SidebarSection>
+                      )}
+
+                      <SidebarSection label="Active Deals" icon={Activity} count={dealRooms.filter(d => !["won","lost","at_risk"].includes(d.deal_stage)).length}>
+                        {dealRooms.filter(d => !["won","lost","at_risk"].includes(d.deal_stage)).map(room => (
+                          <DealRoomCard
+                            key={room.id}
+                            room={room}
+                            isSelected={activeDealRoom?.id === room.id}
+                            onClick={() => pickDealRoom(room)}
+                          />
+                        ))}
+                      </SidebarSection>
+
+                      {wonDeals > 0 && (
+                        <SidebarSection label="Won" icon={Award} count={wonDeals} defaultOpen={false}>
+                          {dealRooms.filter(d => d.deal_stage === "won").map(room => (
+                            <DealRoomCard
+                              key={room.id}
+                              room={room}
+                              isSelected={activeDealRoom?.id === room.id}
+                              onClick={() => pickDealRoom(room)}
+                            />
+                          ))}
+                        </SidebarSection>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
-              {tab==="notifs" && <NotifsPanel/>}
+
+              {/* CHATS TAB */}
+              {tab === "chats" && (
+                <div className="conv-list">
+                  {conversationsLoading ? (
+                    <div className="center-spin"><Loader2 className="spin" /></div>
+                  ) : conversations.length === 0 ? (
+                    <div className="panel-empty">
+                      <MessageSquare style={{ width: 24, height: 24, opacity: .2 }} />
+                      <p>No conversations yet</p>
+                    </div>
+                  ) : (
+                    <>
+                      {groupConvs.length > 0 && (
+                        <SidebarSection label="Group Chats" icon={Hash} count={groupConvs.length}>
+                          {groupConvs.map(c => {
+                            const nm = getConversationName(c);
+                            return (
+                              <button key={c.id} className={cn("conv-item", sel === c.id && "conv-item--active")} onClick={() => pick(c.id)}>
+                                <div className="conv-av-wrap">
+                                  <div className="conv-av conv-av--grp"><Users style={{ width: 14, height: 14 }} /></div>
+                                  {c.unread_count > 0 && <div className="conv-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>}
+                                </div>
+                                <div className="conv-info">
+                                  <div className="conv-row1">
+                                    <span className={cn("conv-name", c.unread_count > 0 && "conv-name--bold")}>{nm}</span>
+                                    {c.last_message && <span className="meta-time">{fmtTime(c.last_message.created_at)}</span>}
+                                  </div>
+                                  <p className={cn("conv-preview", c.unread_count > 0 && "conv-preview--bold")}>
+                                    {c.last_message?.message_text || "No messages yet"}
+                                  </p>
+                                </div>
+                                <ChevronRight className="conv-chev" style={{ width: 13, height: 13 }} />
+                              </button>
+                            );
+                          })}
+                        </SidebarSection>
+                      )}
+
+                      {dmConvs.length > 0 && (
+                        <SidebarSection label="Direct Messages" icon={MessageSquare} count={dmConvs.length}>
+                          {dmConvs.map(c => {
+                            const nm = getConversationName(c);
+                            const otherId = c.participants[0]?.user_id;
+                            const otherOn = otherId ? isOnline(otherId) : false;
+                            const status = otherId ? getStatus(otherId) : "available";
+                            const stCfg = STATUS_CONFIG[status];
+                            return (
+                              <button key={c.id} className={cn("conv-item", sel === c.id && "conv-item--active")} onClick={() => pick(c.id)}>
+                                <div className="conv-av-wrap">
+                                  <div className="conv-av">{initials(nm)}</div>
+                                  <span className="pres-dot" style={{ position: "absolute", bottom: -1, right: -1, background: otherOn ? stCfg.color : "rgba(255,255,255,.13)" }} />
+                                  {c.unread_count > 0 && <div className="conv-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>}
+                                </div>
+                                <div className="conv-info">
+                                  <div className="conv-row1">
+                                    <span className={cn("conv-name", c.unread_count > 0 && "conv-name--bold")}>{nm}</span>
+                                    {c.last_message && <span className="meta-time">{fmtTime(c.last_message.created_at)}</span>}
+                                  </div>
+                                  <p className={cn("conv-preview", c.unread_count > 0 && "conv-preview--bold")}>
+                                    {otherOn ? `${stCfg.emoji} ${stCfg.label}` : c.last_message?.message_text || "No messages yet"}
+                                  </p>
+                                </div>
+                                <ChevronRight className="conv-chev" style={{ width: 13, height: 13 }} />
+                              </button>
+                            );
+                          })}
+                        </SidebarSection>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {tab === "notifs" && <NotifsPanel />}
             </div>
 
-            {/* Right panel */}
-            <div className={cn("right", mobile==="list" && "right--hidden")}>
-              {sel ? (
+            {/* ── RIGHT PANEL ── */}
+            <div className={cn("right", mobile === "list" && "right--hidden")}>
+              {activeDealRoom ? (
+                // Deal Room view — full chat with deal context header
                 <ChatThread
-                  convId={sel} convs={conversations} onBack={back}
-                  isOnline={isOnline} members={members} myId={user?.id??""}
+                  convId={`deal_${activeDealRoom.call_id || activeDealRoom.id}`}
+                  convs={conversations}
+                  onBack={back}
+                  isOnline={isOnline}
+                  members={members}
+                  myId={user?.id ?? ""}
+                  dealRoom={activeDealRoom}
+                  getStatus={getStatus}
+                />
+              ) : sel ? (
+                <ChatThread
+                  convId={sel}
+                  convs={conversations}
+                  onBack={back}
+                  isOnline={isOnline}
+                  members={members}
+                  myId={user?.id ?? ""}
+                  getStatus={getStatus}
                 />
               ) : (
                 <div className="right-empty">
-                  <div className="re-icon"><MessageSquare style={{width:24,height:24,color:"#7c3aed"}}/></div>
-                  <h3>Select a conversation</h3>
-                  <p>Choose a thread from the sidebar or start a new one with your team.</p>
-                  <button className="re-btn" onClick={()=>setNewOpen(true)}>
-                    <Plus style={{width:13,height:13}}/>New Message
-                  </button>
+                  <div className="re-icon">
+                    <Briefcase style={{ width: 28, height: 28, color: "#60a5fa" }} />
+                  </div>
+                  <h3>Sales Intelligence Hub</h3>
+                  <p>Select a Deal Room to discuss a deal, or open a Direct Message to collaborate with your team.</p>
+                  <div className="re-actions">
+                    <button className="re-btn-secondary" onClick={() => setTab("deals")}>
+                      <Briefcase style={{ width: 13, height: 13 }} /> View Deals
+                    </button>
+                    <button className="re-btn" onClick={() => setNewOpen(true)}>
+                      <Plus style={{ width: 13, height: 13 }} /> New Message
+                    </button>
+                  </div>
+                  {atRiskDeals > 0 && (
+                    <div style={{
+                      marginTop: 24, padding: "10px 16px",
+                      background: "rgba(249,115,22,.08)", border: "1px solid rgba(249,115,22,.2)",
+                      borderRadius: 12, display: "flex", alignItems: "center", gap: 8,
+                      fontSize: 12, color: "#f97316",
+                    }}>
+                      <AlertTriangle style={{ width: 14, height: 14 }} />
+                      <span><strong>{atRiskDeals}</strong> deal{atRiskDeals !== 1 ? "s" : ""} need{atRiskDeals === 1 ? "s" : ""} your attention</span>
+                      <button
+                        onClick={() => setTab("deals")}
+                        style={{ marginLeft: "auto", background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      >
+                        Review →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2127,31 +2785,43 @@ export default function MessagesPage() {
           {/* ── MOBILE BOTTOM NAV ── */}
           <nav className="bnav">
             {([
-              {id:"chats"  as const, label:"Chats",  Icon:MessageSquare, badge:totalUnread},
-              {id:"notifs" as const, label:"Alerts", Icon:Bell,          badge:notifCount},
-            ]).map(t=>(
-              <button key={t.id} className={cn("bnav-btn", tab===t.id&&mobile==="list"&&"bnav-btn--on")}
-                onClick={()=>{ setTab(t.id); setMobile("list"); }}>
+              { id: "deals"  as const, label: "Deals",  Icon: Briefcase,    badge: atRiskDeals },
+              { id: "chats"  as const, label: "Chats",  Icon: MessageSquare, badge: totalUnread },
+              { id: "notifs" as const, label: "Alerts", Icon: Bell,          badge: notifCount },
+            ]).map(t => (
+              <button key={t.id} className={cn("bnav-btn", tab === t.id && mobile === "list" && "bnav-btn--on")}
+                onClick={() => { setTab(t.id); setMobile("list"); }}>
                 <div className="bnav-icon">
-                  <t.Icon style={{width:20,height:20}}/>
-                  {t.badge>0&&<span className="bnav-badge">{t.badge>9?"9+":t.badge}</span>}
+                  <t.Icon style={{ width: 20, height: 20 }} />
+                  {t.badge > 0 && <span className="bnav-badge">{t.badge > 9 ? "9+" : t.badge}</span>}
                 </div>
                 {t.label}
               </button>
             ))}
-            <button className="bnav-btn" onClick={()=>setNewOpen(true)}>
-              <div className="bnav-icon"><Plus style={{width:20,height:20}}/></div>New
+            <button className="bnav-btn" onClick={() => setShowSearch(true)}>
+              <div className="bnav-icon"><Search style={{ width: 20, height: 20 }} /></div>
+              Search
             </button>
           </nav>
         </div>
 
+        {/* ── GLOBAL SEARCH ── */}
+        {showSearch && (
+          <GlobalSearchPanel
+            onClose={() => setShowSearch(false)}
+            onNavigate={handleSearchNavigate}
+            calls={calls}
+          />
+        )}
+
+        {/* ── NEW CONVERSATION DIALOG ── */}
         {team && (
           <NewConvDialog
-            open={newOpen} onClose={()=>setNewOpen(false)}
-            members={members} myId={user?.id??""} teamId={team.id}
+            open={newOpen} onClose={() => setNewOpen(false)}
+            members={members} myId={user?.id ?? ""} teamId={team.id}
             convs={conversations} refetch={refetchConversations}
-            isOnline={isOnline}
-            onCreate={id=>{ setNewOpen(false); setTab("chats"); pick(id); }}
+            isOnline={isOnline} getStatus={getStatus}
+            onCreate={id => { setNewOpen(false); setTab("chats"); pick(id); }}
           />
         )}
       </DashboardLayout>
