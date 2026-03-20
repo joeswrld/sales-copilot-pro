@@ -1,15 +1,37 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+/**
+ * MessagesPage.tsx — Fixsense Advanced Messaging
+ *
+ * Features:
+ *  ✅ Real-time messages, reactions, threads, pins, saves (no refresh needed)
+ *  ✅ Message reactions with emoji picker
+ *  ✅ Threaded replies (side panel)
+ *  ✅ Pinned messages panel
+ *  ✅ Rich text / markdown composer with @mentions
+ *  ✅ Global message search across all conversations
+ *  ✅ Saved messages bookmark system
+ *  ✅ DM vs Group grouping in sidebar
+ *  ✅ Mute per conversation
+ *  ✅ Message scheduling (UI + table)
+ *  ✅ Read receipts, typing indicators, online presence
+ *  ✅ File attachments
+ *  ✅ Edit / Delete messages
+ *  ✅ Context menu (desktop) + long-press sheet (mobile)
+ */
+
+import {
+  useState, useRef, useEffect, useMemo, useCallback, useReducer,
+} from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search, Send, MessageSquare, Bell, Plus, Users, FileText,
-  Image as ImageIcon, Paperclip, X, Check, CheckCheck, TrendingUp,
-  AtSign, AlertCircle, ArrowLeft, Copy, Trash2, Pencil,
-  Loader2, ChevronRight, Pin, Bookmark, BookmarkCheck, Hash,
-  MessageCircle, BellOff, ChevronDown, Smile, Reply,
-  CornerDownRight, Globe, Filter,
+  Image as ImageIcon, Paperclip, X, Check, CheckCheck,
+  TrendingUp, AtSign, AlertCircle, ArrowLeft, Copy, Trash2,
+  Pencil, Loader2, ChevronRight, Pin, Bookmark, Hash,
+  MessageCircle, BellOff, Smile, Reply, CornerDownRight,
+  Clock, Calendar, Zap, Globe,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -23,1455 +45,623 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import { format, isToday, isYesterday, isThisWeek } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Conversation, ReadReceipt } from "@/hooks/useTeamMessaging";
 import type { TeamMember } from "@/hooks/useTeam";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useQueryClient } from "@tanstack/react-query";
 
-/* ══════════════════════════════════════════════════════════════
-   🔊  NOTIFICATION SOUNDS
-══════════════════════════════════════════════════════════════ */
-function playMessageSound() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const master = ctx.createGain();
-    master.gain.setValueAtTime(0.55, ctx.currentTime);
-    master.connect(ctx.destination);
-    const notes: [number, number, number][] = [[1046, 0, 0.13], [1318, 0.01, 0.11], [2093, 0.02, 0.08]];
-    notes.forEach(([freq, delay, dur]) => {
-      const osc = ctx.createOscillator(); const g = ctx.createGain();
-      osc.type = "sine"; osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      g.gain.setValueAtTime(0, ctx.currentTime + delay);
-      g.gain.linearRampToValueAtTime(0.5, ctx.currentTime + delay + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
-      osc.connect(g); g.connect(master);
-      osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + dur);
-    });
-    setTimeout(() => ctx.close(), 500);
-  } catch { /* silently fail */ }
-}
-
-function playAlertSound() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const master = ctx.createGain();
-    master.gain.setValueAtTime(0.45, ctx.currentTime);
-    master.connect(ctx.destination);
-    const notes: [number, number, number][] = [[783, 0, 0.19], [659, 0.24, 0.22]];
-    notes.forEach(([freq, delay, dur]) => {
-      const osc = ctx.createOscillator(); const g = ctx.createGain();
-      osc.type = "triangle"; osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      g.gain.setValueAtTime(0, ctx.currentTime + delay);
-      g.gain.linearRampToValueAtTime(0.45, ctx.currentTime + delay + 0.015);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
-      osc.connect(g); g.connect(master);
-      osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + dur);
-    });
-    setTimeout(() => ctx.close(), 700);
-  } catch { /* silently fail */ }
-}
-
-let _lastSound = 0;
-function throttledSound(fn: () => void) {
-  const now = Date.now();
-  if (now - _lastSound > 800) { _lastSound = now; fn(); }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   📦  TYPES
-══════════════════════════════════════════════════════════════ */
-interface Reaction {
-  emoji: string;
-  count: number;
-  userIds: string[];
-  users: string[];
-}
-
-interface PinnedMessage {
-  id: string;
-  message_id: string;
-  message_text: string;
-  pinned_by: string;
-  created_at: string;
-  sender_name: string;
-}
-
-interface SavedMessage {
-  id: string;
-  message_id: string;
-  message_text: string;
-  created_at: string;
-  sender_name: string;
-  conversation_name: string;
-}
-
-interface SearchResult {
-  message_id: string;
-  message_text: string;
-  sender_name: string;
-  conversation_id: string;
-  conversation_name: string;
-  created_at: string;
-}
-
-interface RtMessage {
+// ─────────────────────────────────────────────────────────────
+//  TYPES
+// ─────────────────────────────────────────────────────────────
+interface RtMsg {
   id: string;
   conversation_id: string;
   sender_id: string;
   message_text: string;
   created_at: string;
+  parent_id?: string | null;
   file_url?: string | null;
   file_name?: string | null;
   file_type?: string | null;
-  parent_id?: string | null;
   sender?: { full_name: string | null; email: string | null } | null;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   🎨  EMOJI PICKER (lightweight, no external dep)
-══════════════════════════════════════════════════════════════ */
-const EMOJI_GROUPS = {
-  "Reactions": ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👏", "🚀", "💯", "✅", "⚡"],
-  "Faces": ["😀", "😎", "🤔", "🙏", "💪", "🤝", "👋", "✌️", "🤞", "👌"],
-  "Objects": ["📊", "📈", "💡", "🎯", "📝", "💬", "🔔", "⭐", "🏆", "💎"],
+interface Reaction { emoji: string; count: number; mine: boolean; users: string[] }
+interface PinRow  { id: string; message_id: string; message_preview: string | null; created_at: string; pinned_by: string }
+interface SaveRow { id: string; message_id: string; created_at: string; msg?: RtMsg }
+
+// ─────────────────────────────────────────────────────────────
+//  AUDIO
+// ─────────────────────────────────────────────────────────────
+let _lastSound = 0;
+function playPing() {
+  const now = Date.now(); if (now - _lastSound < 800) return; _lastSound = now;
+  try {
+    const ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const mg = ac.createGain(); mg.gain.value = 0.4; mg.connect(ac.destination);
+    [[1046,0,.12],[1318,.01,.1],[2093,.02,.08]].forEach(([f,d,dur]) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine"; o.frequency.value = f as number;
+      const t = ac.currentTime + (d as number);
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.5,t+.01);
+      g.gain.exponentialRampToValueAtTime(.001,t+(dur as number));
+      o.connect(g); g.connect(mg); o.start(t); o.stop(t+(dur as number));
+    });
+    setTimeout(()=>ac.close(),600);
+  } catch {}
+}
+
+// ─────────────────────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────────────────────
+const initials = (n?: string|null) =>
+  (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+
+const fmtTime = (d: string) => {
+  const dt = new Date(d);
+  if (isToday(dt)) return format(dt,"h:mm a");
+  if (isYesterday(dt)) return "Yesterday";
+  return format(dt,"MMM d");
 };
 
-function EmojiPicker({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
+const renderMd = (t: string) =>
+  t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>")
+   .replace(/\*(.*?)\*/g,"<em>$1</em>")
+   .replace(/`(.*?)`/g,'<code class="md-code">$1</code>')
+   .replace(/```([\s\S]*?)```/g,'<pre class="md-pre"><code>$1</code></pre>')
+   .replace(/^• (.+)$/gm,"<li>$1</li>")
+   .replace(/@(\w[\w\s]*?)(?=\s|$)/g,'<span class="md-mention">@$1</span>')
+   .replace(/\n/g,"<br/>");
+
+// ─────────────────────────────────────────────────────────────
+//  PRESENCE
+// ─────────────────────────────────────────────────────────────
+function usePresence(teamId?: string, uid?: string) {
+  const [online, setOnline] = useState<Set<string>>(new Set());
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [onClose]);
-
-  return (
-    <div ref={ref} className="mp-emoji-picker">
-      {Object.entries(EMOJI_GROUPS).map(([group, emojis]) => (
-        <div key={group}>
-          <p className="mp-emoji-group">{group}</p>
-          <div className="mp-emoji-grid">
-            {emojis.map(e => (
-              <button key={e} className="mp-emoji-btn" onClick={() => { onSelect(e); onClose(); }}>{e}</button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+    if (!teamId || !uid) return;
+    const ch = supabase.channel(`pres:${teamId}`, { config: { presence: { key: uid } } });
+    ch.on("presence", { event:"sync"  }, () => setOnline(new Set(Object.keys(ch.presenceState()))))
+      .on("presence", { event:"join"  }, ({key}:any) => setOnline(p=>new Set([...p,key])))
+      .on("presence", { event:"leave" }, ({key}:any) => setOnline(p=>{const s=new Set(p);s.delete(key);return s;}))
+      .subscribe(async st => { if(st==="SUBSCRIBED") await ch.track({user_id:uid}); });
+    return () => { ch.untrack(); supabase.removeChannel(ch); };
+  }, [teamId, uid]);
+  return useCallback((id:string) => online.has(id), [online]);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   📝  RICH TEXT COMPOSER
-══════════════════════════════════════════════════════════════ */
-function renderMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code class="mp-inline-code">$1</code>')
-    .replace(/```([\s\S]*?)```/g, '<pre class="mp-code-block"><code>$1</code></pre>')
-    .replace(/^• (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul class="mp-list">$1</ul>')
-    .replace(/@(\w+)/g, '<span class="mp-mention">@$1</span>')
-    .replace(/\n/g, '<br/>');
-}
-
-interface ComposerProps {
-  value: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
-  onFileClick: () => void;
-  members: TeamMember[];
-  currentUserId: string;
-  placeholder?: string;
-  uploading?: boolean;
-  disabled?: boolean;
-  replyTo?: { id: string; text: string; sender: string } | null;
-  onCancelReply?: () => void;
-}
-
-function RichComposer({
-  value, onChange, onSend, onFileClick, members, currentUserId,
-  placeholder = "Message…", uploading, disabled, replyTo, onCancelReply
-}: ComposerProps) {
-  const [showMentions, setShowMentions] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionStart, setMentionStart] = useState(-1);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const filteredMembers = useMemo(() =>
-    members.filter(m =>
-      m.user_id !== currentUserId &&
-      (m.profile?.full_name || m.invited_email || "").toLowerCase().includes(mentionQuery.toLowerCase())
-    ).slice(0, 5),
-    [members, currentUserId, mentionQuery]
-  );
-
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const v = e.target.value;
-    onChange(v);
-    const pos = e.target.selectionStart;
-    const before = v.slice(0, pos);
-    const atIdx = before.lastIndexOf("@");
-    if (atIdx !== -1 && !before.slice(atIdx).includes(" ")) {
-      setMentionStart(atIdx);
-      setMentionQuery(before.slice(atIdx + 1));
-      setShowMentions(true);
-    } else {
-      setShowMentions(false);
-    }
-    // auto-resize
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + "px";
-    }
-  };
-
-  const insertMention = (member: TeamMember) => {
-    const name = member.profile?.full_name || member.invited_email || "user";
-    const before = value.slice(0, mentionStart);
-    const after = value.slice(mentionStart + mentionQuery.length + 1);
-    onChange(before + `@${name} ` + after);
-    setShowMentions(false);
-    inputRef.current?.focus();
-  };
-
-  const insertFormat = (wrap: string) => {
-    const el = inputRef.current;
-    if (!el) return;
-    const start = el.selectionStart, end = el.selectionEnd;
-    const sel = value.slice(start, end) || "text";
-    onChange(value.slice(0, start) + wrap + sel + wrap + value.slice(end));
-  };
-
-  const canSend = value.trim().length > 0 && !uploading && !disabled;
-
-  return (
-    <div className="mp-composer">
-      {replyTo && (
-        <div className="mp-reply-banner">
-          <CornerDownRight style={{ width: 12, height: 12, color: "#7c3aed", flexShrink: 0 }} />
-          <span className="mp-reply-sender">{replyTo.sender}</span>
-          <span className="mp-reply-text">{replyTo.text.slice(0, 60)}{replyTo.text.length > 60 ? "…" : ""}</span>
-          <button className="mp-reply-cancel" onClick={onCancelReply}><X style={{ width: 12, height: 12 }} /></button>
-        </div>
-      )}
-      <div className="mp-format-bar">
-        {[
-          { label: "B", title: "Bold", action: () => insertFormat("**"), style: { fontWeight: 700 } },
-          { label: "I", title: "Italic", action: () => insertFormat("*"), style: { fontStyle: "italic" } },
-          { label: "</>", title: "Code", action: () => insertFormat("`"), style: { fontFamily: "monospace", fontSize: 11 } },
-          { label: "•", title: "Bullet", action: () => onChange(value + "\n• "), style: {} },
-        ].map(b => (
-          <button key={b.label} title={b.title} className="mp-fmt-btn" onClick={b.action} style={b.style}>{b.label}</button>
-        ))}
-        <div className="mp-fmt-sep" />
-        <button className="mp-fmt-btn" title="Mention" onClick={() => { onChange(value + "@"); inputRef.current?.focus(); }}>
-          <AtSign style={{ width: 11, height: 11 }} />
-        </button>
-      </div>
-
-      {showMentions && filteredMembers.length > 0 && (
-        <div className="mp-mention-dropdown">
-          {filteredMembers.map(m => {
-            const name = m.profile?.full_name || m.invited_email || "Unknown";
-            return (
-              <button key={m.id} className="mp-mention-item" onClick={() => insertMention(m)}>
-                <div className="mp-mention-av">{name[0]?.toUpperCase()}</div>
-                <span>{name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="mp-input-row">
-        <button className="mp-input-icon" onClick={onFileClick} disabled={!!uploading}>
-          <Paperclip style={{ width: 16, height: 16 }} />
-        </button>
-        <textarea
-          ref={inputRef}
-          className="mp-chat-textarea"
-          placeholder={placeholder}
-          value={value}
-          onChange={handleInput}
-          onKeyDown={e => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend) onSend(); }
-          }}
-          disabled={!!disabled || !!uploading}
-          rows={1}
-        />
-        <button
-          className={cn("mp-send", canSend && "mp-send--active")}
-          onClick={onSend}
-          disabled={!canSend}
-        >
-          <Send style={{ width: 15, height: 15 }} />
-        </button>
-      </div>
-      <p className="mp-hint">Shift+Enter for new line · **bold** · *italic* · `code` · @mention</p>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🔖  REACTIONS BAR
-══════════════════════════════════════════════════════════════ */
-function ReactionsBar({ messageId, currentUserId }: { messageId: string; currentUserId: string }) {
-  const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [showPicker, setShowPicker] = useState(false);
+// ─────────────────────────────────────────────────────────────
+//  REAL-TIME MESSAGE HOOK  (no refresh ever)
+// ─────────────────────────────────────────────────────────────
+function useRealtimeChannel(
+  convId: string|null,
+  myId: string|undefined,
+  cacheRef: React.MutableRefObject<Map<string,{full_name:string|null;email:string|null}>>,
+  onInsert: (m:RtMsg)=>void,
+  onDelete: (id:string)=>void,
+  onUpdate: (id:string,text:string)=>void,
+) {
+  const iRef = useRef(onInsert); const dRef = useRef(onDelete); const uRef = useRef(onUpdate);
+  useEffect(()=>{ iRef.current=onInsert; },[onInsert]);
+  useEffect(()=>{ dRef.current=onDelete; },[onDelete]);
+  useEffect(()=>{ uRef.current=onUpdate; },[onUpdate]);
 
   useEffect(() => {
-    loadReactions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId]);
+    if (!convId) return;
+    const ch = supabase.channel(`rt:msg:${convId}`)
+      .on("postgres_changes",
+        { event:"INSERT", schema:"public", table:"team_messages", filter:`conversation_id=eq.${convId}` },
+        ({ new:row }:any) => {
+          if (row?.parent_id) return; // threads handled separately
+          iRef.current({ ...row, sender: cacheRef.current.get(row.sender_id) ?? null });
+          if (row.sender_id !== myId) playPing();
+        })
+      .on("postgres_changes",
+        { event:"DELETE", schema:"public", table:"team_messages", filter:`conversation_id=eq.${convId}` },
+        ({ old:row }:any) => row?.id && dRef.current(row.id))
+      .on("postgres_changes",
+        { event:"UPDATE", schema:"public", table:"team_messages", filter:`conversation_id=eq.${convId}` },
+        ({ new:row }:any) => row?.id && uRef.current(row.id, row.message_text))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [convId]);
+}
 
-  const loadReactions = async () => {
+// ─────────────────────────────────────────────────────────────
+//  REACTIONS (real-time)
+// ─────────────────────────────────────────────────────────────
+function useReactions(msgId: string, myId: string) {
+  const [rxns, setRxns] = useState<Reaction[]>([]);
+  const load = useCallback(async () => {
     try {
       const { data } = await supabase
         .from("message_reactions" as any)
-        .select("emoji, user_id, id")
-        .eq("message_id", messageId);
+        .select("emoji, user_id")
+        .eq("message_id", msgId);
       if (!data) return;
-      const map = new Map<string, { count: number; userIds: string[]; users: string[] }>();
-      data.forEach((r: any) => {
-        if (!map.has(r.emoji)) map.set(r.emoji, { count: 0, userIds: [], users: [] });
-        const e = map.get(r.emoji)!;
-        e.count++;
-        e.userIds.push(r.user_id);
+      const map = new Map<string,{count:number;mine:boolean;users:string[]}>();
+      (data as any[]).forEach(r => {
+        const e = map.get(r.emoji) ?? { count:0, mine:false, users:[] };
+        e.count++; if (r.user_id===myId) e.mine=true; e.users.push(r.user_id);
+        map.set(r.emoji, e);
       });
-      setReactions(Array.from(map.entries()).map(([emoji, d]) => ({ emoji, ...d })));
-    } catch { /* table may not exist yet */ }
-  };
+      setRxns(Array.from(map.entries()).map(([emoji,d])=>({emoji,...d})));
+    } catch {}
+  }, [msgId, myId]);
 
-  const toggleReaction = async (emoji: string) => {
-    const existing = reactions.find(r => r.emoji === emoji);
-    const alreadyReacted = existing?.userIds.includes(currentUserId);
-    if (alreadyReacted) {
-      await supabase.from("message_reactions" as any).delete()
-        .eq("message_id", messageId).eq("user_id", currentUserId).eq("emoji", emoji);
-    } else {
-      await supabase.from("message_reactions" as any).insert({ message_id: messageId, user_id: currentUserId, emoji });
-    }
-    loadReactions();
-  };
+  useEffect(() => { load(); }, [load]);
 
-  return (
-    <div className="mp-reactions-wrap">
-      {reactions.map(r => (
-        <button
-          key={r.emoji}
-          className={cn("mp-reaction", r.userIds.includes(currentUserId) && "mp-reaction--mine")}
-          onClick={() => toggleReaction(r.emoji)}
-          title={`${r.count} reaction${r.count !== 1 ? "s" : ""}`}
-        >
-          <span>{r.emoji}</span>
-          <span className="mp-reaction-count">{r.count}</span>
-        </button>
-      ))}
-      <div style={{ position: "relative" }}>
-        <button className="mp-add-reaction" onClick={() => setShowPicker(p => !p)}>
-          <Smile style={{ width: 12, height: 12 }} />
-        </button>
-        {showPicker && <EmojiPicker onSelect={toggleReaction} onClose={() => setShowPicker(false)} />}
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   📌  PINNED MESSAGES PANEL
-══════════════════════════════════════════════════════════════ */
-function PinnedPanel({ conversationId, onClose }: { conversationId: string; onClose: () => void }) {
-  const [pins, setPins] = useState<PinnedMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  // realtime subscription per message
   useEffect(() => {
-    loadPins();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]);
-
-  const loadPins = async () => {
-    setLoading(true);
-    try {
-      const { data } = await supabase
-        .from("pinned_messages" as any)
-        .select("*, team_messages(message_text, sender_id)")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      setPins((data || []) as PinnedMessage[]);
-    } catch { setPins([]); }
-    setLoading(false);
-  };
-
-  return (
-    <div className="mp-panel-overlay">
-      <div className="mp-side-panel">
-        <div className="mp-side-panel-hdr">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Pin style={{ width: 14, height: 14, color: "#f59e0b" }} />
-            <span className="mp-side-panel-title">Pinned Messages</span>
-          </div>
-          <button className="mp-side-panel-close" onClick={onClose}><X style={{ width: 14, height: 14 }} /></button>
-        </div>
-        <div className="mp-side-panel-body">
-          {loading ? <div className="mp-center"><Loader2 className="mp-spin" /></div>
-            : pins.length === 0 ? (
-              <div className="mp-panel-empty">
-                <Pin style={{ width: 28, height: 28, opacity: 0.3 }} />
-                <p>No pinned messages yet</p>
-                <p style={{ fontSize: 11, opacity: 0.5 }}>Pin important messages from the message menu</p>
-              </div>
-            ) : pins.map((pin: any) => (
-              <div key={pin.id} className="mp-pin-item">
-                <Pin style={{ width: 11, height: 11, color: "#f59e0b", flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <p className="mp-pin-text">{pin.team_messages?.message_text || "Message deleted"}</p>
-                  <p className="mp-pin-meta">Pinned {format(new Date(pin.created_at), "MMM d")}</p>
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   💾  SAVED MESSAGES PAGE
-══════════════════════════════════════════════════════════════ */
-function SavedPanel({ userId, onJumpTo }: { userId: string; onJumpTo: (convId: string) => void }) {
-  const [saved, setSaved] = useState<SavedMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const { data } = await supabase
-          .from("saved_messages" as any)
-          .select("*, team_messages(message_text, sender_id, conversation_id)")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-          .limit(50);
-        setSaved((data || []) as SavedMessage[]);
-      } catch { setSaved([]); }
-      setLoading(false);
-    })();
-  }, [userId]);
-
-  const unsave = async (id: string) => {
-    await supabase.from("saved_messages" as any).delete().eq("id", id);
-    setSaved(p => p.filter(s => s.id !== id));
-  };
-
-  return (
-    <div className="mp-thread" style={{ padding: "0" }}>
-      <div className="mp-thread-header">
-        <Bookmark style={{ width: 16, height: 16, color: "#a78bfa" }} />
-        <div className="mp-thread-info">
-          <p className="mp-thread-name">Saved Messages</p>
-          <p className="mp-thread-sub" style={{ color: "rgba(255,255,255,0.3)" }}>{saved.length} saved</p>
-        </div>
-      </div>
-      <div className="mp-messages">
-        {loading ? <div className="mp-center"><Loader2 className="mp-spin" /></div>
-          : saved.length === 0 ? (
-            <div className="mp-empty-thread">
-              <div className="mp-empty-icon"><Bookmark style={{ width: 22, height: 22, color: "#7c3aed" }} /></div>
-              <p className="mp-empty-title">No saved messages</p>
-              <p className="mp-empty-sub">Save messages from the context menu to find them here</p>
-            </div>
-          ) : saved.map((s: any) => (
-            <div key={s.id} className="mp-saved-item">
-              <div className="mp-saved-body">
-                <p className="mp-saved-text">{s.team_messages?.message_text || "Deleted message"}</p>
-                <p className="mp-saved-meta">
-                  {s.created_at ? format(new Date(s.created_at), "MMM d, h:mm a") : ""}
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                {s.team_messages?.conversation_id && (
-                  <button className="mp-ha" onClick={() => onJumpTo(s.team_messages.conversation_id)}>
-                    <CornerDownRight style={{ width: 11, height: 11 }} />
-                  </button>
-                )}
-                <button className="mp-ha mp-ha--del" onClick={() => unsave(s.id)}>
-                  <X style={{ width: 11, height: 11 }} />
-                </button>
-              </div>
-            </div>
-          ))}
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🔍  GLOBAL SEARCH
-══════════════════════════════════════════════════════════════ */
-function GlobalSearch({ conversations, onJumpTo, onClose }: {
-  conversations: Conversation[];
-  onJumpTo: (convId: string, msgId?: string) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const timer = useRef<NodeJS.Timeout | null>(null);
-
-  const search = useCallback(async (q: string) => {
-    if (!q.trim() || q.length < 2) { setResults([]); return; }
-    setLoading(true);
-    try {
-      const { data } = await supabase
-        .from("team_messages" as any)
-        .select("id, message_text, sender_id, conversation_id, created_at")
-        .ilike("message_text", `%${q}%`)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      const convMap = new Map(conversations.map(c => [c.id, getConversationName(c)]));
-      setResults((data || []).map((m: any) => ({
-        message_id: m.id,
-        message_text: m.message_text,
-        sender_name: "Team Member",
-        conversation_id: m.conversation_id,
-        conversation_name: convMap.get(m.conversation_id) || "Unknown",
-        created_at: m.created_at,
-      })));
-    } catch { setResults([]); }
-    setLoading(false);
-  }, [conversations]);
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => search(query), 300);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [query, search]);
-
-  const highlight = (text: string, q: string) => {
-    if (!q) return text;
-    const idx = text.toLowerCase().indexOf(q.toLowerCase());
-    if (idx === -1) return text.slice(0, 80);
-    const start = Math.max(0, idx - 20);
-    const end = Math.min(text.length, idx + q.length + 40);
-    return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
-  };
-
-  return (
-    <div className="mp-search-modal-overlay" onClick={onClose}>
-      <div className="mp-search-modal" onClick={e => e.stopPropagation()}>
-        <div className="mp-search-modal-input-wrap">
-          <Search style={{ width: 18, height: 18, color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-          <input
-            autoFocus
-            className="mp-search-modal-input"
-            placeholder="Search all messages…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
-          {loading && <Loader2 style={{ width: 16, height: 16, color: "#7c3aed", animation: "mpSpin 1s linear infinite", flexShrink: 0 }} />}
-          <button className="mp-search-clr" onClick={onClose}><X style={{ width: 14, height: 14 }} /></button>
-        </div>
-        <div className="mp-search-results">
-          {query.length > 1 && results.length === 0 && !loading && (
-            <p className="mp-search-empty">No messages found for "{query}"</p>
-          )}
-          {results.map(r => (
-            <button key={r.message_id} className="mp-search-result" onClick={() => { onJumpTo(r.conversation_id, r.message_id); onClose(); }}>
-              <div className="mp-search-result-conv">
-                <Hash style={{ width: 10, height: 10 }} />
-                <span>{r.conversation_name}</span>
-                <span style={{ opacity: 0.4, marginLeft: "auto" }}>{format(new Date(r.created_at), "MMM d")}</span>
-              </div>
-              <p className="mp-search-result-text" dangerouslySetInnerHTML={{
-                __html: highlight(r.message_text, query).replace(
-                  new RegExp(query, "gi"), m => `<mark style="background:rgba(124,58,237,0.3);color:#c084fc;border-radius:2px;padding:0 2px">${m}</mark>`
-                )
-              }} />
-            </button>
-          ))}
-          {!query && (
-            <div className="mp-search-hint">
-              <Search style={{ width: 32, height: 32, opacity: 0.2 }} />
-              <p>Type to search across all conversations</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🧵  THREAD PANEL
-══════════════════════════════════════════════════════════════ */
-function ThreadPanel({ parentMessage, conversations, currentUserId, members, onClose }: {
-  parentMessage: RtMessage;
-  conversations: Conversation[];
-  currentUserId: string;
-  members: TeamMember[];
-  onClose: () => void;
-}) {
-  const [replies, setReplies] = useState<RtMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const loadReplies = useCallback(async () => {
-    const { data } = await supabase
-      .from("team_messages" as any)
-      .select("*")
-      .eq("parent_id", parentMessage.id)
-      .order("created_at", { ascending: true });
-    setReplies((data || []) as RtMessage[]);
-    setLoading(false);
-  }, [parentMessage.id]);
-
-  useEffect(() => { loadReplies(); }, [loadReplies]);
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [replies.length]);
-
-  const sendReply = async () => {
-    if (!input.trim()) return;
-    await supabase.from("team_messages" as any).insert({
-      conversation_id: parentMessage.conversation_id,
-      sender_id: currentUserId,
-      message_text: input.trim(),
-      parent_id: parentMessage.id,
-    });
-    setInput("");
-    loadReplies();
-  };
-
-  const parentSender = parentMessage.sender?.full_name || parentMessage.sender?.email || "Unknown";
-  const getInitials = (n: string) => n.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-
-  return (
-    <div className="mp-panel-overlay">
-      <div className="mp-side-panel mp-thread-panel">
-        <div className="mp-side-panel-hdr">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <MessageCircle style={{ width: 14, height: 14, color: "#818cf8" }} />
-            <span className="mp-side-panel-title">Thread</span>
-          </div>
-          <button className="mp-side-panel-close" onClick={onClose}><X style={{ width: 14, height: 14 }} /></button>
-        </div>
-        <div className="mp-side-panel-body" style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-          {/* Parent */}
-          <div className="mp-thread-parent">
-            <div className="mp-av" style={{ width: 32, height: 32, fontSize: 12 }}>{getInitials(parentSender)}</div>
-            <div>
-              <p className="mp-sender" style={{ marginBottom: 4 }}>{parentSender}</p>
-              <div className="mp-bubble mp-bubble--them" style={{ borderRadius: 12 }}>
-                <p className="mp-bubble-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(parentMessage.message_text) }} />
-              </div>
-            </div>
-          </div>
-          <div className="mp-thread-divider">
-            <div className="mp-div-line" />
-            <span className="mp-div-label">{replies.length} {replies.length === 1 ? "reply" : "replies"}</span>
-            <div className="mp-div-line" />
-          </div>
-          {loading ? <div className="mp-center"><Loader2 className="mp-spin" /></div>
-            : replies.map(r => {
-              const isMe = r.sender_id === currentUserId;
-              const name = r.sender?.full_name || r.sender?.email || "Unknown";
-              return (
-                <div key={r.id} className={cn("mp-msg-row", isMe ? "mp-msg-row--me" : "mp-msg-row--them")} style={{ marginBottom: 8 }}>
-                  {!isMe && <div className="mp-av" style={{ width: 28, height: 28, fontSize: 10, marginRight: 6 }}>{getInitials(name)}</div>}
-                  <div className={cn("mp-msg-body", isMe ? "mp-msg-body--me" : "mp-msg-body--them")}>
-                    {!isMe && <p className="mp-sender">{name}</p>}
-                    <div className={cn("mp-bubble", isMe ? "mp-bubble--me" : "mp-bubble--them")}>
-                      <p className="mp-bubble-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(r.message_text) }} />
-                    </div>
-                    <p className="mp-time" style={{ marginTop: 2 }}>{format(new Date(r.created_at), "h:mm a")}</p>
-                  </div>
-                </div>
-              );
-            })}
-          <div ref={scrollRef} />
-        </div>
-        <div style={{ flexShrink: 0 }}>
-          <RichComposer
-            value={input}
-            onChange={setInput}
-            onSend={sendReply}
-            onFileClick={() => {}}
-            members={members}
-            currentUserId={currentUserId}
-            placeholder="Reply in thread…"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🟢  PRESENCE + HOOKS
-══════════════════════════════════════════════════════════════ */
-function useOnlinePresence(teamId: string | undefined, currentUserId: string | undefined) {
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    if (!teamId || !currentUserId) return;
-    const ch = supabase.channel(`presence:team:${teamId}`, { config: { presence: { key: currentUserId } } });
-    ch.on("presence", { event: "sync" }, () => setOnlineUsers(new Set(Object.keys(ch.presenceState()))))
-      .on("presence", { event: "join" }, ({ key }: any) => setOnlineUsers(p => new Set([...p, key])))
-      .on("presence", { event: "leave" }, ({ key }: any) => setOnlineUsers(p => { const s = new Set(p); s.delete(key); return s; }))
-      .subscribe(async (st) => { if (st === "SUBSCRIBED") await ch.track({ user_id: currentUserId }); });
-    return () => { ch.untrack(); supabase.removeChannel(ch); };
-  }, [teamId, currentUserId]);
-  const isOnline = useCallback((uid: string) => onlineUsers.has(uid), [onlineUsers]);
-  return { onlineUsers, isOnline };
-}
-
-function useNotificationSound(userId: string | undefined) {
-  const ready = useRef(false);
-  useEffect(() => {
-    if (!userId) return;
-    const t = setTimeout(() => { ready.current = true; }, 2000);
-    const ch = supabase.channel(`rt-notif-snd-${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        () => { if (ready.current) throttledSound(playAlertSound); })
-      .subscribe();
-    return () => { clearTimeout(t); supabase.removeChannel(ch); };
-  }, [userId]);
-}
-
-function useRealtimeMessages(
-  conversationId: string | null,
-  currentUserId: string | undefined,
-  profileCache: Map<string, { full_name: string | null; email: string | null }>,
-  onAdd: (m: RtMessage) => void,
-  onDelete: (id: string) => void,
-  onEdit: (id: string, text: string) => void,
-) {
-  const onAddRef = useRef(onAdd);
-  const onDeleteRef = useRef(onDelete);
-  const onEditRef = useRef(onEdit);
-  useEffect(() => { onAddRef.current = onAdd; }, [onAdd]);
-  useEffect(() => { onDeleteRef.current = onDelete; }, [onDelete]);
-  useEffect(() => { onEditRef.current = onEdit; }, [onEdit]);
-
-  useEffect(() => {
-    if (!conversationId) return;
-    const ch = supabase.channel(`rt-msg-${conversationId}`)
-      .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "team_messages", filter: `conversation_id=eq.${conversationId}` },
-        ({ new: row }: any) => {
-          if (row?.parent_id) return; // threads handled separately
-          const profile = profileCache.get(row.sender_id) ?? null;
-          onAddRef.current({ ...row, sender: profile });
-          if (row.sender_id !== currentUserId) throttledSound(playMessageSound);
-        })
-      .on("postgres_changes",
-        { event: "DELETE", schema: "public", table: "team_messages", filter: `conversation_id=eq.${conversationId}` },
-        ({ old: row }: any) => { if (row?.id) onDeleteRef.current(row.id); })
-      .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "team_messages", filter: `conversation_id=eq.${conversationId}` },
-        ({ new: row }: any) => { if (row?.id) onEditRef.current(row.id, row.message_text); })
+    const ch = supabase.channel(`rxn:${msgId}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"message_reactions", filter:`message_id=eq.${msgId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [conversationId, currentUserId]);
+  }, [msgId, load]);
+
+  const toggle = useCallback(async (emoji: string) => {
+    const existing = rxns.find(r=>r.emoji===emoji);
+    if (existing?.mine) {
+      await supabase.from("message_reactions" as any).delete()
+        .eq("message_id",msgId).eq("user_id",myId).eq("emoji",emoji);
+    } else {
+      await supabase.from("message_reactions" as any)
+        .insert({ message_id:msgId, user_id:myId, emoji });
+    }
+    // Optimistic: load will fire from realtime
+  }, [rxns, msgId, myId]);
+
+  return { rxns, toggle };
 }
 
-/* ══════════════════════════════════════════════════════════════
-   🔔  CONTEXT MENU (extended)
-══════════════════════════════════════════════════════════════ */
-function CtxMenu({ isMe, pos, onCopy, onEdit, onDelete, onReply, onPin, onSave, onClose }: {
-  isMe: boolean; pos: { x: number; y: number };
-  onCopy(): void; onEdit?(): void; onDelete?(): void;
-  onReply(): void; onPin(): void; onSave(): void; onClose(): void;
-}) {
+// ─────────────────────────────────────────────────────────────
+//  EMOJI PICKER
+// ─────────────────────────────────────────────────────────────
+const QUICK  = ["👍","❤️","😂","🎉","🔥","✅","👏","🚀","💯","😮","😢","⚡"];
+const FACES  = ["😀","😎","🤔","🙏","💪","🤝","👋","✌️","🤞","👌","🫡","🥳"];
+const WORK   = ["📊","📈","💡","🎯","📝","💬","🔔","⭐","🏆","💎","🔑","📌"];
+
+function EmojiPicker({ onPick, onClose }: { onPick:(e:string)=>void; onClose:()=>void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [onClose]);
-
-  const items = [
-    { icon: Reply, label: "Reply in Thread", fn: onReply, danger: false },
-    { icon: Copy, label: "Copy Text", fn: onCopy, danger: false },
-    { icon: Pin, label: "Pin Message", fn: onPin, danger: false },
-    { icon: Bookmark, label: "Save Message", fn: onSave, danger: false },
-    ...(isMe ? [
-      { icon: Pencil, label: "Edit", fn: onEdit!, danger: false },
-      { icon: Trash2, label: "Delete", fn: onDelete!, danger: true },
-    ] : []),
-  ];
-
+    const h=(e:MouseEvent)=>{ if(!ref.current?.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h);
+  },[onClose]);
   return (
-    <div ref={ref} style={{ position: "fixed", left: Math.min(pos.x, window.innerWidth - 190), top: Math.min(pos.y, window.innerHeight - items.length * 36 - 16), zIndex: 9999 }} className="mp-ctxmenu">
-      {items.map((a, i) => (
-        <button key={i} onClick={() => { a.fn(); onClose(); }} className={cn("mp-ctx-item", a.danger && "mp-ctx-item--danger")}>
-          <a.icon style={{ width: 13, height: 13 }} />{a.label}
-        </button>
+    <div ref={ref} className="ep-wrap">
+      {[["Quick",QUICK],["Faces",FACES],["Work",WORK]].map(([label,list])=>(
+        <div key={label as string}>
+          <p className="ep-label">{label as string}</p>
+          <div className="ep-grid">
+            {(list as string[]).map(e=>(
+              <button key={e} className="ep-btn" onClick={()=>{onPick(e);onClose();}}>{e}</button>
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   💬  CHAT THREAD  — main message area
-══════════════════════════════════════════════════════════════ */
-function ChatThread({ conversationId, conversations, onBack, isOnline, members, currentUserId }: {
-  conversationId: string; conversations: Conversation[]; onBack?(): void;
-  isOnline(uid: string): boolean; members: TeamMember[]; currentUserId: string;
-}) {
-  const qc = useQueryClient();
-  const { messages: baseMessages, messagesLoading, sendMessage, readReceipts } = useConversationMessages(conversationId);
-  const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(conversationId);
-  const { user } = useAuth();
-
-  const [rtAdded, setRtAdded] = useState<RtMessage[]>([]);
-  const [rtDeleted, setRtDeleted] = useState<Set<string>>(new Set());
-  const [rtEdited, setRtEdited] = useState<Map<string, string>>(new Map());
-  const [optDeleted, setOptDeleted] = useState<Set<string>>(new Set());
-
-  const [input, setInput] = useState("");
-  const [pendingFile, setPF] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editTxt, setEditTxt] = useState("");
-  const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [replyTo, setReplyTo] = useState<{ id: string; text: string; sender: string } | null>(null);
-  const [threadMsg, setThreadMsg] = useState<RtMessage | null>(null);
-  const [showPinned, setShowPinned] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const editRef = useRef<HTMLInputElement>(null);
-  const typingTimer = useRef<NodeJS.Timeout | null>(null);
-  const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [lpId, setLpId] = useState<string | null>(null);
-
-  const convo = conversations.find(c => c.id === conversationId);
-  const chatName = convo ? getConversationName(convo) : "Chat";
-  const isGroup = convo?.is_group ?? false;
-  const myName = user?.user_metadata?.full_name || user?.email || "You";
-
-  // load mute pref
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await supabase.from("conversation_preferences" as any)
-          .select("is_muted").eq("conversation_id", conversationId).eq("user_id", currentUserId).maybeSingle();
-        setIsMuted(!!(data as any)?.is_muted);
-      } catch { }
-    })();
-  }, [conversationId, currentUserId]);
-
-  const toggleMute = async () => {
-    const newVal = !isMuted;
-    setIsMuted(newVal);
-    try {
-      await supabase.from("conversation_preferences" as any).upsert({
-        conversation_id: conversationId,
-        user_id: currentUserId,
-        is_muted: newVal,
-      });
-      toast({ title: newVal ? "Conversation muted" : "Conversation unmuted" });
-    } catch { }
-  };
-
-  const profileCache = useMemo(() => {
-    const m = new Map<string, { full_name: string | null; email: string | null }>();
-    baseMessages.forEach(msg => { if (msg.sender) m.set(msg.sender_id, msg.sender as any); });
-    return m;
-  }, [baseMessages]);
-
-  const handleAdd = useCallback((msg: RtMessage) => {
-    setRtAdded(prev => {
-      if (prev.some(m => m.id === msg.id) || baseMessages.some(m => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
-    qc.invalidateQueries({ queryKey: ["team-conversations"] });
-  }, [baseMessages, qc]);
-
-  const handleDelete = useCallback((id: string) => {
-    setRtDeleted(prev => new Set([...prev, id]));
-    setOptDeleted(prev => new Set([...prev, id]));
-  }, []);
-
-  const handleEdit = useCallback((id: string, text: string) => {
-    setRtEdited(prev => new Map(prev).set(id, text));
-  }, []);
-
-  useRealtimeMessages(conversationId, currentUserId, profileCache, handleAdd, handleDelete, handleEdit);
-
-  const messages = useMemo(() => {
-    const allDel = new Set([...rtDeleted, ...optDeleted]);
-    const merged = [
-      ...baseMessages.filter(m => !allDel.has(m.id) && !rtAdded.some(r => r.id === m.id) && !(m as any).parent_id),
-      ...rtAdded.filter(m => !allDel.has(m.id)),
-    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    return merged.map(m => {
-      const edited = rtEdited.get(m.id);
-      return edited !== undefined ? { ...m, message_text: edited } : m;
-    });
-  }, [baseMessages, rtAdded, rtDeleted, rtEdited, optDeleted]);
-
-  const otherUserId = !isGroup ? convo?.participants?.[0]?.user_id : undefined;
-  const otherOnline = otherUserId ? isOnline(otherUserId) : false;
-
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
-  useEffect(() => { if (editId && editRef.current) editRef.current.focus(); }, [editId]);
-
-  const onInputChange = (v: string) => {
-    setInput(v);
-    if (v.trim()) {
-      sendTyping(myName);
-      if (typingTimer.current) clearTimeout(typingTimer.current);
-      typingTimer.current = setTimeout(() => sendStopTyping(), 2000);
-    } else sendStopTyping();
-  };
-
-  const uploadFile = async (file: File) => {
-    const ext = file.name.split(".").pop() ?? "bin";
-    const path = `${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("team-attachments").upload(path, file, { contentType: file.type });
-    if (error) throw error;
-    const { data } = supabase.storage.from("team-attachments").getPublicUrl(path);
-    return { url: data.publicUrl, name: file.name, type: file.type };
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() && !pendingFile) return;
-    setUploading(true);
-    try {
-      let fd: { url: string; name: string; type: string } | undefined;
-      if (pendingFile) fd = await uploadFile(pendingFile);
-      sendMessage.mutate({
-        text: input.trim() || (pendingFile?.name ?? "Attachment"),
-        file_url: fd?.url,
-        file_name: fd?.name,
-        file_type: fd?.type,
-      });
-      setInput(""); setPF(null); setReplyTo(null); sendStopTyping();
-    } finally { setUploading(false); }
-  };
-
-  const copyMsg = (t: string) => { navigator.clipboard.writeText(t); toast({ title: "Copied" }); };
-  const startEdit = (id: string, t: string) => { setEditId(id); setEditTxt(t); };
-
-  const saveEdit = async (id: string) => {
-    if (!editTxt.trim()) return;
-    const prev = messages.find(m => m.id === id)?.message_text ?? "";
-    setRtEdited(p => new Map(p).set(id, editTxt.trim()));
-    setEditId(null); setEditTxt("");
-    try {
-      await supabase.from("team_messages").update({ message_text: editTxt.trim() }).eq("id", id);
-      toast({ title: "Updated" });
-    } catch {
-      setRtEdited(p => new Map(p).set(id, prev));
-      toast({ title: "Failed to update", variant: "destructive" });
-    }
-  };
-
-  const delMsg = useCallback(async (id: string) => {
-    setOptDeleted(p => new Set([...p, id]));
-    setCtx(null); setLpId(null);
-    try {
-      await supabase.from("team_messages").delete().eq("id", id);
-      toast({ title: "Deleted" });
-    } catch {
-      setOptDeleted(p => { const s = new Set(p); s.delete(id); return s; });
-      toast({ title: "Failed to delete", variant: "destructive" });
-    }
-  }, []);
-
-  const pinMsg = async (msgId: string, text: string) => {
-    try {
-      await supabase.from("pinned_messages" as any).insert({
-        message_id: msgId, conversation_id: conversationId,
-        pinned_by: currentUserId, message_preview: text.slice(0, 100),
-      });
-      toast({ title: "Message pinned", description: "Pinned messages appear in the 📌 panel" });
-    } catch { toast({ title: "Could not pin message", variant: "destructive" }); }
-  };
-
-  const saveMsg = async (msgId: string) => {
-    try {
-      await supabase.from("saved_messages" as any).insert({ message_id: msgId, user_id: currentUserId });
-      toast({ title: "Message saved", description: "View saved messages in the Saved section" });
-    } catch { toast({ title: "Could not save message", variant: "destructive" }); }
-  };
-
-  const onCtx = (e: React.MouseEvent, id: string) => { e.preventDefault(); setCtx({ id, x: e.clientX, y: e.clientY }); };
-  const onTouchStart = (id: string) => { lpTimer.current = setTimeout(() => setLpId(id), 500); };
-  const onTouchEnd = () => { if (lpTimer.current) clearTimeout(lpTimer.current); };
-  const getInitials = (n: string) => n.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-
-  const grouped = useMemo(() => {
-    const g: { label: string; msgs: typeof messages }[] = []; let last = "";
-    messages.forEach(m => {
-      const d = new Date(m.created_at);
-      const label = isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMMM d, yyyy");
-      if (label !== last) { g.push({ label, msgs: [] }); last = label; }
-      g[g.length - 1].msgs.push(m);
-    });
-    return g;
-  }, [messages]);
-
-  const lpMsg = messages.find(m => m.id === lpId);
-  const lpIsMe = lpMsg?.sender_id === currentUserId;
-
-  function readStatus(at: string, sid: string, uid: string, rr: ReadReceipt[]): "none" | "sent" | "read" {
-    if (sid !== uid) return "none";
-    return rr.some(r => r.last_read_at && new Date(r.last_read_at) >= new Date(at)) ? "read" : "sent";
-  }
-
-  const isImg = (t?: string | null) => !!t?.startsWith("image/");
-
+// ─────────────────────────────────────────────────────────────
+//  REACTIONS BAR
+// ─────────────────────────────────────────────────────────────
+function ReactBar({ msgId, myId }: { msgId:string; myId:string }) {
+  const { rxns, toggle } = useReactions(msgId, myId);
+  const [open, setOpen] = useState(false);
   return (
-    <div className="mp-thread">
-      {/* Header */}
-      <div className="mp-thread-header">
-        <button className="mp-back-btn" onClick={onBack}><ArrowLeft style={{ width: 16, height: 16 }} /></button>
-        <div style={{ position: "relative", flexShrink: 0 }}>
-          <div className="mp-thread-av">
-            {isGroup ? <Users style={{ width: 14, height: 14, color: "#a78bfa" }} />
-              : <span style={{ fontSize: 12, fontWeight: 700, color: "#818cf8" }}>{convo ? getConversationInitials(convo) : "?"}</span>}
-          </div>
-          {!isGroup && otherUserId && (
-            <span style={{ position: "absolute", bottom: -1, right: -1 }}>
-              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: otherOnline ? "#22c55e" : "rgba(255,255,255,0.13)", border: `2px solid ${otherOnline ? "rgba(34,197,94,0.22)" : "rgba(255,255,255,0.04)"}` }} />
-            </span>
-          )}
-        </div>
-        <div className="mp-thread-info">
-          <p className="mp-thread-name">{chatName}</p>
-          {typingUsers.length > 0
-            ? <p className="mp-thread-typing">typing…</p>
-            : !isGroup
-              ? <p className="mp-thread-sub" style={{ color: otherOnline ? "#22c55e" : "rgba(255,255,255,0.28)" }}>
-                  {otherOnline ? "● Online now" : "○ Offline"}
-                </p>
-              : <p className="mp-thread-sub" style={{ color: "rgba(255,255,255,0.3)" }}>{(convo?.participants.length ?? 0) + 1} members</p>}
-        </div>
-        {/* Header actions */}
-        <div className="mp-thread-actions">
-          <button className={cn("mp-thread-action", showPinned && "mp-thread-action--active")} title="Pinned messages" onClick={() => setShowPinned(p => !p)}>
-            <Pin style={{ width: 14, height: 14 }} />
-          </button>
-          <button className={cn("mp-thread-action", isMuted && "mp-thread-action--muted")} title={isMuted ? "Unmute" : "Mute"} onClick={toggleMute}>
-            {isMuted ? <BellOff style={{ width: 14, height: 14 }} /> : <Bell style={{ width: 14, height: 14 }} />}
-          </button>
-        </div>
-        {typingUsers.length > 0 && <div className="mp-typing-dots"><span /><span /><span /></div>}
+    <div className="rxn-bar">
+      {rxns.map(r=>(
+        <button key={r.emoji} title={`${r.count}`}
+          className={cn("rxn-chip", r.mine && "rxn-chip--mine")}
+          onClick={()=>toggle(r.emoji)}>
+          {r.emoji}<span>{r.count}</span>
+        </button>
+      ))}
+      <div style={{position:"relative"}}>
+        <button className="rxn-add" onClick={()=>setOpen(p=>!p)}>
+          <Smile style={{width:12,height:12}}/>
+        </button>
+        {open && <EmojiPicker onPick={toggle} onClose={()=>setOpen(false)}/>}
       </div>
-
-      {/* Pinned Panel */}
-      {showPinned && <PinnedPanel conversationId={conversationId} onClose={() => setShowPinned(false)} />}
-
-      {/* Thread Panel */}
-      {threadMsg && (
-        <ThreadPanel
-          parentMessage={threadMsg}
-          conversations={conversations}
-          currentUserId={currentUserId}
-          members={members}
-          onClose={() => setThreadMsg(null)}
-        />
-      )}
-
-      {/* Messages */}
-      <div className="mp-messages">
-        {messagesLoading ? (
-          <div className="mp-center"><Loader2 className="mp-spin" /></div>
-        ) : messages.length === 0 ? (
-          <div className="mp-empty-thread">
-            <div className="mp-empty-icon"><MessageSquare style={{ width: 22, height: 22, color: "#7c3aed" }} /></div>
-            <p className="mp-empty-title">No messages yet</p>
-            <p className="mp-empty-sub">Start the conversation below</p>
-          </div>
-        ) : grouped.map(group => (
-          <div key={group.label}>
-            <div className="mp-date-div">
-              <div className="mp-div-line" /><span className="mp-div-label">{group.label}</span><div className="mp-div-line" />
-            </div>
-            {group.msgs.map((msg, idx) => {
-              const isMe = msg.sender_id === currentUserId;
-              const status = readStatus(msg.created_at, msg.sender_id, currentUserId, readReceipts);
-              const showRec = isMe && (!group.msgs[idx + 1] || group.msgs[idx + 1].sender_id !== currentUserId);
-              const samePrev = group.msgs[idx - 1]?.sender_id === msg.sender_id;
-              const isEd = editId === msg.id;
-              const isDel = optDeleted.has(msg.id);
-              const isLive = rtAdded.some(r => r.id === msg.id);
-              const name = msg.sender?.full_name || msg.sender?.email || "Unknown";
-              const hasThread = false; // would query thread count in production
-
-              return (
-                <div key={msg.id}
-                  className={cn("mp-msg-row", isMe ? "mp-msg-row--me" : "mp-msg-row--them", samePrev && "mp-msg-row--same", isLive && !isMe && "mp-msg-row--new")}
-                  style={{ opacity: isDel ? 0.2 : 1, transition: "opacity 0.15s ease", pointerEvents: isDel ? "none" : undefined }}
-                  onContextMenu={e => !isDel && onCtx(e, msg.id)}
-                  onTouchStart={() => !isDel && onTouchStart(msg.id)}
-                  onTouchEnd={onTouchEnd} onTouchMove={onTouchEnd}>
-
-                  {!isMe && !samePrev && (
-                    <div style={{ position: "relative", flexShrink: 0 }}>
-                      <div className="mp-av">{getInitials(name)}</div>
-                    </div>
-                  )}
-                  {!isMe && samePrev && <div className="mp-av-sp" />}
-
-                  <div className={cn("mp-msg-body", isMe ? "mp-msg-body--me" : "mp-msg-body--them")}>
-                    {!isMe && !samePrev && <p className="mp-sender">{name}</p>}
-                    {isEd ? (
-                      <div className="mp-edit-wrap">
-                        <input ref={editRef} value={editTxt} onChange={e => setEditTxt(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") saveEdit(msg.id); if (e.key === "Escape") { setEditId(null); setEditTxt(""); } }}
-                          className="mp-edit-input" />
-                        <button className="mp-edit-save" onClick={() => saveEdit(msg.id)}>Save</button>
-                        <button className="mp-edit-cancel" onClick={() => { setEditId(null); setEditTxt(""); }}>×</button>
-                      </div>
-                    ) : (
-                      <div className={cn("mp-bubble", isMe ? "mp-bubble--me" : "mp-bubble--them")}>
-                        {msg.file_url && (
-                          <div className="mp-attach">
-                            {isImg((msg as any).file_type)
-                              ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer"><img src={msg.file_url} alt={(msg as any).file_name ?? "img"} className="mp-attach-img" /></a>
-                              : <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={cn("mp-attach-file", isMe && "mp-attach-file--me")}>
-                                  <FileText style={{ width: 14, height: 14, flexShrink: 0 }} /><span className="mp-attach-name">{(msg as any).file_name ?? "File"}</span>
-                                </a>}
-                          </div>
-                        )}
-                        {(!msg.file_url || msg.message_text !== (msg as any).file_name) && (
-                          <p className="mp-bubble-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.message_text) }} />
-                        )}
-                      </div>
-                    )}
-
-                    {/* Reactions */}
-                    {!isDel && !isEd && (
-                      <ReactionsBar messageId={msg.id} currentUserId={currentUserId} />
-                    )}
-
-                    {/* Thread reply count */}
-                    {!isDel && !isEd && (
-                      <button className="mp-reply-count" onClick={() => setThreadMsg(msg as RtMessage)}>
-                        <Reply style={{ width: 10, height: 10 }} />
-                        <span>Reply in thread</span>
-                      </button>
-                    )}
-
-                    {/* Hover actions (desktop) */}
-                    {isMe && !isEd && !isDel && (
-                      <div className="mp-hover-acts">
-                        <button className="mp-ha" title="React" onClick={() => {}}><Smile style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha" title="Reply" onClick={() => setThreadMsg(msg as RtMessage)}><Reply style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha" title="Copy" onClick={() => copyMsg(msg.message_text)}><Copy style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha" title="Pin" onClick={() => pinMsg(msg.id, msg.message_text)}><Pin style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha" title="Save" onClick={() => saveMsg(msg.id)}><Bookmark style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha" title="Edit" onClick={() => startEdit(msg.id, msg.message_text)}><Pencil style={{ width: 11, height: 11 }} /></button>
-                        <button className="mp-ha mp-ha--del" title="Delete" onClick={() => delMsg(msg.id)}><Trash2 style={{ width: 11, height: 11 }} /></button>
-                      </div>
-                    )}
-
-                    <div className={cn("mp-meta", isMe && "mp-meta--me")}>
-                      <span className="mp-time">{format(new Date(msg.created_at), "h:mm a")}</span>
-                      {showRec && status === "read" && <CheckCheck style={{ width: 12, height: 12, color: "#818cf8" }} />}
-                      {showRec && status === "sent" && <Check style={{ width: 12, height: 12, color: "rgba(255,255,255,0.3)" }} />}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        <div ref={scrollRef} />
-      </div>
-
-      {/* Context Menu */}
-      {ctx && (() => {
-        const ctxMsg = messages.find(m => m.id === ctx.id);
-        const ctxIsMe = ctxMsg?.sender_id === currentUserId;
-        return (
-          <CtxMenu
-            isMe={ctxIsMe ?? false}
-            pos={{ x: ctx.x, y: ctx.y }}
-            onCopy={() => copyMsg(ctxMsg?.message_text ?? "")}
-            onEdit={() => { if (ctxMsg) startEdit(ctxMsg.id, ctxMsg.message_text); }}
-            onDelete={() => delMsg(ctx.id)}
-            onReply={() => {
-              if (ctxMsg) setThreadMsg(ctxMsg as RtMessage);
-            }}
-            onPin={() => { if (ctxMsg) pinMsg(ctxMsg.id, ctxMsg.message_text); }}
-            onSave={() => saveMsg(ctx.id)}
-            onClose={() => setCtx(null)}
-          />
-        );
-      })()}
-
-      {/* Mobile long-press sheet */}
-      {lpId && lpMsg && (
-        <div className="mp-sheet-overlay" onClick={() => setLpId(null)}>
-          <div className="mp-sheet" onClick={e => e.stopPropagation()}>
-            <div className="mp-sheet-handle" />
-            <div className="mp-sheet-emoji-row">
-              {["👍", "❤️", "😂", "🎉", "🔥", "✅"].map(e => (
-                <button key={e} className="mp-sheet-emoji" onClick={async () => {
-                  await supabase.from("message_reactions" as any).insert({ message_id: lpId, user_id: currentUserId, emoji: e });
-                  setLpId(null);
-                }}>{e}</button>
-              ))}
-            </div>
-            <div className="mp-sheet-preview"><p className="mp-sheet-preview-txt">{lpMsg.message_text.slice(0, 70)}</p></div>
-            {[
-              { icon: Reply, label: "Reply in Thread", fn: () => { setThreadMsg(lpMsg as RtMessage); setLpId(null); }, danger: false },
-              { icon: Copy, label: "Copy text", fn: () => { copyMsg(lpMsg.message_text); setLpId(null); }, danger: false },
-              { icon: Pin, label: "Pin message", fn: () => { pinMsg(lpId, lpMsg.message_text); setLpId(null); }, danger: false },
-              { icon: Bookmark, label: "Save message", fn: () => { saveMsg(lpId); setLpId(null); }, danger: false },
-              ...(lpIsMe ? [
-                { icon: Pencil, label: "Edit message", fn: () => { startEdit(lpMsg.id, lpMsg.message_text); setLpId(null); }, danger: false },
-                { icon: Trash2, label: "Delete message", fn: () => { delMsg(lpId); }, danger: true },
-              ] : []),
-            ].map((a, i) => (
-              <button key={i} className={cn("mp-sheet-btn", a.danger && "mp-sheet-btn--danger")} onClick={a.fn}>
-                <a.icon style={{ width: 18, height: 18 }} />{a.label}
-              </button>
-            ))}
-            <button className="mp-sheet-cancel" onClick={() => setLpId(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* File preview */}
-      {pendingFile && (
-        <div className="mp-file-prev">
-          {pendingFile.type.startsWith("image/") ? <ImageIcon style={{ width: 14, height: 14, color: "#818cf8", flexShrink: 0 }} /> : <FileText style={{ width: 14, height: 14, color: "#818cf8", flexShrink: 0 }} />}
-          <span className="mp-fp-name">{pendingFile.name}</span>
-          <span className="mp-fp-size">{(pendingFile.size / 1024).toFixed(0)} KB</span>
-          <button className="mp-fp-rm" onClick={() => setPF(null)}><X style={{ width: 12, height: 12 }} /></button>
-        </div>
-      )}
-
-      {/* Input */}
-      <input type="file" ref={fileRef} className="sr-only"
-        onChange={e => { const f = e.target.files?.[0]; if (f && f.size <= 20 * 1024 * 1024) setPF(f); e.target.value = ""; }}
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
-      <RichComposer
-        value={input}
-        onChange={onInputChange}
-        onSend={handleSend}
-        onFileClick={() => fileRef.current?.click()}
-        members={members}
-        currentUserId={currentUserId}
-        uploading={uploading}
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-      />
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   🔔  NOTIFICATIONS PANEL
-══════════════════════════════════════════════════════════════ */
-const notifIcons: Record<string, typeof Bell> = { comment: MessageSquare, coaching: TrendingUp, mention: AtSign, system: AlertCircle };
+// ─────────────────────────────────────────────────────────────
+//  RICH COMPOSER
+// ─────────────────────────────────────────────────────────────
+interface ComposerProps {
+  value: string; onChange:(v:string)=>void; onSend:()=>void;
+  onFile:()=>void; members:TeamMember[]; myId:string;
+  placeholder?:string; busy?:boolean; disabled?:boolean;
+  replyTo?:{text:string;sender:string}|null; onCancelReply?:()=>void;
+  scheduled?: boolean; onSchedule?:()=>void;
+}
+function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Message…",busy,disabled,replyTo,onCancelReply,scheduled,onSchedule }: ComposerProps) {
+  const [mentions, setMentions] = useState<TeamMember[]>([]);
+  const [mentionAt, setMentionAt] = useState(-1);
+  const [mq, setMq] = useState("");
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const typTimer = useRef<NodeJS.Timeout|null>(null);
 
-function NotifsPanel() {
-  const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
-  const [filter, setFilter] = useState<"all" | "unread">("all");
-  const filtered = notifications.filter(n => filter === "all" || !n.is_read);
+  const others = useMemo(()=>members.filter(m=>m.user_id!==myId),[members,myId]);
+
+  const handleChange = (e:React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value; onChange(v);
+    const pos = e.target.selectionStart;
+    const before = v.slice(0,pos);
+    const at = before.lastIndexOf("@");
+    if (at!==-1 && !before.slice(at).includes(" ")) {
+      const q = before.slice(at+1); setMentionAt(at); setMq(q);
+      setMentions(others.filter(m=>(m.profile?.full_name||m.invited_email||"").toLowerCase().includes(q.toLowerCase())).slice(0,5));
+    } else { setMentions([]); }
+    if (taRef.current) { taRef.current.style.height="auto"; taRef.current.style.height=Math.min(taRef.current.scrollHeight,120)+"px"; }
+  };
+
+  const insertMention = (m:TeamMember) => {
+    const name = m.profile?.full_name||m.invited_email||"user";
+    onChange(value.slice(0,mentionAt)+`@${name} `+value.slice(mentionAt+mq.length+1));
+    setMentions([]); taRef.current?.focus();
+  };
+
+  const wrap = (w:string) => {
+    const el=taRef.current; if(!el) return;
+    const s=el.selectionStart,e=el.selectionEnd,sel=value.slice(s,e)||"text";
+    onChange(value.slice(0,s)+w+sel+w+value.slice(e));
+  };
+
+  const canSend = value.trim().length>0 && !busy && !disabled;
+
   return (
-    <div className="mp-notif-panel">
-      <div className="mp-notif-hdr">
-        <div className="mp-notif-hdr-l">
-          <span className="mp-notif-title">Notifications</span>
-          {unreadCount > 0 && <span className="mp-notif-badge">{unreadCount}</span>}
+    <div className="cmp-wrap">
+      {replyTo && (
+        <div className="cmp-reply">
+          <CornerDownRight style={{width:11,height:11,color:"#7c3aed",flexShrink:0}}/>
+          <span className="cmp-reply-name">{replyTo.sender}</span>
+          <span className="cmp-reply-txt">{replyTo.text.slice(0,60)}{replyTo.text.length>60?"…":""}</span>
+          <button className="cmp-reply-x" onClick={onCancelReply}><X style={{width:11,height:11}}/></button>
         </div>
-        <div className="mp-notif-hdr-r">
-          {(["all", "unread"] as const).map(f => (
-            <button key={f} className={cn("mp-filter-btn", filter === f && "mp-filter-btn--active")} onClick={() => setFilter(f)}>
-              {f === "all" ? "All" : "Unread"}
-            </button>
-          ))}
-          {unreadCount > 0 && (
-            <button className="mp-markall-btn" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
-              <CheckCheck style={{ width: 11, height: 11 }} /> All read
-            </button>
-          )}
-        </div>
+      )}
+      <div className="cmp-fmt">
+        {[["B","**","Bold"],["I","*","Italic"],["`","`","Code"],["•","• ","Bullet"]].map(([lbl,token,title])=>(
+          <button key={lbl} title={title as string} className="cmp-fmt-btn"
+            style={lbl==="B"?{fontWeight:700}:lbl==="I"?{fontStyle:"italic"}:lbl==="`"?{fontFamily:"monospace",fontSize:11}:{}}
+            onClick={()=>lbl==="•"?onChange(value+"\n• "):wrap(token as string)}>{lbl}</button>
+        ))}
+        <div className="cmp-sep"/>
+        <button className="cmp-fmt-btn" title="Mention" onClick={()=>{onChange(value+"@");taRef.current?.focus();}}>
+          <AtSign style={{width:11,height:11}}/>
+        </button>
+        {onSchedule && (
+          <button className="cmp-fmt-btn" title="Schedule message" onClick={onSchedule}>
+            <Clock style={{width:11,height:11}}/>
+          </button>
+        )}
       </div>
-      <div className="mp-notif-list">
-        {notificationsLoading ? <div className="mp-center"><Loader2 className="mp-spin" /></div>
-          : filtered.length === 0 ? (
-            <div className="mp-notif-empty">
-              <Bell style={{ width: 28, height: 28, color: "rgba(124,58,237,0.4)" }} />
-              <p>{filter === "unread" ? "No unread notifications" : "You're all caught up"}</p>
-            </div>
-          ) : filtered.map(n => {
-            const Icon = notifIcons[n.type] ?? Bell;
+
+      {mentions.length>0 && (
+        <div className="cmp-mention-list">
+          {mentions.map(m=>{
+            const name=m.profile?.full_name||m.invited_email||"Unknown";
             return (
-              <div key={n.id} className={cn("mp-notif-item", !n.is_read && "mp-notif-item--unread")} onClick={() => !n.is_read && markRead.mutate(n.id)}>
-                <div className="mp-notif-icon"><Icon style={{ width: 14, height: 14 }} /></div>
-                <div className="mp-notif-body">
-                  <p className={cn("mp-notif-text", !n.is_read && "mp-notif-text--bold")}>{n.message}</p>
-                  <p className="mp-notif-time">{format(new Date(n.created_at), "MMM d, h:mm a")}</p>
-                </div>
-                {!n.is_read && <div className="mp-notif-dot" />}
-              </div>
+              <button key={m.id} className="cmp-mention-item" onClick={()=>insertMention(m)}>
+                <div className="cmp-mention-av">{name[0]?.toUpperCase()}</div>{name}
+              </button>
             );
           })}
+        </div>
+      )}
+
+      <div className="cmp-row">
+        <button className="cmp-icon" onClick={onFile} disabled={!!busy}><Paperclip style={{width:16,height:16}}/></button>
+        <textarea ref={taRef} className="cmp-ta" placeholder={placeholder} value={value}
+          onChange={handleChange} disabled={!!disabled||!!busy} rows={1}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(canSend)onSend();} }}/>
+        <button className={cn("cmp-send",canSend&&"cmp-send--on")} onClick={onSend} disabled={!canSend}>
+          <Send style={{width:15,height:15}}/>
+        </button>
       </div>
+      <p className="cmp-hint">Shift+Enter new line · **bold** · *italic* · `code` · @mention</p>
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   💬  CONVO LIST PANEL (with channel/DM grouping)
-══════════════════════════════════════════════════════════════ */
-function ConvoListPanel({ convos, loading, selected, onSelect, isOnline }: {
-  convos: Conversation[]; loading: boolean; selected: string | null;
-  onSelect(id: string): void; isOnline(uid: string): boolean;
+// ─────────────────────────────────────────────────────────────
+//  THREAD PANEL  (real-time replies)
+// ─────────────────────────────────────────────────────────────
+function ThreadPanel({ parent, members, myId, onClose }: {
+  parent:RtMsg; members:TeamMember[]; myId:string; onClose:()=>void;
 }) {
-  const dms = convos.filter(c => !c.is_group);
-  const groups = convos.filter(c => c.is_group);
-  const getInitials = (n: string) => n.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-  const formatTime = (d: string) => {
-    const dt = new Date(d);
-    if (isToday(dt)) return format(dt, "h:mm a");
-    if (isYesterday(dt)) return "Yesterday";
-    return format(dt, "MMM d");
+  const [replies, setReplies] = useState<RtMsg[]>([]);
+  const [input, setInput] = useState(""); const [loading, setLoading] = useState(true);
+  const botRef = useRef<HTMLDivElement>(null);
+
+  const loadReplies = useCallback(async () => {
+    const { data } = await supabase.from("team_messages" as any)
+      .select("*").eq("parent_id",parent.id).order("created_at",{ascending:true});
+    setReplies((data||[]) as RtMsg[]); setLoading(false);
+  },[parent.id]);
+
+  useEffect(()=>{ loadReplies(); },[loadReplies]);
+  useEffect(()=>{ botRef.current?.scrollIntoView({behavior:"smooth"}); },[replies.length]);
+
+  // Real-time thread subscription
+  useEffect(() => {
+    const ch = supabase.channel(`thread:${parent.id}`)
+      .on("postgres_changes",
+        { event:"INSERT", schema:"public", table:"team_messages", filter:`parent_id=eq.${parent.id}` },
+        ({ new:row }:any) => { setReplies(p=>[...p, row as RtMsg]); playPing(); })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  },[parent.id]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    await supabase.from("team_messages" as any).insert({
+      conversation_id: parent.conversation_id,
+      sender_id: myId, message_text: input.trim(), parent_id: parent.id,
+    });
+    setInput("");
   };
 
-  const renderConvo = (c: Conversation) => {
-    const name = getConversationName(c);
-    const isSel = selected === c.id;
-    const other = !c.is_group && c.participants[0];
-    const partOnline = other ? isOnline(other.user_id) : false;
-    return (
-      <button key={c.id} className={cn("mp-convo-item", isSel && "mp-convo-item--active")} onClick={() => onSelect(c.id)}>
-        <div className="mp-convo-av-wrap">
-          <div className={cn("mp-convo-av", c.is_group && "mp-convo-av--group")}>
-            {c.is_group ? <Users style={{ width: 14, height: 14 }} /> : getInitials(name)}
-          </div>
-          {!c.is_group && <span style={{ position: "absolute", bottom: -1, right: -1 }}>
-            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: partOnline ? "#22c55e" : "rgba(255,255,255,0.13)", border: "2px solid #0b0f1c" }} />
-          </span>}
-          {c.unread_count > 0 && <div className="mp-convo-unread">{c.unread_count > 9 ? "9+" : c.unread_count}</div>}
-        </div>
-        <div className="mp-convo-info">
-          <div className="mp-convo-row1">
-            <span className={cn("mp-convo-name", c.unread_count > 0 && "mp-convo-name--unread")}>{name}</span>
-            {c.last_message && <span className="mp-convo-time">{formatTime(c.last_message.created_at)}</span>}
-          </div>
-          {!c.is_group ? (
-            <p className="mp-convo-preview" style={{ color: partOnline ? "#22c55e" : undefined }}>
-              {partOnline ? "● Online" : (c.last_message?.message_text ?? "No messages yet")}
-            </p>
-          ) : c.last_message ? (
-            <p className={cn("mp-convo-preview", c.unread_count > 0 && "mp-convo-preview--unread")}>{c.last_message.message_text}</p>
-          ) : null}
-        </div>
-        <ChevronRight className="mp-chevron" style={{ width: 14, height: 14 }} />
-      </button>
-    );
-  };
+  const pSender = parent.sender?.full_name || parent.sender?.email || "Unknown";
 
   return (
-    <div className="mp-convo-panel">
-      <div className="mp-convo-items">
-        {loading ? <div className="mp-center"><Loader2 className="mp-spin" /></div>
-          : convos.length === 0 ? (
-            <div className="mp-convo-empty">
-              <MessageSquare style={{ width: 26, height: 26, color: "rgba(124,58,237,0.3)" }} />
-              <p>No conversations yet</p>
+    <div className="thread-overlay">
+      <div className="thread-panel">
+        <div className="thread-hdr">
+          <MessageCircle style={{width:14,height:14,color:"#818cf8"}}/>
+          <span className="thread-title">Thread</span>
+          <button className="panel-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
+        </div>
+        <div className="thread-body">
+          <div className="thread-parent">
+            <div className="msg-av small">{initials(pSender)}</div>
+            <div>
+              <p className="msg-sender">{pSender}</p>
+              <div className="bubble them" style={{borderRadius:12}}>
+                <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(parent.message_text)}}/>
+              </div>
             </div>
-          ) : (
-            <>
-              {groups.length > 0 && (
-                <div className="mp-convo-section">
-                  <div className="mp-convo-section-hdr">
-                    <Hash style={{ width: 11, height: 11 }} />
-                    <span>Group Chats</span>
-                    <span className="mp-convo-section-count">{groups.length}</span>
-                  </div>
-                  {groups.map(renderConvo)}
-                </div>
-              )}
-              {dms.length > 0 && (
-                <div className="mp-convo-section">
-                  <div className="mp-convo-section-hdr">
-                    <MessageSquare style={{ width: 11, height: 11 }} />
-                    <span>Direct Messages</span>
-                    <span className="mp-convo-section-count">{dms.length}</span>
-                  </div>
-                  {dms.map(renderConvo)}
-                </div>
-              )}
-            </>
-          )}
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🆕  NEW CONVO DIALOG
-══════════════════════════════════════════════════════════════ */
-function NewConvoDialog({ open, onClose, members, currentUserId, teamId, conversations, refetchConversations, onCreated, isOnline }: {
-  open: boolean; onClose(): void; members: TeamMember[]; currentUserId: string; teamId: string;
-  conversations: Conversation[]; refetchConversations(): void; onCreated(id: string): void;
-  isOnline(uid: string): boolean;
-}) {
-  const { startConversation } = useConversationMessages(null);
-  const [sel, setSel] = useState<string[]>([]);
-  const others = members.filter(m => m.user_id !== currentUserId && m.status === "active");
-  const toggle = (uid: string) => setSel(p => p.includes(uid) ? p.filter(x => x !== uid) : [...p, uid]);
-  const handleStart = async () => {
-    if (!sel.length) return;
-    try {
-      if (sel.length === 1) {
-        const ex = conversations.find(c => !c.is_group && c.participants.length === 1 && c.participants.some(p => p.user_id === sel[0]));
-        if (ex) { setSel([]); onCreated(ex.id); return; }
-      }
-      const id = await startConversation.mutateAsync({ teamId, memberIds: sel });
-      refetchConversations(); setSel([]); onCreated(id);
-      toast({ title: "Conversation started" });
-    } catch (e: any) { toast({ title: "Could not start chat", description: e?.message, variant: "destructive" }); }
-  };
-  const getInitials = (n: string) => n.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) { setSel([]); onClose(); } }}>
-      <DialogContent className="sm:max-w-sm" style={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
-        <DialogHeader><DialogTitle style={{ color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>New Conversation</DialogTitle></DialogHeader>
-        {sel.length > 1 && <p className="text-xs text-slate-400 flex items-center gap-1.5 px-1"><Users className="w-3.5 h-3.5" /> Group · {sel.length} members</p>}
-        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-          {others.length === 0 ? <p className="text-sm text-slate-500 text-center py-6">No other members.</p>
-            : others.map(m => {
-              const name = m.profile?.full_name || m.invited_email || "Unknown";
-              const chk = sel.includes(m.user_id);
+          </div>
+          <div className="divider-row">
+            <div className="div-line"/><span className="div-label">{replies.length} {replies.length===1?"reply":"replies"}</span><div className="div-line"/>
+          </div>
+          {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
+            : replies.map(r=>{
+              const isMe=r.sender_id===myId;
+              const name=r.sender?.full_name||r.sender?.email||"Unknown";
               return (
-                <div key={m.id} onClick={() => toggle(m.user_id)}
-                  className={cn("flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all select-none", chk ? "bg-violet-500/15 border border-violet-500/30" : "hover:bg-white/[0.04] border border-transparent")}>
-                  <Checkbox checked={chk} className="pointer-events-none" />
-                  <div style={{ position: "relative", flexShrink: 0 }}>
-                    <Avatar className="h-8 w-8"><AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{getInitials(name)}</AvatarFallback></Avatar>
-                    <span style={{ position: "absolute", bottom: -1, right: -1, width: 9, height: 9, borderRadius: "50%", background: isOnline(m.user_id) ? "#22c55e" : "rgba(255,255,255,0.13)", border: "2px solid #0d1117", display: "inline-block" }} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-200">{name}</p>
-                    <p className="text-[11px] font-semibold" style={{ color: isOnline(m.user_id) ? "#22c55e" : "rgba(255,255,255,0.25)" }}>
-                      {isOnline(m.user_id) ? "● Online" : "○ Offline"}
-                    </p>
+                <div key={r.id} className={cn("msg-row",isMe?"msg-me":"msg-them")} style={{marginBottom:8}}>
+                  {!isMe && <div className="msg-av small">{initials(name)}</div>}
+                  <div className={cn("msg-body",isMe?"body-me":"body-them")}>
+                    {!isMe&&<p className="msg-sender">{name}</p>}
+                    <div className={cn("bubble",isMe?"me":"them")}>
+                      <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(r.message_text)}}/>
+                    </div>
+                    <p className="meta-time">{format(new Date(r.created_at),"h:mm a")}</p>
                   </div>
                 </div>
               );
             })}
+          <div ref={botRef}/>
         </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => { setSel([]); onClose(); }}>Cancel</Button>
-          <Button size="sm" disabled={!sel.length || startConversation.isPending} onClick={handleStart} style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
-            {sel.length > 1 ? "Create Group" : "Start Chat"}
+        <Composer value={input} onChange={setInput} onSend={send} onFile={()=>{}} members={members} myId={myId} placeholder="Reply in thread…"/>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PINNED PANEL  (real-time)
+// ─────────────────────────────────────────────────────────────
+function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
+  const [pins, setPins] = useState<PinRow[]>([]); const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("pinned_messages" as any)
+        .select("*").eq("conversation_id",convId).order("created_at",{ascending:false});
+      setPins((data||[]) as PinRow[]); setLoading(false);
+    } catch { setLoading(false); }
+  },[convId]);
+
+  useEffect(()=>{ load(); },[load]);
+
+  // Real-time pins
+  useEffect(() => {
+    const ch = supabase.channel(`pins:${convId}`)
+      .on("postgres_changes",{ event:"*", schema:"public", table:"pinned_messages", filter:`conversation_id=eq.${convId}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  },[convId, load]);
+
+  const unpin = async (id:string) => {
+    await supabase.from("pinned_messages" as any).delete().eq("id",id);
+    toast({title:"Unpinned"});
+  };
+
+  return (
+    <div className="thread-overlay">
+      <div className="thread-panel">
+        <div className="thread-hdr">
+          <Pin style={{width:13,height:13,color:"#f59e0b"}}/>
+          <span className="thread-title">Pinned Messages</span>
+          <button className="panel-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
+        </div>
+        <div className="thread-body">
+          {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
+            : pins.length===0 ? (
+              <div className="panel-empty"><Pin style={{width:28,height:28,opacity:.2}}/><p>No pinned messages</p></div>
+            ) : pins.map(p=>(
+              <div key={p.id} className="pin-item">
+                <Pin style={{width:11,height:11,color:"#f59e0b",flexShrink:0,marginTop:2}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <p className="pin-txt">{p.message_preview||"(no preview)"}</p>
+                  <p className="pin-meta">{format(new Date(p.created_at),"MMM d, h:mm a")}</p>
+                </div>
+                <button className="ha ha-del" onClick={()=>unpin(p.id)} title="Unpin"><X style={{width:11,height:11}}/></button>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SAVED MESSAGES  (real-time)
+// ─────────────────────────────────────────────────────────────
+function SavedView({ myId, onJump }: { myId:string; onJump:(convId:string)=>void }) {
+  const [items, setItems] = useState<SaveRow[]>([]); const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("saved_messages" as any)
+        .select("id, message_id, created_at, team_messages(id,message_text,conversation_id,sender_id,created_at)")
+        .eq("user_id",myId).order("created_at",{ascending:false}).limit(50);
+      setItems((data||[]).map((d:any)=>({ id:d.id, message_id:d.message_id, created_at:d.created_at, msg:d.team_messages })));
+      setLoading(false);
+    } catch { setLoading(false); }
+  },[myId]);
+
+  useEffect(()=>{ load(); },[load]);
+
+  // Real-time saves
+  useEffect(() => {
+    const ch = supabase.channel(`saved:${myId}`)
+      .on("postgres_changes",{ event:"*", schema:"public", table:"saved_messages", filter:`user_id=eq.${myId}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  },[myId, load]);
+
+  const unsave = async (id:string) => {
+    await supabase.from("saved_messages" as any).delete().eq("id",id);
+    toast({title:"Removed from saved"});
+  };
+
+  return (
+    <div className="thread" style={{height:"100%"}}>
+      <div className="chat-hdr">
+        <div className="chat-av"><Bookmark style={{width:14,height:14,color:"#a78bfa"}}/></div>
+        <div className="chat-info"><p className="chat-name">Saved Messages</p><p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{items.length} saved</p></div>
+      </div>
+      <div className="msgs-area">
+        {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
+          : items.length===0 ? (
+            <div className="empty-chat">
+              <div className="empty-icon"><Bookmark style={{width:22,height:22,color:"#7c3aed"}}/></div>
+              <p className="empty-title">Nothing saved yet</p>
+              <p className="empty-sub">Save messages with the context menu or long press</p>
+            </div>
+          ) : items.map(s=>(
+            <div key={s.id} className="saved-item">
+              <div style={{flex:1,minWidth:0}}>
+                <p className="saved-txt">{s.msg?.message_text||"Deleted message"}</p>
+                <p className="meta-time">{format(new Date(s.created_at),"MMM d, h:mm a")}</p>
+              </div>
+              <div style={{display:"flex",gap:5,flexShrink:0}}>
+                {s.msg?.conversation_id && (
+                  <button className="ha" onClick={()=>onJump(s.msg!.conversation_id!)}><CornerDownRight style={{width:11,height:11}}/></button>
+                )}
+                <button className="ha ha-del" onClick={()=>unsave(s.id)}><X style={{width:11,height:11}}/></button>
+              </div>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  GLOBAL SEARCH
+// ─────────────────────────────────────────────────────────────
+function SearchModal({ convs, onJump, onClose }: {
+  convs:Conversation[]; onJump:(convId:string)=>void; onClose:()=>void;
+}) {
+  const [q, setQ] = useState(""); const [res, setRes] = useState<any[]>([]); const [busy, setBusy] = useState(false);
+  const timer = useRef<NodeJS.Timeout|null>(null);
+  const convMap = useMemo(()=>new Map(convs.map(c=>[c.id,getConversationName(c)])),[convs]);
+
+  const search = useCallback(async (query:string) => {
+    if (!query.trim()||query.length<2) { setRes([]); return; }
+    setBusy(true);
+    try {
+      const { data } = await supabase.from("team_messages" as any)
+        .select("id,message_text,sender_id,conversation_id,created_at")
+        .ilike("message_text",`%${query}%`).order("created_at",{ascending:false}).limit(25);
+      setRes((data||[]).map((m:any)=>({...m,convName:convMap.get(m.conversation_id)||"Unknown"})));
+    } finally { setBusy(false); }
+  },[convMap]);
+
+  useEffect(()=>{
+    if(timer.current) clearTimeout(timer.current);
+    timer.current=setTimeout(()=>search(q),280);
+    return ()=>{ if(timer.current) clearTimeout(timer.current); };
+  },[q,search]);
+
+  const hi = (txt:string,qry:string) => {
+    const i=txt.toLowerCase().indexOf(qry.toLowerCase());
+    if(i===-1) return txt.slice(0,80);
+    const s=Math.max(0,i-20),e=Math.min(txt.length,i+qry.length+40);
+    return (s>0?"…":"")+txt.slice(s,e)+(e<txt.length?"…":"");
+  };
+
+  return (
+    <div className="search-overlay" onClick={onClose}>
+      <div className="search-modal" onClick={e=>e.stopPropagation()}>
+        <div className="search-input-row">
+          <Search style={{width:18,height:18,color:"rgba(255,255,255,.3)",flexShrink:0}}/>
+          <input autoFocus className="search-input" placeholder="Search all messages…" value={q} onChange={e=>setQ(e.target.value)}/>
+          {busy && <Loader2 style={{width:15,height:15,color:"#7c3aed",animation:"spin 1s linear infinite",flexShrink:0}}/>}
+          <button className="ha" onClick={onClose}><X style={{width:13,height:13}}/></button>
+        </div>
+        <div className="search-results">
+          {q.length>1 && !busy && res.length===0 && <p className="search-empty">No messages found for "{q}"</p>}
+          {res.map(r=>(
+            <button key={r.id} className="search-result" onClick={()=>{onJump(r.conversation_id);onClose();}}>
+              <div className="search-result-conv"><Hash style={{width:10,height:10}}/>{r.convName}<span style={{marginLeft:"auto",opacity:.4}}>{format(new Date(r.created_at),"MMM d")}</span></div>
+              <p className="search-result-txt" dangerouslySetInnerHTML={{__html:hi(r.message_text,q).replace(
+                new RegExp(q,"gi"),m=>`<mark style="background:rgba(124,58,237,.3);color:#c084fc;border-radius:2px;padding:0 2px">${m}</mark>`)}}/>
+            </button>
+          ))}
+          {!q && <div className="search-hint"><Search style={{width:32,height:32,opacity:.15}}/><p>Type to search all conversations</p></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SCHEDULE DIALOG
+// ─────────────────────────────────────────────────────────────
+function ScheduleDialog({ convId, myId, text, onClose }: {
+  convId:string; myId:string; text:string; onClose:()=>void;
+}) {
+  const [when, setWhen] = useState("");
+  const save = async () => {
+    if (!when||!text.trim()) return;
+    await supabase.from("scheduled_messages" as any).insert({
+      sender_id:myId, conversation_id:convId, message_text:text.trim(),
+      scheduled_for:new Date(when).toISOString(), status:"pending",
+    });
+    toast({title:"Message scheduled",description:`Will send ${format(new Date(when),"MMM d 'at' h:mm a")}`});
+    onClose();
+  };
+  return (
+    <Dialog open onOpenChange={v=>{if(!v)onClose();}}>
+      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
+        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>Schedule Message</DialogTitle></DialogHeader>
+        <p style={{fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:8,fontFamily:"'DM Sans',sans-serif"}}>Message: <em style={{color:"rgba(255,255,255,.6)"}}>{text.slice(0,60)}{text.length>60?"…":""}</em></p>
+        <input type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)}
+          style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:10,padding:"10px 12px",color:"#f0f6fc",fontSize:13,outline:"none"}}/>
+        <DialogFooter style={{marginTop:8}}>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!when||!text.trim()} onClick={save} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)"}}>
+            <Calendar style={{width:13,height:13,marginRight:5}}/>Schedule
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1479,481 +669,994 @@ function NewConvoDialog({ open, onClose, members, currentUserId, teamId, convers
   );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   🏠  MAIN PAGE
-══════════════════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────
+//  CONTEXT MENU
+// ─────────────────────────────────────────────────────────────
+function CtxMenu({ pos, isMe, onClose, on }: {
+  pos:{x:number;y:number}; isMe:boolean; onClose:()=>void;
+  on:{ copy:()=>void; reply:()=>void; pin:()=>void; save:()=>void; edit?:()=>void; del?:()=>void; }
+}) {
+  const ref=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const h=(e:MouseEvent)=>{ if(!ref.current?.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h);
+  },[onClose]);
+  const items:[React.ElementType,string,()=>void,boolean][] = [
+    [Reply,"Reply in Thread",on.reply,false],[Copy,"Copy Text",on.copy,false],
+    [Pin,"Pin Message",on.pin,false],[Bookmark,"Save Message",on.save,false],
+    ...(isMe?([[Pencil,"Edit Message",on.edit!,false],[Trash2,"Delete",on.del!,true]] as [React.ElementType,string,()=>void,boolean][]):[]),
+  ];
+  return (
+    <div ref={ref} style={{position:"fixed",left:Math.min(pos.x,window.innerWidth-190),top:Math.min(pos.y,window.innerHeight-items.length*36-8),zIndex:9999}} className="ctx-menu">
+      {items.map(([Icon,label,fn,danger],i)=>(
+        <button key={i} className={cn("ctx-item",danger&&"ctx-item--danger")} onClick={()=>{fn();onClose();}}>
+          <Icon style={{width:13,height:13}}/>{label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MAIN CHAT THREAD
+// ─────────────────────────────────────────────────────────────
+function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
+  convId:string; convs:Conversation[]; onBack:()=>void;
+  isOnline:(id:string)=>boolean; members:TeamMember[]; myId:string;
+}) {
+  const qc = useQueryClient();
+  const { messages:base, messagesLoading, sendMessage, readReceipts } = useConversationMessages(convId);
+  const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(convId);
+
+  // Local RT overlays
+  const [rtAdded,  setRtAdded]  = useState<RtMsg[]>([]);
+  const [rtDel,    setRtDel]    = useState<Set<string>>(new Set());
+  const [rtEdit,   setRtEdit]   = useState<Map<string,string>>(new Map());
+  const [optDel,   setOptDel]   = useState<Set<string>>(new Set());
+
+  const [input, setInput]       = useState("");
+  const [pFile, setPFile]       = useState<File|null>(null);
+  const [busy,  setBusy]        = useState(false);
+  const [editId, setEditId]     = useState<string|null>(null);
+  const [editTxt,setEditTxt]    = useState("");
+  const [ctx, setCtx]           = useState<{id:string;x:number;y:number}|null>(null);
+  const [thread,setThread]      = useState<RtMsg|null>(null);
+  const [showPins,setShowPins]  = useState(false);
+  const [muted, setMuted]       = useState(false);
+  const [scheduleFor, setSched] = useState<{convId:string;text:string}|null>(null);
+  const [lpId, setLpId]         = useState<string|null>(null);
+  const [replyTo, setReplyTo]   = useState<{id:string;text:string;sender:string}|null>(null);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef   = useRef<HTMLInputElement>(null);
+  const editRef   = useRef<HTMLInputElement>(null);
+  const lpTimer   = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const typTimer  = useRef<NodeJS.Timeout|null>(null);
+
+  const conv = convs.find(c=>c.id===convId);
+  const name = conv ? getConversationName(conv) : "Chat";
+  const isGrp= conv?.is_group ?? false;
+  const otherId = !isGrp ? conv?.participants?.[0]?.user_id : undefined;
+  const otherOn = otherId ? isOnline(otherId) : false;
+  const myName = members.find(m=>m.user_id===myId)?.profile?.full_name || "You";
+
+  // Load mute pref
+  useEffect(()=>{
+    (async()=>{
+      try {
+        const { data } = await supabase.from("conversation_preferences" as any)
+          .select("is_muted").eq("conversation_id",convId).eq("user_id",myId).maybeSingle();
+        setMuted(!!(data as any)?.is_muted);
+      } catch {}
+    })();
+  },[convId,myId]);
+
+  const toggleMute = async () => {
+    const v=!muted; setMuted(v);
+    await supabase.from("conversation_preferences" as any).upsert({
+      conversation_id:convId, user_id:myId, is_muted:v, updated_at:new Date().toISOString(),
+    });
+    toast({title:v?"Conversation muted":"Unmuted"});
+  };
+
+  // Profile cache for RT enrichment
+  const profCache = useRef(new Map<string,{full_name:string|null;email:string|null}>());
+  useEffect(()=>{ base.forEach(m=>{ if(m.sender) profCache.current.set(m.sender_id,m.sender as any); }); },[base]);
+
+  // RT callbacks (stable refs via hook)
+  const onInsert = useCallback((m:RtMsg)=>{
+    setRtAdded(p=>{ if(p.some(x=>x.id===m.id)||base.some(x=>x.id===m.id)) return p; return [...p,m]; });
+    qc.invalidateQueries({queryKey:["team-conversations"]});
+  },[base,qc]);
+  const onDelete = useCallback((id:string)=>{ setRtDel(p=>new Set([...p,id])); setOptDel(p=>new Set([...p,id])); },[]);
+  const onUpdate = useCallback((id:string,text:string)=>{ setRtEdit(p=>new Map(p).set(id,text)); },[]);
+
+  useRealtimeChannel(convId, myId, profCache, onInsert, onDelete, onUpdate);
+
+  // Merge messages
+  const messages = useMemo(()=>{
+    const del=new Set([...rtDel,...optDel]);
+    const merged=[
+      ...base.filter(m=>!del.has(m.id)&&!(m as any).parent_id&&!rtAdded.some(r=>r.id===m.id)),
+      ...rtAdded.filter(m=>!del.has(m.id)),
+    ].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
+    return merged.map(m=>{ const ed=rtEdit.get(m.id); return ed!==undefined?{...m,message_text:ed}:m; });
+  },[base,rtAdded,rtDel,rtEdit,optDel]);
+
+  useEffect(()=>{ scrollRef.current?.scrollIntoView({behavior:"smooth"}); },[messages.length]);
+  useEffect(()=>{ if(editId&&editRef.current) editRef.current.focus(); },[editId]);
+
+  const handleInput = (v:string) => {
+    setInput(v);
+    if(v.trim()){ sendTyping(myName); if(typTimer.current) clearTimeout(typTimer.current); typTimer.current=setTimeout(()=>sendStopTyping(),2000); }
+    else sendStopTyping();
+  };
+
+  const upload = async (file:File) => {
+    const ext=file.name.split(".").pop()??"bin";
+    const path=`${convId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from("team-attachments").upload(path,file,{contentType:file.type});
+    if(error) throw error;
+    const { data } = supabase.storage.from("team-attachments").getPublicUrl(path);
+    return { url:data.publicUrl, name:file.name, type:file.type };
+  };
+
+  const handleSend = async () => {
+    if(!input.trim()&&!pFile) return;
+    setBusy(true);
+    try {
+      let fd:any;
+      if(pFile) fd=await upload(pFile);
+      sendMessage.mutate({ text:input.trim()||(pFile?.name??"Attachment"), file_url:fd?.url, file_name:fd?.name, file_type:fd?.type });
+      setInput(""); setPFile(null); setReplyTo(null); sendStopTyping();
+    } finally { setBusy(false); }
+  };
+
+  const saveEdit = async (id:string) => {
+    const prev=messages.find(m=>m.id===id)?.message_text??"";
+    setRtEdit(p=>new Map(p).set(id,editTxt.trim())); setEditId(null); setEditTxt("");
+    try { await supabase.from("team_messages").update({message_text:editTxt.trim()}).eq("id",id); toast({title:"Updated"});
+    } catch { setRtEdit(p=>new Map(p).set(id,prev)); toast({title:"Failed",variant:"destructive"}); }
+  };
+
+  const delMsg = useCallback(async (id:string)=>{
+    setOptDel(p=>new Set([...p,id])); setCtx(null); setLpId(null);
+    try { await supabase.from("team_messages").delete().eq("id",id); toast({title:"Deleted"});
+    } catch { setOptDel(p=>{ const s=new Set(p);s.delete(id);return s; }); toast({title:"Failed",variant:"destructive"}); }
+  },[]);
+
+  const pinMsg = async (id:string,text:string) => {
+    try {
+      await supabase.from("pinned_messages" as any).insert({ message_id:id, conversation_id:convId, pinned_by:myId, message_preview:text.slice(0,120) });
+      toast({title:"Pinned",description:"Find it with the 📌 button"});
+    } catch { toast({title:"Could not pin",variant:"destructive"}); }
+  };
+
+  const saveMsg = async (id:string) => {
+    try { await supabase.from("saved_messages" as any).insert({message_id:id,user_id:myId}); toast({title:"Saved"}); }
+    catch { toast({title:"Could not save",variant:"destructive"}); }
+  };
+
+  const grouped = useMemo(()=>{
+    const g:{label:string;msgs:typeof messages}[]=[];let last="";
+    messages.forEach(m=>{
+      const d=new Date(m.created_at);
+      const lbl=isToday(d)?"Today":isYesterday(d)?"Yesterday":format(d,"MMMM d, yyyy");
+      if(lbl!==last){g.push({label:lbl,msgs:[]});last=lbl;}
+      g[g.length-1].msgs.push(m);
+    });
+    return g;
+  },[messages]);
+
+  const lpMsg = messages.find(m=>m.id===lpId);
+  const lpIsMe= lpMsg?.sender_id===myId;
+
+  function rsStatus(at:string,sid:string,rr:ReadReceipt[]):"none"|"sent"|"read" {
+    if(sid!==myId) return "none";
+    return rr.some(r=>r.last_read_at&&new Date(r.last_read_at)>=new Date(at))?"read":"sent";
+  }
+
+  return (
+    <div className="thread">
+      {/* HEADER */}
+      <div className="chat-hdr">
+        <button className="back-btn" onClick={onBack}><ArrowLeft style={{width:15,height:15}}/></button>
+        <div style={{position:"relative",flexShrink:0}}>
+          <div className="chat-av">
+            {isGrp?<Users style={{width:14,height:14,color:"#a78bfa"}}/>
+              :<span style={{fontSize:12,fontWeight:700,color:"#818cf8"}}>{conv?getConversationInitials(conv):"?"}</span>}
+          </div>
+          {!isGrp&&otherId&&<span className="pres-dot" style={{background:otherOn?"#22c55e":"rgba(255,255,255,.13)"}}/>}
+        </div>
+        <div className="chat-info">
+          <p className="chat-name">{name}</p>
+          {typingUsers.length>0
+            ? <p className="chat-typing">typing…</p>
+            : !isGrp
+              ? <p className="chat-sub" style={{color:otherOn?"#22c55e":"rgba(255,255,255,.28)"}}>{otherOn?"● Online now":"○ Offline"}</p>
+              : <p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{(conv?.participants.length??0)+1} members</p>}
+        </div>
+        <div className="hdr-acts">
+          <button className={cn("hdr-btn",showPins&&"hdr-btn--on")} title="Pinned" onClick={()=>setShowPins(p=>!p)}><Pin style={{width:13,height:13}}/></button>
+          <button className={cn("hdr-btn",muted&&"hdr-btn--muted")} title={muted?"Unmute":"Mute"} onClick={toggleMute}>
+            {muted?<BellOff style={{width:13,height:13}}/>:<Bell style={{width:13,height:13}}/>}
+          </button>
+        </div>
+        {typingUsers.length>0&&<div className="typing-dots"><span/><span/><span/></div>}
+      </div>
+
+      {showPins && <PinsPanel convId={convId} myId={myId} onClose={()=>setShowPins(false)}/>}
+      {thread    && <ThreadPanel parent={thread} members={members} myId={myId} onClose={()=>setThread(null)}/>}
+
+      {/* MESSAGES */}
+      <div className="msgs-area">
+        {messagesLoading ? <div className="center-spin"><Loader2 className="spin"/></div>
+          : messages.length===0 ? (
+            <div className="empty-chat">
+              <div className="empty-icon"><MessageSquare style={{width:22,height:22,color:"#7c3aed"}}/></div>
+              <p className="empty-title">No messages yet</p>
+              <p className="empty-sub">Start the conversation below</p>
+            </div>
+          ) : grouped.map(grp=>(
+            <div key={grp.label}>
+              <div className="divider-row"><div className="div-line"/><span className="div-label">{grp.label}</span><div className="div-line"/></div>
+              {grp.msgs.map((msg,i)=>{
+                const isMe=msg.sender_id===myId;
+                const st=rsStatus(msg.created_at,msg.sender_id,readReceipts);
+                const showRec=isMe&&(!grp.msgs[i+1]||grp.msgs[i+1].sender_id!==myId);
+                const same=grp.msgs[i-1]?.sender_id===msg.sender_id;
+                const isDel=optDel.has(msg.id);
+                const isEd=editId===msg.id;
+                const nm=msg.sender?.full_name||msg.sender?.email||"Unknown";
+                const isImg=(t?:string|null)=>!!t?.startsWith("image/");
+
+                return (
+                  <div key={msg.id}
+                    className={cn("msg-row",isMe?"msg-me":"msg-them",same&&"msg-same",rtAdded.some(r=>r.id===msg.id)&&!isMe&&"msg-new")}
+                    style={{opacity:isDel?.2:1,transition:"opacity .15s",pointerEvents:isDel?"none":undefined}}
+                    onContextMenu={e=>{if(!isDel){e.preventDefault();setCtx({id:msg.id,x:e.clientX,y:e.clientY});}}}
+                    onTouchStart={()=>{if(!isDel){lpTimer.current=setTimeout(()=>setLpId(msg.id),500);}}}
+                    onTouchEnd={()=>{if(lpTimer.current)clearTimeout(lpTimer.current);}}
+                    onTouchMove={()=>{if(lpTimer.current)clearTimeout(lpTimer.current);}}>
+
+                    {!isMe&&!same&&<div className="msg-av">{initials(nm)}</div>}
+                    {!isMe&&same&&<div className="msg-av-sp"/>}
+
+                    <div className={cn("msg-body",isMe?"body-me":"body-them")}>
+                      {!isMe&&!same&&<p className="msg-sender">{nm}</p>}
+                      {isEd?(
+                        <div className="edit-wrap">
+                          <input ref={editRef} value={editTxt} onChange={e=>setEditTxt(e.target.value)}
+                            onKeyDown={e=>{if(e.key==="Enter")saveEdit(msg.id);if(e.key==="Escape"){setEditId(null);setEditTxt("");}}}
+                            className="edit-input"/>
+                          <button className="edit-save" onClick={()=>saveEdit(msg.id)}>Save</button>
+                          <button className="edit-cancel" onClick={()=>{setEditId(null);setEditTxt("");}}>×</button>
+                        </div>
+                      ):(
+                        <div className={cn("bubble",isMe?"me":"them")}>
+                          {msg.file_url&&(
+                            <div className="attach">
+                              {isImg((msg as any).file_type)
+                                ?<a href={msg.file_url} target="_blank" rel="noopener noreferrer"><img src={msg.file_url} alt={(msg as any).file_name??"img"} className="attach-img"/></a>
+                                :<a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={cn("attach-file",isMe&&"attach-file--me")}>
+                                  <FileText style={{width:13,height:13,flexShrink:0}}/><span className="attach-name">{(msg as any).file_name??"File"}</span>
+                                </a>}
+                            </div>
+                          )}
+                          {(!msg.file_url||msg.message_text!==(msg as any).file_name)&&(
+                            <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(msg.message_text)}}/>
+                          )}
+                        </div>
+                      )}
+
+                      {!isDel&&!isEd&&<ReactBar msgId={msg.id} myId={myId}/>}
+
+                      {!isDel&&!isEd&&(
+                        <button className="thread-btn" onClick={()=>setThread(msg as RtMsg)}>
+                          <Reply style={{width:10,height:10}}/> Reply in thread
+                        </button>
+                      )}
+
+                      {/* Desktop hover actions */}
+                      {!isEd&&!isDel&&(
+                        <div className={cn("ha-row",isMe?"ha-row--me":"ha-row--them")}>
+                          {[
+                            [Smile,"React",()=>{}],[Reply,"Thread",()=>setThread(msg as RtMsg)],
+                            [Copy,"Copy",()=>{navigator.clipboard.writeText(msg.message_text);toast({title:"Copied"});}],
+                            [Pin,"Pin",()=>pinMsg(msg.id,msg.message_text)],
+                            [Bookmark,"Save",()=>saveMsg(msg.id)],
+                            ...(isMe?[[Pencil,"Edit",()=>{setEditId(msg.id);setEditTxt(msg.message_text);}],[Trash2,"Delete",()=>delMsg(msg.id)]]:[] as any[]),
+                          ].map(([Icon,title,fn]:any,k)=>(
+                            <button key={k} className={cn("ha",title==="Delete"&&"ha-del")} title={title} onClick={fn}>
+                              <Icon style={{width:11,height:11}}/>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className={cn("msg-meta",isMe&&"msg-meta--me")}>
+                        <span className="meta-time">{format(new Date(msg.created_at),"h:mm a")}</span>
+                        {showRec&&st==="read"&&<CheckCheck style={{width:12,height:12,color:"#818cf8"}}/>}
+                        {showRec&&st==="sent"&&<Check style={{width:12,height:12,color:"rgba(255,255,255,.3)"}}/>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        <div ref={scrollRef}/>
+      </div>
+
+      {/* CONTEXT MENU */}
+      {ctx&&(()=>{
+        const m=messages.find(x=>x.id===ctx.id);
+        return <CtxMenu pos={{x:ctx.x,y:ctx.y}} isMe={m?.sender_id===myId} onClose={()=>setCtx(null)} on={{
+          copy:()=>{navigator.clipboard.writeText(m?.message_text??"");toast({title:"Copied"});},
+          reply:()=>{ if(m){setThread(m as RtMsg);} },
+          pin:()=>{ if(m) pinMsg(m.id,m.message_text); },
+          save:()=>{ if(m) saveMsg(m.id); },
+          edit:()=>{ if(m){setEditId(m.id);setEditTxt(m.message_text);} },
+          del:()=>delMsg(ctx.id),
+        }}/>;
+      })()}
+
+      {/* MOBILE SHEET */}
+      {lpId&&lpMsg&&(
+        <div className="sheet-overlay" onClick={()=>setLpId(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-handle"/>
+            <div className="sheet-emoji-row">
+              {["👍","❤️","😂","🎉","🔥","✅"].map(e=>(
+                <button key={e} className="sheet-emoji" onClick={async()=>{
+                  await supabase.from("message_reactions" as any).insert({message_id:lpId,user_id:myId,emoji:e});
+                  setLpId(null);
+                }}>{e}</button>
+              ))}
+            </div>
+            <div className="sheet-preview"><p className="sheet-preview-txt">{lpMsg.message_text.slice(0,70)}</p></div>
+            {([
+              [Reply,"Reply in Thread",()=>{setThread(lpMsg as RtMsg);setLpId(null);}],
+              [Copy,"Copy text",()=>{navigator.clipboard.writeText(lpMsg.message_text);setLpId(null);}],
+              [Pin,"Pin message",()=>{pinMsg(lpId,lpMsg.message_text);setLpId(null);}],
+              [Bookmark,"Save message",()=>{saveMsg(lpId);setLpId(null);}],
+              ...(lpIsMe?[
+                [Pencil,"Edit message",()=>{setEditId(lpMsg.id);setEditTxt(lpMsg.message_text);setLpId(null);}],
+                [Trash2,"Delete",()=>delMsg(lpId)],
+              ]:[]),
+            ] as [React.ElementType,string,()=>void][]).map(([Ic,lbl,fn],i)=>(
+              <button key={i} className={cn("sheet-btn",lbl==="Delete"&&"sheet-btn--del")} onClick={fn}>
+                <Ic style={{width:18,height:18}}/>{lbl}
+              </button>
+            ))}
+            <button className="sheet-cancel" onClick={()=>setLpId(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* FILE PREVIEW */}
+      {pFile&&(
+        <div className="file-prev">
+          {pFile.type.startsWith("image/")?<ImageIcon style={{width:13,height:13,color:"#818cf8",flexShrink:0}}/>:<FileText style={{width:13,height:13,color:"#818cf8",flexShrink:0}}/>}
+          <span className="fp-name">{pFile.name}</span>
+          <span className="fp-size">{(pFile.size/1024).toFixed(0)}KB</span>
+          <button className="ha" onClick={()=>setPFile(null)}><X style={{width:11,height:11}}/></button>
+        </div>
+      )}
+
+      <input type="file" ref={fileRef} className="sr-only"
+        onChange={e=>{const f=e.target.files?.[0];if(f&&f.size<=20*1024*1024)setPFile(f);e.target.value="";}}
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"/>
+
+      <Composer value={input} onChange={handleInput} onSend={handleSend}
+        onFile={()=>fileRef.current?.click()} members={members} myId={myId}
+        busy={busy} replyTo={replyTo} onCancelReply={()=>setReplyTo(null)}
+        onSchedule={()=>input.trim()&&setSched({convId,text:input.trim()})}/>
+
+      {scheduleFor&&<ScheduleDialog convId={scheduleFor.convId} myId={myId} text={scheduleFor.text} onClose={()=>setSched(null)}/>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  NOTIFICATIONS PANEL
+// ─────────────────────────────────────────────────────────────
+const NI:{[k:string]:React.ElementType}={comment:MessageSquare,coaching:TrendingUp,mention:AtSign,system:AlertCircle};
+function NotifsPanel() {
+  const { notifications,notificationsLoading,unreadCount,markRead,markAllRead } = useNotifications();
+  const [filter,setFilter]=useState<"all"|"unread">("all");
+  const items=notifications.filter(n=>filter==="all"||!n.is_read);
+  return (
+    <div className="notif-panel">
+      <div className="notif-hdr">
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span className="notif-title">Notifications</span>
+          {unreadCount>0&&<span className="notif-badge">{unreadCount}</span>}
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {(["all","unread"] as const).map(f=>(
+            <button key={f} className={cn("filter-btn",filter===f&&"filter-btn--on")} onClick={()=>setFilter(f)}>{f==="all"?"All":"Unread"}</button>
+          ))}
+          {unreadCount>0&&<button className="filter-btn" onClick={()=>markAllRead.mutate()}><CheckCheck style={{width:11,height:11}}/> All read</button>}
+        </div>
+      </div>
+      <div className="notif-list">
+        {notificationsLoading?<div className="center-spin"><Loader2 className="spin"/></div>
+          :items.length===0?<div className="panel-empty"><Bell style={{width:28,height:28,opacity:.2}}/><p>{filter==="unread"?"No unread":"All caught up"}</p></div>
+          :items.map(n=>{
+            const Ic=NI[n.type]??Bell;
+            return (
+              <div key={n.id} className={cn("notif-item",!n.is_read&&"notif-item--unread")} onClick={()=>!n.is_read&&markRead.mutate(n.id)}>
+                <div className="notif-icon"><Ic style={{width:13,height:13}}/></div>
+                <div style={{flex:1,minWidth:0}}>
+                  <p className={cn("notif-txt",!n.is_read&&"notif-txt--bold")}>{n.message}</p>
+                  <p className="meta-time" style={{marginTop:2}}>{format(new Date(n.created_at),"MMM d, h:mm a")}</p>
+                </div>
+                {!n.is_read&&<div className="notif-dot"/>}
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SIDEBAR CONVO LIST  (grouped DM / Group)
+// ─────────────────────────────────────────────────────────────
+function Sidebar({ convs,loading,sel,onSel,isOnline }: {
+  convs:Conversation[]; loading:boolean; sel:string|null;
+  onSel:(id:string)=>void; isOnline:(id:string)=>boolean;
+}) {
+  const dms   = convs.filter(c=>!c.is_group);
+  const grps  = convs.filter(c=>c.is_group);
+
+  const Row = ({ c }:{c:Conversation}) => {
+    const nm=getConversationName(c);
+    const other=!c.is_group&&c.participants[0];
+    const on=other?isOnline(other.user_id):false;
+    return (
+      <button className={cn("conv-item",sel===c.id&&"conv-item--active")} onClick={()=>onSel(c.id)}>
+        <div className="conv-av-wrap">
+          <div className={cn("conv-av",c.is_group&&"conv-av--grp")}>
+            {c.is_group?<Users style={{width:14,height:14}}/>:initials(nm)}
+          </div>
+          {!c.is_group&&<span className="pres-dot" style={{position:"absolute",bottom:-1,right:-1,background:on?"#22c55e":"rgba(255,255,255,.13)"}}/>}
+          {c.unread_count>0&&<div className="conv-unread">{c.unread_count>9?"9+":c.unread_count}</div>}
+        </div>
+        <div className="conv-info">
+          <div className="conv-row1">
+            <span className={cn("conv-name",c.unread_count>0&&"conv-name--bold")}>{nm}</span>
+            {c.last_message&&<span className="meta-time">{fmtTime(c.last_message.created_at)}</span>}
+          </div>
+          <p className={cn("conv-preview",c.unread_count>0&&"conv-preview--bold")}>
+            {!c.is_group&&on?"● Online now":c.last_message?.message_text||"No messages yet"}
+          </p>
+        </div>
+        <ChevronRight className="conv-chev" style={{width:13,height:13}}/>
+      </button>
+    );
+  };
+
+  return (
+    <div className="conv-list">
+      {loading?<div className="center-spin"><Loader2 className="spin"/></div>
+        :convs.length===0?<div className="panel-empty"><MessageSquare style={{width:24,height:24,opacity:.2}}/><p>No conversations yet</p></div>
+        :(
+          <>
+            {grps.length>0&&(
+              <div className="conv-group">
+                <div className="conv-group-lbl"><Hash style={{width:10,height:10}}/> Group Chats <span className="conv-group-ct">{grps.length}</span></div>
+                {grps.map(c=><Row key={c.id} c={c}/>)}
+              </div>
+            )}
+            {dms.length>0&&(
+              <div className="conv-group">
+                <div className="conv-group-lbl"><MessageSquare style={{width:10,height:10}}/> Direct Messages <span className="conv-group-ct">{dms.length}</span></div>
+                {dms.map(c=><Row key={c.id} c={c}/>)}
+              </div>
+            )}
+          </>
+        )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  NEW CONVERSATION DIALOG
+// ─────────────────────────────────────────────────────────────
+function NewConvDialog({ open,onClose,members,myId,teamId,convs,refetch,onCreate,isOnline }: {
+  open:boolean;onClose:()=>void;members:TeamMember[];myId:string;teamId:string;
+  convs:Conversation[];refetch:()=>void;onCreate:(id:string)=>void;isOnline:(id:string)=>boolean;
+}) {
+  const { startConversation }=useConversationMessages(null);
+  const [sel,setSel]=useState<string[]>([]);
+  const others=members.filter(m=>m.user_id!==myId&&m.status==="active");
+  const tog=(uid:string)=>setSel(p=>p.includes(uid)?p.filter(x=>x!==uid):[...p,uid]);
+  const go=async()=>{
+    if(!sel.length) return;
+    try {
+      if(sel.length===1){
+        const ex=convs.find(c=>!c.is_group&&c.participants.length===1&&c.participants.some(p=>p.user_id===sel[0]));
+        if(ex){setSel([]);onCreate(ex.id);return;}
+      }
+      const id=await startConversation.mutateAsync({teamId,memberIds:sel});
+      refetch();setSel([]);onCreate(id);toast({title:"Conversation started"});
+    } catch(e:any){toast({title:"Could not start chat",description:e?.message,variant:"destructive"});}
+  };
+  return (
+    <Dialog open={open} onOpenChange={v=>{if(!v){setSel([]);onClose();}}}>
+      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
+        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>New Conversation</DialogTitle></DialogHeader>
+        {sel.length>1&&<p style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>Group · {sel.length} members</p>}
+        <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
+          {others.length===0?<p style={{fontSize:12,color:"rgba(255,255,255,.3)",padding:"20px 0",textAlign:"center"}}>No other members</p>
+            :others.map(m=>{
+              const nm=m.profile?.full_name||m.invited_email||"Unknown";
+              const chk=sel.includes(m.user_id);
+              return(
+                <div key={m.id} onClick={()=>tog(m.user_id)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,cursor:"pointer",border:"1px solid",
+                    borderColor:chk?"rgba(124,58,237,.4)":"transparent",background:chk?"rgba(124,58,237,.1)":"transparent",transition:"all .13s"}}>
+                  <Checkbox checked={chk} className="pointer-events-none"/>
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <Avatar className="h-8 w-8"><AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{initials(nm)}</AvatarFallback></Avatar>
+                    <span className="pres-dot" style={{position:"absolute",bottom:-1,right:-1,background:isOnline(m.user_id)?"#22c55e":"rgba(255,255,255,.13)"}}/>
+                  </div>
+                  <div>
+                    <p style={{fontSize:13,fontWeight:500,color:"#e2e8f0",margin:0}}>{nm}</p>
+                    <p style={{fontSize:10,fontWeight:600,color:isOnline(m.user_id)?"#22c55e":"rgba(255,255,255,.25)",margin:0}}>{isOnline(m.user_id)?"● Online":"○ Offline"}</p>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={()=>{setSel([]);onClose();}}>Cancel</Button>
+          <Button size="sm" disabled={!sel.length||startConversation.isPending} onClick={go} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)"}}>
+            {sel.length>1?"Create Group":"Start Chat"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ROOT PAGE
+// ─────────────────────────────────────────────────────────────
 export default function MessagesPage() {
   const { user } = useAuth();
   const { team, members } = useTeam();
-  const { conversations, conversationsLoading, totalUnread, refetchConversations } = useTeamMessaging(team?.id);
-  const { unreadCount: notifCount } = useNotifications();
-  const { isOnline, onlineUsers } = useOnlinePresence(team?.id, user?.id);
+  const { conversations,conversationsLoading,totalUnread,refetchConversations } = useTeamMessaging(team?.id);
+  const { unreadCount:notifCount } = useNotifications();
+  const isOnline = usePresence(team?.id, user?.id);
 
-  useNotificationSound(user?.id);
+  // Notification sound on new notif
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase.channel(`notif-snd:${user.id}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${user.id}`},playPing)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  },[user?.id]);
 
-  const [selected, setSelected] = useState<string | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
-  const [tab, setTab] = useState<"chats" | "notifs" | "saved">("chats");
-  const [mobileScr, setMobileScr] = useState<"list" | "thread">("list");
-  const [showSearch, setShowSearch] = useState(false);
+  const [sel, setSel]           = useState<string|null>(null);
+  const [tab, setTab]           = useState<"chats"|"saved"|"notifs">("chats");
+  const [newOpen, setNewOpen]   = useState(false);
+  const [showSearch,setSearch]  = useState(false);
+  const [mobile, setMobile]     = useState<"list"|"chat">("list");
 
-  const selectConvo = (id: string) => { setSelected(id); setMobileScr("thread"); setTab("chats"); };
-  const goBack = () => setMobileScr("list");
+  const pick = (id:string) => { setSel(id); setMobile("chat"); setTab("chats"); };
+  const back = () => setMobile("list");
   const totalBadge = totalUnread + notifCount;
 
-  const onlineCount = useMemo(() =>
-    members.filter(m => m.user_id !== user?.id && isOnline(m.user_id)).length,
-    [members, onlineUsers, user?.id]
+  const onlineCount = useMemo(()=>
+    members.filter(m=>m.user_id!==user?.id&&isOnline(m.user_id)).length,
+    [members, isOnline, user?.id]
   );
 
   return (
     <>
+      {/* ── GLOBAL CSS ── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
-        .mp-page{
+        .mp{
           --bg0:#060912;--bg1:#0b0f1c;--bg2:#0f1424;
-          --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.04);
-          --ac:#7c3aed;--ac-glow:rgba(124,58,237,0.35);--ac-soft:rgba(124,58,237,0.12);
-          --t1:#f0f6fc;--t2:rgba(255,255,255,0.6);--t3:rgba(255,255,255,0.3);--t4:rgba(255,255,255,0.14);
+          --bdr:rgba(255,255,255,.07);--bdr2:rgba(255,255,255,.04);
+          --ac:#7c3aed;--acg:rgba(124,58,237,.35);--acs:rgba(124,58,237,.12);
+          --t1:#f0f6fc;--t2:rgba(255,255,255,.6);--t3:rgba(255,255,255,.3);--t4:rgba(255,255,255,.14);
           display:flex;flex-direction:column;height:calc(100dvh - 4rem);margin:-24px;overflow:hidden;
           background:var(--bg0);font-family:'DM Sans',system-ui,sans-serif;
         }
-        @media(max-width:767px){.mp-page{margin:-16px;height:calc(100dvh - 3.5rem);padding-bottom:58px;}}
+        @media(max-width:767px){.mp{margin:-16px;height:calc(100dvh - 3.5rem);padding-bottom:58px;}}
 
-        @keyframes mpSpin{to{transform:rotate(360deg)}}
-        @keyframes mpBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
-        @keyframes mpSheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-        @keyframes mpFade{from{opacity:0}to{opacity:1}}
-        @keyframes mpPop{from{opacity:0;transform:scale(0.94) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
-        @keyframes mpSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
+        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+        @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes pop{from{opacity:0;transform:scale(.94) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
-        /* ── TOP BAR ── */
-        .mp-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;flex-shrink:0;background:rgba(11,15,28,0.96);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);}
-        .mp-topbar-l{display:flex;align-items:center;gap:10px;}
-        .mp-topbar-icon{width:32px;height:32px;border-radius:9px;background:var(--ac-soft);border:1px solid rgba(124,58,237,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-        .mp-topbar-title{font-size:15px;font-weight:700;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;}
-        .mp-topbar-badge{font-size:10px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;padding:2px 8px;border-radius:20px;box-shadow:0 2px 8px var(--ac-glow);}
-        .mp-online-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.18);border-radius:20px;padding:2px 10px 2px 7px;font-size:11px;font-weight:600;color:#22c55e;}
-        .mp-online-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:mpBounce 2s ease-in-out infinite;flex-shrink:0;}
-        .mp-topbar-actions{display:flex;align-items:center;gap:6px;}
-        .mp-topbar-btn{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.15s;}
-        .mp-topbar-btn:hover{background:rgba(255,255,255,0.08);color:var(--t1);}
-        .mp-new-btn{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:9px;padding:7px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px var(--ac-glow);font-family:'DM Sans',sans-serif;transition:transform .15s,box-shadow .15s;}
-        .mp-new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--ac-glow);}
-        @media(max-width:480px){.mp-new-btn span{display:none;}.mp-new-btn{width:34px;height:34px;padding:0;border-radius:50%;justify-content:center;}}
+        /* TOP BAR */
+        .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:54px;flex-shrink:0;background:rgba(11,15,28,.97);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
+        .topbar-l{display:flex;align-items:center;gap:9px;}
+        .topbar-icon{width:30px;height:30px;border-radius:9px;background:var(--acs);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;}
+        .topbar-title{font-size:15px;font-weight:700;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
+        .topbar-badge{font-size:10px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;padding:2px 8px;border-radius:20px;box-shadow:0 2px 8px var(--acg);}
+        .online-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.18);border-radius:20px;padding:2px 10px 2px 7px;font-size:11px;font-weight:600;color:#22c55e;}
+        .online-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:bounce 2s ease-in-out infinite;flex-shrink:0;}
+        .topbar-r{display:flex;align-items:center;gap:6px;}
+        .topbar-btn{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.13s;}
+        .topbar-btn:hover{background:rgba(255,255,255,.09);color:var(--t1);}
+        .new-btn{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:9px;padding:7px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px var(--acg);font-family:'DM Sans',sans-serif;transition:transform .15s,box-shadow .15s;}
+        .new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--acg);}
+        @media(max-width:480px){.new-btn span{display:none;}.new-btn{width:32px;height:32px;padding:0;border-radius:50%;justify-content:center;}}
 
-        /* ── BODY ── */
-        .mp-body{display:flex;flex:1;min-height:0;}
-        .mp-sidebar{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg1);}
-        @media(max-width:767px){.mp-sidebar{width:100%;border-right:none;}.mp-sidebar--hidden{display:none;}}
+        /* BODY */
+        .body{display:flex;flex:1;min-height:0;}
+        .sidebar{width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--bdr);background:var(--bg1);}
+        @media(max-width:767px){.sidebar{width:100%;border-right:none;}.sidebar--hidden{display:none;}}
+        .tabs{display:flex;gap:4px;padding:7px 9px;border-bottom:1px solid var(--bdr2);flex-shrink:0;}
+        .tab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 0;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--t3);font-size:12px;font-weight:600;cursor:pointer;transition:all .13s;font-family:'DM Sans',sans-serif;}
+        .tab--on{background:var(--acs);border-color:rgba(124,58,237,.25);color:#a78bfa;}
+        .tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
 
-        /* ── TABS ── */
-        .mp-tabs{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--border2);flex-shrink:0;}
-        .mp-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 0;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--t3);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;}
-        .mp-tab--active{background:var(--ac-soft);border-color:rgba(124,58,237,0.25);color:#a78bfa;}
-        .mp-tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
+        /* CONV LIST */
+        .conv-list{flex:1;overflow-y:auto;padding:4px 6px 8px;}
+        .conv-group{margin-bottom:8px;}
+        .conv-group-lbl{display:flex;align-items:center;gap:6px;padding:5px 10px 3px;font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;}
+        .conv-group-ct{margin-left:auto;background:var(--acs);color:#a78bfa;font-size:9px;padding:1px 6px;border-radius:10px;}
+        .conv-item{width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left;transition:all .12s;margin-bottom:2px;font-family:'DM Sans',sans-serif;}
+        .conv-item:hover{background:rgba(255,255,255,.03);}
+        .conv-item--active{background:var(--acs)!important;border-color:rgba(124,58,237,.22)!important;}
+        .conv-av-wrap{position:relative;flex-shrink:0;}
+        .conv-av{width:38px;height:38px;border-radius:11px;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#a78bfa;}
+        .conv-av--grp{background:rgba(139,92,246,.15);color:#c084fc;}
+        .conv-unread{position:absolute;top:-4px;left:-4px;min-width:16px;height:16px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;padding:0 3px;box-shadow:0 2px 6px var(--acg);}
+        .conv-info{flex:1;min-width:0;}
+        .conv-row1{display:flex;justify-content:space-between;align-items:baseline;gap:4px;}
+        .conv-name{font-size:13px;font-weight:500;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .conv-name--bold{font-weight:700;color:var(--t1);}
+        .conv-preview{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0 0;}
+        .conv-preview--bold{color:rgba(255,255,255,.5);font-weight:500;}
+        .conv-chev{color:var(--t4);flex-shrink:0;}
+        @media(min-width:768px){.conv-chev{display:none;}}
 
-        /* ── CONVO LIST ── */
-        .mp-convo-panel{display:flex;flex-direction:column;flex:1;min-height:0;}
-        .mp-convo-items{flex:1;overflow-y:auto;padding:4px 6px 8px;}
-        .mp-convo-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;color:var(--t3);font-size:12px;}
-        .mp-convo-section{margin-bottom:8px;}
-        .mp-convo-section-hdr{display:flex;align-items:center;gap:6px;padding:6px 10px 4px;font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;}
-        .mp-convo-section-count{margin-left:auto;background:var(--ac-soft);color:#a78bfa;font-size:9px;padding:1px 6px;border-radius:10px;}
-        .mp-convo-item{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left;transition:all .13s;margin-bottom:2px;font-family:'DM Sans',sans-serif;}
-        .mp-convo-item:hover{background:rgba(255,255,255,0.03);}
-        .mp-convo-item--active{background:var(--ac-soft)!important;border-color:rgba(124,58,237,0.22)!important;}
-        .mp-convo-av-wrap{position:relative;flex-shrink:0;}
-        .mp-convo-av{width:38px;height:38px;border-radius:11px;background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#a78bfa;}
-        .mp-convo-av--group{background:rgba(139,92,246,0.15);color:#c084fc;}
-        .mp-convo-unread{position:absolute;top:-4px;left:-4px;min-width:16px;height:16px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;padding:0 3px;}
-        .mp-convo-info{flex:1;min-width:0;}
-        .mp-convo-row1{display:flex;justify-content:space-between;align-items:baseline;gap:4px;}
-        .mp-convo-name{font-size:13px;font-weight:500;color:rgba(255,255,255,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .mp-convo-name--unread{font-weight:700;color:var(--t1);}
-        .mp-convo-time{font-size:10px;color:var(--t3);flex-shrink:0;}
-        .mp-convo-preview{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
-        .mp-convo-preview--unread{color:rgba(255,255,255,0.5);font-weight:500;}
-        .mp-chevron{color:var(--t4);flex-shrink:0;}
-        @media(min-width:768px){.mp-chevron{display:none;}}
+        /* RIGHT */
+        .right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,.7);}
+        @media(max-width:767px){.right--hidden{display:none;}}
+        .right-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;}
+        .re-icon{width:64px;height:64px;border-radius:18px;margin-bottom:16px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.15);display:flex;align-items:center;justify-content:center;}
+        .right-empty h3{font-size:15px;font-weight:700;color:#64748b;font-family:'Bricolage Grotesque',sans-serif;margin:0 0 6px;}
+        .right-empty p{font-size:12px;color:var(--t4);max-width:240px;line-height:1.6;margin:0 0 18px;}
+        .re-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin:0 5px;}
+        .re-btn--ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);}
 
-        /* ── RIGHT PANEL ── */
-        .mp-right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,0.7);}
-        @media(max-width:767px){.mp-right--hidden{display:none;}}
-        .mp-right-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;}
-        .mp-re-icon{width:68px;height:68px;border-radius:20px;margin-bottom:18px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);display:flex;align-items:center;justify-content:center;}
-        .mp-right-empty h3{font-size:15px;font-weight:700;color:#64748b;font-family:'Bricolage Grotesque',sans-serif;margin:0 0 6px;}
-        .mp-right-empty p{font-size:12px;color:var(--t4);max-width:240px;line-height:1.6;margin:0 0 20px;}
-        .mp-re-btn{display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        /* THREAD (main chat area) */
+        .thread{display:flex;flex-direction:column;height:100%;position:relative;}
+        .chat-hdr{display:flex;align-items:center;gap:9px;padding:10px 16px;flex-shrink:0;background:rgba(11,15,28,.93);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
+        .back-btn{background:rgba(255,255,255,.05);border:1px solid var(--bdr);border-radius:8px;width:29px;height:29px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;transition:.12s;}
+        .back-btn:hover{background:rgba(255,255,255,.09);}
+        @media(min-width:768px){.back-btn{display:none;}}
+        .chat-av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25));border:1px solid rgba(124,58,237,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .chat-info{flex:1;min-width:0;}
+        .chat-name{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .chat-sub{font-size:11px;margin:0;}
+        .chat-typing{font-size:11px;margin:0;color:#a78bfa;font-style:italic;}
+        .hdr-acts{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+        .hdr-btn{width:27px;height:27px;border-radius:7px;background:transparent;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
+        .hdr-btn:hover{background:rgba(255,255,255,.06);color:var(--t1);}
+        .hdr-btn--on{background:var(--acs);border-color:rgba(124,58,237,.3);color:#a78bfa;}
+        .hdr-btn--muted{color:#f59e0b;}
+        .typing-dots{display:flex;gap:3px;align-items:center;flex-shrink:0;}
+        .typing-dots span{width:5px;height:5px;border-radius:50%;background:#7c3aed;display:block;}
+        .typing-dots span:nth-child(1){animation:bounce 1.2s 0s infinite;}
+        .typing-dots span:nth-child(2){animation:bounce 1.2s .2s infinite;}
+        .typing-dots span:nth-child(3){animation:bounce 1.2s .4s infinite;}
 
-        /* ── THREAD ── */
-        .mp-thread{display:flex;flex-direction:column;height:100%;}
-        .mp-thread-header{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-shrink:0;background:rgba(11,15,28,0.92);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);}
-        .mp-back-btn{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;transition:.13s;}
-        .mp-back-btn:hover{background:rgba(255,255,255,0.09);}
-        @media(min-width:768px){.mp-back-btn{display:none;}}
-        .mp-thread-av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(109,40,217,0.25));border:1px solid rgba(124,58,237,0.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-        .mp-thread-info{flex:1;min-width:0;}
-        .mp-thread-name{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .mp-thread-sub,.mp-thread-typing{font-size:11px;margin:0;}
-        .mp-thread-typing{color:#a78bfa;font-style:italic;}
-        .mp-thread-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
-        .mp-thread-action{width:28px;height:28px;border-radius:7px;background:transparent;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.13s;}
-        .mp-thread-action:hover{background:rgba(255,255,255,0.06);color:var(--t1);}
-        .mp-thread-action--active{background:var(--ac-soft);border-color:rgba(124,58,237,0.3);color:#a78bfa;}
-        .mp-thread-action--muted{color:#f59e0b;}
-        .mp-typing-dots{display:flex;gap:3px;align-items:center;flex-shrink:0;}
-        .mp-typing-dots span{width:5px;height:5px;border-radius:50%;background:#7c3aed;display:block;}
-        .mp-typing-dots span:nth-child(1){animation:mpBounce 1.2s 0s infinite;}
-        .mp-typing-dots span:nth-child(2){animation:mpBounce 1.2s .2s infinite;}
-        .mp-typing-dots span:nth-child(3){animation:mpBounce 1.2s .4s infinite;}
+        /* MESSAGES */
+        .msgs-area{flex:1;overflow-y:auto;padding:14px 16px;}
+        @media(max-width:767px){.msgs-area{padding:10px;}}
+        .center-spin{display:flex;justify-content:center;padding:40px 0;}
+        .spin{width:20px;height:20px;color:#7c3aed;animation:spin 1s linear infinite;}
+        .empty-chat{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;}
+        .empty-icon{width:50px;height:50px;border-radius:14px;margin-bottom:12px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;}
+        .empty-title{font-size:14px;font-weight:600;color:#64748b;margin:0 0 4px;}
+        .empty-sub{font-size:12px;color:var(--t4);margin:0;}
 
-        /* ── MESSAGES ── */
-        .mp-messages{flex:1;overflow-y:auto;padding:14px 16px;}
-        @media(max-width:767px){.mp-messages{padding:10px;}}
-        .mp-center{display:flex;justify-content:center;padding:40px 0;}
-        .mp-spin{width:20px;height:20px;color:#7c3aed;animation:mpSpin 1s linear infinite;}
-        .mp-empty-thread{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;}
-        .mp-empty-icon{width:52px;height:52px;border-radius:16px;margin-bottom:14px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;}
-        .mp-empty-title{font-size:14px;font-weight:600;color:#64748b;margin:0 0 4px;}
-        .mp-empty-sub{font-size:12px;color:var(--t4);margin:0;}
+        /* DATE DIVIDER */
+        .divider-row{display:flex;align-items:center;gap:10px;margin:16px 0 10px;}
+        .div-line{flex:1;height:1px;background:var(--bdr2);}
+        .div-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:20px;white-space:nowrap;}
 
-        /* ── DATE DIVIDER ── */
-        .mp-date-div{display:flex;align-items:center;gap:10px;margin:18px 0 10px;}
-        .mp-div-line{flex:1;height:1px;background:var(--border2);}
-        .mp-div-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:20px;white-space:nowrap;}
-        .mp-thread-divider{display:flex;align-items:center;gap:10px;margin:12px 0;}
+        /* MSG ROW */
+        .msg-row{display:flex;margin-bottom:2px;position:relative;}
+        .msg-me{justify-content:flex-end;margin-top:3px;}
+        .msg-them{justify-content:flex-start;margin-top:3px;}
+        .msg-row:not(.msg-same){margin-top:10px;}
+        .msg-new .bubble{animation:pop .22s ease forwards;}
+        .msg-av{width:30px;height:30px;border-radius:8px;flex-shrink:0;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#818cf8;margin-right:8px;margin-top:2px;}
+        .msg-av.small{width:26px;height:26px;font-size:10px;margin-right:6px;}
+        .msg-av-sp{width:38px;flex-shrink:0;}
+        .msg-body{display:flex;flex-direction:column;max-width:70%;position:relative;}
+        @media(max-width:480px){.msg-body{max-width:88%;}}
+        .body-me{align-items:flex-end;}
+        .body-them{align-items:flex-start;}
+        .msg-sender{font-size:10px;color:var(--t3);margin:0 0 3px 2px;font-weight:500;}
 
-        /* ── MSG ROW ── */
-        .mp-msg-row{display:flex;margin-bottom:2px;position:relative;}
-        .mp-msg-row--me{justify-content:flex-end;margin-top:3px;}
-        .mp-msg-row--them{justify-content:flex-start;margin-top:3px;}
-        .mp-msg-row:not(.mp-msg-row--same){margin-top:10px;}
-        .mp-msg-row--new .mp-bubble{animation:mpPop .22s ease forwards;}
-        .mp-av{width:30px;height:30px;border-radius:8px;flex-shrink:0;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#818cf8;margin-right:8px;margin-top:2px;}
-        .mp-av-sp{width:38px;flex-shrink:0;}
-        .mp-msg-body{display:flex;flex-direction:column;max-width:70%;position:relative;}
-        @media(max-width:480px){.mp-msg-body{max-width:86%;}}
-        .mp-msg-body--me{align-items:flex-end;}
-        .mp-msg-body--them{align-items:flex-start;}
-        .mp-sender{font-size:10px;color:var(--t3);margin:0 0 3px 2px;font-weight:500;}
+        /* BUBBLES */
+        .bubble{padding:9px 13px;line-height:1.5;cursor:context-menu;word-break:break-word;transition:all .13s;}
+        .bubble.me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,.4);border-radius:16px 16px 4px 16px;box-shadow:0 3px 16px rgba(124,58,237,.28);}
+        .bubble.them{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);border-radius:16px 16px 16px 4px;}
+        .bubble-txt{font-size:13px;color:#fff;margin:0;font-family:'DM Sans',sans-serif;}
+        .bubble.them .bubble-txt{color:rgba(255,255,255,.84);}
+        @media(max-width:767px){.bubble-txt{font-size:14px;}.bubble{padding:10px 14px;}}
+        .md-code{background:rgba(0,0,0,.35);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:12px;}
+        .md-pre{background:rgba(0,0,0,.4);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;overflow-x:auto;margin:4px 0 0;white-space:pre;}
+        .md-mention{color:#c084fc;font-weight:600;}
 
-        /* ── BUBBLES ── */
-        .mp-bubble{padding:9px 13px;line-height:1.5;cursor:context-menu;word-break:break-word;transition:all .15s;}
-        .mp-bubble--me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,0.4);border-radius:16px 16px 4px 16px;box-shadow:0 3px 16px rgba(124,58,237,0.28);}
-        .mp-bubble--them{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.07);border-radius:16px 16px 16px 4px;}
-        .mp-bubble-text{font-size:13px;color:#fff;margin:0;font-family:'DM Sans',sans-serif;}
-        .mp-bubble--them .mp-bubble-text{color:rgba(255,255,255,0.84);}
-        @media(max-width:767px){.mp-bubble-text{font-size:14px;}.mp-bubble{padding:10px 14px;}}
-        .mp-inline-code{background:rgba(0,0,0,0.3);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:12px;}
-        .mp-code-block{background:rgba(0,0,0,0.4);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;overflow-x:auto;margin:4px 0 0;white-space:pre;}
-        .mp-list{margin:4px 0 0 16px;padding:0;}
-        .mp-mention{color:#c084fc;font-weight:600;}
+        /* REACTIONS */
+        .rxn-bar{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;align-items:center;}
+        .rxn-chip{display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:2px 7px;cursor:pointer;font-size:13px;transition:all .12s;}
+        .rxn-chip:hover{background:rgba(255,255,255,.1);}
+        .rxn-chip--mine{background:var(--acs);border-color:rgba(124,58,237,.4);}
+        .rxn-chip span{font-size:11px;color:rgba(255,255,255,.7);font-weight:600;}
+        .rxn-add{width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
+        .rxn-add:hover{background:rgba(255,255,255,.1);color:var(--t1);}
 
-        /* ── REACTIONS ── */
-        .mp-reactions-wrap{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;align-items:center;}
-        .mp-reaction{display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2px 7px;cursor:pointer;font-size:13px;transition:all .13s;}
-        .mp-reaction:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);}
-        .mp-reaction--mine{background:var(--ac-soft);border-color:rgba(124,58,237,0.4);}
-        .mp-reaction-count{font-size:11px;color:rgba(255,255,255,0.7);font-weight:600;}
-        .mp-add-reaction{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.13s;}
-        .mp-add-reaction:hover{background:rgba(255,255,255,0.1);color:var(--t1);}
+        /* EMOJI PICKER */
+        .ep-wrap{position:absolute;bottom:calc(100% + 6px);left:0;z-index:9999;background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;width:216px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:fadeIn .12s ease;}
+        .ep-label{font-size:9px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px;padding:0;}
+        .ep-label:first-child{margin-top:0;}
+        .ep-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;}
+        .ep-btn{padding:5px;border:none;background:transparent;cursor:pointer;font-size:16px;border-radius:6px;transition:.1s;text-align:center;}
+        .ep-btn:hover{background:rgba(255,255,255,.1);}
 
-        /* ── EMOJI PICKER ── */
-        .mp-emoji-picker{position:absolute;bottom:calc(100% + 6px);left:0;z-index:9999;background:rgba(12,16,28,0.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;width:220px;box-shadow:0 20px 60px rgba(0,0,0,0.7);animation:mpFade .12s ease;}
-        .mp-emoji-group{font-size:9px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px;padding:0;}
-        .mp-emoji-group:first-child{margin-top:0;}
-        .mp-emoji-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;}
-        .mp-emoji-btn{padding:5px;border:none;background:transparent;cursor:pointer;font-size:16px;border-radius:6px;transition:.1s;text-align:center;}
-        .mp-emoji-btn:hover{background:rgba(255,255,255,0.1);}
+        /* THREAD REPLY BUTTON */
+        .thread-btn{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--ac);background:var(--acs);border:none;border-radius:20px;padding:2px 8px;cursor:pointer;margin-top:4px;transition:.12s;font-family:'DM Sans',sans-serif;}
+        .thread-btn:hover{background:rgba(124,58,237,.2);}
 
-        /* ── THREAD REPLY ── */
-        .mp-reply-count{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--ac);background:var(--ac-soft);border:none;border-radius:20px;padding:2px 8px;cursor:pointer;margin-top:4px;transition:.13s;font-family:'DM Sans',sans-serif;}
-        .mp-reply-count:hover{background:rgba(124,58,237,0.2);}
-        .mp-thread-parent{display:flex;gap:10px;padding:12px;background:rgba(255,255,255,0.03);border-radius:12px;margin-bottom:12px;border-left:3px solid #7c3aed;}
+        /* HOVER ACTIONS */
+        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.96);border:1px solid var(--bdr);border-radius:9px;padding:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:2px;align-items:center;}
+        .ha-row--me{right:calc(100% + 6px);}
+        .ha-row--them{left:calc(100% + 6px);}
+        @media(min-width:768px){.msg-row:hover .ha-row{display:flex;}}
+        .ha{background:transparent;border:none;border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,.35);display:flex;align-items:center;transition:.12s;}
+        .ha:hover{background:rgba(255,255,255,.08);color:#fff;}
+        .ha-del:hover{background:rgba(239,68,68,.15);color:#f87171;}
 
-        /* ── HOVER ACTIONS ── */
-        .mp-hover-acts{display:none;position:absolute;right:calc(100% + 6px);top:4px;gap:3px;align-items:center;background:rgba(11,15,28,0.95);border:1px solid var(--border);border-radius:9px;padding:3px;box-shadow:0 8px 24px rgba(0,0,0,0.5);}
-        @media(min-width:768px){.mp-msg-row:hover .mp-hover-acts{display:flex;}}
-        .mp-msg-row--them .mp-hover-acts{right:auto;left:calc(100% + 6px);}
-        .mp-ha{background:transparent;border:none;border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,0.4);display:flex;align-items:center;transition:.12s;}
-        .mp-ha:hover{background:rgba(255,255,255,0.08);color:#fff;}
-        .mp-ha--del:hover{background:rgba(239,68,68,0.15);color:#f87171;}
+        /* EDIT */
+        .edit-wrap{display:flex;align-items:center;gap:5px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:12px;padding:7px 10px;}
+        .edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:80px;flex:1;font-family:'DM Sans',sans-serif;}
+        .edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
+        .edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
 
-        /* ── EDIT ── */
-        .mp-edit-wrap{display:flex;align-items:center;gap:6px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:7px 10px;}
-        .mp-edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:100px;flex:1;font-family:'DM Sans',sans-serif;}
-        .mp-edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
-        .mp-edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
+        /* META */
+        .msg-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
+        .msg-meta--me{justify-content:flex-end;}
+        .meta-time{font-size:10px;color:var(--t4);}
 
-        /* ── META ── */
-        .mp-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
-        .mp-meta--me{justify-content:flex-end;}
-        .mp-time{font-size:10px;color:var(--t4);}
+        /* RICH COMPOSER */
+        .cmp-wrap{border-top:1px solid var(--bdr2);background:rgba(11,15,28,.76);backdrop-filter:blur(12px);flex-shrink:0;}
+        .cmp-reply{display:flex;align-items:center;gap:7px;padding:7px 14px;background:rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.15);}
+        .cmp-reply-name{font-size:11px;font-weight:700;color:#a78bfa;flex-shrink:0;}
+        .cmp-reply-txt{font-size:11px;color:var(--t3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .cmp-reply-x{background:none;border:none;color:var(--t3);cursor:pointer;padding:0;display:flex;}
+        .cmp-fmt{display:flex;align-items:center;gap:2px;padding:6px 12px 0;border-top:1px solid var(--bdr2);}
+        .cmp-fmt-btn{background:transparent;border:none;color:var(--t3);padding:3px 7px;border-radius:5px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:.12s;min-width:26px;}
+        .cmp-fmt-btn:hover{background:rgba(255,255,255,.07);color:var(--t1);}
+        .cmp-sep{width:1px;height:14px;background:var(--bdr);margin:0 2px;}
+        .cmp-mention-list{background:rgba(10,13,22,.97);border:1px solid rgba(255,255,255,.1);border-bottom:none;overflow:hidden;}
+        .cmp-mention-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;background:transparent;border:none;cursor:pointer;text-align:left;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;transition:.1s;}
+        .cmp-mention-item:hover{background:var(--acs);}
+        .cmp-mention-av{width:22px;height:22px;border-radius:5px;background:rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#a78bfa;flex-shrink:0;}
+        .cmp-row{display:flex;align-items:flex-end;gap:7px;padding:8px 12px;}
+        .cmp-icon{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;align-items:center;padding:6px;border-radius:7px;transition:.12s;flex-shrink:0;}
+        .cmp-icon:hover{color:var(--t1);background:rgba(255,255,255,.06);}
+        .cmp-ta{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;line-height:1.5;transition:border-color .13s;min-height:36px;max-height:120px;}
+        .cmp-ta::placeholder{color:var(--t4);}
+        .cmp-ta:focus{border-color:rgba(124,58,237,.4);}
+        @media(max-width:767px){.cmp-ta{font-size:16px;}}
+        .cmp-send{width:34px;height:34px;border-radius:10px;border:none;background:rgba(124,58,237,.3);color:rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .13s;align-self:flex-end;}
+        .cmp-send--on{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 3px 12px var(--acg);}
+        .cmp-send--on:hover{transform:scale(1.05);}
+        .cmp-hint{font-size:10px;color:var(--t4);text-align:center;padding:0 0 8px;margin:0;font-family:'DM Sans',sans-serif;}
+        @media(max-width:767px){.cmp-hint{display:none;}}
 
-        /* ── RICH COMPOSER ── */
-        .mp-composer{border-top:1px solid var(--border2);background:rgba(11,15,28,0.75);backdrop-filter:blur(12px);flex-shrink:0;}
-        .mp-reply-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(124,58,237,0.08);border-bottom:1px solid rgba(124,58,237,0.15);}
-        .mp-reply-sender{font-size:11px;font-weight:700;color:#a78bfa;flex-shrink:0;}
-        .mp-reply-text{font-size:11px;color:var(--t3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .mp-reply-cancel{background:none;border:none;color:var(--t3);cursor:pointer;padding:0;display:flex;}
-        .mp-format-bar{display:flex;align-items:center;gap:3px;padding:6px 12px 0;border-top:1px solid var(--border2);}
-        .mp-fmt-btn{background:transparent;border:none;color:var(--t3);padding:3px 7px;border-radius:5px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:.12s;min-width:26px;}
-        .mp-fmt-btn:hover{background:rgba(255,255,255,0.07);color:var(--t1);}
-        .mp-fmt-sep{width:1px;height:16px;background:var(--border);margin:0 3px;}
-        .mp-mention-dropdown{position:absolute;bottom:calc(100% + 4px);left:0;right:0;background:rgba(12,16,28,0.97);border:1px solid rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;z-index:100;box-shadow:0 12px 40px rgba(0,0,0,0.6);}
-        .mp-mention-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 12px;background:transparent;border:none;cursor:pointer;text-align:left;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;transition:.1s;}
-        .mp-mention-item:hover{background:var(--ac-soft);}
-        .mp-mention-av{width:24px;height:24px;border-radius:6px;background:rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#a78bfa;flex-shrink:0;}
-        .mp-input-row{display:flex;align-items:flex-end;gap:8px;padding:8px 12px;}
-        .mp-input-icon{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;align-items:center;padding:6px;border-radius:7px;transition:.13s;flex-shrink:0;}
-        .mp-input-icon:hover{color:var(--t1);background:rgba(255,255,255,0.06);}
-        .mp-chat-textarea{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:8px 12px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;line-height:1.5;transition:border-color .15s;min-height:36px;max-height:120px;}
-        .mp-chat-textarea::placeholder{color:var(--t4);}
-        .mp-chat-textarea:focus{border-color:rgba(124,58,237,0.4);}
-        @media(max-width:767px){.mp-chat-textarea{font-size:16px;}}
-        .mp-send{width:34px;height:34px;border-radius:10px;border:none;background:rgba(124,58,237,0.3);color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s;align-self:flex-end;}
-        .mp-send--active{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 3px 12px var(--ac-glow);}
-        .mp-send--active:hover{transform:scale(1.05);}
-        .mp-hint{font-size:10px;color:var(--t4);text-align:center;padding:0 0 8px;margin:0;font-family:'DM Sans',sans-serif;}
-        @media(max-width:767px){.mp-hint{display:none;}}
+        /* ATTACH */
+        .attach{margin-bottom:6px;}
+        .attach-img{border-radius:8px;max-width:100%;max-height:160px;object-fit:cover;display:block;}
+        .attach-file{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;text-decoration:none;background:rgba(255,255,255,.1);font-size:12px;color:rgba(255,255,255,.85);}
+        .attach-file--me{background:rgba(255,255,255,.15);}
+        .attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .file-prev{display:flex;align-items:center;gap:7px;margin:0 14px 4px;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:10px;padding:7px 12px;}
+        .fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
+        .fp-size{font-size:10px;color:var(--t3);flex-shrink:0;}
 
-        /* ── ATTACH ── */
-        .mp-attach{margin-bottom:6px;}
-        .mp-attach-img{border-radius:8px;max-width:100%;max-height:160px;object-fit:cover;display:block;}
-        .mp-attach-file{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;text-decoration:none;background:rgba(255,255,255,0.1);font-size:12px;color:rgba(255,255,255,0.85);}
-        .mp-attach-file--me{background:rgba(255,255,255,0.15);}
-        .mp-attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .mp-file-prev{display:flex;align-items:center;gap:8px;margin:0 14px 4px;background:rgba(124,58,237,0.07);border:1px solid rgba(124,58,237,0.2);border-radius:10px;padding:8px 12px;}
-        .mp-fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
-        .mp-fp-size{font-size:10px;color:var(--t3);flex-shrink:0;}
-        .mp-fp-rm{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;padding:0;}
+        /* CONTEXT MENU */
+        .ctx-menu{background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;width:180px;animation:fadeIn .12s ease;}
+        .ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
+        .ctx-item:last-child{border-bottom:none;}
+        .ctx-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+        .ctx-item--danger{color:#f87171;}
+        .ctx-item--danger:hover{background:rgba(239,68,68,.12);}
 
-        /* ── CTX MENU ── */
-        .mp-ctxmenu{background:rgba(10,13,22,0.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.7);overflow:hidden;width:180px;animation:mpFade .12s ease;}
-        .mp-ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
-        .mp-ctx-item:last-child{border-bottom:none;}
-        .mp-ctx-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
-        .mp-ctx-item--danger{color:#f87171;}
-        .mp-ctx-item--danger:hover{background:rgba(248,113,113,0.1);}
+        /* MOBILE SHEET */
+        .sheet-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);animation:fadeIn .18s ease;}
+        .sheet{position:absolute;bottom:0;left:0;right:0;background:#0f1424;border-top:1px solid rgba(255,255,255,.08);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);animation:sheetUp .23s ease;}
+        .sheet-handle{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin:10px auto 0;}
+        .sheet-emoji-row{display:flex;justify-content:center;gap:11px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.05);}
+        .sheet-emoji{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;}
+        .sheet-emoji:hover{background:rgba(255,255,255,.12);transform:scale(1.1);}
+        .sheet-preview{padding:11px 20px 9px;border-bottom:1px solid rgba(255,255,255,.05);}
+        .sheet-preview-txt{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;}
+        .sheet-btn{display:flex;align-items:center;gap:14px;width:100%;padding:15px 22px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:var(--t1);font-size:16px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        .sheet-btn--del{color:#f87171;}
+        .sheet-cancel{display:block;width:calc(100% - 24px);margin:8px 12px 4px;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:var(--t2);font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
 
-        /* ── MOBILE SHEET ── */
-        .mp-sheet-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);animation:mpFade .2s ease;}
-        .mp-sheet{position:absolute;bottom:0;left:0;right:0;background:#0f1424;border-top:1px solid rgba(255,255,255,0.08);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);animation:mpSheetUp .25s ease;}
-        .mp-sheet-handle{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15);margin:10px auto 0;}
-        .mp-sheet-emoji-row{display:flex;justify-content:center;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);}
-        .mp-sheet-emoji{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.13s;}
-        .mp-sheet-emoji:hover{background:rgba(255,255,255,0.12);transform:scale(1.1);}
-        .mp-sheet-preview{padding:12px 20px 10px;border-bottom:1px solid rgba(255,255,255,0.05);}
-        .mp-sheet-preview-txt{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;}
-        .mp-sheet-btn{display:flex;align-items:center;gap:14px;width:100%;padding:16px 22px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--t1);font-size:16px;font-weight:500;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;}
-        .mp-sheet-btn--danger{color:#f87171;}
-        .mp-sheet-cancel{display:block;width:calc(100% - 24px);margin:8px 12px 4px;padding:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;color:var(--t2);font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        /* THREAD / PINS PANEL */
+        .thread-overlay{position:absolute;inset:0;z-index:40;pointer-events:none;}
+        .thread-panel{position:absolute;right:0;top:0;bottom:0;width:340px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;pointer-events:all;animation:slideIn .22s ease;box-shadow:-20px 0 60px rgba(0,0,0,.5);}
+        @media(max-width:767px){.thread-panel{width:100%;border-left:none;}}
+        .thread-hdr{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--bdr);flex-shrink:0;}
+        .thread-title{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;flex:1;}
+        .panel-close{background:rgba(255,255,255,.06);border:1px solid var(--bdr);border-radius:7px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
+        .panel-close:hover{color:var(--t1);background:rgba(255,255,255,.1);}
+        .thread-body{flex:1;overflow-y:auto;padding:12px;}
+        .panel-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
+        .thread-parent{display:flex;gap:9px;padding:12px;background:rgba(255,255,255,.03);border-radius:10px;margin-bottom:10px;border-left:3px solid #7c3aed;}
 
-        /* ── SIDE PANEL (pinned, thread) ── */
-        .mp-panel-overlay{position:absolute;inset:0;z-index:50;pointer-events:none;}
-        .mp-side-panel{position:absolute;right:0;top:0;bottom:0;width:320px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;pointer-events:all;animation:mpSlideIn .25s ease;box-shadow:-20px 0 60px rgba(0,0,0,0.5);}
-        @media(max-width:767px){.mp-side-panel{width:100%;border-left:none;}}
-        .mp-thread-panel{width:360px;}
-        .mp-side-panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
-        .mp-side-panel-title{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
-        .mp-side-panel-close{background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.13s;}
-        .mp-side-panel-close:hover{color:var(--t1);background:rgba(255,255,255,0.1);}
-        .mp-side-panel-body{flex:1;overflow-y:auto;padding:12px;}
-        .mp-panel-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 20px;text-align:center;color:var(--t3);font-size:12px;}
-        .mp-pin-item{display:flex;gap:8px;padding:10px 12px;border-radius:9px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);margin-bottom:6px;}
-        .mp-pin-text{font-size:12px;color:rgba(255,255,255,0.7);margin:0 0 3px;line-height:1.4;}
-        .mp-pin-meta{font-size:10px;color:var(--t4);margin:0;}
+        /* PIN / SAVED */
+        .pin-item{display:flex;gap:8px;padding:10px 12px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);margin-bottom:6px;}
+        .pin-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;}
+        .pin-meta{font-size:10px;color:var(--t4);margin:0;}
+        .saved-item{display:flex;align-items:flex-start;gap:9px;padding:11px 0;border-bottom:1px solid var(--bdr2);}
+        .saved-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-        /* ── SAVED ── */
-        .mp-saved-item{display:flex;align-items:flex-start;gap:10px;padding:12px;border-bottom:1px solid var(--border2);}
-        .mp-saved-body{flex:1;min-width:0;}
-        .mp-saved-text{font-size:12px;color:rgba(255,255,255,0.7);margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .mp-saved-meta{font-size:10px;color:var(--t4);margin:0;}
+        /* PRESENCE DOT */
+        .pres-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg1);flex-shrink:0;}
 
-        /* ── GLOBAL SEARCH ── */
-        .mp-search-modal-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding-top:80px;animation:mpFade .15s ease;}
-        .mp-search-modal{width:100%;max-width:600px;background:rgba(10,13,22,0.98);border:1px solid rgba(255,255,255,0.1);border-radius:16px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,0.8);animation:mpPop .2s ease;}
-        .mp-search-modal-input-wrap{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);}
-        .mp-search-modal-input{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:16px;font-family:'DM Sans',sans-serif;}
-        .mp-search-modal-input::placeholder{color:var(--t4);}
-        .mp-search-results{max-height:400px;overflow-y:auto;}
-        .mp-search-result{display:block;width:100%;padding:12px 20px;background:transparent;border:none;border-bottom:1px solid var(--border2);cursor:pointer;text-align:left;transition:.13s;font-family:'DM Sans',sans-serif;}
-        .mp-search-result:hover{background:var(--ac-soft);}
-        .mp-search-result-conv{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--t3);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
-        .mp-search-result-text{font-size:13px;color:rgba(255,255,255,0.7);margin:0;line-height:1.4;}
-        .mp-search-empty{text-align:center;padding:24px;font-size:13px;color:var(--t3);}
-        .mp-search-hint{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;color:var(--t4);font-size:12px;}
+        /* SEARCH MODAL */
+        .search-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding-top:72px;animation:fadeIn .14s ease;}
+        .search-modal{width:100%;max-width:580px;background:rgba(10,13,22,.98);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.8);animation:pop .18s ease;}
+        .search-input-row{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bdr);}
+        .search-input{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:16px;font-family:'DM Sans',sans-serif;}
+        .search-input::placeholder{color:var(--t4);}
+        .search-results{max-height:400px;overflow-y:auto;}
+        .search-result{display:block;width:100%;padding:11px 20px;background:transparent;border:none;border-bottom:1px solid var(--bdr2);cursor:pointer;text-align:left;transition:.12s;font-family:'DM Sans',sans-serif;}
+        .search-result:hover{background:var(--acs);}
+        .search-result-conv{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--t3);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+        .search-result-txt{font-size:13px;color:rgba(255,255,255,.7);margin:0;line-height:1.4;}
+        .search-empty{text-align:center;padding:24px;font-size:13px;color:var(--t3);}
+        .search-hint{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;color:var(--t4);font-size:12px;}
 
-        /* ── NOTIFICATIONS ── */
-        .mp-notif-panel{display:flex;flex-direction:column;height:100%;}
-        .mp-notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:rgba(11,15,28,0.9);flex-shrink:0;flex-wrap:wrap;gap:8px;}
-        .mp-notif-hdr-l{display:flex;align-items:center;gap:8px;}
-        .mp-notif-title{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
-        .mp-notif-badge{background:var(--ac-soft);color:#a78bfa;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid rgba(124,58,237,0.3);}
-        .mp-notif-hdr-r{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
-        .mp-filter-btn{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.13s;}
-        .mp-filter-btn--active{background:var(--ac-soft);border-color:rgba(124,58,237,0.3);color:#a78bfa;}
-        .mp-markall-btn{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 9px;color:var(--t2);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;}
-        .mp-notif-list{flex:1;overflow-y:auto;}
-        .mp-notif-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:50px 20px;color:var(--t3);font-size:12px;}
-        .mp-notif-item{display:flex;gap:11px;padding:13px 18px;border-bottom:1px solid var(--border2);cursor:pointer;transition:.13s;}
-        .mp-notif-item:hover{background:rgba(255,255,255,0.02);}
-        .mp-notif-item--unread{background:rgba(124,58,237,0.04);}
-        .mp-notif-icon{width:34px;height:34px;border-radius:10px;flex-shrink:0;background:var(--ac-soft);border:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:center;color:#a78bfa;margin-top:1px;}
-        .mp-notif-body{flex:1;min-width:0;}
-        .mp-notif-text{font-size:13px;color:rgba(255,255,255,0.5);margin:0;line-height:1.5;font-family:'DM Sans',sans-serif;}
-        .mp-notif-text--bold{font-weight:600;color:rgba(255,255,255,0.88);}
-        .mp-notif-time{font-size:10px;color:var(--t4);margin-top:3px;}
-        .mp-notif-dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:6px;}
+        /* NOTIFICATIONS */
+        .notif-panel{display:flex;flex-direction:column;height:100%;}
+        .notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--bdr);background:rgba(11,15,28,.9);flex-shrink:0;flex-wrap:wrap;gap:7px;}
+        .notif-title{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
+        .notif-badge{background:var(--acs);color:#a78bfa;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid rgba(124,58,237,.3);}
+        .filter-btn{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;display:flex;align-items:center;gap:3px;}
+        .filter-btn--on{background:var(--acs);border-color:rgba(124,58,237,.3);color:#a78bfa;}
+        .notif-list{flex:1;overflow-y:auto;}
+        .notif-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bdr2);cursor:pointer;transition:.12s;}
+        .notif-item:hover{background:rgba(255,255,255,.02);}
+        .notif-item--unread{background:rgba(124,58,237,.04);}
+        .notif-icon{width:32px;height:32px;border-radius:9px;flex-shrink:0;background:var(--acs);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;color:#a78bfa;margin-top:1px;}
+        .notif-txt{font-size:13px;color:rgba(255,255,255,.5);margin:0;line-height:1.5;font-family:'DM Sans',sans-serif;}
+        .notif-txt--bold{font-weight:600;color:rgba(255,255,255,.88);}
+        .notif-dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:5px;}
 
-        /* ── BOTTOM NAV ── */
-        .mp-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,0.97);backdrop-filter:blur(20px);border-top:1px solid var(--border);z-index:50;padding-bottom:env(safe-area-inset-bottom,0px);}
-        @media(max-width:767px){.mp-bottom-nav{display:flex;}}
-        .mp-bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .15s;}
-        .mp-bnav-btn--active{color:#a78bfa;}
-        .mp-bnav-icon{position:relative;}
-        .mp-bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;}
+        /* BOTTOM NAV (mobile) */
+        .bnav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bdr);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
+        @media(max-width:767px){.bnav{display:flex;}}
+        .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .13s;}
+        .bnav-btn--on{color:#a78bfa;}
+        .bnav-icon{position:relative;}
+        .bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px var(--acg);}
 
-        /* ── SCROLLBARS ── */
-        .mp-messages::-webkit-scrollbar,.mp-convo-items::-webkit-scrollbar,.mp-notif-list::-webkit-scrollbar,.mp-side-panel-body::-webkit-scrollbar,.mp-search-results::-webkit-scrollbar{width:3px;}
-        .mp-messages::-webkit-scrollbar-thumb,.mp-convo-items::-webkit-scrollbar-thumb,.mp-notif-list::-webkit-scrollbar-thumb,.mp-side-panel-body::-webkit-scrollbar-thumb,.mp-search-results::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.2);border-radius:2px;}
+        /* SCROLLBARS */
+        .msgs-area::-webkit-scrollbar,.conv-list::-webkit-scrollbar,.notif-list::-webkit-scrollbar,.thread-body::-webkit-scrollbar,.search-results::-webkit-scrollbar{width:3px;}
+        .msgs-area::-webkit-scrollbar-thumb,.conv-list::-webkit-scrollbar-thumb,.notif-list::-webkit-scrollbar-thumb,.thread-body::-webkit-scrollbar-thumb,.search-results::-webkit-scrollbar-thumb{background:rgba(124,58,237,.2);border-radius:2px;}
         .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);}
       `}</style>
 
       <DashboardLayout>
-        <div className="mp-page">
+        <div className="mp">
           {/* TOP BAR */}
-          <div className="mp-topbar">
-            <div className="mp-topbar-l">
-              <div className="mp-topbar-icon"><MessageSquare style={{ width: 15, height: 15, color: "#a78bfa" }} /></div>
-              <p className="mp-topbar-title">Messages</p>
-              {totalBadge > 0 && <span className="mp-topbar-badge">{totalBadge}</span>}
-              {onlineCount > 0 && (
-                <div className="mp-online-pill">
-                  <span className="mp-online-dot" />
-                  {onlineCount} online
-                </div>
-              )}
+          <div className="topbar">
+            <div className="topbar-l">
+              <div className="topbar-icon"><MessageSquare style={{width:14,height:14,color:"#a78bfa"}}/></div>
+              <p className="topbar-title">Messages</p>
+              {totalBadge>0&&<span className="topbar-badge">{totalBadge}</span>}
+              {onlineCount>0&&<div className="online-pill"><span className="online-dot"/>{onlineCount} online</div>}
             </div>
-            <div className="mp-topbar-actions">
-              <button className="mp-topbar-btn" title="Search all messages" onClick={() => setShowSearch(true)}>
-                <Search style={{ width: 14, height: 14 }} />
+            <div className="topbar-r">
+              <button className="topbar-btn" title="Search messages" onClick={()=>setSearch(true)}>
+                <Search style={{width:13,height:13}}/>
               </button>
-              <button className="mp-new-btn" onClick={() => setNewOpen(true)}>
-                <Plus style={{ width: 13, height: 13 }} /><span>New Message</span>
+              <button className="new-btn" onClick={()=>setNewOpen(true)}>
+                <Plus style={{width:12,height:12}}/><span>New Message</span>
               </button>
             </div>
           </div>
 
-          {/* Global Search Modal */}
-          {showSearch && (
-            <GlobalSearch
-              conversations={conversations}
-              onJumpTo={(convId) => { selectConvo(convId); setShowSearch(false); }}
-              onClose={() => setShowSearch(false)}
-            />
-          )}
+          {/* GLOBAL SEARCH */}
+          {showSearch&&<SearchModal convs={conversations} onJump={id=>{pick(id);setSearch(false);}} onClose={()=>setSearch(false)}/>}
 
-          <div className="mp-body">
+          <div className="body">
             {/* SIDEBAR */}
-            <div className={cn("mp-sidebar", mobileScr === "thread" && "mp-sidebar--hidden")}>
-              <div className="mp-tabs">
+            <div className={cn("sidebar",mobile==="chat"&&"sidebar--hidden")}>
+              <div className="tabs">
                 {([
-                  { id: "chats" as const, label: "Chats", Icon: MessageSquare, badge: totalUnread },
-                  { id: "saved" as const, label: "Saved", Icon: Bookmark, badge: 0 },
-                  { id: "notifs" as const, label: "Alerts", Icon: Bell, badge: notifCount },
-                ] as const).map(t => (
-                  <button key={t.id} className={cn("mp-tab", tab === t.id && "mp-tab--active")} onClick={() => setTab(t.id)}>
-                    <t.Icon style={{ width: 13, height: 13 }} />
-                    {t.label}
-                    {t.badge > 0 && <span className="mp-tab-badge">{t.badge}</span>}
+                  {id:"chats" as const,  label:"Chats",  Icon:MessageSquare, badge:totalUnread},
+                  {id:"saved" as const,  label:"Saved",  Icon:Bookmark,     badge:0},
+                  {id:"notifs" as const, label:"Alerts", Icon:Bell,         badge:notifCount},
+                ]).map(t=>(
+                  <button key={t.id} className={cn("tab",tab===t.id&&"tab--on")} onClick={()=>setTab(t.id)}>
+                    <t.Icon style={{width:12,height:12}}/>{t.label}
+                    {t.badge>0&&<span className="tab-badge">{t.badge}</span>}
                   </button>
                 ))}
               </div>
-
-              {tab === "chats" && (
-                <ConvoListPanel
-                  convos={conversations}
-                  loading={conversationsLoading}
-                  selected={selected}
-                  onSelect={selectConvo}
-                  isOnline={isOnline}
-                />
-              )}
-              {tab === "saved" && user && (
-                <SavedPanel userId={user.id} onJumpTo={selectConvo} />
-              )}
-              {tab === "notifs" && <NotifsPanel />}
+              {tab==="chats"&&<Sidebar convs={conversations} loading={conversationsLoading} sel={sel} onSel={pick} isOnline={isOnline}/>}
+              {tab==="saved"&&user&&<SavedView myId={user.id} onJump={pick}/>}
+              {tab==="notifs"&&<NotifsPanel/>}
             </div>
 
-            {/* RIGHT PANEL */}
-            <div className={cn("mp-right", mobileScr === "list" && "mp-right--hidden")}>
-              {tab === "saved" && user ? (
-                <SavedPanel userId={user.id} onJumpTo={selectConvo} />
-              ) : selected ? (
-                <ChatThread
-                  conversationId={selected}
-                  conversations={conversations}
-                  onBack={goBack}
-                  isOnline={isOnline}
-                  members={members}
-                  currentUserId={user?.id ?? ""}
-                />
-              ) : (
-                <div className="mp-right-empty">
-                  <div className="mp-re-icon"><MessageSquare style={{ width: 26, height: 26, color: "#7c3aed" }} /></div>
-                  <h3>Select a conversation</h3>
-                  <p>Pick a thread from the sidebar, or search for messages across all conversations.</p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="mp-re-btn" onClick={() => setNewOpen(true)}><Plus style={{ width: 14, height: 14 }} />New Message</button>
-                    <button className="mp-re-btn" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => setShowSearch(true)}>
-                      <Search style={{ width: 14, height: 14 }} />Search
-                    </button>
-                  </div>
-                </div>
-              )}
+            {/* RIGHT */}
+            <div className={cn("right",mobile==="list"&&"right--hidden")}>
+              {tab==="saved"&&user
+                ? <SavedView myId={user.id} onJump={pick}/>
+                : sel
+                  ? <ChatThread convId={sel} convs={conversations} onBack={back} isOnline={isOnline} members={members} myId={user?.id??""}/>
+                  : (
+                    <div className="right-empty">
+                      <div className="re-icon"><MessageSquare style={{width:24,height:24,color:"#7c3aed"}}/></div>
+                      <h3>Select a conversation</h3>
+                      <p>Choose a thread from the sidebar or start a new one with your team.</p>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+                        <button className="re-btn" onClick={()=>setNewOpen(true)}><Plus style={{width:13,height:13}}/>New Message</button>
+                        <button className="re-btn re-btn--ghost" onClick={()=>setSearch(true)}><Search style={{width:13,height:13}}/>Search</button>
+                      </div>
+                    </div>
+                  )}
             </div>
           </div>
 
-          {/* BOTTOM NAV (mobile) */}
-          <nav className="mp-bottom-nav">
+          {/* MOBILE BOTTOM NAV */}
+          <nav className="bnav">
             {([
-              { id: "chats" as const, label: "Chats", Icon: MessageSquare, badge: totalUnread },
-              { id: "saved" as const, label: "Saved", Icon: Bookmark, badge: 0 },
-              { id: "notifs" as const, label: "Alerts", Icon: Bell, badge: notifCount },
-            ] as const).map(t => (
-              <button key={t.id} className={cn("mp-bnav-btn", tab === t.id && mobileScr === "list" && "mp-bnav-btn--active")}
-                onClick={() => { setTab(t.id); setMobileScr("list"); }}>
-                <div className="mp-bnav-icon">
-                  <t.Icon style={{ width: 20, height: 20 }} />
-                  {t.badge > 0 && <span className="mp-bnav-badge">{t.badge > 9 ? "9+" : t.badge}</span>}
+              {id:"chats" as const,  label:"Chats",  Icon:MessageSquare, badge:totalUnread},
+              {id:"saved" as const,  label:"Saved",  Icon:Bookmark,     badge:0},
+              {id:"notifs" as const, label:"Alerts", Icon:Bell,         badge:notifCount},
+            ]).map(t=>(
+              <button key={t.id} className={cn("bnav-btn",tab===t.id&&mobile==="list"&&"bnav-btn--on")}
+                onClick={()=>{setTab(t.id);setMobile("list");}}>
+                <div className="bnav-icon">
+                  <t.Icon style={{width:20,height:20}}/>
+                  {t.badge>0&&<span className="bnav-badge">{t.badge>9?"9+":t.badge}</span>}
                 </div>
                 {t.label}
               </button>
             ))}
-            <button className="mp-bnav-btn" onClick={() => setShowSearch(true)}>
-              <div className="mp-bnav-icon"><Search style={{ width: 20, height: 20 }} /></div>
-              Search
+            <button className="bnav-btn" onClick={()=>setSearch(true)}>
+              <div className="bnav-icon"><Search style={{width:20,height:20}}/></div>Search
             </button>
-            <button className="mp-bnav-btn" onClick={() => setNewOpen(true)}>
-              <div className="mp-bnav-icon"><Plus style={{ width: 20, height: 20 }} /></div>
-              New
+            <button className="bnav-btn" onClick={()=>setNewOpen(true)}>
+              <div className="bnav-icon"><Plus style={{width:20,height:20}}/></div>New
             </button>
           </nav>
         </div>
 
-        {/* New Convo Dialog */}
-        {team && (
-          <NewConvoDialog
-            open={newOpen} onClose={() => setNewOpen(false)}
-            members={members} currentUserId={user?.id ?? ""}
-            teamId={team.id} conversations={conversations}
-            refetchConversations={refetchConversations}
+        {/* NEW CONV DIALOG */}
+        {team&&(
+          <NewConvDialog open={newOpen} onClose={()=>setNewOpen(false)}
+            members={members} myId={user?.id??""} teamId={team.id}
+            convs={conversations} refetch={refetchConversations}
             isOnline={isOnline}
-            onCreated={id => { setNewOpen(false); setTab("chats"); selectConvo(id); }}
-          />
+            onCreate={id=>{setNewOpen(false);setTab("chats");pick(id);}}/>
         )}
       </DashboardLayout>
     </>
