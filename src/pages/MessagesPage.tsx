@@ -1,10 +1,15 @@
 /**
- * MessagesPage.tsx — Fixsense Advanced Messaging
- * Thread replies now fully work: reply in thread side-panel + quote-reply in main chat
+ * MessagesPage.tsx — Fixsense Advanced Messaging v2
+ * Features:
+ *  ✦ Message Scheduling (date/time picker → stored & displayed)
+ *  ✦ @Mentions with autocomplete (includes @all for broadcast)
+ *  ✦ Rich Text / Markdown (bold, italic, code, bullets, inline preview)
+ *  ✦ Full mobile-first responsive layout
+ *  ✦ Thread replies, reactions, pinning, saving, read receipts
  */
 
 import {
-  useState, useRef, useEffect, useMemo, useCallback, useReducer,
+  useState, useRef, useEffect, useMemo, useCallback,
 } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,7 +21,8 @@ import {
   TrendingUp, AtSign, AlertCircle, ArrowLeft, Copy, Trash2,
   Pencil, Loader2, ChevronRight, Pin, Bookmark, Hash,
   MessageCircle, BellOff, Smile, Reply, CornerDownRight,
-  Clock, Calendar, Zap, Globe, ChevronDown,
+  Clock, Calendar, Bold, Italic, Code, List,
+  ChevronDown, Eye, EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -57,6 +63,15 @@ interface RtMsg {
 interface Reaction { emoji: string; count: number; mine: boolean; users: string[] }
 interface PinRow  { id: string; message_id: string; message_preview: string | null; created_at: string; pinned_by: string }
 interface SaveRow { id: string; message_id: string; created_at: string; msg?: RtMsg }
+interface ScheduledMsg {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  message_text: string;
+  scheduled_for: string;
+  status: string;
+  created_at: string;
+}
 
 // ─────────────────────────────────────────────────────────────
 //  AUDIO
@@ -92,14 +107,20 @@ const fmtTime = (d: string) => {
   return format(dt,"MMM d");
 };
 
-const renderMd = (t: string) =>
-  t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>")
-   .replace(/\*(.*?)\*/g,"<em>$1</em>")
-   .replace(/`(.*?)`/g,'<code class="md-code">$1</code>')
-   .replace(/```([\s\S]*?)```/g,'<pre class="md-pre"><code>$1</code></pre>')
-   .replace(/^• (.+)$/gm,"<li>$1</li>")
-   .replace(/@(\w[\w\s]*?)(?=\s|$)/g,'<span class="md-mention">@$1</span>')
-   .replace(/\n/g,"<br/>");
+// ─────────────────────────────────────────────────────────────
+//  MARKDOWN RENDERER — supports bold, italic, code, bullets, @mentions
+// ─────────────────────────────────────────────────────────────
+function renderMd(t: string): string {
+  return t
+    .replace(/```([\s\S]*?)```/g, '<pre class="md-pre"><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g, '<code class="md-code">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/^• (.+)$/gm, '<li class="md-li">$1</li>')
+    .replace(/@all\b/g, '<span class="md-mention md-mention--all">@all</span>')
+    .replace(/@(\w[\w\s]*?)(?=[\s,!?.]|$)/g, '<span class="md-mention">@$1</span>')
+    .replace(/\n/g, "<br/>");
+}
 
 // ─────────────────────────────────────────────────────────────
 //  PRESENCE
@@ -109,9 +130,9 @@ function usePresence(teamId?: string, uid?: string) {
   useEffect(() => {
     if (!teamId || !uid) return;
     const ch = supabase.channel(`pres:${teamId}`, { config: { presence: { key: uid } } });
-    ch.on("presence", { event:"sync"  }, () => setOnline(new Set(Object.keys(ch.presenceState()))))
-      .on("presence", { event:"join"  }, ({key}:any) => setOnline(p=>new Set([...p,key])))
-      .on("presence", { event:"leave" }, ({key}:any) => setOnline(p=>{const s=new Set(p);s.delete(key);return s;}))
+    ch.on("presence", { event:"sync" }, () => setOnline(new Set(Object.keys(ch.presenceState()))))
+      .on("presence", { event:"join" }, ({key}:any) => setOnline(p=>new Set([...p,key])))
+      .on("presence", { event:"leave"}, ({key}:any) => setOnline(p=>{const s=new Set(p);s.delete(key);return s;}))
       .subscribe(async st => { if(st==="SUBSCRIBED") await ch.track({user_id:uid}); });
     return () => { ch.untrack(); supabase.removeChannel(ch); };
   }, [teamId, uid]);
@@ -133,7 +154,6 @@ function useRealtimeChannel(
   useEffect(()=>{ iRef.current=onInsert; },[onInsert]);
   useEffect(()=>{ dRef.current=onDelete; },[onDelete]);
   useEffect(()=>{ uRef.current=onUpdate; },[onUpdate]);
-
   useEffect(() => {
     if (!convId) return;
     const ch = supabase.channel(`rt:msg:${convId}`)
@@ -161,41 +181,31 @@ function useReactions(msgId: string, myId: string) {
   const [rxns, setRxns] = useState<Reaction[]>([]);
   const load = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from("message_reactions" as any)
-        .select("emoji, user_id")
-        .eq("message_id", msgId);
+      const { data } = await supabase.from("message_reactions" as any).select("emoji, user_id").eq("message_id", msgId);
       if (!data) return;
       const map = new Map<string,{count:number;mine:boolean;users:string[]}>();
       (data as any[]).forEach(r => {
         const e = map.get(r.emoji) ?? { count:0, mine:false, users:[] };
-        e.count++; if (r.user_id===myId) e.mine=true; e.users.push(r.user_id);
-        map.set(r.emoji, e);
+        e.count++; if (r.user_id===myId) e.mine=true; e.users.push(r.user_id); map.set(r.emoji, e);
       });
       setRxns(Array.from(map.entries()).map(([emoji,d])=>({emoji,...d})));
     } catch {}
   }, [msgId, myId]);
-
   useEffect(() => { load(); }, [load]);
-
   useEffect(() => {
     const ch = supabase.channel(`rxn:${msgId}`)
       .on("postgres_changes", { event:"*", schema:"public", table:"message_reactions", filter:`message_id=eq.${msgId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [msgId, load]);
-
   const toggle = useCallback(async (emoji: string) => {
     const existing = rxns.find(r=>r.emoji===emoji);
     if (existing?.mine) {
-      await supabase.from("message_reactions" as any).delete()
-        .eq("message_id",msgId).eq("user_id",myId).eq("emoji",emoji);
+      await supabase.from("message_reactions" as any).delete().eq("message_id",msgId).eq("user_id",myId).eq("emoji",emoji);
     } else {
-      await supabase.from("message_reactions" as any)
-        .insert({ message_id:msgId, user_id:myId, emoji });
+      await supabase.from("message_reactions" as any).insert({ message_id:msgId, user_id:myId, emoji });
     }
   }, [rxns, msgId, myId]);
-
   return { rxns, toggle };
 }
 
@@ -254,49 +264,224 @@ function ReactBar({ msgId, myId }: { msgId:string; myId:string }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  RICH COMPOSER
+//  SCHEDULE MESSAGE DIALOG
+// ─────────────────────────────────────────────────────────────
+function ScheduleDialog({ convId, myId, text, onClose, onScheduled }: {
+  convId: string; myId: string; text: string; onClose: () => void;
+  onScheduled: () => void;
+}) {
+  const [when, setWhen] = useState("");
+  const [saving, setSaving] = useState(false);
+  const minDate = new Date();
+  minDate.setMinutes(minDate.getMinutes() + 1);
+  const minStr = minDate.toISOString().slice(0,16);
+
+  const save = async () => {
+    if (!when || !text.trim()) return;
+    setSaving(true);
+    try {
+      await supabase.from("scheduled_messages" as any).insert({
+        sender_id: myId,
+        conversation_id: convId,
+        message_text: text.trim(),
+        scheduled_for: new Date(when).toISOString(),
+        status: "pending",
+      });
+      toast({ title: "Message scheduled!", description: `Will send ${format(new Date(when), "MMM d 'at' h:mm a")}` });
+      onScheduled();
+      onClose();
+    } catch {
+      toast({ title: "Failed to schedule", variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open onOpenChange={v=>{ if(!v) onClose(); }}>
+      <DialogContent className="sch-dlg">
+        <DialogHeader>
+          <DialogTitle className="sch-title">
+            <Clock style={{width:16,height:16,color:"#a78bfa"}}/> Schedule Message
+          </DialogTitle>
+        </DialogHeader>
+        <div className="sch-preview">
+          <div className="sch-preview-label">Message preview</div>
+          <div className="sch-preview-txt" dangerouslySetInnerHTML={{__html: renderMd(text.slice(0,120)+(text.length>120?"…":""))}}/>
+        </div>
+        <div className="sch-field">
+          <label className="sch-label">Send at</label>
+          <input
+            type="datetime-local"
+            value={when}
+            min={minStr}
+            onChange={e=>setWhen(e.target.value)}
+            className="sch-input"
+          />
+          <p className="sch-hint">Must be at least 1 minute in the future</p>
+        </div>
+        <DialogFooter className="sch-footer">
+          <button className="sch-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="sch-btn-save" disabled={!when || !text.trim() || saving} onClick={save}>
+            {saving ? <Loader2 style={{width:14,height:14,animation:"spin 1s linear infinite"}}/> : <Calendar style={{width:14,height:14}}/>}
+            {saving ? "Scheduling…" : "Schedule"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SCHEDULED MESSAGES LIST (per conversation)
+// ─────────────────────────────────────────────────────────────
+function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
+  const [items, setItems] = useState<ScheduledMsg[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("scheduled_messages" as any)
+      .select("*")
+      .eq("conversation_id", convId)
+      .eq("sender_id", myId)
+      .eq("status", "pending")
+      .order("scheduled_for", { ascending: true });
+    setItems((data || []) as ScheduledMsg[]);
+    setLoading(false);
+  }, [convId, myId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const cancel = async (id: string) => {
+    await supabase.from("scheduled_messages" as any).delete().eq("id", id);
+    setItems(p => p.filter(x => x.id !== id));
+    toast({ title: "Scheduled message cancelled" });
+  };
+
+  return (
+    <div className="thread-overlay">
+      <div className="thread-panel">
+        <div className="thread-hdr">
+          <Clock style={{width:13,height:13,color:"#a78bfa"}}/>
+          <span className="thread-title">Scheduled Messages</span>
+          <button className="panel-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
+        </div>
+        <div className="thread-body">
+          {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
+            : items.length === 0 ? (
+              <div className="panel-empty">
+                <Clock style={{width:28,height:28,opacity:.2}}/>
+                <p>No scheduled messages</p>
+              </div>
+            ) : items.map(m => (
+              <div key={m.id} className="sched-item">
+                <div className="sched-when">
+                  <Calendar style={{width:11,height:11}}/>
+                  {format(new Date(m.scheduled_for), "MMM d, yyyy 'at' h:mm a")}
+                </div>
+                <div className="sched-txt" dangerouslySetInnerHTML={{__html: renderMd(m.message_text.slice(0,100))}}/>
+                <button className="sched-cancel" onClick={()=>cancel(m.id)}>
+                  <X style={{width:11,height:11}}/> Cancel
+                </button>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  RICH COMPOSER — @mentions, markdown toolbar, schedule
 // ─────────────────────────────────────────────────────────────
 interface ComposerProps {
-  value: string; onChange:(v:string)=>void; onSend:()=>void;
-  onFile:()=>void; members:TeamMember[]; myId:string;
-  placeholder?:string; busy?:boolean; disabled?:boolean;
-  replyTo?:{id:string;text:string;sender:string}|null;
-  onCancelReply?:()=>void;
-  onSchedule?:()=>void;
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  onFile: () => void;
+  onSchedule: (text: string) => void;
+  members: TeamMember[];
+  myId: string;
+  placeholder?: string;
+  busy?: boolean;
+  disabled?: boolean;
+  replyTo?: { id: string; text: string; sender: string } | null;
+  onCancelReply?: () => void;
 }
-function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Message…",busy,disabled,replyTo,onCancelReply,onSchedule }: ComposerProps) {
-  const [mentions, setMentions] = useState<TeamMember[]>([]);
+
+function Composer({
+  value, onChange, onSend, onFile, onSchedule, members, myId,
+  placeholder = "Message…", busy, disabled, replyTo, onCancelReply,
+}: ComposerProps) {
+  const [mentions, setMentions] = useState<Array<{id:string;name:string;isAll?:boolean}>>([]);
   const [mentionAt, setMentionAt] = useState(-1);
   const [mq, setMq] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
-
   const others = useMemo(()=>members.filter(m=>m.user_id!==myId),[members,myId]);
 
-  const handleChange = (e:React.ChangeEvent<HTMLTextAreaElement>) => {
-    const v = e.target.value; onChange(v);
+  const autoResize = () => {
+    if (taRef.current) {
+      taRef.current.style.height = "auto";
+      taRef.current.style.height = Math.min(taRef.current.scrollHeight, 160) + "px";
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value;
+    onChange(v);
+    autoResize();
     const pos = e.target.selectionStart;
-    const before = v.slice(0,pos);
+    const before = v.slice(0, pos);
     const at = before.lastIndexOf("@");
-    if (at!==-1 && !before.slice(at).includes(" ")) {
-      const q = before.slice(at+1); setMentionAt(at); setMq(q);
-      setMentions(others.filter(m=>(m.profile?.full_name||m.invited_email||"").toLowerCase().includes(q.toLowerCase())).slice(0,5));
-    } else { setMentions([]); }
-    if (taRef.current) { taRef.current.style.height="auto"; taRef.current.style.height=Math.min(taRef.current.scrollHeight,120)+"px"; }
+    if (at !== -1 && !before.slice(at).includes(" ")) {
+      const q = before.slice(at + 1);
+      setMentionAt(at); setMq(q);
+      const filtered: Array<{id:string;name:string;isAll?:boolean}> = [];
+      if ("all".startsWith(q.toLowerCase())) filtered.push({ id:"__all__", name:"all", isAll:true });
+      others
+        .filter(m => (m.profile?.full_name||m.invited_email||"").toLowerCase().includes(q.toLowerCase()))
+        .slice(0, 5)
+        .forEach(m => filtered.push({ id: m.user_id, name: m.profile?.full_name||m.invited_email||"user" }));
+      setMentions(filtered);
+    } else {
+      setMentions([]);
+    }
   };
 
-  const insertMention = (m:TeamMember) => {
-    const name = m.profile?.full_name||m.invited_email||"user";
-    onChange(value.slice(0,mentionAt)+`@${name} `+value.slice(mentionAt+mq.length+1));
-    setMentions([]); taRef.current?.focus();
+  const insertMention = (item: {id:string;name:string;isAll?:boolean}) => {
+    const tag = item.isAll ? "@all " : `@${item.name} `;
+    const newVal = value.slice(0, mentionAt) + tag + value.slice(mentionAt + mq.length + 1);
+    onChange(newVal);
+    setMentions([]);
+    setTimeout(() => taRef.current?.focus(), 0);
   };
 
-  const wrap = (w:string) => {
-    const el=taRef.current; if(!el) return;
-    const s=el.selectionStart,e=el.selectionEnd,sel=value.slice(s,e)||"text";
-    onChange(value.slice(0,s)+w+sel+w+value.slice(e));
+  const wrapSelection = (prefix: string, suffix?: string) => {
+    const el = taRef.current; if (!el) return;
+    const s = el.selectionStart, e = el.selectionEnd;
+    const sel = value.slice(s, e) || "text";
+    const suf = suffix ?? prefix;
+    const newVal = value.slice(0, s) + prefix + sel + suf + value.slice(e);
+    onChange(newVal);
+    setTimeout(() => { el.focus(); el.setSelectionRange(s + prefix.length, s + prefix.length + sel.length); }, 0);
   };
 
-  const canSend = value.trim().length>0 && !busy && !disabled;
+  const insertBullet = () => {
+    const lines = value.split("\n");
+    const lastLine = lines[lines.length - 1];
+    const newVal = lastLine.startsWith("• ") ? value : value + (value ? "\n" : "") + "• ";
+    onChange(newVal);
+    setTimeout(() => taRef.current?.focus(), 0);
+  };
+
+  const canSend = value.trim().length > 0 && !busy && !disabled;
+
+  const fmtBtns = [
+    { Icon: Bold,   title: "Bold",   fn: () => wrapSelection("**") },
+    { Icon: Italic, title: "Italic", fn: () => wrapSelection("*") },
+    { Icon: Code,   title: "Code",   fn: () => wrapSelection("`") },
+    { Icon: List,   title: "Bullet", fn: insertBullet },
+    { Icon: AtSign, title: "Mention",fn: () => { onChange(value + "@"); setTimeout(()=>taRef.current?.focus(),0); } },
+  ];
 
   return (
     <div className="cmp-wrap">
@@ -308,88 +493,115 @@ function Composer({ value,onChange,onSend,onFile,members,myId,placeholder="Messa
           <button className="cmp-reply-x" onClick={onCancelReply}><X style={{width:11,height:11}}/></button>
         </div>
       )}
+
+      {/* Markdown toolbar */}
       <div className="cmp-fmt">
-        {[["B","**","Bold"],["I","*","Italic"],["`","`","Code"],["•","• ","Bullet"]].map(([lbl,token,title])=>(
-          <button key={lbl} title={title as string} className="cmp-fmt-btn"
-            style={lbl==="B"?{fontWeight:700}:lbl==="I"?{fontStyle:"italic"}:lbl==="`"?{fontFamily:"monospace",fontSize:11}:{}}
-            onClick={()=>lbl==="•"?onChange(value+"\n• "):wrap(token as string)}>{lbl}</button>
+        {fmtBtns.map(({ Icon, title, fn }) => (
+          <button key={title} title={title} className="cmp-fmt-btn" onClick={fn}>
+            <Icon style={{width:12,height:12}}/>
+          </button>
         ))}
         <div className="cmp-sep"/>
-        <button className="cmp-fmt-btn" title="Mention" onClick={()=>{onChange(value+"@");taRef.current?.focus();}}>
-          <AtSign style={{width:11,height:11}}/>
+        <button
+          className={cn("cmp-fmt-btn", showPreview && "cmp-fmt-btn--on")}
+          title="Preview formatting"
+          onClick={() => setShowPreview(p=>!p)}
+        >
+          <Eye style={{width:12,height:12}}/>
         </button>
-        {onSchedule && (
-          <button className="cmp-fmt-btn" title="Schedule message" onClick={onSchedule}>
-            <Clock style={{width:11,height:11}}/>
-          </button>
-        )}
+        <button
+          className="cmp-fmt-btn cmp-fmt-btn--schedule"
+          title="Schedule message"
+          disabled={!value.trim()}
+          onClick={() => value.trim() && onSchedule(value)}
+        >
+          <Clock style={{width:12,height:12}}/><span className="cmp-fmt-lbl">Schedule</span>
+        </button>
       </div>
 
-      {mentions.length>0 && (
+      {/* @mention dropdown */}
+      {mentions.length > 0 && (
         <div className="cmp-mention-list">
-          {mentions.map(m=>{
-            const name=m.profile?.full_name||m.invited_email||"Unknown";
-            return (
-              <button key={m.id} className="cmp-mention-item" onClick={()=>insertMention(m)}>
-                <div className="cmp-mention-av">{name[0]?.toUpperCase()}</div>{name}
-              </button>
-            );
-          })}
+          {mentions.map(m => (
+            <button key={m.id} className="cmp-mention-item" onClick={() => insertMention(m)}>
+              <div className={cn("cmp-mention-av", m.isAll && "cmp-mention-av--all")}>
+                {m.isAll ? "✦" : m.name[0]?.toUpperCase()}
+              </div>
+              <div>
+                <span className={cn("cmp-mention-name", m.isAll && "cmp-mention-name--all")}>
+                  @{m.name}
+                </span>
+                {m.isAll && <span className="cmp-mention-desc"> · Notify everyone</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Preview mode */}
+      {showPreview && value.trim() && (
+        <div className="cmp-preview">
+          <div className="cmp-preview-label">Preview</div>
+          <div className="cmp-preview-body" dangerouslySetInnerHTML={{__html: renderMd(value)}}/>
         </div>
       )}
 
       <div className="cmp-row">
-        <button className="cmp-icon" onClick={onFile} disabled={!!busy}><Paperclip style={{width:16,height:16}}/></button>
-        <textarea ref={taRef} className="cmp-ta" placeholder={placeholder} value={value}
-          onChange={handleChange} disabled={!!disabled||!!busy} rows={1}
-          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(canSend)onSend();} }}/>
-        <button className={cn("cmp-send",canSend&&"cmp-send--on")} onClick={onSend} disabled={!canSend}>
+        <button className="cmp-icon" onClick={onFile} disabled={!!busy} title="Attach file">
+          <Paperclip style={{width:16,height:16}}/>
+        </button>
+        <textarea
+          ref={taRef}
+          className="cmp-ta"
+          placeholder={placeholder}
+          value={value}
+          onChange={handleChange}
+          disabled={!!disabled || !!busy}
+          rows={1}
+          onKeyDown={e => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend) onSend(); }
+            if (e.key === "Escape") setMentions([]);
+            if (e.key === "Tab" && mentions.length > 0) { e.preventDefault(); insertMention(mentions[0]); }
+          }}
+        />
+        <button
+          className={cn("cmp-send", canSend && "cmp-send--on")}
+          onClick={onSend}
+          disabled={!canSend}
+          title="Send (Enter)"
+        >
           <Send style={{width:15,height:15}}/>
         </button>
       </div>
-      <p className="cmp-hint">Shift+Enter new line · **bold** · *italic* · `code` · @mention</p>
+      <p className="cmp-hint">
+        Enter to send · Shift+Enter newline · **bold** · *italic* · `code` · @mention
+      </p>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-//  THREAD PANEL  — full reply UX
+//  THREAD PANEL
 // ─────────────────────────────────────────────────────────────
 function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
-  parent: RtMsg;
-  members: TeamMember[];
-  myId: string;
-  onClose: () => void;
-  /** Called when user hits "Reply in main chat" from inside the thread */
-  onQuoteReply?: (msg: RtMsg) => void;
+  parent: RtMsg; members: TeamMember[]; myId: string;
+  onClose: () => void; onQuoteReply?: (msg: RtMsg) => void;
 }) {
   const [replies, setReplies] = useState<RtMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const botRef = useRef<HTMLDivElement>(null);
-  // Allow replying to a specific reply inside the thread
   const [replyTo, setReplyTo] = useState<{id:string;text:string;sender:string}|null>(null);
-
   const profCache = useRef(new Map<string,{full_name:string|null;email:string|null}>());
 
   const loadReplies = useCallback(async () => {
-    const { data } = await supabase
-      .from("team_messages" as any)
-      .select("*")
-      .eq("parent_id", parent.id)
-      .order("created_at", { ascending: true });
-
+    const { data } = await supabase.from("team_messages" as any).select("*").eq("parent_id", parent.id).order("created_at", { ascending: true });
     if (!data?.length) { setReplies([]); setLoading(false); return; }
-
     const senderIds = [...new Set((data as any[]).map((r:any) => r.sender_id))];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .in("id", senderIds);
+    const { data: profiles } = await supabase.from("profiles").select("id, full_name, email").in("id", senderIds);
     const pm = new Map(profiles?.map((p:any) => [p.id, p]) ?? []);
     profiles?.forEach((p:any) => profCache.current.set(p.id, p));
-
     setReplies((data as any[]).map((r:any) => ({ ...r, sender: pm.get(r.sender_id) ?? null })));
     setLoading(false);
   }, [parent.id]);
@@ -397,11 +609,9 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
   useEffect(() => { loadReplies(); }, [loadReplies]);
   useEffect(() => { botRef.current?.scrollIntoView({ behavior: "smooth" }); }, [replies.length]);
 
-  // Real-time: new replies
   useEffect(() => {
     const ch = supabase.channel(`thread:${parent.id}`)
-      .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "team_messages", filter: `parent_id=eq.${parent.id}` },
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"team_messages", filter:`parent_id=eq.${parent.id}` },
         async ({ new: row }: any) => {
           let sender = profCache.current.get(row.sender_id) ?? null;
           if (!sender) {
@@ -411,8 +621,7 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
           setReplies(p => [...p, { ...row, sender }]);
           if (row.sender_id !== myId) playPing();
         })
-      .on("postgres_changes",
-        { event: "DELETE", schema: "public", table: "team_messages", filter: `parent_id=eq.${parent.id}` },
+      .on("postgres_changes", { event:"DELETE", schema:"public", table:"team_messages", filter:`parent_id=eq.${parent.id}` },
         ({ old: row }: any) => setReplies(p => p.filter(r => r.id !== row?.id)))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -428,18 +637,9 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
         message_text: input.trim(),
         parent_id: parent.id,
       });
-      setInput("");
-      setReplyTo(null);
-    } catch (e) {
-      toast({ title: "Failed to send reply", variant: "destructive" });
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const deleteReply = async (id: string) => {
-    setReplies(p => p.filter(r => r.id !== id));
-    await supabase.from("team_messages").delete().eq("id", id);
+      setInput(""); setReplyTo(null);
+    } catch { toast({ title: "Failed to send reply", variant: "destructive" }); }
+    finally { setSending(false); }
   };
 
   const pSender = parent.sender?.full_name || parent.sender?.email || "Unknown";
@@ -447,15 +647,12 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
-        {/* Header */}
         <div className="thread-hdr">
           <MessageCircle style={{width:14,height:14,color:"#818cf8"}}/>
           <span className="thread-title">Thread · {replies.length} {replies.length===1?"reply":"replies"}</span>
           <button className="panel-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
         </div>
-
         <div className="thread-body">
-          {/* Parent message */}
           <div className="thread-parent">
             <div className="msg-av small">{initials(pSender)}</div>
             <div style={{flex:1,minWidth:0}}>
@@ -466,7 +663,6 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
               <div className="bubble them" style={{borderRadius:12,marginTop:4}}>
                 <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(parent.message_text)}}/>
               </div>
-              {/* Allow quoting parent into main chat */}
               {onQuoteReply && (
                 <button className="thread-quote-btn" onClick={()=>onQuoteReply(parent)}>
                   <CornerDownRight style={{width:10,height:10}}/> Quote in chat
@@ -474,7 +670,6 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
               )}
             </div>
           </div>
-
           {replies.length > 0 && (
             <div className="divider-row">
               <div className="div-line"/>
@@ -482,16 +677,13 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
               <div className="div-line"/>
             </div>
           )}
-
-          {loading ? (
-            <div className="center-spin"><Loader2 className="spin"/></div>
-          ) : replies.length === 0 ? (
-            <div className="thread-empty">
-              <Reply style={{width:22,height:22,opacity:.15}}/>
-              <p>No replies yet — be the first!</p>
-            </div>
-          ) : (
-            replies.map(r => {
+          {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
+            : replies.length === 0 ? (
+              <div className="thread-empty">
+                <Reply style={{width:22,height:22,opacity:.15}}/>
+                <p>No replies yet — be the first!</p>
+              </div>
+            ) : replies.map(r => {
               const isMe = r.sender_id === myId;
               const name = r.sender?.full_name || r.sender?.email || "Unknown";
               return (
@@ -504,21 +696,9 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
                     </div>
                     <div className={cn("msg-meta", isMe && "msg-meta--me")} style={{gap:6}}>
                       <span className="meta-time">{format(new Date(r.created_at),"h:mm a")}</span>
-                      {/* Quote this reply into main chat */}
                       {onQuoteReply && (
                         <button className="thread-quote-btn" onClick={()=>onQuoteReply(r)}>
                           <CornerDownRight style={{width:9,height:9}}/> Quote
-                        </button>
-                      )}
-                      {/* Reply to this specific reply (nested — sets replyTo context) */}
-                      {!isMe && (
-                        <button className="thread-quote-btn" onClick={()=>setReplyTo({id:r.id,text:r.message_text,sender:name})}>
-                          <Reply style={{width:9,height:9}}/> Reply
-                        </button>
-                      )}
-                      {isMe && (
-                        <button className="thread-quote-btn thread-del-btn" onClick={()=>deleteReply(r.id)}>
-                          <Trash2 style={{width:9,height:9}}/>
                         </button>
                       )}
                     </div>
@@ -526,23 +706,15 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
                   </div>
                 </div>
               );
-            })
-          )}
+            })}
           <div ref={botRef}/>
         </div>
-
-        {/* Composer inside thread */}
         <Composer
-          value={input}
-          onChange={setInput}
-          onSend={send}
-          onFile={()=>{}}
-          members={members}
-          myId={myId}
-          placeholder="Reply in thread…"
-          busy={sending}
-          replyTo={replyTo}
-          onCancelReply={()=>setReplyTo(null)}
+          value={input} onChange={setInput} onSend={send}
+          onFile={()=>{}} onSchedule={()=>{}}
+          members={members} myId={myId}
+          placeholder="Reply in thread…" busy={sending}
+          replyTo={replyTo} onCancelReply={()=>setReplyTo(null)}
         />
       </div>
     </div>
@@ -554,29 +726,23 @@ function ThreadPanel({ parent, members, myId, onClose, onQuoteReply }: {
 // ─────────────────────────────────────────────────────────────
 function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onClose:()=>void }) {
   const [pins, setPins] = useState<PinRow[]>([]); const [loading, setLoading] = useState(true);
-
   const load = useCallback(async () => {
     try {
-      const { data } = await supabase.from("pinned_messages" as any)
-        .select("*").eq("conversation_id",convId).order("created_at",{ascending:false});
+      const { data } = await supabase.from("pinned_messages" as any).select("*").eq("conversation_id",convId).order("created_at",{ascending:false});
       setPins((data||[]) as PinRow[]); setLoading(false);
     } catch { setLoading(false); }
   },[convId]);
-
   useEffect(()=>{ load(); },[load]);
-
   useEffect(() => {
     const ch = supabase.channel(`pins:${convId}`)
       .on("postgres_changes",{ event:"*", schema:"public", table:"pinned_messages", filter:`conversation_id=eq.${convId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   },[convId, load]);
-
   const unpin = async (id:string) => {
     await supabase.from("pinned_messages" as any).delete().eq("id",id);
     toast({title:"Unpinned"});
   };
-
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
@@ -602,162 +768,6 @@ function PinsPanel({ convId, myId, onClose }: { convId:string; myId:string; onCl
         </div>
       </div>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-//  SAVED MESSAGES
-// ─────────────────────────────────────────────────────────────
-function SavedView({ myId, onJump }: { myId:string; onJump:(convId:string)=>void }) {
-  const [items, setItems] = useState<SaveRow[]>([]); const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    try {
-      const { data } = await supabase.from("saved_messages" as any)
-        .select("id, message_id, created_at, team_messages(id,message_text,conversation_id,sender_id,created_at)")
-        .eq("user_id",myId).order("created_at",{ascending:false}).limit(50);
-      setItems((data||[]).map((d:any)=>({ id:d.id, message_id:d.message_id, created_at:d.created_at, msg:d.team_messages })));
-      setLoading(false);
-    } catch { setLoading(false); }
-  },[myId]);
-
-  useEffect(()=>{ load(); },[load]);
-
-  useEffect(() => {
-    const ch = supabase.channel(`saved:${myId}`)
-      .on("postgres_changes",{ event:"*", schema:"public", table:"saved_messages", filter:`user_id=eq.${myId}` }, load)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  },[myId, load]);
-
-  const unsave = async (id:string) => {
-    await supabase.from("saved_messages" as any).delete().eq("id",id);
-    toast({title:"Removed from saved"});
-  };
-
-  return (
-    <div className="thread" style={{height:"100%"}}>
-      <div className="chat-hdr">
-        <div className="chat-av"><Bookmark style={{width:14,height:14,color:"#a78bfa"}}/></div>
-        <div className="chat-info"><p className="chat-name">Saved Messages</p><p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{items.length} saved</p></div>
-      </div>
-      <div className="msgs-area">
-        {loading ? <div className="center-spin"><Loader2 className="spin"/></div>
-          : items.length===0 ? (
-            <div className="empty-chat">
-              <div className="empty-icon"><Bookmark style={{width:22,height:22,color:"#7c3aed"}}/></div>
-              <p className="empty-title">Nothing saved yet</p>
-              <p className="empty-sub">Save messages with the context menu or long press</p>
-            </div>
-          ) : items.map(s=>(
-            <div key={s.id} className="saved-item">
-              <div style={{flex:1,minWidth:0}}>
-                <p className="saved-txt">{s.msg?.message_text||"Deleted message"}</p>
-                <p className="meta-time">{format(new Date(s.created_at),"MMM d, h:mm a")}</p>
-              </div>
-              <div style={{display:"flex",gap:5,flexShrink:0}}>
-                {s.msg?.conversation_id && (
-                  <button className="ha" onClick={()=>onJump(s.msg!.conversation_id!)}><CornerDownRight style={{width:11,height:11}}/></button>
-                )}
-                <button className="ha ha-del" onClick={()=>unsave(s.id)}><X style={{width:11,height:11}}/></button>
-              </div>
-            </div>
-          ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-//  GLOBAL SEARCH
-// ─────────────────────────────────────────────────────────────
-function SearchModal({ convs, onJump, onClose }: {
-  convs:Conversation[]; onJump:(convId:string)=>void; onClose:()=>void;
-}) {
-  const [q, setQ] = useState(""); const [res, setRes] = useState<any[]>([]); const [busy, setBusy] = useState(false);
-  const timer = useRef<NodeJS.Timeout|null>(null);
-  const convMap = useMemo(()=>new Map(convs.map(c=>[c.id,getConversationName(c)])),[convs]);
-
-  const search = useCallback(async (query:string) => {
-    if (!query.trim()||query.length<2) { setRes([]); return; }
-    setBusy(true);
-    try {
-      const { data } = await supabase.from("team_messages" as any)
-        .select("id,message_text,sender_id,conversation_id,created_at")
-        .ilike("message_text",`%${query}%`).order("created_at",{ascending:false}).limit(25);
-      setRes((data||[]).map((m:any)=>({...m,convName:convMap.get(m.conversation_id)||"Unknown"})));
-    } finally { setBusy(false); }
-  },[convMap]);
-
-  useEffect(()=>{
-    if(timer.current) clearTimeout(timer.current);
-    timer.current=setTimeout(()=>search(q),280);
-    return ()=>{ if(timer.current) clearTimeout(timer.current); };
-  },[q,search]);
-
-  const hi = (txt:string,qry:string) => {
-    const i=txt.toLowerCase().indexOf(qry.toLowerCase());
-    if(i===-1) return txt.slice(0,80);
-    const s=Math.max(0,i-20),e=Math.min(txt.length,i+qry.length+40);
-    return (s>0?"…":"")+txt.slice(s,e)+(e<txt.length?"…":"");
-  };
-
-  return (
-    <div className="search-overlay" onClick={onClose}>
-      <div className="search-modal" onClick={e=>e.stopPropagation()}>
-        <div className="search-input-row">
-          <Search style={{width:18,height:18,color:"rgba(255,255,255,.3)",flexShrink:0}}/>
-          <input autoFocus className="search-input" placeholder="Search all messages…" value={q} onChange={e=>setQ(e.target.value)}/>
-          {busy && <Loader2 style={{width:15,height:15,color:"#7c3aed",animation:"spin 1s linear infinite",flexShrink:0}}/>}
-          <button className="ha" onClick={onClose}><X style={{width:13,height:13}}/></button>
-        </div>
-        <div className="search-results">
-          {q.length>1 && !busy && res.length===0 && <p className="search-empty">No messages found for "{q}"</p>}
-          {res.map(r=>(
-            <button key={r.id} className="search-result" onClick={()=>{onJump(r.conversation_id);onClose();}}>
-              <div className="search-result-conv"><Hash style={{width:10,height:10}}/>{r.convName}<span style={{marginLeft:"auto",opacity:.4}}>{format(new Date(r.created_at),"MMM d")}</span></div>
-              <p className="search-result-txt" dangerouslySetInnerHTML={{__html:hi(r.message_text,q).replace(
-                new RegExp(q,"gi"),m=>`<mark style="background:rgba(124,58,237,.3);color:#c084fc;border-radius:2px;padding:0 2px">${m}</mark>`)}}/>
-            </button>
-          ))}
-          {!q && <div className="search-hint"><Search style={{width:32,height:32,opacity:.15}}/><p>Type to search all conversations</p></div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-//  SCHEDULE DIALOG
-// ─────────────────────────────────────────────────────────────
-function ScheduleDialog({ convId, myId, text, onClose }: {
-  convId:string; myId:string; text:string; onClose:()=>void;
-}) {
-  const [when, setWhen] = useState("");
-  const save = async () => {
-    if (!when||!text.trim()) return;
-    await supabase.from("scheduled_messages" as any).insert({
-      sender_id:myId, conversation_id:convId, message_text:text.trim(),
-      scheduled_for:new Date(when).toISOString(), status:"pending",
-    });
-    toast({title:"Message scheduled",description:`Will send ${format(new Date(when),"MMM d 'at' h:mm a")}`});
-    onClose();
-  };
-  return (
-    <Dialog open onOpenChange={v=>{if(!v)onClose();}}>
-      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
-        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>Schedule Message</DialogTitle></DialogHeader>
-        <p style={{fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:8,fontFamily:"'DM Sans',sans-serif"}}>Message: <em style={{color:"rgba(255,255,255,.6)"}}>{text.slice(0,60)}{text.length>60?"…":""}</em></p>
-        <input type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)}
-          style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:10,padding:"10px 12px",color:"#f0f6fc",fontSize:13,outline:"none"}}/>
-        <DialogFooter style={{marginTop:8}}>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!when||!text.trim()} onClick={save} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)"}}>
-            <Calendar style={{width:13,height:13,marginRight:5}}/>Schedule
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -793,7 +803,7 @@ function CtxMenu({ pos, isMe, onClose, on }: {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  INLINE QUOTE PREVIEW (shown inside a bubble when a message quotes another)
+//  QUOTE PREVIEW
 // ─────────────────────────────────────────────────────────────
 function QuotePreview({ quotedText, quotedSender }: { quotedText: string; quotedSender: string }) {
   return (
@@ -808,42 +818,26 @@ function QuotePreview({ quotedText, quotedSender }: { quotedText: string; quoted
 }
 
 // ─────────────────────────────────────────────────────────────
-//  REPLY COUNT BADGE shown on parent messages
+//  REPLY COUNT BADGE
 // ─────────────────────────────────────────────────────────────
 function ReplyCountBadge({ msgId, onClick }: { msgId: string; onClick: () => void }) {
   const [count, setCount] = useState<number|null>(null);
-
   useEffect(() => {
-    supabase
-      .from("team_messages" as any)
-      .select("id", { count: "exact", head: true })
-      .eq("parent_id", msgId)
+    supabase.from("team_messages" as any).select("id", { count: "exact", head: true }).eq("parent_id", msgId)
       .then(({ count: c }) => setCount(c ?? 0));
   }, [msgId]);
-
-  // Realtime updates to reply count
   useEffect(() => {
     const ch = supabase.channel(`rc:${msgId}`)
-      .on("postgres_changes",
-        { event: "*", schema: "public", table: "team_messages", filter: `parent_id=eq.${msgId}` },
-        () => {
-          supabase
-            .from("team_messages" as any)
-            .select("id", { count: "exact", head: true })
-            .eq("parent_id", msgId)
-            .then(({ count: c }) => setCount(c ?? 0));
-        })
+      .on("postgres_changes", { event:"*", schema:"public", table:"team_messages", filter:`parent_id=eq.${msgId}` },
+        () => supabase.from("team_messages" as any).select("id", { count:"exact", head:true }).eq("parent_id", msgId)
+          .then(({ count: c }) => setCount(c ?? 0)))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [msgId]);
-
   if (count === null || count === 0) return null;
-
   return (
     <button className="reply-count-badge" onClick={onClick}>
-      <MessageCircle style={{width:10,height:10}}/>
-      {count} {count === 1 ? "reply" : "replies"}
-      <ChevronDown style={{width:9,height:9,opacity:.6}}/>
+      <MessageCircle style={{width:10,height:10}}/>{count} {count===1?"reply":"replies"}<ChevronDown style={{width:9,height:9,opacity:.6}}/>
     </button>
   );
 }
@@ -859,23 +853,22 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const { messages:base, messagesLoading, sendMessage, readReceipts } = useConversationMessages(convId);
   const { typingUsers, sendTyping, sendStopTyping } = useTypingIndicator(convId);
 
-  const [rtAdded,  setRtAdded]  = useState<RtMsg[]>([]);
-  const [rtDel,    setRtDel]    = useState<Set<string>>(new Set());
-  const [rtEdit,   setRtEdit]   = useState<Map<string,string>>(new Map());
-  const [optDel,   setOptDel]   = useState<Set<string>>(new Set());
-
+  const [rtAdded, setRtAdded]   = useState<RtMsg[]>([]);
+  const [rtDel, setRtDel]       = useState<Set<string>>(new Set());
+  const [rtEdit, setRtEdit]     = useState<Map<string,string>>(new Map());
+  const [optDel, setOptDel]     = useState<Set<string>>(new Set());
   const [input, setInput]       = useState("");
   const [pFile, setPFile]       = useState<File|null>(null);
-  const [busy,  setBusy]        = useState(false);
+  const [busy, setBusy]         = useState(false);
   const [editId, setEditId]     = useState<string|null>(null);
-  const [editTxt,setEditTxt]    = useState("");
+  const [editTxt, setEditTxt]   = useState("");
   const [ctx, setCtx]           = useState<{id:string;x:number;y:number}|null>(null);
-  const [thread,setThread]      = useState<RtMsg|null>(null);
-  const [showPins,setShowPins]  = useState(false);
+  const [thread, setThread]     = useState<RtMsg|null>(null);
+  const [showPins, setShowPins] = useState(false);
   const [muted, setMuted]       = useState(false);
-  const [scheduleFor, setSched] = useState<{convId:string;text:string}|null>(null);
+  const [scheduleFor, setSched] = useState<string|null>(null);
+  const [showSched, setShowSched] = useState(false);
   const [lpId, setLpId]         = useState<string|null>(null);
-  // Quote-reply: replying to a message in main chat (shows preview above composer)
   const [quoteReply, setQuoteReply] = useState<{id:string;text:string;sender:string}|null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -913,7 +906,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   useEffect(()=>{ base.forEach(m=>{ if(m.sender) profCache.current.set(m.sender_id,m.sender as any); }); },[base]);
 
   const onInsert = useCallback((m:RtMsg)=>{
-    // Only add top-level messages (replies go into ThreadPanel via its own subscription)
     if (m.parent_id) return;
     setRtAdded(p=>{ if(p.some(x=>x.id===m.id)||base.some(x=>x.id===m.id)) return p; return [...p,m]; });
     qc.invalidateQueries({queryKey:["team-conversations"]});
@@ -923,7 +915,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
 
   useRealtimeChannel(convId, myId, profCache, onInsert, onDelete, onUpdate);
 
-  // Filter to top-level only (parent_id is null/undefined)
   const messages = useMemo(()=>{
     const del=new Set([...rtDel,...optDel]);
     const merged=[
@@ -957,21 +948,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     try {
       let fd:any;
       if(pFile) fd=await upload(pFile);
-
-      // Build message text. If quoting, prepend a quote marker the DB stores.
-      // We encode the quote as a special prefix so it can be rendered back.
       let text = input.trim() || (pFile?.name ?? "Attachment");
-
-      sendMessage.mutate({
-        text,
-        file_url:fd?.url,
-        file_name:fd?.name,
-        file_type:fd?.type,
-        // Pass quote metadata through existing infra by storing in message_text
-        // as a structured prefix that QuotePreview will parse.
-        ...(quoteReply ? { quoted_message_id: quoteReply.id, quoted_text: quoteReply.text, quoted_sender: quoteReply.sender } : {}),
-      } as any);
-
+      sendMessage.mutate({ text, file_url:fd?.url, file_name:fd?.name, file_type:fd?.type } as any);
       setInput(""); setPFile(null); setQuoteReply(null); sendStopTyping();
     } finally { setBusy(false); }
   };
@@ -992,7 +970,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
   const pinMsg = async (id:string,text:string) => {
     try {
       await supabase.from("pinned_messages" as any).insert({ message_id:id, conversation_id:convId, pinned_by:myId, message_preview:text.slice(0,120) });
-      toast({title:"Pinned",description:"Find it with the 📌 button"});
+      toast({title:"Pinned"});
     } catch { toast({title:"Could not pin",variant:"destructive"}); }
   };
 
@@ -1001,11 +979,23 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     catch { toast({title:"Could not save",variant:"destructive"}); }
   };
 
-  // Triggered from ThreadPanel "Quote in chat" / "Quote" buttons
   const handleQuoteFromThread = (msg: RtMsg) => {
     const senderName = msg.sender?.full_name || msg.sender?.email || "Unknown";
     setQuoteReply({ id: msg.id, text: msg.message_text, sender: senderName });
-    setThread(null); // close thread panel, focus composer
+    setThread(null);
+  };
+
+  const parseQuote = (msg: RtMsg): { quote: {text:string;sender:string}|null; body: string } => {
+    try {
+      if (msg.message_text.startsWith("__QUOTE__")) {
+        const end = msg.message_text.indexOf("__BODY__");
+        if (end !== -1) {
+          const q = JSON.parse(msg.message_text.slice(9, end));
+          return { quote: q, body: msg.message_text.slice(end + 8) };
+        }
+      }
+    } catch {}
+    return { quote: null, body: msg.message_text };
   };
 
   const grouped = useMemo(()=>{
@@ -1026,20 +1016,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
     if(sid!==myId) return "none";
     return rr.some(r=>r.last_read_at&&new Date(r.last_read_at)>=new Date(at))?"read":"sent";
   }
-
-  // Parse quote metadata stored as JSON prefix in message_text
-  const parseQuote = (msg: RtMsg): { quote: {text:string;sender:string}|null; body: string } => {
-    try {
-      if (msg.message_text.startsWith("__QUOTE__")) {
-        const end = msg.message_text.indexOf("__BODY__");
-        if (end !== -1) {
-          const q = JSON.parse(msg.message_text.slice(9, end));
-          return { quote: q, body: msg.message_text.slice(end + 8) };
-        }
-      }
-    } catch {}
-    return { quote: null, body: msg.message_text };
-  };
 
   return (
     <div className="thread">
@@ -1062,7 +1038,16 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
               : <p className="chat-sub" style={{color:"rgba(255,255,255,.3)"}}>{(conv?.participants.length??0)+1} members</p>}
         </div>
         <div className="hdr-acts">
-          <button className={cn("hdr-btn",showPins&&"hdr-btn--on")} title="Pinned" onClick={()=>setShowPins(p=>!p)}><Pin style={{width:13,height:13}}/></button>
+          <button
+            className={cn("hdr-btn", showSched && "hdr-btn--on")}
+            title="Scheduled messages"
+            onClick={()=>setShowSched(p=>!p)}
+          >
+            <Clock style={{width:13,height:13}}/>
+          </button>
+          <button className={cn("hdr-btn",showPins&&"hdr-btn--on")} title="Pinned" onClick={()=>setShowPins(p=>!p)}>
+            <Pin style={{width:13,height:13}}/>
+          </button>
           <button className={cn("hdr-btn",muted&&"hdr-btn--muted")} title={muted?"Unmute":"Mute"} onClick={toggleMute}>
             {muted?<BellOff style={{width:13,height:13}}/>:<Bell style={{width:13,height:13}}/>}
           </button>
@@ -1071,14 +1056,10 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
       </div>
 
       {showPins && <PinsPanel convId={convId} myId={myId} onClose={()=>setShowPins(false)}/>}
+      {showSched && <ScheduledList convId={convId} myId={myId} onClose={()=>setShowSched(false)}/>}
       {thread && (
-        <ThreadPanel
-          parent={thread}
-          members={members}
-          myId={myId}
-          onClose={()=>setThread(null)}
-          onQuoteReply={handleQuoteFromThread}
-        />
+        <ThreadPanel parent={thread} members={members} myId={myId}
+          onClose={()=>setThread(null)} onQuoteReply={handleQuoteFromThread}/>
       )}
 
       {/* MESSAGES */}
@@ -1128,9 +1109,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                         </div>
                       ):(
                         <div className={cn("bubble",isMe?"me":"them")}>
-                          {/* Quote preview */}
                           {quote && <QuotePreview quotedText={quote.text} quotedSender={quote.sender}/>}
-
                           {msg.file_url&&(
                             <div className="attach">
                               {isImg((msg as any).file_type)
@@ -1141,14 +1120,12 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
                             </div>
                           )}
                           {(!msg.file_url||body!==(msg as any).file_name)&&(
-                            <p className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(body)}}/>
+                            <div className="bubble-txt" dangerouslySetInnerHTML={{__html:renderMd(body)}}/>
                           )}
                         </div>
                       )}
 
                       {!isDel&&!isEd&&<ReactBar msgId={msg.id} myId={myId}/>}
-
-                      {/* Reply count badge — opens thread on click */}
                       {!isDel&&!isEd&&(
                         <ReplyCountBadge msgId={msg.id} onClick={()=>setThread(msg as RtMsg)}/>
                       )}
@@ -1201,7 +1178,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         }}/>;
       })()}
 
-      {/* MOBILE SHEET */}
+      {/* MOBILE LONG-PRESS SHEET */}
       {lpId&&lpMsg&&(
         <div className="sheet-overlay" onClick={()=>setLpId(null)}>
           <div className="sheet" onClick={e=>e.stopPropagation()}>
@@ -1221,6 +1198,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
               [Copy,"Copy text",()=>{navigator.clipboard.writeText(lpMsg.message_text);setLpId(null);}],
               [Pin,"Pin message",()=>{pinMsg(lpId,lpMsg.message_text);setLpId(null);}],
               [Bookmark,"Save message",()=>{saveMsg(lpId);setLpId(null);}],
+              [Clock,"Schedule similar",()=>{ setSched(lpMsg.message_text); setLpId(null); }],
               ...(lpIsMe?[
                 [Pencil,"Edit message",()=>{setEditId(lpMsg.id);setEditTxt(lpMsg.message_text);setLpId(null);}],
                 [Trash2,"Delete",()=>delMsg(lpId)],
@@ -1254,15 +1232,21 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId }: {
         onChange={handleInput}
         onSend={handleSend}
         onFile={()=>fileRef.current?.click()}
+        onSchedule={(text) => setSched(text)}
         members={members}
         myId={myId}
         busy={busy}
         replyTo={quoteReply}
         onCancelReply={()=>setQuoteReply(null)}
-        onSchedule={()=>input.trim()&&setSched({convId,text:input.trim()})}
       />
 
-      {scheduleFor&&<ScheduleDialog convId={scheduleFor.convId} myId={myId} text={scheduleFor.text} onClose={()=>setSched(null)}/>}
+      {scheduleFor && (
+        <ScheduleDialog
+          convId={convId} myId={myId} text={scheduleFor}
+          onClose={()=>setSched(null)}
+          onScheduled={()=>{ setInput(""); setSched(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -1311,14 +1295,19 @@ function NotifsPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  SIDEBAR
+//  SIDEBAR CONVERSATION LIST
 // ─────────────────────────────────────────────────────────────
 function Sidebar({ convs,loading,sel,onSel,isOnline }: {
   convs:Conversation[]; loading:boolean; sel:string|null;
   onSel:(id:string)=>void; isOnline:(id:string)=>boolean;
 }) {
-  const dms  = convs.filter(c=>!c.is_group);
-  const grps = convs.filter(c=>c.is_group);
+  const [q, setQ] = useState("");
+  const filtered = useMemo(() =>
+    q.trim() ? convs.filter(c => getConversationName(c).toLowerCase().includes(q.toLowerCase())) : convs,
+    [convs, q]
+  );
+  const dms  = filtered.filter(c=>!c.is_group);
+  const grps = filtered.filter(c=>c.is_group);
 
   const Row = ({ c }:{c:Conversation}) => {
     const nm=getConversationName(c);
@@ -1349,8 +1338,20 @@ function Sidebar({ convs,loading,sel,onSel,isOnline }: {
 
   return (
     <div className="conv-list">
+      {/* Search within sidebar */}
+      <div className="sidebar-search">
+        <Search style={{width:13,height:13,flexShrink:0,color:"rgba(255,255,255,.3)"}}/>
+        <input
+          className="sidebar-search-input"
+          placeholder="Search conversations…"
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+        />
+        {q && <button className="sidebar-search-clear" onClick={()=>setQ("")}><X style={{width:11,height:11}}/></button>}
+      </div>
+
       {loading?<div className="center-spin"><Loader2 className="spin"/></div>
-        :convs.length===0?<div className="panel-empty"><MessageSquare style={{width:24,height:24,opacity:.2}}/><p>No conversations yet</p></div>
+        :filtered.length===0?<div className="panel-empty"><MessageSquare style={{width:24,height:24,opacity:.2}}/><p>{q?"No results":"No conversations yet"}</p></div>
         :(
           <>
             {grps.length>0&&(
@@ -1450,319 +1451,621 @@ export default function MessagesPage() {
   },[user?.id]);
 
   const [sel, setSel]           = useState<string|null>(null);
-  const [tab, setTab]           = useState<"chats"|"saved"|"notifs">("chats");
+  const [tab, setTab]           = useState<"chats"|"notifs">("chats");
   const [newOpen, setNewOpen]   = useState(false);
-  const [showSearch,setSearch]  = useState(false);
   const [mobile, setMobile]     = useState<"list"|"chat">("list");
-
-  const pick = (id:string) => { setSel(id); setMobile("chat"); setTab("chats"); };
-  const back = () => setMobile("list");
-  const totalBadge = totalUnread + notifCount;
 
   const onlineCount = useMemo(()=>
     members.filter(m=>m.user_id!==user?.id&&isOnline(m.user_id)).length,
     [members, isOnline, user?.id]
   );
 
+  const pick = (id:string) => { setSel(id); setMobile("chat"); setTab("chats"); };
+  const back = () => setMobile("list");
+  const totalBadge = totalUnread + notifCount;
+
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
-        .mp{
-          --bg0:#060912;--bg1:#0b0f1c;--bg2:#0f1424;
-          --bdr:rgba(255,255,255,.07);--bdr2:rgba(255,255,255,.04);
-          --ac:#7c3aed;--acg:rgba(124,58,237,.35);--acs:rgba(124,58,237,.12);
-          --t1:#f0f6fc;--t2:rgba(255,255,255,.6);--t3:rgba(255,255,255,.3);--t4:rgba(255,255,255,.14);
-          display:flex;flex-direction:column;height:calc(100dvh - 4rem);margin:-24px;overflow:hidden;
-          background:var(--bg0);font-family:'DM Sans',system-ui,sans-serif;
+        /* ══ ROOT ══════════════════════════════════════════════════════════ */
+        .mp {
+          --bg0:#060912; --bg1:#0b0f1c; --bg2:#0f1424;
+          --bdr:rgba(255,255,255,.07); --bdr2:rgba(255,255,255,.04);
+          --ac:#7c3aed; --acg:rgba(124,58,237,.35); --acs:rgba(124,58,237,.12);
+          --t1:#f0f6fc; --t2:rgba(255,255,255,.6); --t3:rgba(255,255,255,.3); --t4:rgba(255,255,255,.14);
+          --grn:#22c55e; --amr:#f59e0b; --red:#ef4444;
+          display:flex; flex-direction:column;
+          height:calc(100dvh - 4rem); margin:-28px; overflow:hidden;
+          background:var(--bg0); font-family:'DM Sans',system-ui,sans-serif;
+          -webkit-font-smoothing:antialiased;
         }
-        @media(max-width:767px){.mp{margin:-16px;height:calc(100dvh - 3.5rem);padding-bottom:58px;}}
+        @media(max-width:767px){
+          .mp{ margin:-16px; height:calc(100dvh - 3rem); padding-bottom:56px; }
+        }
 
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
-        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
-        @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        @keyframes pop{from{opacity:0;transform:scale(.94) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
+        /* ══ KEYFRAMES ═════════════════════════════════════════════════════ */
+        @keyframes spin  { to { transform:rotate(360deg); } }
+        @keyframes bounce{ 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-4px)} }
+        @keyframes slideIn{ from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+        @keyframes sheetUp{ from{transform:translateY(100%)} to{transform:translateY(0)} }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes pop    { from{opacity:0;transform:scale(.94) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        @keyframes mentionPop{ from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes schedPop  { from{opacity:0;transform:translateY(8px) scale(.98)} to{opacity:1;transform:translateY(0) scale(1)} }
 
-        .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:54px;flex-shrink:0;background:rgba(11,15,28,.97);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
-        .topbar-l{display:flex;align-items:center;gap:9px;}
-        .topbar-icon{width:30px;height:30px;border-radius:9px;background:var(--acs);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;}
-        .topbar-title{font-size:15px;font-weight:700;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
-        .topbar-badge{font-size:10px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;padding:2px 8px;border-radius:20px;box-shadow:0 2px 8px var(--acg);}
-        .online-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.18);border-radius:20px;padding:2px 10px 2px 7px;font-size:11px;font-weight:600;color:#22c55e;}
-        .online-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:bounce 2s ease-in-out infinite;flex-shrink:0;}
-        .topbar-r{display:flex;align-items:center;gap:6px;}
-        .topbar-btn{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.13s;}
-        .topbar-btn:hover{background:rgba(255,255,255,.09);color:var(--t1);}
-        .new-btn{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:9px;padding:7px 14px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px var(--acg);font-family:'DM Sans',sans-serif;transition:transform .15s,box-shadow .15s;}
-        .new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--acg);}
-        @media(max-width:480px){.new-btn span{display:none;}.new-btn{width:32px;height:32px;padding:0;border-radius:50%;justify-content:center;}}
+        /* ══ TOPBAR ════════════════════════════════════════════════════════ */
+        .topbar{
+          display:flex; align-items:center; justify-content:space-between;
+          padding:0 18px; height:52px; flex-shrink:0;
+          background:rgba(11,15,28,.97);
+          border-bottom:1px solid var(--bdr);
+          backdrop-filter:blur(20px);
+          gap:10px;
+        }
+        .topbar-l{ display:flex; align-items:center; gap:9px; min-width:0; }
+        .topbar-icon{
+          width:30px; height:30px; border-radius:9px;
+          background:var(--acs); border:1px solid rgba(124,58,237,.25);
+          display:flex; align-items:center; justify-content:center; flex-shrink:0;
+        }
+        .topbar-title{ font-size:15px; font-weight:700; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; white-space:nowrap; }
+        .topbar-badge{
+          font-size:10px; font-weight:700;
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          color:#fff; padding:2px 8px; border-radius:20px;
+          box-shadow:0 2px 8px var(--acg); flex-shrink:0;
+        }
+        .online-pill{
+          display:inline-flex; align-items:center; gap:5px;
+          background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.18);
+          border-radius:20px; padding:2px 10px 2px 7px;
+          font-size:11px; font-weight:600; color:#22c55e; white-space:nowrap;
+        }
+        .online-dot{ width:6px; height:6px; border-radius:50%; background:#22c55e; animation:bounce 2s ease-in-out infinite; flex-shrink:0; }
+        .topbar-r{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+        .topbar-btn{
+          width:30px; height:30px; border-radius:8px;
+          background:rgba(255,255,255,.04); border:1px solid var(--bdr);
+          display:flex; align-items:center; justify-content:center;
+          cursor:pointer; color:var(--t3); transition:.13s;
+        }
+        .topbar-btn:hover{ background:rgba(255,255,255,.09); color:var(--t1); }
+        .new-btn{
+          display:flex; align-items:center; gap:6px;
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          border:none; border-radius:9px; padding:7px 14px;
+          color:#fff; font-size:12px; font-weight:600; cursor:pointer;
+          box-shadow:0 3px 12px var(--acg); font-family:'DM Sans',sans-serif;
+          transition:transform .15s, box-shadow .15s; white-space:nowrap;
+        }
+        .new-btn:hover{ transform:translateY(-1px); box-shadow:0 6px 18px var(--acg); }
+        @media(max-width:480px){
+          .new-btn span{ display:none; }
+          .new-btn{ width:32px; height:32px; padding:0; border-radius:50%; justify-content:center; }
+          .topbar-title{ font-size:13px; }
+          .online-pill{ display:none; }
+        }
 
-        .body{display:flex;flex:1;min-height:0;}
-        .sidebar{width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--bdr);background:var(--bg1);}
-        @media(max-width:767px){.sidebar{width:100%;border-right:none;}.sidebar--hidden{display:none;}}
-        .tabs{display:flex;gap:4px;padding:7px 9px;border-bottom:1px solid var(--bdr2);flex-shrink:0;}
-        .tab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 0;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--t3);font-size:12px;font-weight:600;cursor:pointer;transition:all .13s;font-family:'DM Sans',sans-serif;}
-        .tab--on{background:var(--acs);border-color:rgba(124,58,237,.25);color:#a78bfa;}
-        .tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
+        /* ══ BODY LAYOUT ═══════════════════════════════════════════════════ */
+        .body{ display:flex; flex:1; min-height:0; }
+        .sidebar{
+          width:288px; flex-shrink:0; display:flex; flex-direction:column;
+          border-right:1px solid var(--bdr); background:var(--bg1);
+        }
+        @media(max-width:767px){
+          .sidebar{ width:100%; border-right:none; }
+          .sidebar--hidden{ display:none; }
+        }
+        .tabs{
+          display:flex; gap:4px; padding:7px 9px;
+          border-bottom:1px solid var(--bdr2); flex-shrink:0;
+        }
+        .tab{
+          flex:1; display:flex; align-items:center; justify-content:center; gap:5px;
+          padding:7px 0; border-radius:8px; background:transparent;
+          border:1px solid transparent; color:var(--t3);
+          font-size:12px; font-weight:600; cursor:pointer; transition:all .13s;
+          font-family:'DM Sans',sans-serif;
+        }
+        .tab--on{ background:var(--acs); border-color:rgba(124,58,237,.25); color:#a78bfa; }
+        .tab-badge{ background:var(--ac); color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:10px; }
 
-        .conv-list{flex:1;overflow-y:auto;padding:4px 6px 8px;}
-        .conv-group{margin-bottom:8px;}
-        .conv-group-lbl{display:flex;align-items:center;gap:6px;padding:5px 10px 3px;font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;}
-        .conv-group-ct{margin-left:auto;background:var(--acs);color:#a78bfa;font-size:9px;padding:1px 6px;border-radius:10px;}
-        .conv-item{width:100%;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left;transition:all .12s;margin-bottom:2px;font-family:'DM Sans',sans-serif;}
-        .conv-item:hover{background:rgba(255,255,255,.03);}
-        .conv-item--active{background:var(--acs)!important;border-color:rgba(124,58,237,.22)!important;}
-        .conv-av-wrap{position:relative;flex-shrink:0;}
-        .conv-av{width:38px;height:38px;border-radius:11px;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#a78bfa;}
-        .conv-av--grp{background:rgba(139,92,246,.15);color:#c084fc;}
-        .conv-unread{position:absolute;top:-4px;left:-4px;min-width:16px;height:16px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;padding:0 3px;box-shadow:0 2px 6px var(--acg);}
-        .conv-info{flex:1;min-width:0;}
-        .conv-row1{display:flex;justify-content:space-between;align-items:baseline;gap:4px;}
-        .conv-name{font-size:13px;font-weight:500;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .conv-name--bold{font-weight:700;color:var(--t1);}
-        .conv-preview{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0 0;}
-        .conv-preview--bold{color:rgba(255,255,255,.5);font-weight:500;}
-        .conv-chev{color:var(--t4);flex-shrink:0;}
-        @media(min-width:768px){.conv-chev{display:none;}}
+        /* ── Sidebar search ── */
+        .sidebar-search{
+          display:flex; align-items:center; gap:7px;
+          margin:8px 8px 4px; padding:7px 10px;
+          background:rgba(255,255,255,.04);
+          border:1px solid rgba(255,255,255,.07);
+          border-radius:10px;
+        }
+        .sidebar-search-input{
+          flex:1; background:transparent; border:none; outline:none;
+          color:var(--t1); font-size:12px; font-family:'DM Sans',sans-serif;
+          min-width:0;
+        }
+        .sidebar-search-input::placeholder{ color:var(--t4); }
+        .sidebar-search-clear{
+          background:none; border:none; color:var(--t3); cursor:pointer; padding:0; display:flex;
+          transition:.12s;
+        }
+        .sidebar-search-clear:hover{ color:var(--t1); }
 
-        .right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,.7);}
-        @media(max-width:767px){.right--hidden{display:none;}}
-        .right-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;}
-        .re-icon{width:64px;height:64px;border-radius:18px;margin-bottom:16px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.15);display:flex;align-items:center;justify-content:center;}
-        .right-empty h3{font-size:15px;font-weight:700;color:#64748b;font-family:'Bricolage Grotesque',sans-serif;margin:0 0 6px;}
-        .right-empty p{font-size:12px;color:var(--t4);max-width:240px;line-height:1.6;margin:0 0 18px;}
-        .re-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin:0 5px;}
-        .re-btn--ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);}
+        /* ══ CONVERSATION LIST ═════════════════════════════════════════════ */
+        .conv-list{ flex:1; overflow-y:auto; padding:0 6px 8px; }
+        .conv-group{ margin-bottom:6px; }
+        .conv-group-lbl{
+          display:flex; align-items:center; gap:6px; padding:5px 10px 3px;
+          font-size:10px; font-weight:700; color:var(--t4);
+          text-transform:uppercase; letter-spacing:.08em;
+        }
+        .conv-group-ct{
+          margin-left:auto; background:var(--acs); color:#a78bfa;
+          font-size:9px; padding:1px 6px; border-radius:10px;
+        }
+        .conv-item{
+          width:100%; display:flex; align-items:center; gap:9px;
+          padding:9px 10px; border-radius:10px; border:1px solid transparent;
+          background:transparent; cursor:pointer; text-align:left;
+          transition:all .12s; margin-bottom:2px; font-family:'DM Sans',sans-serif;
+        }
+        .conv-item:hover{ background:rgba(255,255,255,.03); }
+        .conv-item--active{ background:var(--acs)!important; border-color:rgba(124,58,237,.22)!important; }
+        .conv-av-wrap{ position:relative; flex-shrink:0; }
+        .conv-av{
+          width:38px; height:38px; border-radius:11px;
+          background:rgba(124,58,237,.18); border:1px solid rgba(124,58,237,.2);
+          display:flex; align-items:center; justify-content:center;
+          font-size:12px; font-weight:700; color:#a78bfa;
+        }
+        .conv-av--grp{ background:rgba(139,92,246,.15); color:#c084fc; }
+        .conv-unread{
+          position:absolute; top:-4px; left:-4px; min-width:16px; height:16px;
+          border-radius:8px; background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          display:flex; align-items:center; justify-content:center;
+          font-size:9px; font-weight:700; color:#fff; padding:0 3px;
+          box-shadow:0 2px 6px var(--acg);
+        }
+        .conv-info{ flex:1; min-width:0; }
+        .conv-row1{ display:flex; justify-content:space-between; align-items:baseline; gap:4px; }
+        .conv-name{ font-size:13px; font-weight:500; color:rgba(255,255,255,.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .conv-name--bold{ font-weight:700; color:var(--t1); }
+        .conv-preview{ font-size:11px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:1px 0 0; }
+        .conv-preview--bold{ color:rgba(255,255,255,.5); font-weight:500; }
+        .conv-chev{ color:var(--t4); flex-shrink:0; }
+        @media(min-width:768px){ .conv-chev{ display:none; } }
 
-        .thread{display:flex;flex-direction:column;height:100%;position:relative;}
-        .chat-hdr{display:flex;align-items:center;gap:9px;padding:10px 16px;flex-shrink:0;background:rgba(11,15,28,.93);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
-        .back-btn{background:rgba(255,255,255,.05);border:1px solid var(--bdr);border-radius:8px;width:29px;height:29px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;transition:.12s;}
-        .back-btn:hover{background:rgba(255,255,255,.09);}
-        @media(min-width:768px){.back-btn{display:none;}}
-        .chat-av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25));border:1px solid rgba(124,58,237,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-        .chat-info{flex:1;min-width:0;}
-        .chat-name{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .chat-sub{font-size:11px;margin:0;}
-        .chat-typing{font-size:11px;margin:0;color:#a78bfa;font-style:italic;}
-        .hdr-acts{display:flex;align-items:center;gap:4px;flex-shrink:0;}
-        .hdr-btn{width:27px;height:27px;border-radius:7px;background:transparent;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
-        .hdr-btn:hover{background:rgba(255,255,255,.06);color:var(--t1);}
-        .hdr-btn--on{background:var(--acs);border-color:rgba(124,58,237,.3);color:#a78bfa;}
-        .hdr-btn--muted{color:#f59e0b;}
-        .typing-dots{display:flex;gap:3px;align-items:center;flex-shrink:0;}
-        .typing-dots span{width:5px;height:5px;border-radius:50%;background:#7c3aed;display:block;}
-        .typing-dots span:nth-child(1){animation:bounce 1.2s 0s infinite;}
-        .typing-dots span:nth-child(2){animation:bounce 1.2s .2s infinite;}
-        .typing-dots span:nth-child(3){animation:bounce 1.2s .4s infinite;}
+        /* ══ RIGHT PANEL ════════════════════════════════════════════════════ */
+        .right{ flex:1; display:flex; flex-direction:column; min-width:0; background:rgba(6,9,18,.7); }
+        @media(max-width:767px){ .right--hidden{ display:none; } }
+        .right-empty{
+          flex:1; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; text-align:center; padding:40px;
+        }
+        .re-icon{
+          width:64px; height:64px; border-radius:18px; margin-bottom:16px;
+          background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.15);
+          display:flex; align-items:center; justify-content:center;
+        }
+        .right-empty h3{ font-size:15px; font-weight:700; color:#64748b; font-family:'Bricolage Grotesque',sans-serif; margin:0 0 6px; }
+        .right-empty p{ font-size:12px; color:var(--t4); max-width:240px; line-height:1.6; margin:0 0 18px; }
+        .re-btn{
+          display:inline-flex; align-items:center; gap:7px;
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          border:none; border-radius:10px; padding:9px 18px;
+          color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; margin:0 5px;
+        }
 
-        .msgs-area{flex:1;overflow-y:auto;padding:14px 16px;}
-        @media(max-width:767px){.msgs-area{padding:10px;}}
-        .center-spin{display:flex;justify-content:center;padding:40px 0;}
-        .spin{width:20px;height:20px;color:#7c3aed;animation:spin 1s linear infinite;}
-        .empty-chat{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;}
-        .empty-icon{width:50px;height:50px;border-radius:14px;margin-bottom:12px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;}
-        .empty-title{font-size:14px;font-weight:600;color:#64748b;margin:0 0 4px;}
-        .empty-sub{font-size:12px;color:var(--t4);margin:0;}
+        /* ══ CHAT THREAD ════════════════════════════════════════════════════ */
+        .thread{ display:flex; flex-direction:column; height:100%; position:relative; }
+        .chat-hdr{
+          display:flex; align-items:center; gap:9px; padding:10px 14px; flex-shrink:0;
+          background:rgba(11,15,28,.93); border-bottom:1px solid var(--bdr);
+          backdrop-filter:blur(20px); flex-wrap:nowrap; min-width:0;
+        }
+        .back-btn{
+          background:rgba(255,255,255,.05); border:1px solid var(--bdr);
+          border-radius:8px; width:29px; height:29px; min-width:29px;
+          display:flex; align-items:center; justify-content:center;
+          cursor:pointer; color:var(--t2); flex-shrink:0; transition:.12s;
+        }
+        .back-btn:hover{ background:rgba(255,255,255,.09); }
+        @media(min-width:768px){ .back-btn{ display:none; } }
+        .chat-av{
+          width:34px; height:34px; border-radius:9px; flex-shrink:0; min-width:34px;
+          background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25));
+          border:1px solid rgba(124,58,237,.28);
+          display:flex; align-items:center; justify-content:center;
+        }
+        .chat-info{ flex:1; min-width:0; }
+        .chat-name{ font-size:14px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .chat-sub{ font-size:11px; margin:0; }
+        .chat-typing{ font-size:11px; margin:0; color:#a78bfa; font-style:italic; }
+        .hdr-acts{ display:flex; align-items:center; gap:3px; flex-shrink:0; }
+        .hdr-btn{
+          width:27px; height:27px; border-radius:7px;
+          background:transparent; border:1px solid transparent;
+          display:flex; align-items:center; justify-content:center;
+          cursor:pointer; color:var(--t3); transition:.12s;
+        }
+        .hdr-btn:hover{ background:rgba(255,255,255,.06); color:var(--t1); }
+        .hdr-btn--on{ background:var(--acs); border-color:rgba(124,58,237,.3); color:#a78bfa; }
+        .hdr-btn--muted{ color:#f59e0b; }
+        .typing-dots{ display:flex; gap:3px; align-items:center; flex-shrink:0; }
+        .typing-dots span{ width:5px; height:5px; border-radius:50%; background:#7c3aed; display:block; }
+        .typing-dots span:nth-child(1){ animation:bounce 1.2s 0s infinite; }
+        .typing-dots span:nth-child(2){ animation:bounce 1.2s .2s infinite; }
+        .typing-dots span:nth-child(3){ animation:bounce 1.2s .4s infinite; }
 
-        .divider-row{display:flex;align-items:center;gap:10px;margin:16px 0 10px;}
-        .div-line{flex:1;height:1px;background:var(--bdr2);}
-        .div-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--t3);padding:3px 9px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:20px;white-space:nowrap;}
+        /* ══ MESSAGES AREA ══════════════════════════════════════════════════ */
+        .msgs-area{ flex:1; overflow-y:auto; padding:14px 16px; }
+        @media(max-width:767px){ .msgs-area{ padding:10px 10px 10px; } }
+        .center-spin{ display:flex; justify-content:center; padding:40px 0; }
+        .spin{ width:20px; height:20px; color:#7c3aed; animation:spin 1s linear infinite; }
+        .empty-chat{ display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; text-align:center; }
+        .empty-icon{ width:50px; height:50px; border-radius:14px; margin-bottom:12px; background:rgba(124,58,237,.1); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; }
+        .empty-title{ font-size:14px; font-weight:600; color:#64748b; margin:0 0 4px; }
+        .empty-sub{ font-size:12px; color:var(--t4); margin:0; }
 
-        .msg-row{display:flex;margin-bottom:2px;position:relative;}
-        .msg-me{justify-content:flex-end;margin-top:3px;}
-        .msg-them{justify-content:flex-start;margin-top:3px;}
-        .msg-row:not(.msg-same){margin-top:10px;}
-        .msg-new .bubble{animation:pop .22s ease forwards;}
-        .msg-av{width:30px;height:30px;border-radius:8px;flex-shrink:0;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#818cf8;margin-right:8px;margin-top:2px;}
-        .msg-av.small{width:26px;height:26px;font-size:10px;margin-right:6px;}
-        .msg-av-sp{width:38px;flex-shrink:0;}
-        .msg-body{display:flex;flex-direction:column;max-width:70%;position:relative;}
-        @media(max-width:480px){.msg-body{max-width:88%;}}
-        .body-me{align-items:flex-end;}
-        .body-them{align-items:flex-start;}
-        .msg-sender{font-size:10px;color:var(--t3);margin:0 0 3px 2px;font-weight:500;}
+        .divider-row{ display:flex; align-items:center; gap:10px; margin:16px 0 10px; }
+        .div-line{ flex:1; height:1px; background:var(--bdr2); }
+        .div-label{ font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--t3); padding:3px 9px; background:rgba(255,255,255,.03); border:1px solid var(--bdr2); border-radius:20px; white-space:nowrap; }
 
-        .bubble{padding:9px 13px;line-height:1.5;cursor:context-menu;word-break:break-word;transition:all .13s;}
-        .bubble.me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,.4);border-radius:16px 16px 4px 16px;box-shadow:0 3px 16px rgba(124,58,237,.28);}
-        .bubble.them{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);border-radius:16px 16px 16px 4px;}
-        .bubble-txt{font-size:13px;color:#fff;margin:0;font-family:'DM Sans',sans-serif;}
-        .bubble.them .bubble-txt{color:rgba(255,255,255,.84);}
-        @media(max-width:767px){.bubble-txt{font-size:14px;}.bubble{padding:10px 14px;}}
-        .md-code{background:rgba(0,0,0,.35);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:12px;}
-        .md-pre{background:rgba(0,0,0,.4);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;overflow-x:auto;margin:4px 0 0;white-space:pre;}
-        .md-mention{color:#c084fc;font-weight:600;}
+        /* ══ MESSAGE ROWS ═══════════════════════════════════════════════════ */
+        .msg-row{ display:flex; margin-bottom:2px; position:relative; }
+        .msg-me{ justify-content:flex-end; margin-top:3px; }
+        .msg-them{ justify-content:flex-start; margin-top:3px; }
+        .msg-row:not(.msg-same){ margin-top:10px; }
+        .msg-new .bubble{ animation:pop .22s ease forwards; }
+        .msg-av{
+          width:30px; height:30px; border-radius:8px; flex-shrink:0; min-width:30px;
+          background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.2);
+          display:flex; align-items:center; justify-content:center;
+          font-size:11px; font-weight:700; color:#818cf8;
+          margin-right:8px; margin-top:2px;
+        }
+        .msg-av.small{ width:26px; height:26px; font-size:10px; margin-right:6px; min-width:26px; }
+        .msg-av-sp{ width:38px; flex-shrink:0; min-width:38px; }
+        .msg-body{ display:flex; flex-direction:column; max-width:72%; position:relative; }
+        @media(max-width:480px){ .msg-body{ max-width:86%; } }
+        .body-me{ align-items:flex-end; }
+        .body-them{ align-items:flex-start; }
+        .msg-sender{ font-size:10px; color:var(--t3); margin:0 0 3px 2px; font-weight:500; }
 
-        /* ── QUOTE PREVIEW ── */
-        .quote-preview{display:flex;gap:8px;margin-bottom:7px;padding:6px 10px;background:rgba(0,0,0,.25);border-radius:8px;border-left:none;}
-        .quote-bar{width:3px;flex-shrink:0;border-radius:2px;background:rgba(255,255,255,.4);}
-        .bubble.me .quote-bar{background:rgba(255,255,255,.5);}
-        .quote-body{display:flex;flex-direction:column;gap:2px;min-width:0;}
-        .quote-sender{font-size:10px;font-weight:700;color:rgba(255,255,255,.7);}
-        .bubble.me .quote-sender{color:rgba(255,255,255,.85);}
-        .quote-text{font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .bubble.me .quote-text{color:rgba(255,255,255,.65);}
+        .bubble{ padding:9px 13px; line-height:1.55; cursor:context-menu; word-break:break-word; transition:all .13s; }
+        .bubble.me{
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          border:1px solid rgba(124,58,237,.4);
+          border-radius:16px 16px 4px 16px;
+          box-shadow:0 3px 16px rgba(124,58,237,.28);
+        }
+        .bubble.them{
+          background:rgba(255,255,255,.06);
+          border:1px solid rgba(255,255,255,.07);
+          border-radius:16px 16px 16px 4px;
+        }
+        .bubble-txt{ font-size:13px; color:#fff; margin:0; font-family:'DM Sans',sans-serif; line-height:1.6; }
+        .bubble-txt li.md-li{ margin-left:16px; list-style:disc; font-size:13px; }
+        .bubble.them .bubble-txt{ color:rgba(255,255,255,.84); }
+        @media(max-width:767px){ .bubble-txt{ font-size:14px; } .bubble{ padding:10px 14px; } }
+        .md-code{ background:rgba(0,0,0,.35); border-radius:4px; padding:1px 5px; font-family:monospace; font-size:12px; }
+        .md-pre{ background:rgba(0,0,0,.4); border-radius:8px; padding:10px 12px; font-family:monospace; font-size:11px; overflow-x:auto; margin:4px 0 0; white-space:pre; }
+        .md-mention{ color:#c084fc; font-weight:700; background:rgba(192,132,252,.1); border-radius:4px; padding:0 3px; }
+        .md-mention--all{ color:#fbbf24; background:rgba(251,191,36,.12); }
 
-        /* ── REPLY COUNT BADGE ── */
-        .reply-count-badge{display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px 2px 6px;background:var(--acs);border:1px solid rgba(124,58,237,.3);border-radius:20px;font-size:10px;font-weight:600;color:#a78bfa;cursor:pointer;transition:all .13s;}
-        .reply-count-badge:hover{background:rgba(124,58,237,.2);border-color:rgba(124,58,237,.5);}
+        /* ── Quote preview ── */
+        .quote-preview{ display:flex; gap:8px; margin-bottom:7px; padding:6px 10px; background:rgba(0,0,0,.25); border-radius:8px; }
+        .quote-bar{ width:3px; flex-shrink:0; border-radius:2px; background:rgba(255,255,255,.4); }
+        .bubble.me .quote-bar{ background:rgba(255,255,255,.5); }
+        .quote-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+        .quote-sender{ font-size:10px; font-weight:700; color:rgba(255,255,255,.7); }
+        .quote-text{ font-size:11px; color:rgba(255,255,255,.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-        /* ── THREAD QUOTE / REPLY BUTTONS ── */
-        .thread-quote-btn{display:inline-flex;align-items:center;gap:3px;font-size:9px;color:rgba(255,255,255,.35);background:transparent;border:none;cursor:pointer;padding:1px 4px;border-radius:4px;transition:.12s;font-family:'DM Sans',sans-serif;}
-        .thread-quote-btn:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);}
-        .thread-del-btn:hover{background:rgba(239,68,68,.12);color:#f87171;}
-        .thread-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
-        .thread-reply{margin-top:4px!important;}
+        .reply-count-badge{
+          display:inline-flex; align-items:center; gap:4px; margin-top:4px;
+          padding:2px 8px 2px 6px; background:var(--acs);
+          border:1px solid rgba(124,58,237,.3); border-radius:20px;
+          font-size:10px; font-weight:600; color:#a78bfa; cursor:pointer; transition:all .13s;
+        }
+        .reply-count-badge:hover{ background:rgba(124,58,237,.2); border-color:rgba(124,58,237,.5); }
 
-        .rxn-bar{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;align-items:center;}
-        .rxn-chip{display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:2px 7px;cursor:pointer;font-size:13px;transition:all .12s;}
-        .rxn-chip:hover{background:rgba(255,255,255,.1);}
-        .rxn-chip--mine{background:var(--acs);border-color:rgba(124,58,237,.4);}
-        .rxn-chip span{font-size:11px;color:rgba(255,255,255,.7);font-weight:600;}
-        .rxn-add{width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
-        .rxn-add:hover{background:rgba(255,255,255,.1);color:var(--t1);}
+        /* ── Reactions ── */
+        .rxn-bar{ display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; align-items:center; }
+        .rxn-chip{ display:inline-flex; align-items:center; gap:3px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:20px; padding:2px 7px; cursor:pointer; font-size:13px; transition:all .12s; }
+        .rxn-chip:hover{ background:rgba(255,255,255,.1); }
+        .rxn-chip--mine{ background:var(--acs); border-color:rgba(124,58,237,.4); }
+        .rxn-chip span{ font-size:11px; color:rgba(255,255,255,.7); font-weight:600; }
+        .rxn-add{ width:21px; height:21px; border-radius:50%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t3); transition:.12s; }
+        .rxn-add:hover{ background:rgba(255,255,255,.1); color:var(--t1); }
 
-        .ep-wrap{position:absolute;bottom:calc(100% + 6px);left:0;z-index:9999;background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;width:216px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:fadeIn .12s ease;}
-        .ep-label{font-size:9px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px;padding:0;}
-        .ep-label:first-child{margin-top:0;}
-        .ep-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;}
-        .ep-btn{padding:5px;border:none;background:transparent;cursor:pointer;font-size:16px;border-radius:6px;transition:.1s;text-align:center;}
-        .ep-btn:hover{background:rgba(255,255,255,.1);}
+        /* ── Emoji Picker ── */
+        .ep-wrap{ position:absolute; bottom:calc(100% + 6px); left:0; z-index:9999; background:rgba(10,13,22,.97); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; width:216px; box-shadow:0 20px 60px rgba(0,0,0,.7); animation:fadeIn .12s ease; }
+        .ep-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin:8px 0 4px; }
+        .ep-label:first-child{ margin-top:0; }
+        .ep-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:2px; }
+        .ep-btn{ padding:5px; border:none; background:transparent; cursor:pointer; font-size:16px; border-radius:6px; transition:.1s; text-align:center; }
+        .ep-btn:hover{ background:rgba(255,255,255,.1); }
 
-        .cmp-wrap{border-top:1px solid var(--bdr2);background:rgba(11,15,28,.76);backdrop-filter:blur(12px);flex-shrink:0;}
-        .cmp-reply{display:flex;align-items:center;gap:7px;padding:7px 14px;background:rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.15);}
-        .cmp-reply-name{font-size:11px;font-weight:700;color:#a78bfa;flex-shrink:0;}
-        .cmp-reply-txt{font-size:11px;color:var(--t3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .cmp-reply-x{background:none;border:none;color:var(--t3);cursor:pointer;padding:0;display:flex;}
-        .cmp-fmt{display:flex;align-items:center;gap:2px;padding:6px 12px 0;border-top:1px solid var(--bdr2);}
-        .cmp-fmt-btn{background:transparent;border:none;color:var(--t3);padding:3px 7px;border-radius:5px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:.12s;min-width:26px;}
-        .cmp-fmt-btn:hover{background:rgba(255,255,255,.07);color:var(--t1);}
-        .cmp-sep{width:1px;height:14px;background:var(--bdr);margin:0 2px;}
-        .cmp-mention-list{background:rgba(10,13,22,.97);border:1px solid rgba(255,255,255,.1);border-bottom:none;overflow:hidden;}
-        .cmp-mention-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;background:transparent;border:none;cursor:pointer;text-align:left;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;transition:.1s;}
-        .cmp-mention-item:hover{background:var(--acs);}
-        .cmp-mention-av{width:22px;height:22px;border-radius:5px;background:rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#a78bfa;flex-shrink:0;}
-        .cmp-row{display:flex;align-items:flex-end;gap:7px;padding:8px 12px;}
-        .cmp-icon{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;align-items:center;padding:6px;border-radius:7px;transition:.12s;flex-shrink:0;}
-        .cmp-icon:hover{color:var(--t1);background:rgba(255,255,255,.06);}
-        .cmp-ta{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;line-height:1.5;transition:border-color .13s;min-height:36px;max-height:120px;}
-        .cmp-ta::placeholder{color:var(--t4);}
-        .cmp-ta:focus{border-color:rgba(124,58,237,.4);}
-        @media(max-width:767px){.cmp-ta{font-size:16px;}}
-        .cmp-send{width:34px;height:34px;border-radius:10px;border:none;background:rgba(124,58,237,.3);color:rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .13s;align-self:flex-end;}
-        .cmp-send--on{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 3px 12px var(--acg);}
-        .cmp-send--on:hover{transform:scale(1.05);}
-        .cmp-hint{font-size:10px;color:var(--t4);text-align:center;padding:0 0 8px;margin:0;font-family:'DM Sans',sans-serif;}
-        @media(max-width:767px){.cmp-hint{display:none;}}
+        /* ── Desktop hover actions ── */
+        .ha-row{ display:none; position:absolute; top:4px; background:rgba(11,15,28,.96); border:1px solid var(--bdr); border-radius:9px; padding:3px; box-shadow:0 8px 24px rgba(0,0,0,.5); gap:2px; align-items:center; }
+        .ha-row--me{ right:calc(100% + 6px); }
+        .ha-row--them{ left:calc(100% + 6px); }
+        @media(min-width:768px){ .msg-row:hover .ha-row{ display:flex; } }
+        .ha{ background:transparent; border:none; border-radius:6px; padding:4px 5px; cursor:pointer; color:rgba(255,255,255,.35); display:flex; align-items:center; transition:.12s; }
+        .ha:hover{ background:rgba(255,255,255,.08); color:#fff; }
+        .ha-del:hover{ background:rgba(239,68,68,.15); color:#f87171; }
 
-        .attach{margin-bottom:6px;}
-        .attach-img{border-radius:8px;max-width:100%;max-height:160px;object-fit:cover;display:block;}
-        .attach-file{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;text-decoration:none;background:rgba(255,255,255,.1);font-size:12px;color:rgba(255,255,255,.85);}
-        .attach-file--me{background:rgba(255,255,255,.15);}
-        .attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .file-prev{display:flex;align-items:center;gap:7px;margin:0 14px 4px;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:10px;padding:7px 12px;}
-        .fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
-        .fp-size{font-size:10px;color:var(--t3);flex-shrink:0;}
+        /* ── Edit ── */
+        .edit-wrap{ display:flex; align-items:center; gap:5px; background:rgba(124,58,237,.1); border:1px solid rgba(124,58,237,.3); border-radius:12px; padding:7px 10px; }
+        .edit-input{ background:transparent; border:none; outline:none; color:var(--t1); font-size:13px; min-width:80px; flex:1; font-family:'DM Sans',sans-serif; }
+        .edit-save{ background:#7c3aed; border:none; border-radius:6px; padding:3px 9px; color:#fff; font-size:11px; font-weight:600; cursor:pointer; }
+        .edit-cancel{ background:transparent; border:none; color:var(--t3); cursor:pointer; font-size:16px; line-height:1; padding:0 2px; }
 
-        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.96);border:1px solid var(--bdr);border-radius:9px;padding:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:2px;align-items:center;}
-        .ha-row--me{right:calc(100% + 6px);}
-        .ha-row--them{left:calc(100% + 6px);}
-        @media(min-width:768px){.msg-row:hover .ha-row{display:flex;}}
-        .ha{background:transparent;border:none;border-radius:6px;padding:4px 5px;cursor:pointer;color:rgba(255,255,255,.35);display:flex;align-items:center;transition:.12s;}
-        .ha:hover{background:rgba(255,255,255,.08);color:#fff;}
-        .ha-del:hover{background:rgba(239,68,68,.15);color:#f87171;}
+        .msg-meta{ display:flex; align-items:center; gap:4px; margin-top:3px; padding:0 2px; }
+        .msg-meta--me{ justify-content:flex-end; }
+        .meta-time{ font-size:10px; color:var(--t4); }
 
-        .edit-wrap{display:flex;align-items:center;gap:5px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:12px;padding:7px 10px;}
-        .edit-input{background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;min-width:80px;flex:1;font-family:'DM Sans',sans-serif;}
-        .edit-save{background:#7c3aed;border:none;border-radius:6px;padding:3px 9px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;}
-        .edit-cancel{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
+        .thread-quote-btn{ display:inline-flex; align-items:center; gap:3px; font-size:9px; color:rgba(255,255,255,.35); background:transparent; border:none; cursor:pointer; padding:1px 4px; border-radius:4px; transition:.12s; font-family:'DM Sans',sans-serif; }
+        .thread-quote-btn:hover{ background:rgba(255,255,255,.07); color:rgba(255,255,255,.7); }
+        .thread-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:32px 16px; text-align:center; color:var(--t3); font-size:12px; }
+        .thread-reply{ margin-top:4px!important; }
 
-        .msg-meta{display:flex;align-items:center;gap:4px;margin-top:3px;padding:0 2px;}
-        .msg-meta--me{justify-content:flex-end;}
-        .meta-time{font-size:10px;color:var(--t4);}
+        /* ══ COMPOSER ═══════════════════════════════════════════════════════ */
+        .cmp-wrap{ border-top:1px solid var(--bdr2); background:rgba(11,15,28,.85); backdrop-filter:blur(12px); flex-shrink:0; }
+        .cmp-reply{ display:flex; align-items:center; gap:7px; padding:7px 14px; background:rgba(124,58,237,.08); border-bottom:1px solid rgba(124,58,237,.15); }
+        .cmp-reply-name{ font-size:11px; font-weight:700; color:#a78bfa; flex-shrink:0; }
+        .cmp-reply-txt{ font-size:11px; color:var(--t3); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cmp-reply-x{ background:none; border:none; color:var(--t3); cursor:pointer; padding:0; display:flex; }
 
-        .ctx-menu{background:rgba(10,13,22,.97);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;width:190px;animation:fadeIn .12s ease;}
-        .ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
-        .ctx-item:last-child{border-bottom:none;}
-        .ctx-item:hover{background:rgba(255,255,255,.06);color:#fff;}
-        .ctx-item--danger{color:#f87171;}
-        .ctx-item--danger:hover{background:rgba(239,68,68,.12);}
+        .cmp-fmt{
+          display:flex; align-items:center; gap:2px;
+          padding:6px 12px 0; border-top:1px solid var(--bdr2); flex-wrap:wrap;
+        }
+        .cmp-fmt-btn{
+          background:transparent; border:none; color:var(--t3);
+          padding:4px 7px; border-radius:6px; cursor:pointer;
+          font-size:12px; display:flex; align-items:center; justify-content:center;
+          transition:.12s; min-width:26px; gap:4px;
+        }
+        .cmp-fmt-btn:hover{ background:rgba(255,255,255,.07); color:var(--t1); }
+        .cmp-fmt-btn--on{ background:var(--acs); color:#a78bfa; }
+        .cmp-fmt-btn--schedule{
+          margin-left:auto; background:rgba(124,58,237,.08);
+          border:1px solid rgba(124,58,237,.2); color:#a78bfa;
+          border-radius:8px; padding:3px 10px;
+        }
+        .cmp-fmt-btn--schedule:hover{ background:rgba(124,58,237,.18); }
+        .cmp-fmt-btn--schedule:disabled{ opacity:.4; cursor:not-allowed; }
+        .cmp-fmt-lbl{ font-size:11px; font-weight:600; }
+        .cmp-sep{ width:1px; height:14px; background:var(--bdr); margin:0 2px; }
 
-        .sheet-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);animation:fadeIn .18s ease;}
-        .sheet{position:absolute;bottom:0;left:0;right:0;background:#0f1424;border-top:1px solid rgba(255,255,255,.08);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);animation:sheetUp .23s ease;}
-        .sheet-handle{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin:10px auto 0;}
-        .sheet-emoji-row{display:flex;justify-content:center;gap:11px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.05);}
-        .sheet-emoji{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;}
-        .sheet-emoji:hover{background:rgba(255,255,255,.12);transform:scale(1.1);}
-        .sheet-preview{padding:11px 20px 9px;border-bottom:1px solid rgba(255,255,255,.05);}
-        .sheet-preview-txt{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;}
-        .sheet-btn{display:flex;align-items:center;gap:14px;width:100%;padding:15px 22px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:var(--t1);font-size:16px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;}
-        .sheet-btn--del{color:#f87171;}
-        .sheet-cancel{display:block;width:calc(100% - 24px);margin:8px 12px 4px;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:var(--t2);font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        /* ── @mention dropdown ── */
+        .cmp-mention-list{
+          background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1);
+          border-bottom:none; overflow:hidden;
+          animation:mentionPop .14s ease;
+          box-shadow:0 -12px 30px rgba(0,0,0,.4);
+        }
+        .cmp-mention-item{
+          display:flex; align-items:center; gap:9px; width:100%;
+          padding:9px 14px; background:transparent; border:none;
+          border-bottom:1px solid rgba(255,255,255,.05);
+          cursor:pointer; text-align:left; color:var(--t1);
+          font-family:'DM Sans',sans-serif; transition:.1s;
+        }
+        .cmp-mention-item:hover{ background:var(--acs); }
+        .cmp-mention-item:last-child{ border-bottom:none; }
+        .cmp-mention-av{
+          width:26px; height:26px; border-radius:7px;
+          background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.25);
+          display:flex; align-items:center; justify-content:center;
+          font-size:10px; font-weight:700; color:#a78bfa; flex-shrink:0;
+        }
+        .cmp-mention-av--all{ background:rgba(251,191,36,.15); border-color:rgba(251,191,36,.3); color:#fbbf24; }
+        .cmp-mention-name{ font-size:13px; font-weight:600; color:var(--t1); }
+        .cmp-mention-name--all{ color:#fbbf24; }
+        .cmp-mention-desc{ font-size:11px; color:var(--t3); }
 
-        .thread-overlay{position:absolute;inset:0;z-index:40;pointer-events:none;}
-        .thread-panel{position:absolute;right:0;top:0;bottom:0;width:360px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;pointer-events:all;animation:slideIn .22s ease;box-shadow:-20px 0 60px rgba(0,0,0,.5);}
-        @media(max-width:767px){.thread-panel{width:100%;border-left:none;}}
-        .thread-hdr{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--bdr);flex-shrink:0;}
-        .thread-title{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;flex:1;}
-        .panel-close{background:rgba(255,255,255,.06);border:1px solid var(--bdr);border-radius:7px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
-        .panel-close:hover{color:var(--t1);background:rgba(255,255,255,.1);}
-        .thread-body{flex:1;overflow-y:auto;padding:12px;}
-        .panel-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
-        .thread-parent{display:flex;gap:9px;padding:12px;background:rgba(255,255,255,.03);border-radius:10px;margin-bottom:10px;border-left:3px solid #7c3aed;}
+        /* ── Preview pane ── */
+        .cmp-preview{
+          margin:0 12px 6px; padding:10px 12px;
+          background:rgba(255,255,255,.03);
+          border:1px solid rgba(255,255,255,.07); border-radius:10px;
+          animation:fadeIn .15s ease;
+        }
+        .cmp-preview-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+        .cmp-preview-body{ font-size:13px; color:rgba(255,255,255,.75); line-height:1.6; }
+        .cmp-preview-body .md-mention{ color:#c084fc; font-weight:700; }
+        .cmp-preview-body .md-mention--all{ color:#fbbf24; }
 
-        .pin-item{display:flex;gap:8px;padding:10px 12px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);margin-bottom:6px;}
-        .pin-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;}
-        .pin-meta{font-size:10px;color:var(--t4);margin:0;}
-        .saved-item{display:flex;align-items:flex-start;gap:9px;padding:11px 0;border-bottom:1px solid var(--bdr2);}
-        .saved-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .cmp-row{ display:flex; align-items:flex-end; gap:7px; padding:8px 12px; }
+        .cmp-icon{ background:none; border:none; cursor:pointer; color:var(--t3); display:flex; align-items:center; padding:6px; border-radius:7px; transition:.12s; flex-shrink:0; }
+        .cmp-icon:hover{ color:var(--t1); background:rgba(255,255,255,.06); }
+        .cmp-ta{
+          flex:1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+          border-radius:10px; padding:8px 12px; color:var(--t1);
+          font-size:13px; font-family:'DM Sans',sans-serif; resize:none;
+          outline:none; line-height:1.55; transition:border-color .13s;
+          min-height:36px; max-height:160px;
+        }
+        .cmp-ta::placeholder{ color:var(--t4); }
+        .cmp-ta:focus{ border-color:rgba(124,58,237,.4); }
+        @media(max-width:767px){ .cmp-ta{ font-size:16px; } }
+        .cmp-send{
+          width:34px; height:34px; border-radius:10px; border:none;
+          background:rgba(124,58,237,.3); color:rgba(255,255,255,.4);
+          display:flex; align-items:center; justify-content:center;
+          cursor:pointer; flex-shrink:0; transition:all .13s; align-self:flex-end;
+        }
+        .cmp-send--on{ background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; box-shadow:0 3px 12px var(--acg); }
+        .cmp-send--on:hover{ transform:scale(1.05); }
+        .cmp-hint{ font-size:10px; color:var(--t4); text-align:center; padding:0 0 8px; margin:0; font-family:'DM Sans',sans-serif; }
+        @media(max-width:767px){ .cmp-hint{ display:none; } }
 
-        .pres-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg1);flex-shrink:0;}
+        /* ══ SCHEDULE DIALOG ════════════════════════════════════════════════ */
+        .sch-dlg{ background:#0d1117!important; border:1px solid rgba(255,255,255,.08)!important; border-radius:16px!important; }
+        .sch-title{ display:flex; align-items:center; gap:8px; font-family:'Bricolage Grotesque',sans-serif; color:#f0f6fc; font-size:16px; }
+        .sch-preview{
+          padding:10px 14px; background:rgba(255,255,255,.03);
+          border:1px solid rgba(255,255,255,.07); border-radius:10px; margin-bottom:4px;
+          animation:schedPop .18s ease;
+        }
+        .sch-preview-label{ font-size:9px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+        .sch-preview-txt{ font-size:12px; color:rgba(255,255,255,.6); line-height:1.5; }
+        .sch-preview-txt .md-mention{ color:#c084fc; font-weight:700; }
+        .sch-field{ display:flex; flex-direction:column; gap:5px; }
+        .sch-label{ font-size:12px; font-weight:600; color:rgba(255,255,255,.5); }
+        .sch-input{
+          width:100%; background:rgba(255,255,255,.05);
+          border:1px solid rgba(255,255,255,.1); border-radius:10px;
+          padding:10px 12px; color:#f0f6fc; font-size:13px;
+          font-family:'DM Sans',sans-serif; outline:none; transition:border-color .13s;
+          color-scheme:dark;
+        }
+        .sch-input:focus{ border-color:rgba(124,58,237,.4); }
+        .sch-hint{ font-size:11px; color:var(--t4); margin:0; }
+        .sch-footer{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+        .sch-btn-cancel{
+          background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+          border-radius:9px; padding:8px 16px; color:var(--t2);
+          font-size:13px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif;
+          transition:.13s;
+        }
+        .sch-btn-cancel:hover{ background:rgba(255,255,255,.1); }
+        .sch-btn-save{
+          display:flex; align-items:center; gap:6px;
+          background:linear-gradient(135deg,#7c3aed,#6d28d9);
+          border:none; border-radius:9px; padding:8px 18px;
+          color:#fff; font-size:13px; font-weight:600; cursor:pointer;
+          font-family:'DM Sans',sans-serif; transition:all .13s;
+          box-shadow:0 3px 10px var(--acg);
+        }
+        .sch-btn-save:hover{ transform:translateY(-1px); box-shadow:0 6px 16px var(--acg); }
+        .sch-btn-save:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
 
-        .search-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding-top:72px;animation:fadeIn .14s ease;}
-        .search-modal{width:100%;max-width:580px;background:rgba(10,13,22,.98);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.8);animation:pop .18s ease;}
-        .search-input-row{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bdr);}
-        .search-input{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:16px;font-family:'DM Sans',sans-serif;}
-        .search-input::placeholder{color:var(--t4);}
-        .search-results{max-height:400px;overflow-y:auto;}
-        .search-result{display:block;width:100%;padding:11px 20px;background:transparent;border:none;border-bottom:1px solid var(--bdr2);cursor:pointer;text-align:left;transition:.12s;font-family:'DM Sans',sans-serif;}
-        .search-result:hover{background:var(--acs);}
-        .search-result-conv{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--t3);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
-        .search-result-txt{font-size:13px;color:rgba(255,255,255,.7);margin:0;line-height:1.4;}
-        .search-empty{text-align:center;padding:24px;font-size:13px;color:var(--t3);}
-        .search-hint{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;color:var(--t4);font-size:12px;}
+        /* ── Scheduled item ── */
+        .sched-item{
+          padding:12px 14px; border-radius:10px;
+          background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06);
+          margin-bottom:6px; display:flex; flex-direction:column; gap:6px;
+        }
+        .sched-when{ display:flex; align-items:center; gap:5px; font-size:10px; font-weight:600; color:#a78bfa; }
+        .sched-txt{ font-size:12px; color:rgba(255,255,255,.6); line-height:1.4; }
+        .sched-cancel{
+          display:inline-flex; align-items:center; gap:4px;
+          font-size:10px; color:#f87171; background:rgba(239,68,68,.1);
+          border:1px solid rgba(239,68,68,.2); border-radius:6px;
+          padding:3px 8px; cursor:pointer; align-self:flex-end;
+          font-family:'DM Sans',sans-serif; transition:.12s;
+        }
+        .sched-cancel:hover{ background:rgba(239,68,68,.18); }
 
-        .notif-panel{display:flex;flex-direction:column;height:100%;}
-        .notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--bdr);background:rgba(11,15,28,.9);flex-shrink:0;flex-wrap:wrap;gap:7px;}
-        .notif-title{font-size:14px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
-        .notif-badge{background:var(--acs);color:#a78bfa;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid rgba(124,58,237,.3);}
-        .filter-btn{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 9px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;display:flex;align-items:center;gap:3px;}
-        .filter-btn--on{background:var(--acs);border-color:rgba(124,58,237,.3);color:#a78bfa;}
-        .notif-list{flex:1;overflow-y:auto;}
-        .notif-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bdr2);cursor:pointer;transition:.12s;}
-        .notif-item:hover{background:rgba(255,255,255,.02);}
-        .notif-item--unread{background:rgba(124,58,237,.04);}
-        .notif-icon{width:32px;height:32px;border-radius:9px;flex-shrink:0;background:var(--acs);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;color:#a78bfa;margin-top:1px;}
-        .notif-txt{font-size:13px;color:rgba(255,255,255,.5);margin:0;line-height:1.5;font-family:'DM Sans',sans-serif;}
-        .notif-txt--bold{font-weight:600;color:rgba(255,255,255,.88);}
-        .notif-dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:5px;}
+        /* ══ THREAD PANEL ═══════════════════════════════════════════════════ */
+        .thread-overlay{ position:absolute; inset:0; z-index:40; pointer-events:none; }
+        .thread-panel{
+          position:absolute; right:0; top:0; bottom:0; width:360px;
+          background:var(--bg2); border-left:1px solid var(--bdr);
+          display:flex; flex-direction:column; pointer-events:all;
+          animation:slideIn .22s ease; box-shadow:-20px 0 60px rgba(0,0,0,.5);
+        }
+        @media(max-width:767px){ .thread-panel{ width:100%; border-left:none; } }
+        .thread-hdr{ display:flex; align-items:center; gap:8px; padding:13px 16px; border-bottom:1px solid var(--bdr); flex-shrink:0; }
+        .thread-title{ font-size:13px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; flex:1; }
+        .panel-close{ background:rgba(255,255,255,.06); border:1px solid var(--bdr); border-radius:7px; width:26px; height:26px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t3); transition:.12s; }
+        .panel-close:hover{ color:var(--t1); background:rgba(255,255,255,.1); }
+        .thread-body{ flex:1; overflow-y:auto; padding:12px; }
+        .panel-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:32px 16px; text-align:center; color:var(--t3); font-size:12px; }
+        .thread-parent{ display:flex; gap:9px; padding:12px; background:rgba(255,255,255,.03); border-radius:10px; margin-bottom:10px; border-left:3px solid #7c3aed; }
 
-        .bnav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bdr);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
-        @media(max-width:767px){.bnav{display:flex;}}
-        .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .13s;}
-        .bnav-btn--on{color:#a78bfa;}
-        .bnav-icon{position:relative;}
-        .bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px var(--acg);}
+        .pin-item{ display:flex; gap:8px; padding:10px 12px; border-radius:9px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); margin-bottom:6px; }
+        .pin-txt{ font-size:12px; color:rgba(255,255,255,.7); margin:0 0 3px; line-height:1.4; }
+        .pin-meta{ font-size:10px; color:var(--t4); margin:0; }
 
-        .msgs-area::-webkit-scrollbar,.conv-list::-webkit-scrollbar,.notif-list::-webkit-scrollbar,.thread-body::-webkit-scrollbar,.search-results::-webkit-scrollbar{width:3px;}
-        .msgs-area::-webkit-scrollbar-thumb,.conv-list::-webkit-scrollbar-thumb,.notif-list::-webkit-scrollbar-thumb,.thread-body::-webkit-scrollbar-thumb,.search-results::-webkit-scrollbar-thumb{background:rgba(124,58,237,.2);border-radius:2px;}
-        .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);}
+        /* ══ ATTACHMENTS ════════════════════════════════════════════════════ */
+        .attach{ margin-bottom:6px; }
+        .attach-img{ border-radius:8px; max-width:100%; max-height:160px; object-fit:cover; display:block; }
+        .attach-file{ display:flex; align-items:center; gap:7px; padding:7px 10px; border-radius:8px; text-decoration:none; background:rgba(255,255,255,.1); font-size:12px; color:rgba(255,255,255,.85); }
+        .attach-file--me{ background:rgba(255,255,255,.15); }
+        .attach-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .file-prev{ display:flex; align-items:center; gap:7px; margin:0 14px 4px; background:rgba(124,58,237,.07); border:1px solid rgba(124,58,237,.2); border-radius:10px; padding:7px 12px; }
+        .fp-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:#94a3b8; }
+        .fp-size{ font-size:10px; color:var(--t3); flex-shrink:0; }
+
+        /* ══ CONTEXT MENU ═══════════════════════════════════════════════════ */
+        .ctx-menu{ background:rgba(10,13,22,.97); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.08); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.7); overflow:hidden; width:190px; animation:fadeIn .12s ease; }
+        .ctx-item{ display:flex; align-items:center; gap:9px; width:100%; padding:9px 14px; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.05); color:rgba(255,255,255,.7); font-size:12px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s; }
+        .ctx-item:last-child{ border-bottom:none; }
+        .ctx-item:hover{ background:rgba(255,255,255,.06); color:#fff; }
+        .ctx-item--danger{ color:#f87171; }
+        .ctx-item--danger:hover{ background:rgba(239,68,68,.12); }
+
+        /* ══ MOBILE SHEET ═══════════════════════════════════════════════════ */
+        .sheet-overlay{ position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); animation:fadeIn .18s ease; }
+        .sheet{ position:absolute; bottom:0; left:0; right:0; background:#0f1424; border-top:1px solid rgba(255,255,255,.08); border-radius:20px 20px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); animation:sheetUp .23s ease; }
+        .sheet-handle{ width:34px; height:4px; border-radius:2px; background:rgba(255,255,255,.15); margin:10px auto 0; }
+        .sheet-emoji-row{ display:flex; justify-content:center; gap:11px; padding:13px 16px; border-bottom:1px solid rgba(255,255,255,.05); }
+        .sheet-emoji{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:50%; width:40px; height:40px; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.12s; }
+        .sheet-emoji:hover{ background:rgba(255,255,255,.12); transform:scale(1.1); }
+        .sheet-preview{ padding:11px 20px 9px; border-bottom:1px solid rgba(255,255,255,.05); }
+        .sheet-preview-txt{ font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0; }
+        .sheet-btn{ display:flex; align-items:center; gap:14px; width:100%; padding:15px 22px; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.05); color:var(--t1); font-size:15px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; }
+        .sheet-btn--del{ color:#f87171; }
+        .sheet-cancel{ display:block; width:calc(100% - 24px); margin:8px 12px 4px; padding:13px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:12px; color:var(--t2); font-size:15px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }
+
+        /* ══ NOTIFICATIONS ══════════════════════════════════════════════════ */
+        .notif-panel{ display:flex; flex-direction:column; height:100%; }
+        .notif-hdr{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--bdr); background:rgba(11,15,28,.9); flex-shrink:0; flex-wrap:wrap; gap:7px; }
+        .notif-title{ font-size:14px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; }
+        .notif-badge{ background:var(--acs); color:#a78bfa; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; border:1px solid rgba(124,58,237,.3); }
+        .filter-btn{ background:transparent; border:1px solid transparent; border-radius:6px; padding:3px 9px; color:var(--t3); font-size:11px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s; display:flex; align-items:center; gap:3px; }
+        .filter-btn--on{ background:var(--acs); border-color:rgba(124,58,237,.3); color:#a78bfa; }
+        .notif-list{ flex:1; overflow-y:auto; }
+        .notif-item{ display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--bdr2); cursor:pointer; transition:.12s; }
+        .notif-item:hover{ background:rgba(255,255,255,.02); }
+        .notif-item--unread{ background:rgba(124,58,237,.04); }
+        .notif-icon{ width:32px; height:32px; border-radius:9px; flex-shrink:0; background:var(--acs); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; color:#a78bfa; margin-top:1px; }
+        .notif-txt{ font-size:13px; color:rgba(255,255,255,.5); margin:0; line-height:1.5; font-family:'DM Sans',sans-serif; }
+        .notif-txt--bold{ font-weight:600; color:rgba(255,255,255,.88); }
+        .notif-dot{ width:7px; height:7px; border-radius:50%; background:var(--ac); flex-shrink:0; margin-top:5px; }
+
+        /* ══ PRESENCE DOT ═══════════════════════════════════════════════════ */
+        .pres-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; border:2px solid var(--bg1); flex-shrink:0; }
+
+        /* ══ MOBILE BOTTOM NAV ══════════════════════════════════════════════ */
+        .bnav{
+          display:none; position:fixed; bottom:0; left:0; right:0;
+          background:rgba(11,15,28,.98); backdrop-filter:blur(20px);
+          border-top:1px solid var(--bdr); z-index:50;
+          padding-bottom:env(safe-area-inset-bottom,0);
+        }
+        @media(max-width:767px){ .bnav{ display:flex; } }
+        .bnav-btn{
+          flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+          gap:3px; padding:10px 0; background:transparent; border:none;
+          cursor:pointer; color:var(--t3); font-size:10px; font-weight:600;
+          font-family:'DM Sans',sans-serif; transition:color .13s;
+        }
+        .bnav-btn--on{ color:#a78bfa; }
+        .bnav-icon{ position:relative; }
+        .bnav-badge{ position:absolute; top:-4px; right:-6px; width:14px; height:14px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#6d28d9); font-size:8px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px var(--acg); }
+
+        /* ══ SCROLLBARS ═════════════════════════════════════════════════════ */
+        .msgs-area::-webkit-scrollbar,
+        .conv-list::-webkit-scrollbar,
+        .notif-list::-webkit-scrollbar,
+        .thread-body::-webkit-scrollbar { width:3px; }
+        .msgs-area::-webkit-scrollbar-thumb,
+        .conv-list::-webkit-scrollbar-thumb,
+        .notif-list::-webkit-scrollbar-thumb,
+        .thread-body::-webkit-scrollbar-thumb { background:rgba(124,58,237,.2); border-radius:2px; }
+
+        .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
       `}</style>
 
       <DashboardLayout>
         <div className="mp">
+          {/* ── TOPBAR ── */}
           <div className="topbar">
             <div className="topbar-l">
               <div className="topbar-icon"><MessageSquare style={{width:14,height:14,color:"#a78bfa"}}/></div>
@@ -1771,63 +2074,64 @@ export default function MessagesPage() {
               {onlineCount>0&&<div className="online-pill"><span className="online-dot"/>{onlineCount} online</div>}
             </div>
             <div className="topbar-r">
-              <button className="topbar-btn" title="Search messages" onClick={()=>setSearch(true)}>
-                <Search style={{width:13,height:13}}/>
-              </button>
               <button className="new-btn" onClick={()=>setNewOpen(true)}>
-                <Plus style={{width:12,height:12}}/><span>New Message</span>
+                <Plus style={{width:13,height:13}}/><span>New Message</span>
               </button>
             </div>
           </div>
 
-          {showSearch&&<SearchModal convs={conversations} onJump={id=>{pick(id);setSearch(false);}} onClose={()=>setSearch(false)}/>}
-
+          {/* ── BODY ── */}
           <div className="body">
-            <div className={cn("sidebar",mobile==="chat"&&"sidebar--hidden")}>
+            {/* Sidebar */}
+            <div className={cn("sidebar", mobile==="chat" && "sidebar--hidden")}>
               <div className="tabs">
                 {([
-                  {id:"chats" as const,  label:"Chats",  Icon:MessageSquare, badge:totalUnread},
-                  {id:"saved" as const,  label:"Saved",  Icon:Bookmark,     badge:0},
-                  {id:"notifs" as const, label:"Alerts", Icon:Bell,         badge:notifCount},
+                  {id:"chats"  as const, label:"Chats",   Icon:MessageSquare, badge:totalUnread},
+                  {id:"notifs" as const, label:"Alerts",  Icon:Bell,          badge:notifCount},
                 ]).map(t=>(
-                  <button key={t.id} className={cn("tab",tab===t.id&&"tab--on")} onClick={()=>setTab(t.id)}>
+                  <button key={t.id} className={cn("tab", tab===t.id&&"tab--on")} onClick={()=>setTab(t.id)}>
                     <t.Icon style={{width:12,height:12}}/>{t.label}
                     {t.badge>0&&<span className="tab-badge">{t.badge}</span>}
                   </button>
                 ))}
               </div>
-              {tab==="chats"&&<Sidebar convs={conversations} loading={conversationsLoading} sel={sel} onSel={pick} isOnline={isOnline}/>}
-              {tab==="saved"&&user&&<SavedView myId={user.id} onJump={pick}/>}
-              {tab==="notifs"&&<NotifsPanel/>}
+              {tab==="chats" && (
+                <Sidebar
+                  convs={conversations} loading={conversationsLoading}
+                  sel={sel} onSel={pick} isOnline={isOnline}
+                />
+              )}
+              {tab==="notifs" && <NotifsPanel/>}
             </div>
 
-            <div className={cn("right",mobile==="list"&&"right--hidden")}>
-              {tab==="saved"&&user
-                ? <SavedView myId={user.id} onJump={pick}/>
-                : sel
-                  ? <ChatThread convId={sel} convs={conversations} onBack={back} isOnline={isOnline} members={members} myId={user?.id??""}/>
-                  : (
-                    <div className="right-empty">
-                      <div className="re-icon"><MessageSquare style={{width:24,height:24,color:"#7c3aed"}}/></div>
-                      <h3>Select a conversation</h3>
-                      <p>Choose a thread from the sidebar or start a new one with your team.</p>
-                      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-                        <button className="re-btn" onClick={()=>setNewOpen(true)}><Plus style={{width:13,height:13}}/>New Message</button>
-                        <button className="re-btn re-btn--ghost" onClick={()=>setSearch(true)}><Search style={{width:13,height:13}}/>Search</button>
-                      </div>
-                    </div>
-                  )}
+            {/* Right panel */}
+            <div className={cn("right", mobile==="list" && "right--hidden")}>
+              {sel ? (
+                <ChatThread
+                  convId={sel} convs={conversations} onBack={back}
+                  isOnline={isOnline} members={members} myId={user?.id??""}
+                />
+              ) : (
+                <div className="right-empty">
+                  <div className="re-icon"><MessageSquare style={{width:24,height:24,color:"#7c3aed"}}/></div>
+                  <h3>Select a conversation</h3>
+                  <p>Choose a thread from the sidebar or start a new one with your team.</p>
+                  <button className="re-btn" onClick={()=>setNewOpen(true)}>
+                    <Plus style={{width:13,height:13}}/>New Message
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* ── MOBILE BOTTOM NAV ── */}
           <nav className="bnav">
             {([
-              {id:"chats" as const,  label:"Chats",  Icon:MessageSquare, badge:totalUnread},
-              {id:"saved" as const,  label:"Saved",  Icon:Bookmark,     badge:0},
-              {id:"notifs" as const, label:"Alerts", Icon:Bell,         badge:notifCount},
+              {id:"chats"  as const, label:"Chats",  Icon:MessageSquare, badge:totalUnread},
+              {id:"notifs" as const, label:"Alerts", Icon:Bell,          badge:notifCount},
             ]).map(t=>(
-              <button key={t.id} className={cn("bnav-btn",tab===t.id&&mobile==="list"&&"bnav-btn--on")}
-                onClick={()=>{setTab(t.id);setMobile("list");}}>
+              <button key={t.id} className={cn("bnav-btn", tab===t.id&&mobile==="list"&&"bnav-btn--on")}
+                onClick={()=>{ setTab(t.id); setMobile("list"); }}>
                 <div className="bnav-icon">
                   <t.Icon style={{width:20,height:20}}/>
                   {t.badge>0&&<span className="bnav-badge">{t.badge>9?"9+":t.badge}</span>}
@@ -1835,21 +2139,20 @@ export default function MessagesPage() {
                 {t.label}
               </button>
             ))}
-            <button className="bnav-btn" onClick={()=>setSearch(true)}>
-              <div className="bnav-icon"><Search style={{width:20,height:20}}/></div>Search
-            </button>
             <button className="bnav-btn" onClick={()=>setNewOpen(true)}>
               <div className="bnav-icon"><Plus style={{width:20,height:20}}/></div>New
             </button>
           </nav>
         </div>
 
-        {team&&(
-          <NewConvDialog open={newOpen} onClose={()=>setNewOpen(false)}
+        {team && (
+          <NewConvDialog
+            open={newOpen} onClose={()=>setNewOpen(false)}
             members={members} myId={user?.id??""} teamId={team.id}
             convs={conversations} refetch={refetchConversations}
             isOnline={isOnline}
-            onCreate={id=>{setNewOpen(false);setTab("chats");pick(id);}}/>
+            onCreate={id=>{ setNewOpen(false); setTab("chats"); pick(id); }}
+          />
         )}
       </DashboardLayout>
     </>
