@@ -1,20 +1,20 @@
 /**
- * useAudioCapture.ts — v2
+ * useAudioCapture.ts — v3
  *
- * Improved capture fallback chain:
- *   1. getDisplayMedia (desktop only — captures tab audio incl. both sides)
- *   2. Loopback / Stereo Mix device (Windows — captures all system audio)
- *   3. getUserMedia mic (universal fallback — captures rep only)
+ * Real dual-stream audio capture: merges BOTH sides of the conversation.
  *
- * Mobile behavior:
- *   Skips display media entirely.
- *   Tries loopback, then falls back to mic.
+ * Why the old approach failed:
+ *   getDisplayMedia alone requires the user to tick "Share tab audio" in Chrome.
+ *   If they skip that checkbox, audio tracks = 0, and we fell through to mic-only.
+ *   The fix: ALWAYS also request the mic and merge both streams with AudioContext.
+ *   Even if the display stream has no audio, we have the mic. Even if mic is denied,
+ *   we have the display stream. When both work, AudioContext merges them.
  *
- * Bot architecture note:
- *   When a bot-based capture backend is available, startCapture() should
- *   first attempt to trigger the bot via the join-meeting-bot edge function.
- *   The current implementation is the device-side fallback for when the bot
- *   is unavailable or the meeting hasn't started yet.
+ * Capture paths (in priority order):
+ *   DUAL     — getDisplayMedia (tab/speaker) + getUserMedia (mic) merged → full both-sides
+ *   TAB      — getDisplayMedia audio only (mic denied)
+ *   LOOPBACK — Windows Stereo Mix / VB-Cable / BlackHole → full both-sides
+ *   MIC      — getUserMedia only → rep voice only (last resort, shows warning)
  */
 
 import { useRef, useState, useCallback, useMemo } from "react";
@@ -23,12 +23,19 @@ import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface UseAudioCaptureOptions {
+export interface UseAudioCaptureOptions {
   callId: string | null;
   onChunkProcessed?: (result: any) => void;
 }
 
-type CaptureSource = "tab" | "loopback" | "mic" | null;
+export type CaptureSource = "dual" | "tab" | "loopback" | "mic" | null;
+
+export type CaptureStep =
+  | "idle"
+  | "requesting_display"
+  | "requesting_mic"
+  | "active"
+  | "error";
 
 // ─── Feature detection ────────────────────────────────────────────────────────
 
@@ -73,19 +80,44 @@ function pickWebmMimeType(): string | null {
   return null;
 }
 
-// ─── Loopback capture ─────────────────────────────────────────────────────────
+// ─── Audio stream merger ──────────────────────────────────────────────────────
 
 /**
- * Attempts to capture a Windows "Stereo Mix" or virtual loopback device.
- * These devices capture all system audio output (both sides of a call).
- * Returns null if no loopback device is found or permission is denied.
+ * Merges display audio (prospect from speakers) and mic audio (rep voice)
+ * into a single stream using Web Audio API. Both sides captured in one recording.
  */
+function mergeAudioStreams(
+  displayStream: MediaStream,
+  micStream: MediaStream,
+): { merged: MediaStream; ctx: AudioContext } {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const dest = ctx.createMediaStreamDestination();
+
+  if (displayStream.getAudioTracks().length > 0) {
+    const displaySource = ctx.createMediaStreamSource(displayStream);
+    const displayGain = ctx.createGain();
+    displayGain.gain.value = 1.0;
+    displaySource.connect(displayGain);
+    displayGain.connect(dest);
+  }
+
+  if (micStream.getAudioTracks().length > 0) {
+    const micSource = ctx.createMediaStreamSource(micStream);
+    const micGain = ctx.createGain();
+    micGain.gain.value = 1.2; // Slight mic boost to balance with speaker output
+    micSource.connect(micGain);
+    micGain.connect(dest);
+  }
+
+  return { merged: dest.stream, ctx };
+}
+
+// ─── Loopback device detection ────────────────────────────────────────────────
+
 async function tryLoopbackCapture(): Promise<MediaStream | null> {
   if (!hasGetUserMedia()) return null;
-
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-
     const loopbackDevice = devices.find(
       (d) =>
         d.kind === "audioinput" &&
@@ -93,20 +125,16 @@ async function tryLoopbackCapture(): Promise<MediaStream | null> {
           d.label,
         ),
     );
-
     if (!loopbackDevice) return null;
-
-    const stream = await navigator.mediaDevices.getUserMedia({
+    return await navigator.mediaDevices.getUserMedia({
       audio: {
-        deviceId:        { exact: loopbackDevice.deviceId },
-        echoCancellation: false, // must be off for loopback
+        deviceId: { exact: loopbackDevice.deviceId },
+        echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl:  false,
+        autoGainControl: false,
       },
       video: false,
     });
-
-    return stream;
   } catch {
     return null;
   }
@@ -121,134 +149,107 @@ export function useAudioCapture({
   const [isCapturing, setIsCapturing]     = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [captureSource, setCaptureSource] = useState<CaptureSource>(null);
+  const [captureStep, setCaptureStep]     = useState<CaptureStep>("idle");
 
-  const streamRef   = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunkIndex  = useRef(0);
-  const intervalRef = useRef<number>();
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  const micStreamRef     = useRef<MediaStream | null>(null);
+  const mergedStreamRef  = useRef<MediaStream | null>(null);
+  const audioCtxRef      = useRef<AudioContext | null>(null);
+  const recorderRef      = useRef<MediaRecorder | null>(null);
+  const chunkIndex       = useRef(0);
+  const intervalRef      = useRef<number>();
 
-  // ── Capabilities ────────────────────────────────────────────────────────
-  const capabilities = useMemo(() => {
-    const mobile      = isMobileDevice();
-    const tabAudio    = hasGetDisplayMedia();
-    const micAudio    = hasGetUserMedia();
-    const mrSupported = hasMediaRecorder();
-    const webmSupport = !!pickWebmMimeType();
-
-    return {
-      isMobile:      mobile,
-      tabAudio,
-      micAudio,
-      mediaRecorder: mrSupported,
-      webmRecorder:  webmSupport,
-      // Loopback availability can only be determined after getUserMedia permission
-      loopback:      micAudio,
-    };
-  }, []);
+  const capabilities = useMemo(() => ({
+    isMobile:      isMobileDevice(),
+    tabAudio:      hasGetDisplayMedia(),
+    micAudio:      hasGetUserMedia(),
+    mediaRecorder: hasMediaRecorder(),
+    webmRecorder:  !!pickWebmMimeType(),
+  }), []);
 
   // ── Stop capture ──────────────────────────────────────────────────────────
   const stopCapture = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-
     try {
       if (recorderRef.current?.state === "recording") {
         recorderRef.current.stop();
       }
-    } catch (e) {
-      console.warn("Recorder stop error:", e);
-    }
-
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current   = null;
+    } catch {}
+    displayStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mergedStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    displayStreamRef.current = null;
+    micStreamRef.current = null;
+    mergedStreamRef.current = null;
     recorderRef.current = null;
-
     setIsCapturing(false);
     setCaptureSource(null);
+    setCaptureStep("idle");
   }, []);
 
-  // ── Process audio chunks ──────────────────────────────────────────────────
+  // ── Process chunks → transcribe-audio edge function ───────────────────────
   const processChunks = useCallback(
     async (chunks: Blob[]) => {
       if (!callId || chunks.length === 0) return;
-
-      const blob        = new Blob(chunks, { type: "audio/webm" });
+      const blob = new Blob(chunks, { type: "audio/webm" });
       const arrayBuffer = await blob.arrayBuffer();
-      const uint8       = new Uint8Array(arrayBuffer);
-
+      const uint8 = new Uint8Array(arrayBuffer);
       let binary = "";
       for (let i = 0; i < uint8.length; i++) {
         binary += String.fromCharCode(uint8[i]);
       }
       const base64 = btoa(binary);
-
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "transcribe-audio",
-          {
-            body: {
-              call_id:      callId,
-              audio_base64: base64,
-              chunk_index:  chunkIndex.current++,
-            },
+        const { data, error } = await supabase.functions.invoke("transcribe-audio", {
+          body: {
+            call_id: callId,
+            audio_base64: base64,
+            chunk_index: chunkIndex.current++,
           },
-        );
-
+        });
         if (error) {
           console.error("Transcription error:", error);
         } else {
           onChunkProcessed?.(data);
         }
       } catch (err) {
-        console.error("Failed to process audio chunk:", err);
+        console.error("Failed to process chunk:", err);
       }
     },
     [callId, onChunkProcessed],
   );
 
-  // ── Start recorder from a stream ─────────────────────────────────────────
+  // ── Start recorder ────────────────────────────────────────────────────────
   const startRecorder = useCallback(
     (stream: MediaStream, source: Exclude<CaptureSource, null>) => {
       const mimeType = pickWebmMimeType()!;
-      const audioOnlyStream = new MediaStream(stream.getAudioTracks());
-      const recorder        = new MediaRecorder(audioOnlyStream, { mimeType });
+      const audioOnly = new MediaStream(stream.getAudioTracks());
+      const recorder = new MediaRecorder(audioOnly, { mimeType });
 
       recorderRef.current = recorder;
-      chunkIndex.current  = 0;
+      chunkIndex.current = 0;
       setCaptureSource(source);
+      setCaptureStep("active");
 
       const chunks: Blob[] = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        if (chunks.length > 0) {
-          processChunks(chunks.splice(0));
-        }
-      };
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => { if (chunks.length > 0) processChunks(chunks.splice(0)); };
 
       recorder.start();
       setIsCapturing(true);
 
-      // Rotate every 10 seconds
+      // Rotate chunks every 10s for real-time transcription
       intervalRef.current = window.setInterval(() => {
         const r = recorderRef.current;
-        if (!r) return;
-        if (r.state === "recording") {
-          try {
-            r.stop();
-            r.start();
-          } catch (e) {
-            console.warn("Recorder rotation error:", e);
-          }
-        }
+        if (!r || r.state !== "recording") return;
+        try { r.stop(); r.start(); } catch {}
       }, 10_000);
 
-      // Handle stream ending (share stopped, mic unplugged, etc.)
       stream.getAudioTracks()[0]?.addEventListener("ended", () => {
         stopCapture();
-        toast.info("Audio stream ended — capture stopped.");
+        toast.info("Audio stream ended.");
       });
     },
     [processChunks, stopCapture],
@@ -256,134 +257,148 @@ export function useAudioCapture({
 
   // ── Main start capture ────────────────────────────────────────────────────
   const startCapture = useCallback(async () => {
-    if (!callId) return;
+    if (!callId) { toast.error("No active call."); return; }
     setError(null);
 
-    if (!capabilities.mediaRecorder) {
-      const msg =
-        "Audio recording is not supported in this browser. Use Chrome or Edge on desktop.";
-      setError(msg);
-      toast.error(msg);
-      return;
-    }
-
-    if (!pickWebmMimeType()) {
-      const msg =
-        "This browser cannot record audio in WebM/Opus format. Use Chrome or Edge.";
-      setError(msg);
-      toast.error(msg);
-      return;
+    if (!capabilities.mediaRecorder || !pickWebmMimeType()) {
+      const msg = "Audio recording requires Chrome or Edge on desktop.";
+      setError(msg); toast.error(msg); return;
     }
 
     const mobile = capabilities.isMobile;
 
-    // ── Attempt 1: Tab / Display audio (desktop only) ─────────────────
+    // ── PATH A: Dual stream (desktop — captures both sides) ────────────────
     if (!mobile && capabilities.tabAudio) {
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,  // required by most browsers to show the picker
-          audio: true,
-        });
+      setCaptureStep("requesting_display");
+      let displayStream: MediaStream | null = null;
 
-        // Check audio tracks actually exist (user might have shared screen without audio)
-        if (stream.getAudioTracks().length === 0) {
-          stream.getTracks().forEach((t) => t.stop());
-          toast.warning(
-            "No audio was captured. Please tick 'Share tab audio' when sharing your screen.",
-          );
-          // Fall through to loopback / mic
-        } else {
-          streamRef.current = stream;
-          startRecorder(stream, "tab");
-          return; // ✅ success
-        }
+      try {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          } as any,
+        });
       } catch (err: any) {
         if (err?.name === "NotAllowedError") {
-          // User cancelled the picker — don't fall through, respect their choice
-          toast.info("Tab audio sharing was cancelled.");
+          setCaptureStep("idle");
+          toast.info("Screen sharing cancelled. Try again when ready.");
           return;
         }
-        // Other errors (NotSupportedError, etc.) — fall through to next method
-        console.warn("displayMedia failed, trying loopback:", err.name);
+        console.warn("getDisplayMedia failed:", err?.name);
       }
-    }
 
-    // ── Attempt 2: Loopback / Stereo Mix (captures both sides on Windows) ─
-    try {
-      const loopbackStream = await tryLoopbackCapture();
-      if (loopbackStream) {
-        streamRef.current = loopbackStream;
-        startRecorder(loopbackStream, "loopback");
-        toast.success("Capturing system audio via Stereo Mix.");
-        return; // ✅ success
-      }
-    } catch {
-      // silently continue
-    }
-
-    // ── Attempt 3: Microphone (universal fallback) ────────────────────
-    if (capabilities.micAudio) {
+      // Always request mic too so we capture the rep's voice
+      setCaptureStep("requesting_mic");
+      let micStream: MediaStream | null = null;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression:  true,
-            autoGainControl:   true,
-          },
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: false,
         });
+      } catch (err: any) {
+        console.warn("getUserMedia mic failed:", err?.name);
+      }
 
-        streamRef.current = stream;
-        startRecorder(stream, "mic");
+      const hasDisplayAudio = displayStream && displayStream.getAudioTracks().length > 0;
+      const hasMic = micStream && micStream.getAudioTracks().length > 0;
 
-        // Inform the user they're only capturing their own audio
-        if (mobile) {
-          toast.info("Capturing microphone audio. Only your voice will be transcribed.");
-        } else {
-          toast.warning(
-            "Tab audio unavailable — capturing microphone only. " +
-            "For two-sided transcription, use Chrome and share your tab with audio.",
-          );
-        }
-        return; // ✅ success (partial)
+      if (hasDisplayAudio && hasMic) {
+        // ✅ BEST: Both sides — merge and record
+        displayStreamRef.current = displayStream!;
+        micStreamRef.current = micStream!;
+        const { merged, ctx } = mergeAudioStreams(displayStream!, micStream!);
+        mergedStreamRef.current = merged;
+        audioCtxRef.current = ctx;
+        startRecorder(merged, "dual");
+        toast.success("🎙️ Capturing both sides — full transcription active.");
+        return;
+      }
+
+      if (hasDisplayAudio && !hasMic) {
+        displayStreamRef.current = displayStream!;
+        startRecorder(displayStream!, "tab");
+        toast.warning("Capturing meeting audio only (mic denied). Your voice won't be transcribed.");
+        return;
+      }
+
+      if (!hasDisplayAudio && hasMic) {
+        // Display shared but no audio ticked — mic-only with helpful message
+        displayStream?.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = micStream!;
+        startRecorder(micStream!, "mic");
+        toast.warning(
+          "Only your microphone captured. To capture your prospect too: share the tab with your meeting and tick '✓ Share tab audio' in Chrome's prompt.",
+          { duration: 10_000 }
+        );
+        return;
+      }
+
+      // Both failed — fall through
+      displayStream?.getTracks().forEach((t) => t.stop());
+      micStream?.getTracks().forEach((t) => t.stop());
+    }
+
+    // ── PATH B: Loopback (Windows Stereo Mix) ──────────────────────────────
+    setCaptureStep("requesting_mic");
+    try {
+      const loopback = await tryLoopbackCapture();
+      if (loopback) {
+        mergedStreamRef.current = loopback;
+        startRecorder(loopback, "loopback");
+        toast.success("Capturing system audio — both sides transcribed.");
+        return;
+      }
+    } catch {}
+
+    // ── PATH C: Mic only (last resort) ────────────────────────────────────
+    if (capabilities.micAudio) {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false,
+        });
+        micStreamRef.current = micStream;
+        startRecorder(micStream, "mic");
+        toast.warning(
+          mobile
+            ? "Capturing your microphone only."
+            : "Microphone only captured. For both sides: use Chrome, share your meeting tab, and tick 'Share tab audio'.",
+          { duration: 8_000 }
+        );
+        return;
       } catch (err: any) {
         if (err?.name === "NotAllowedError") {
-          const msg = "Microphone access denied. Please allow microphone access in your browser settings.";
-          setError(msg);
-          toast.error(msg);
-          return;
+          const msg = "Microphone access denied. Please allow it in browser settings.";
+          setError(msg); setCaptureStep("error"); toast.error(msg); return;
         }
-        const msg = `Microphone capture failed: ${err?.message ?? "unknown error"}`;
-        setError(msg);
-        toast.error(msg);
-        return;
       }
     }
 
-    // ── All methods failed ─────────────────────────────────────────────
-    const msg =
-      "Audio capture is not available on this device or browser. " +
-      "Please use Chrome or Edge on desktop for the best experience.";
-    setError(msg);
-    toast.error(msg);
+    const msg = "Audio capture unavailable. Use Chrome or Edge on desktop.";
+    setError(msg); setCaptureStep("error"); toast.error(msg);
   }, [callId, capabilities, startRecorder, stopCapture]);
 
-  // ── Friendly labels for UI ────────────────────────────────────────────────
-  const captureButtonLabel = capabilities.isMobile
-    ? capabilities.micAudio
-      ? "Start Audio Capture"
-      : "Audio Unsupported"
-    : capabilities.tabAudio
-      ? "Share Tab Audio"
-      : capabilities.micAudio
-        ? "Share Mic Audio"
-        : "Audio Unsupported";
+  // ── Labels ───────────────────────────────────────────────────────────────
+  const captureButtonLabel =
+    captureStep === "requesting_display" ? "Select your tab…" :
+    captureStep === "requesting_mic"     ? "Requesting mic…" :
+    capabilities.isMobile
+      ? (capabilities.micAudio ? "Start Audio Capture" : "Audio Unsupported")
+      : capabilities.tabAudio
+        ? "Capture Both Sides"
+        : (capabilities.micAudio ? "Capture Mic Audio" : "Audio Unsupported");
 
   const captureSourceLabel =
-    captureSource === "tab"      ? "Tab audio (both sides)"
-    : captureSource === "loopback" ? "System audio (both sides)"
-    : captureSource === "mic"      ? "Microphone only"
+    captureSource === "dual"      ? "Both sides captured (full transcription)"
+    : captureSource === "tab"     ? "Meeting audio only (mic denied)"
+    : captureSource === "loopback"? "System audio — both sides"
+    : captureSource === "mic"     ? "Your microphone only"
     : null;
+
+  const isFullCapture = captureSource === "dual" || captureSource === "loopback";
 
   return {
     isCapturing,
@@ -391,6 +406,8 @@ export function useAudioCapture({
     captureSource,
     captureSourceLabel,
     captureButtonLabel,
+    captureStep,
+    isFullCapture,
     capabilities,
     startCapture,
     stopCapture,
