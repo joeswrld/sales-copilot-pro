@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
+import { useTeam } from "@/hooks/useTeam";
+import { useUserStatus } from "@/hooks/useUserStatus";
 import { toast } from "sonner";
 
 const MEETING_TYPE_LABELS: Record<string, string> = {
@@ -30,7 +32,15 @@ const DISCOVERY_REMINDERS = [
 export default function LiveMeeting() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } = useLiveCall();
+
+  // ── Status wiring ──────────────────────────────────────────────────────────
+  const { team } = useTeam();
+  const { setStatus } = useUserStatus(team?.id);
+
+  const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } = useLiveCall({
+    onCallEnded: () => setStatus("available"),
+  });
+
   const [elapsed, setElapsed] = useState(0);
   const [meetPopupOpen, setMeetPopupOpen] = useState(false);
   const intervalRef = useRef<number>();
@@ -55,7 +65,6 @@ export default function LiveMeeting() {
   const canStartCapture = capabilities.webmRecorder && (capabilities.tabAudio || capabilities.micAudio);
   const captureButtonLabel = capabilities.tabAudio ? "Share Tab Audio" : capabilities.micAudio ? "Share Mic Audio" : "Audio Unsupported";
 
-  // Compute live talk ratio from transcripts
   const talkRatio = useMemo(() => {
     if (transcripts.length === 0) return { rep: 0, prospect: 0 };
     const repWords = transcripts
@@ -72,15 +81,12 @@ export default function LiveMeeting() {
     };
   }, [transcripts]);
 
-  // Count questions asked
   const questionsCount = useMemo(() => {
     return transcripts.filter((t) => t.text.includes("?")).length;
   }, [transcripts]);
 
-  // Meeting type
   const meetingType = (liveCall as any)?.meeting_type as string | undefined;
 
-  // Timer
   useEffect(() => {
     if (isLive && liveCall?.start_time) {
       const start = new Date(liveCall.start_time).getTime();
@@ -93,12 +99,10 @@ export default function LiveMeeting() {
     }
   }, [isLive, liveCall?.start_time]);
 
-  // Auto-scroll transcript
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts.length]);
 
-  // Redirect if no live call
   useEffect(() => {
     if (!isLoading && !isLive) {
       navigate("/dashboard/live");
@@ -302,14 +306,8 @@ export default function LiveMeeting() {
                   <span className="text-accent">Prospect ({talkRatio.prospect}%)</span>
                 </div>
                 <div className="h-2 rounded-full bg-muted flex overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-500"
-                    style={{ width: `${talkRatio.rep}%` }}
-                  />
-                  <div
-                    className="h-full bg-accent transition-all duration-500"
-                    style={{ width: `${talkRatio.prospect}%` }}
-                  />
+                  <div className="h-full bg-primary transition-all duration-500" style={{ width: `${talkRatio.rep}%` }} />
+                  <div className="h-full bg-accent transition-all duration-500" style={{ width: `${talkRatio.prospect}%` }} />
                 </div>
                 {talkRatio.rep > 65 && transcripts.length > 5 && (
                   <p className="text-xs text-warning mt-1">⚠️ You're speaking more than 65%. Let the prospect talk more.</p>
@@ -324,10 +322,7 @@ export default function LiveMeeting() {
               </h3>
               <div className="text-3xl font-bold font-display text-primary">{engagementScore}%</div>
               <div className="h-1.5 rounded-full bg-muted mt-2">
-                <div
-                  className="h-1.5 rounded-full bg-primary transition-all duration-1000"
-                  style={{ width: `${engagementScore}%` }}
-                />
+                <div className="h-1.5 rounded-full bg-primary transition-all duration-1000" style={{ width: `${engagementScore}%` }} />
               </div>
             </div>
 
