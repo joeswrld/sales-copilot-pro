@@ -20,6 +20,16 @@ import { MeetingUsageCard } from "@/components/MeetingUsageCard";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useUserStatus } from "@/hooks/useUserStatus";
+
+// Inside the component:
+const { team } = useTeam();
+const { setStatus } = useUserStatus(team?.id);
+
+const { startCall, endCall, ... } = useLiveCall({
+  onCallStarted: () => setStatus("on_call"),
+  onCallEnded:   () => setStatus("available"),
+});
 
 function detectProvider(url: string): string | null {
   if (/zoom\.(us|com)/i.test(url)) return "zoom";
