@@ -1,12 +1,21 @@
 /**
- * LiveCall.tsx — Fixsense Live Call Hub v2
+ * LiveCall.tsx — v3
  *
- * New in v2:
- *  1. Automated Google Meet link generation via create-google-meet edge function
- *  2. Pre-call prep panel (past calls, open action items, talking points)
- *  3. Mobile-responsive layout with simplified "Create & Send Invite" flow
- *  4. Scheduled time + duration stored on the calls row
- *  5. Status wiring: on_call ↔ available via DB-backed useUserStatus
+ * Key changes from v2:
+ *  1. TWO-STEP MEETING CREATION WIZARD
+ *     Step 1 — Fill details → generate Meet link
+ *     Step 2 — See the link, copy it, share with prospect → "Start Meeting Now"
+ *     The call row + Recall bot are NOT created until the user clicks "Start Meeting Now"
+ *
+ *  2. RELIABLE LINK GENERATION
+ *     Uses create-google-meet v2 which tries Calendar API first, then Meet Spaces API.
+ *     If BOTH fail (not connected at all), shows manual link entry in Step 2 instead
+ *     of a dead-end error toast.
+ *
+ *  3. BOT PRIVACY NOTICE
+ *     Step 2 clearly explains the Recall bot joins silently — prospect won't see it.
+ *
+ *  4. Mobile: same two-step flow in a full-screen sheet.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -15,32 +24,33 @@ import { useNavigate, Link } from "react-router-dom";
 import {
   Mic, Link2, CalendarPlus, Video, Loader2, Clock, Trash2,
   ExternalLink, AlertTriangle, Zap, TrendingUp, Calendar,
-  Sparkles, Target, ChevronDown, ChevronUp, CheckCircle,
-  Users, BarChart3, BookOpen, ArrowRight, Plus, Phone,
+  Sparkles, ChevronDown, ChevronUp, CheckCircle, CheckCircle2,
+  Users, BarChart3, BookOpen, Plus, Phone, Copy, Share2,
+  ArrowLeft, Bot, Shield,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button }   from "@/components/ui/button";
+import { Input }    from "@/components/ui/input";
+import { Label }    from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useLiveCall } from "@/hooks/useLiveCall";
-import { useScheduledCalls } from "@/hooks/useScheduledCalls";
-import { useIntegrations } from "@/hooks/useSettings";
-import { useMeetingUsage } from "@/hooks/useMeetingUsage";
-import { useTeam } from "@/hooks/useTeam";
-import { useUserStatus } from "@/hooks/useUserStatus";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { useCallPrep } from "@/hooks/useCallPrep";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { format, formatDistanceToNow } from "date-fns";
-import { cn } from "@/lib/utils";
+import { useLiveCall }        from "@/hooks/useLiveCall";
+import { useScheduledCalls }  from "@/hooks/useScheduledCalls";
+import { useIntegrations }    from "@/hooks/useSettings";
+import { useMeetingUsage }    from "@/hooks/useMeetingUsage";
+import { useTeam }            from "@/hooks/useTeam";
+import { useUserStatus }      from "@/hooks/useUserStatus";
+import { useIsMobile }        from "@/hooks/use-mobile";
+import { useCallPrep }        from "@/hooks/useCallPrep";
+import { supabase }           from "@/integrations/supabase/client";
+import { toast }              from "sonner";
+import { format }             from "date-fns";
+import { cn }                 from "@/lib/utils";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-function detectProvider(url: string): string | null {
+function detectProvider(url: string): "zoom" | "google_meet" | null {
   if (/zoom\.(us|com)/i.test(url)) return "zoom";
   if (/meet\.google\.com/i.test(url)) return "google_meet";
   return null;
@@ -49,7 +59,7 @@ function detectProvider(url: string): string | null {
 const MEETING_TYPES = [
   { value: "discovery",   label: "Discovery Call",  emoji: "🔍" },
   { value: "demo",        label: "Product Demo",     emoji: "🎯" },
-  { value: "follow_up",  label: "Follow-up",         emoji: "🔄" },
+  { value: "follow_up",   label: "Follow-up",        emoji: "🔄" },
   { value: "negotiation", label: "Negotiation",      emoji: "🤝" },
   { value: "other",       label: "Other",            emoji: "📋" },
 ];
@@ -62,10 +72,10 @@ const DURATIONS = [
   { value: "120", label: "2 hours" },
 ];
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Plan limit wall ──────────────────────────────────────────────────────────
 
 function MeetingLimitReached({ planName, used, limit }: { planName: string; used: number; limit: number }) {
-  const navigate = useNavigate();
+  const nav = useNavigate();
   return (
     <div className="flex items-center justify-center py-10 px-4">
       <div className="max-w-md w-full glass rounded-2xl p-8 text-center border border-destructive/20">
@@ -74,13 +84,12 @@ function MeetingLimitReached({ planName, used, limit }: { planName: string; used
         </div>
         <h2 className="text-xl font-bold font-display mb-2">Meeting Limit Reached</h2>
         <p className="text-sm text-muted-foreground mb-1">
-          You've used all <strong>{limit}</strong> meetings this month on the{" "}
-          <strong>{planName}</strong> plan.
+          You've used all <strong>{limit}</strong> meetings this month on the <strong>{planName}</strong> plan.
         </p>
         <div className="h-2 w-full rounded-full bg-muted overflow-hidden my-4">
           <div className="h-2 bg-destructive rounded-full w-full" />
         </div>
-        <Button onClick={() => navigate("/dashboard/billing")} className="w-full gap-2" size="lg">
+        <Button onClick={() => nav("/dashboard/billing")} className="w-full gap-2" size="lg">
           <Zap className="w-4 h-4" /> Upgrade Plan
         </Button>
       </div>
@@ -88,262 +97,459 @@ function MeetingLimitReached({ planName, used, limit }: { planName: string; used
   );
 }
 
-// ── Pre-call prep panel ───────────────────────────────────────────────────────
-function PreCallPanel({
-  participants,
-  meetingType,
-}: {
-  participants: string[];
-  meetingType: string;
-}) {
+// ─── Pre-call prep ────────────────────────────────────────────────────────────
+
+function PreCallPanel({ participants, meetingType }: { participants: string[]; meetingType: string }) {
   const { prep, isLoading } = useCallPrep(participants, meetingType);
-  const [expanded, setExpanded] = useState(true);
+  const [open, setOpen] = useState(true);
 
-  if (isLoading) {
-    return (
-      <div className="glass rounded-xl p-4 flex items-center gap-3 text-sm text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-        Loading call prep…
-      </div>
-    );
-  }
-
+  if (isLoading) return (
+    <div className="glass rounded-xl p-4 flex items-center gap-3 text-sm text-muted-foreground">
+      <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading call prep…
+    </div>
+  );
   if (!prep) return null;
-
-  const typeEmoji = MEETING_TYPES.find(t => t.value === meetingType)?.emoji ?? "📋";
 
   return (
     <div className="glass rounded-xl overflow-hidden border border-border">
-      {/* Header */}
       <button
         className="w-full flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors"
-        onClick={() => setExpanded(p => !p)}
+        onClick={() => setOpen(p => !p)}
       >
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
           <span className="font-display font-semibold text-sm">Call Prep</span>
-          {prep.participantContext && (
-            <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
-              {prep.participantContext}
-            </span>
+          {prep.isFirstContact && (
+            <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full">First contact</span>
           )}
         </div>
-        {expanded
-          ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
-          : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
-
-      {expanded && (
+      {open && (
         <div className="px-4 pb-4 space-y-4">
-          {/* Past calls */}
           {prep.pastCalls.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Previous Calls
-              </p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Previous Calls</p>
               <div className="space-y-1">
                 {prep.pastCalls.slice(0, 3).map(c => (
-                  <Link
-                    key={c.id}
-                    to={`/dashboard/calls/${c.id}`}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/40 transition-colors group"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
-                      <span className="text-sm truncate">{c.name}</span>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0 ml-2">
-                      {c.sentiment_score != null && (
-                        <span className={cn(
-                          "text-xs font-medium",
-                          c.sentiment_score >= 70 ? "text-green-500"
-                            : c.sentiment_score >= 40 ? "text-yellow-500"
-                            : "text-red-400"
-                        )}>
-                          {c.sentiment_score}%
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(c.date), { addSuffix: true })}
-                      </span>
-                      <ArrowRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+                  <Link key={c.id} to={`/dashboard/calls/${c.id}`}
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/40 transition-colors">
+                    <span className="text-sm truncate">{c.name}</span>
+                    {c.sentiment_score != null && (
+                      <span className={cn("text-xs font-medium shrink-0 ml-2",
+                        c.sentiment_score >= 70 ? "text-green-500" : c.sentiment_score >= 40 ? "text-yellow-500" : "text-red-500"
+                      )}>{c.sentiment_score}%</span>
+                    )}
                   </Link>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Open action items from last call */}
-          {(prep.latestSummary?.next_steps?.length ?? 0) > 0 && (
+          {prep.talkingPoints.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Open Action Items from Last Call
-              </p>
-              <div className="space-y-1">
-                {prep.latestSummary!.next_steps!.slice(0, 4).map((step, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground p-1">
-                    <div className="w-4 h-4 rounded border border-accent/40 shrink-0 mt-0.5" />
-                    {step}
-                  </div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Suggested Talking Points</p>
+              <ul className="space-y-1.5">
+                {prep.talkingPoints.map((pt, i) => (
+                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">{i + 1}</span>
+                    {pt}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
-
-          {/* Talking points */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-              {typeEmoji} Talking Points
-            </p>
-            <div className="space-y-1">
-              {prep.talkingPoints.map((point, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground p-1">
-                  <Target className="w-3 h-3 text-primary shrink-0 mt-1" />
-                  {point}
-                </div>
-              ))}
+          {prep.openActionItems.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Open Action Items</p>
+              <ul className="space-y-1">
+                {prep.openActionItems.map((item, i) => (
+                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent/60 shrink-0 mt-1.5" />{item}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Two-step meeting creation wizard ────────────────────────────────────────
+
+interface WizardState {
+  step: "form" | "ready";
+  // Result of create-google-meet
+  meetLink:        string | null;   // null means generation failed — user must paste
+  calEventId:      string | null;
+  invitesSent:     boolean;
+  method:          "calendar" | "spaces" | "manual" | null;
+  // User-entered fallback URL (when meetLink is null)
+  manualUrl:       string;
+  // UX
+  copied:          boolean;
+}
+
+const EMPTY_WIZARD: WizardState = {
+  step:        "form",
+  meetLink:    null,
+  calEventId:  null,
+  invitesSent: false,
+  method:      null,
+  manualUrl:   "",
+  copied:      false,
+};
+
+// ─── Wizard Step 2: share link + start ───────────────────────────────────────
+
+function WizardReady({
+  wizard,
+  setWizard,
+  meetingTitle,
+  meetingType,
+  participants,
+  scheduledTime,
+  duration,
+  onStart,
+  isStarting,
+}: {
+  wizard:        WizardState;
+  setWizard:     React.Dispatch<React.SetStateAction<WizardState>>;
+  meetingTitle:  string;
+  meetingType:   string;
+  participants:  string[];
+  scheduledTime: string;
+  duration:      string;
+  onStart:       () => void;
+  isStarting:    boolean;
+}) {
+  const displayLink = wizard.meetLink ?? wizard.manualUrl;
+  const isValidLink = !!displayLink && !!detectProvider(displayLink);
+
+  const copyLink = () => {
+    if (!displayLink) return;
+    navigator.clipboard.writeText(displayLink);
+    setWizard(w => ({ ...w, copied: true }));
+    toast.success("Link copied to clipboard!");
+    setTimeout(() => setWizard(w => ({ ...w, copied: false })), 3000);
+  };
+
+  const shareLink = async () => {
+    if (!displayLink) return;
+    if (navigator.share) {
+      await navigator.share({ title: meetingTitle, url: displayLink });
+    } else {
+      copyLink();
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Step indicator */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setWizard(w => ({ ...w, step: "form" }))}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[11px] font-bold">✓</span>
+          <span className="line-through opacity-50">Details</span>
+          <span className="opacity-40">→</span>
+          <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[11px] font-bold">2</span>
+          <span className="font-medium text-foreground">Share & Start</span>
+        </div>
+      </div>
+
+      {/* Meeting link box */}
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 bg-secondary/20 border-b border-border">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            {wizard.meetLink ? "Your meeting link" : "Paste your meeting link"}
+          </p>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {wizard.meetLink ? (
+            /* Generated link */
+            <>
+              <div className="flex items-stretch gap-2">
+                <div className="flex-1 min-w-0 bg-background border border-border rounded-lg px-3 py-2.5 font-mono text-sm text-primary truncate flex items-center">
+                  {wizard.meetLink}
+                </div>
+                <Button variant="outline" size="sm" className="gap-1.5 shrink-0 h-auto" onClick={copyLink}>
+                  {wizard.copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  {wizard.copied ? "Copied!" : "Copy"}
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5 shrink-0 h-auto" onClick={shareLink}>
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share
+                </Button>
+              </div>
+
+              <a
+                href={wizard.meetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" /> Open in new tab to test the link
+              </a>
+
+              {wizard.method === "calendar" && wizard.invitesSent && participants.length > 0 && (
+                <p className="text-xs text-green-600 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Calendar invites sent to {participants.join(", ")}
+                </p>
+              )}
+              {wizard.method === "spaces" && (
+                <p className="text-xs text-yellow-600 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" />
+                  No calendar invite sent (Google Calendar not connected). Share this link manually.
+                </p>
+              )}
+            </>
+          ) : (
+            /* Manual entry — link generation failed */
+            <>
+              <p className="text-xs text-muted-foreground">
+                Auto-generation wasn't available. Go to{" "}
+                <a href="https://meet.google.com/new" target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium">
+                  meet.google.com/new
+                </a>{" "}
+                to create a free link, then paste it here.
+              </p>
+              <Input
+                placeholder="https://meet.google.com/xxx-yyyy-zzz"
+                value={wizard.manualUrl}
+                onChange={e => setWizard(w => ({ ...w, manualUrl: e.target.value, method: "manual" }))}
+                className="font-mono text-sm"
+              />
+              {wizard.manualUrl && detectProvider(wizard.manualUrl) && (
+                <p className="text-xs text-green-600 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5" /> Valid Google Meet link
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* How to share */}
+      {displayLink && (
+        <div className="rounded-xl border border-border bg-secondary/10 p-4 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">How to share</p>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            {[
+              "Copy the link above and send to your prospect via email, WhatsApp, or SMS.",
+              "Wait for your prospect to join the meeting.",
+              <>Click <strong className="text-foreground">Start Meeting Now</strong> — Fixsense AI joins instantly and transcribes both sides.</>,
+            ].map((step, i) => (
+              <p key={i} className="flex items-start gap-2.5">
+                <span className="w-4 h-4 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">{i + 1}</span>
+                <span>{step}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bot privacy guarantee */}
+      <div className="rounded-xl border border-green-500/25 bg-green-500/5 p-4 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-green-500/15 flex items-center justify-center shrink-0">
+          <Shield className="w-4 h-4 text-green-500" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-green-600">Prospect won't see the AI bot</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Fixsense AI joins as a silent background listener. It does not appear in the participant list.
+            It captures audio server-side and transcribes both sides automatically — no action needed from you or your prospect.
+          </p>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="rounded-lg border border-border bg-secondary/10 px-4 py-3 text-xs text-muted-foreground space-y-1">
+        <p className="font-medium text-sm text-foreground">{meetingTitle}</p>
+        <p>{MEETING_TYPES.find(t => t.value === meetingType)?.emoji} {MEETING_TYPES.find(t => t.value === meetingType)?.label} · {duration} min</p>
+        {participants.length > 0 && <p>👥 {participants.join(", ")}</p>}
+        {scheduledTime && <p>📅 {new Date(scheduledTime).toLocaleString()}</p>}
+      </div>
+
+      {/* Start button */}
+      <Button
+        onClick={onStart}
+        disabled={isStarting || !isValidLink}
+        className="w-full gap-2"
+        size="lg"
+      >
+        {isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
+        {isStarting ? "Starting…" : "Start Meeting Now"}
+      </Button>
+
+      {!isValidLink && !isStarting && (
+        <p className="text-xs text-center text-muted-foreground -mt-2">
+          {wizard.meetLink ? "" : "Paste a valid meeting link above to continue"}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function LiveCall() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // ── Hooks ─────────────────────────────────────────────────────────────────
-  const { team } = useTeam();
-  const { onCallStarted, onCallEnded } = useUserStatus(team?.id);
-
-  const { liveCall, isLive, isLoading, startCall } = useLiveCall({
-    onCallStarted,
-    onCallEnded,
-  });
-
+  const { liveCall, isLive, isLoading, startCall } = useLiveCall();
   const { scheduledCalls, scheduleMeeting, cancelScheduled } = useScheduledCalls();
+  const { team }       = useTeam();
+  const { setStatus }  = useUserStatus(team?.id);
   const { integrations } = useIntegrations();
   const { usage, isLoading: usageLoading } = useMeetingUsage();
 
-  // ── Create meeting state ─────────────────────────────────────────────────
+  // ── Create meeting wizard state ──────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
-  const [meetingTitle, setMeetingTitle] = useState("");
-  const [meetingType, setMeetingType] = useState("discovery");
-  const [participants, setParticipants] = useState("");
-  const [platform, setPlatform] = useState("google_meet");
-  const [scheduledTime, setScheduledTime] = useState("");
-  const [duration, setDuration] = useState("60");
+  const [wizard, setWizard]         = useState<WizardState>(EMPTY_WIZARD);
   const [generatingLink, setGeneratingLink] = useState(false);
+
+  // Wizard form fields
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [meetingType, setMeetingType]   = useState("discovery");
+  const [participants, setParticipants] = useState("");
+  const [platform, setPlatform]         = useState("google_meet");
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [duration, setDuration]         = useState("60");
 
   // ── Join meeting state ───────────────────────────────────────────────────
   const [joinUrl, setJoinUrl] = useState("");
 
   // ── Schedule state ───────────────────────────────────────────────────────
-  const [schedOpen, setSchedOpen] = useState(false);
-  const [schedTitle, setSchedTitle] = useState("");
+  const [schedOpen, setSchedOpen]     = useState(false);
+  const [schedTitle, setSchedTitle]   = useState(""); 
   const [schedProvider, setSchedProvider] = useState("google_meet");
-  const [schedUrl, setSchedUrl] = useState("");
-  const [schedTime, setSchedTime] = useState("");
+  const [schedUrl, setSchedUrl]       = useState("");
+  const [schedTime, setSchedTime]     = useState("");
 
-  // ── Pre-call prep ────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────
   const parsedParticipants = useMemo(
     () => participants.split(",").map(p => p.trim()).filter(Boolean),
-    [participants]
+    [participants],
   );
   const showPrep = parsedParticipants.length > 0 || meetingType !== "discovery";
+  const isProviderConnected = (p: string) => integrations.some(i => i.provider === p && i.status === "connected");
 
-  const isProviderConnected = (provider: string) =>
-    integrations.some(i => i.provider === provider && i.status === "connected");
+  if (isLive && liveCall?.id) navigate(`/dashboard/live/${liveCall.id}`);
 
-  // Redirect if already in a live call
-  if (isLive && liveCall?.id) {
-    navigate(`/dashboard/live/${liveCall.id}`);
-  }
+  const closeAndReset = () => {
+    setCreateOpen(false);
+    setWizard(EMPTY_WIZARD);
+    setMeetingTitle(""); setMeetingType("discovery");
+    setParticipants(""); setPlatform("google_meet");
+    setScheduledTime(""); setDuration("60");
+  };
 
-  // ── Create meeting handler ────────────────────────────────────────────────
-  const handleCreateMeeting = async () => {
+  // ── STEP 1: Generate link ─────────────────────────────────────────────────
+  const handleGenerateLink = async () => {
     if (!meetingTitle.trim()) { toast.error("Please enter a meeting title"); return; }
     if (usage && !usage.isUnlimited && usage.isAtLimit) {
       toast.error(`You've reached your ${usage.planName} plan limit of ${usage.limit} meetings.`);
-      setCreateOpen(false);
       return;
     }
 
     setGeneratingLink(true);
-    let meetingUrl: string | null = null;
-    let calendarEventId: string | null = null;
 
-    // ── Try to auto-generate Google Meet link ────────────────────────────
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    let meetLink:   string | null = null;
+    let calEventId: string | null = null;
+    let invitesSent               = false;
+    let method: WizardState["method"] = null;
+
     if (platform === "google_meet" && isProviderConnected("google_meet")) {
-      const effectiveTime = scheduledTime || new Date().toISOString();
       try {
-        const { data: meetData, error: meetErr } = await supabase.functions.invoke(
-          "create-google-meet",
-          {
-            body: {
-              user_id:         liveCall?.user_id ?? (await supabase.auth.getUser()).data.user?.id,
-              title:           meetingTitle.trim(),
-              participants:    parsedParticipants,
-              scheduled_time:  effectiveTime,
-              duration_minutes: parseInt(duration, 10),
-              meeting_type:    meetingType,
-            },
-          }
-        );
+        const { data, error } = await supabase.functions.invoke("create-google-meet", {
+          body: {
+            user_id:          authUser?.id,
+            title:            meetingTitle.trim(),
+            participants:     parsedParticipants,
+            scheduled_time:   scheduledTime || new Date().toISOString(),
+            duration_minutes: parseInt(duration, 10),
+            meeting_type:     meetingType,
+          },
+        });
 
-        if (meetErr) {
-          console.warn("Meet link generation failed, continuing without link:", meetErr);
-          toast.info("Couldn't auto-generate a Meet link. You can paste one manually.");
-        } else if (meetData?.meet_link) {
-          meetingUrl = meetData.meet_link;
-          calendarEventId = meetData.calendar_event_id ?? null;
-          toast.success("Google Meet link created and invites sent!");
+        if (!error && data?.meet_link) {
+          meetLink    = data.meet_link;
+          calEventId  = data.calendar_event_id ?? null;
+          invitesSent = data.invites_sent ?? false;
+          method      = data.method ?? "calendar";
+        } else {
+          const code = data?.code ?? "UNKNOWN";
+          console.warn("create-google-meet response:", code, data?.error);
+          // Don't show error toast — step 2 handles fallback gracefully
         }
       } catch (e) {
-        console.warn("Meet link generation error:", e);
+        console.warn("create-google-meet exception:", e);
       }
     }
 
     setGeneratingLink(false);
 
-    // ── Start the call row ───────────────────────────────────────────────
+    // Always advance to step 2 — with or without a link
+    setWizard({
+      step:        "ready",
+      meetLink,
+      calEventId,
+      invitesSent,
+      method,
+      manualUrl:   "",
+      copied:      false,
+    });
+  };
+
+  // ── STEP 2: Start the actual meeting ─────────────────────────────────────
+  const handleStartMeeting = async () => {
+    const finalUrl = (wizard.meetLink ?? wizard.manualUrl).trim();
+    if (!finalUrl || !detectProvider(finalUrl)) {
+      toast.error("Please add a valid Google Meet or Zoom link first.");
+      return;
+    }
+
     try {
       const call = await startCall.mutateAsync({
-        platform:           platform === "zoom" ? "Zoom" : "Google Meet",
-        meeting_id:         meetingUrl ?? crypto.randomUUID(),
-        meeting_url:        meetingUrl ?? undefined,
-        calendar_event_id:  calendarEventId ?? undefined,
-        name:               meetingTitle.trim(),
-        meeting_type:       meetingType,
-        participants:       parsedParticipants,
-        scheduled_time:     scheduledTime || undefined,
-        duration_minutes:   parseInt(duration, 10),
+        platform:          platform === "zoom" ? "Zoom" : "Google Meet",
+        meeting_id:        finalUrl,
+        meeting_url:       finalUrl,
+        calendar_event_id: wizard.calEventId ?? undefined,
+        name:              meetingTitle.trim(),
+        meeting_type:      meetingType,
+        participants:      parsedParticipants,
+        scheduled_time:    scheduledTime || undefined,
+        duration_minutes:  parseInt(duration, 10),
       } as any);
-      setCreateOpen(false);
+      setStatus("on_call");
+      closeAndReset();
       navigate(`/dashboard/live/${call.id}`);
     } catch (err: any) {
-      setGeneratingLink(false);
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("You've reached your plan limit. Upgrade to continue.");
       } else {
-        toast.error("Failed to start meeting");
+        toast.error("Failed to start meeting — please try again.");
       }
     }
   };
 
-  // ── Join meeting handler ──────────────────────────────────────────────────
+  // ── Join existing meeting ─────────────────────────────────────────────────
   const handleJoinMeeting = async () => {
     if (!joinUrl.trim()) { toast.error("Please paste a meeting URL"); return; }
     const detected = detectProvider(joinUrl);
     if (!detected) { toast.error("Unsupported URL. Use a Zoom or Google Meet link."); return; }
     if (usage && !usage.isUnlimited && usage.isAtLimit) {
-      toast.error(`You've reached your ${usage.planName} plan limit.`);
-      return;
+      toast.error(`You've reached your ${usage.planName} plan limit.`); return;
     }
     try {
       const call = await startCall.mutateAsync({
@@ -351,17 +557,14 @@ export default function LiveCall() {
         meeting_id:  joinUrl,
         meeting_url: joinUrl,
       } as any);
+      setStatus("on_call");
       navigate(`/dashboard/live/${call.id}`);
     } catch (err: any) {
-      if (err?.message === "PLAN_LIMIT_REACHED") {
-        toast.error("You've reached your plan limit. Upgrade to Pro.");
-      } else {
-        toast.error("Failed to join meeting");
-      }
+      toast.error(err?.message === "PLAN_LIMIT_REACHED" ? "Plan limit reached. Upgrade to Pro." : "Failed to join meeting");
     }
   };
 
-  // ── Schedule handler ──────────────────────────────────────────────────────
+  // ── Schedule ──────────────────────────────────────────────────────────────
   const handleSchedule = async () => {
     if (!schedTitle.trim() || !schedTime) { toast.error("Please fill in all fields"); return; }
     await scheduleMeeting.mutateAsync({
@@ -374,12 +577,7 @@ export default function LiveCall() {
     setSchedTitle(""); setSchedUrl(""); setSchedTime("");
   };
 
-  // ── Quick-start (mobile) ─────────────────────────────────────────────────
-  const handleMobileQuickStart = async () => {
-    if (!meetingTitle.trim()) { toast.error("Enter a meeting title first"); return; }
-    await handleCreateMeeting();
-  };
-
+  // ─────────────────────────────────────────────────────────────────────────
   if (isLoading || usageLoading) {
     return (
       <DashboardLayout>
@@ -390,10 +588,159 @@ export default function LiveCall() {
     );
   }
 
-  const zoomConnected  = isProviderConnected("zoom");
-  const meetConnected  = isProviderConnected("google_meet");
-  const anyConnected   = zoomConnected || meetConnected;
-  const atLimit        = usage ? (!usage.isUnlimited && usage.isAtLimit) : false;
+  const zoomConnected = isProviderConnected("zoom");
+  const meetConnected = isProviderConnected("google_meet");
+  const anyConnected  = zoomConnected || meetConnected;
+  const atLimit       = usage ? (!usage.isUnlimited && usage.isAtLimit) : false;
+
+  // ─── Dialog content shared between mobile/desktop ────────────────────────
+  const wizardDialog = (
+    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Video className="w-5 h-5" />
+          {wizard.step === "form" ? "Create Meeting" : "Share Link & Start"}
+          {wizard.step === "form" && meetConnected && (
+            <span className="text-xs font-normal text-primary bg-primary/10 px-2 py-0.5 rounded-full ml-auto">
+              ✦ Auto Meet link
+            </span>
+          )}
+        </DialogTitle>
+      </DialogHeader>
+
+      {/* ── STEP 1: Form ── */}
+      {wizard.step === "form" && (
+        <div className="grid md:grid-cols-2 gap-6 pt-2">
+          <div className="space-y-4">
+            <div>
+              <Label>Meeting Title *</Label>
+              <Input
+                value={meetingTitle}
+                onChange={e => setMeetingTitle(e.target.value)}
+                placeholder="Q4 Discovery Call with Acme Corp"
+                className="mt-1"
+                onKeyDown={e => e.key === "Enter" && handleGenerateLink()}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type</Label>
+                <Select value={meetingType} onValueChange={setMeetingType}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MEETING_TYPES.map(t => (
+                      <SelectItem key={t.value} value={t.value}>{t.emoji} {t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Duration</Label>
+                <Select value={duration} onValueChange={setDuration}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DURATIONS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label>Participant Emails (comma-separated)</Label>
+              <Input
+                value={participants}
+                onChange={e => setParticipants(e.target.value)}
+                placeholder="jane@acme.com, john@acme.com"
+                className="mt-1"
+              />
+              {parsedParticipants.length > 0 && meetConnected && (
+                <p className="text-xs text-primary mt-1">
+                  ✓ Calendar invites will be sent to {parsedParticipants.length} participant{parsedParticipants.length > 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label>Schedule For (optional)</Label>
+              <Input
+                type="datetime-local"
+                value={scheduledTime}
+                onChange={e => setScheduledTime(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Leave empty to start soon</p>
+            </div>
+
+            <div>
+              <Label>Platform</Label>
+              <Select value={platform} onValueChange={setPlatform}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google_meet" disabled={!meetConnected}>
+                    Google Meet {!meetConnected ? "(connect in Settings)" : "✦ auto-link"}
+                  </SelectItem>
+                  <SelectItem value="zoom" disabled={!zoomConnected}>
+                    Zoom {!zoomConnected && "(connect in Settings)"}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!anyConnected && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-600">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  No meeting integration connected. You can still continue — you'll paste your own link in the next step.
+                  Or <button onClick={() => { closeAndReset(); navigate("/dashboard/settings"); }} className="underline font-medium">connect Google Meet in Settings</button>.
+                </span>
+              </div>
+            )}
+
+            <Button
+              onClick={handleGenerateLink}
+              disabled={generatingLink || !meetingTitle.trim()}
+              className="w-full gap-2"
+            >
+              {generatingLink ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+              {generatingLink
+                ? "Generating Meet link…"
+                : meetConnected
+                  ? "Generate Link & Continue →"
+                  : "Continue →"}
+            </Button>
+          </div>
+
+          <div>
+            {showPrep
+              ? <PreCallPanel participants={parsedParticipants} meetingType={meetingType} />
+              : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-muted-foreground border border-dashed border-border rounded-xl">
+                  <BookOpen className="w-8 h-8 mb-3 opacity-30" />
+                  <p className="text-sm">Add participant emails to see call prep, previous call history, and AI talking points.</p>
+                </div>
+              )
+            }
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 2: Share + start ── */}
+      {wizard.step === "ready" && (
+        <WizardReady
+          wizard={wizard}
+          setWizard={setWizard}
+          meetingTitle={meetingTitle}
+          meetingType={meetingType}
+          participants={parsedParticipants}
+          scheduledTime={scheduledTime}
+          duration={duration}
+          onStart={handleStartMeeting}
+          isStarting={startCall.isPending}
+        />
+      )}
+    </DialogContent>
+  );
 
   // ════════════════════════════════════════════════════════════════════════════
   // MOBILE LAYOUT
@@ -407,7 +754,6 @@ export default function LiveCall() {
             <p className="text-xs text-muted-foreground">Start or join a sales meeting</p>
           </div>
 
-          {/* Usage strip */}
           {usage && !usage.isUnlimited && (
             <div className="glass rounded-xl p-3">
               <div className="flex items-center justify-between mb-1.5">
@@ -430,11 +776,11 @@ export default function LiveCall() {
 
           {!atLimit && (
             <>
-              {/* Quick create card */}
+              {/* Create meeting */}
               <div className="glass rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-primary" />
-                  <span className="font-display font-semibold text-sm">Quick Start</span>
+                  <span className="font-display font-semibold text-sm">Create Meeting</span>
                   {meetConnected && (
                     <span className="ml-auto text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                       Auto Meet link
@@ -442,58 +788,17 @@ export default function LiveCall() {
                   )}
                 </div>
 
-                <Input
-                  placeholder="Meeting title"
-                  value={meetingTitle}
-                  onChange={e => setMeetingTitle(e.target.value)}
-                  className="h-10"
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Select value={meetingType} onValueChange={setMeetingType}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MEETING_TYPES.map(t => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.emoji} {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={duration} onValueChange={setDuration}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DURATIONS.map(d => (
-                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Input
-                  placeholder="Participant emails (comma separated)"
-                  value={participants}
-                  onChange={e => setParticipants(e.target.value)}
-                  className="h-10"
-                />
-
-                <Button
-                  className="w-full gap-2"
-                  disabled={!meetingTitle.trim() || startCall.isPending || generatingLink}
-                  onClick={handleMobileQuickStart}
-                >
-                  {(startCall.isPending || generatingLink)
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Video className="w-4 h-4" />}
-                  {generatingLink ? "Generating link…" : "Create & Send Invite"}
-                </Button>
+                <Dialog open={createOpen} onOpenChange={open => { if (!open) closeAndReset(); setCreateOpen(open); }}>
+                  <DialogTrigger asChild>
+                    <Button className="w-full gap-2">
+                      <Plus className="w-4 h-4" /> Create Meeting
+                    </Button>
+                  </DialogTrigger>
+                  {wizardDialog}
+                </Dialog>
               </div>
 
-              {/* Join by URL */}
+              {/* Join meeting */}
               <div className="glass rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Link2 className="w-4 h-4 text-accent" />
@@ -511,52 +816,31 @@ export default function LiveCall() {
                   disabled={!joinUrl.trim() || startCall.isPending}
                   onClick={handleJoinMeeting}
                 >
-                  {startCall.isPending
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <ExternalLink className="w-4 h-4" />}
+                  {startCall.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
                   Join
                 </Button>
               </div>
 
-              {/* Pre-call prep (collapsed by default on mobile) */}
               {showPrep && (
-                <PreCallPanel
-                  participants={parsedParticipants}
-                  meetingType={meetingType}
-                />
+                <PreCallPanel participants={parsedParticipants} meetingType={meetingType} />
               )}
 
-              {/* Upcoming meetings */}
               {scheduledCalls.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-                    Upcoming
-                  </p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Upcoming</p>
                   {scheduledCalls.slice(0, 3).map(sc => (
                     <div key={sc.id} className="glass rounded-xl p-3 flex items-center justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{sc.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(sc.scheduled_time), "MMM d, h:mm a")}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(sc.scheduled_time), "MMM d, h:mm a")}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
                         {sc.meeting_url && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => setJoinUrl(sc.meeting_url!)}
-                          >
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setJoinUrl(sc.meeting_url!)}>
                             Join
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => cancelScheduled.mutate(sc.id)}
-                        >
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => cancelScheduled.mutate(sc.id)}>
                           <Trash2 className="w-3 h-3 text-destructive" />
                         </Button>
                       </div>
@@ -576,69 +860,55 @@ export default function LiveCall() {
   // ════════════════════════════════════════════════════════════════════════════
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
           <p className="text-sm text-muted-foreground">
-            Start or join a sales meeting — Fixsense handles the link, invite, and AI analysis
+            Start or join a sales meeting — Fixsense handles transcription, AI analysis, and deal room creation
           </p>
         </div>
 
-        {/* Usage card */}
+        {/* Usage */}
         {usage && (
           <Card className="border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                Meeting Usage This Month
+                <TrendingUp className="w-4 h-4 text-primary" /> Meeting Usage This Month
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="text-center p-3 rounded-lg bg-secondary/40">
-                  <div className="text-2xl font-bold font-display">{usage.planName}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Current Plan</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/40">
-                  <div className={cn("text-2xl font-bold font-display",
-                    usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-accent" : "text-primary"
-                  )}>
-                    {usage.used}
-                    {!usage.isUnlimited && (
-                      <span className="text-muted-foreground text-base font-normal"> / {usage.limit}</span>
-                    )}
+                {[
+                  { label: "Current Plan", value: usage.planName },
+                  {
+                    label: "Meetings Used",
+                    value: <>{usage.used}{!usage.isUnlimited && <span className="text-muted-foreground text-base font-normal"> / {usage.limit}</span>}</>,
+                    color: usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-accent" : "text-primary",
+                  },
+                  { label: "Remaining", value: usage.isUnlimited ? "∞" : usage.remaining },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="text-center p-3 rounded-lg bg-secondary/40">
+                    <div className={cn("text-2xl font-bold font-display", color)}>{value}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Meetings Used</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/40">
-                  <div className="text-2xl font-bold font-display">
-                    {usage.isUnlimited ? "∞" : usage.remaining}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Remaining</div>
-                </div>
+                ))}
               </div>
               {!usage.isUnlimited && (
                 <div className="space-y-1.5">
-                  <Progress
-                    value={usage.pct}
-                    className={cn("h-2.5",
-                      usage.isAtLimit ? "[&>div]:bg-destructive"
-                        : usage.isNearLimit ? "[&>div]:bg-accent" : ""
-                    )}
-                  />
+                  <Progress value={usage.pct} className={cn("h-2.5",
+                    usage.isAtLimit ? "[&>div]:bg-destructive" : usage.isNearLimit ? "[&>div]:bg-accent" : ""
+                  )} />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>{Math.round(usage.pct)}% of monthly limit</span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      Resets {format(usage.resetDate, "MMM d, yyyy")}
+                      <Calendar className="w-3 h-3" /> Resets {format(usage.resetDate, "MMM d, yyyy")}
                     </span>
                   </div>
                 </div>
               )}
               {usage.isUnlimited && (
                 <div className="flex items-center justify-center gap-2 text-sm text-primary">
-                  <Zap className="w-4 h-4" />
-                  <span className="font-medium">Unlimited meetings on Scale plan</span>
+                  <Zap className="w-4 h-4" /> Unlimited meetings on Scale plan
                 </div>
               )}
             </CardContent>
@@ -651,181 +921,39 @@ export default function LiveCall() {
 
         {!atLimit && (
           <>
-            {!anyConnected && (
-              <div className="glass rounded-xl p-4 border border-destructive/20 bg-destructive/5 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium">No meeting integrations connected</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Connect Zoom or Google Meet in{" "}
-                    <button onClick={() => navigate("/dashboard/settings")} className="text-primary underline">
-                      Settings
-                    </button>{" "}
-                    to enable automatic meeting link generation and invites.
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Main action cards */}
             <div className="grid md:grid-cols-3 gap-4">
-              {/* ── Create Meeting ────────────────────────────────────────── */}
+              {/* Create Meeting */}
               <div className="glass rounded-xl p-6 flex flex-col md:col-span-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                     <Video className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <h2 className="font-display font-semibold">Create Meeting</h2>
-                    {meetConnected && (
-                      <p className="text-xs text-primary flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Auto-generates Google Meet link + sends invites
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {meetConnected
+                        ? "Generates a Google Meet link, sends calendar invites, and starts AI transcription"
+                        : "Get a link, share with your prospect, then start with AI transcription"}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><Bot className="w-3 h-3 text-primary" /> AI bot joins silently</span>
+                      <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-green-500" /> Prospect won't see bot</span>
+                    </div>
                   </div>
                 </div>
 
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <Dialog open={createOpen} onOpenChange={open => { if (!open) closeAndReset(); setCreateOpen(open); }}>
                   <DialogTrigger asChild>
-                    <Button className="gap-2 mt-4" disabled={!anyConnected}>
-                      <Plus className="w-4 h-4" />
-                      Create Meeting
+                    <Button className="gap-2">
+                      <Plus className="w-4 h-4" /> Create Meeting
                     </Button>
                   </DialogTrigger>
-
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <Video className="w-5 h-5" />
-                        Create Meeting
-                        {meetConnected && (
-                          <span className="text-xs font-normal text-primary bg-primary/10 px-2 py-0.5 rounded-full ml-auto">
-                            ✦ Auto Meet link
-                          </span>
-                        )}
-                      </DialogTitle>
-                    </DialogHeader>
-
-                    <div className="grid md:grid-cols-2 gap-6 pt-2">
-                      {/* Left: form */}
-                      <div className="space-y-4">
-                        <div>
-                          <Label>Meeting Title *</Label>
-                          <Input
-                            value={meetingTitle}
-                            onChange={e => setMeetingTitle(e.target.value)}
-                            placeholder="Q4 Discovery Call with Acme Corp"
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label>Meeting Type</Label>
-                            <Select value={meetingType} onValueChange={setMeetingType}>
-                              <SelectTrigger className="mt-1">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MEETING_TYPES.map(t => (
-                                  <SelectItem key={t.value} value={t.value}>
-                                    {t.emoji} {t.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label>Duration</Label>
-                            <Select value={duration} onValueChange={setDuration}>
-                              <SelectTrigger className="mt-1">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DURATIONS.map(d => (
-                                  <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>Participants (comma-separated emails)</Label>
-                          <Input
-                            value={participants}
-                            onChange={e => setParticipants(e.target.value)}
-                            placeholder="jane@acme.com, john@acme.com"
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Schedule for (optional — leave empty to start now)</Label>
-                          <Input
-                            type="datetime-local"
-                            value={scheduledTime}
-                            onChange={e => setScheduledTime(e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Platform</Label>
-                          <Select value={platform} onValueChange={setPlatform}>
-                            <SelectTrigger className="mt-1">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="google_meet" disabled={!meetConnected}>
-                                Google Meet {!meetConnected ? "(not connected)" : "✦ auto-link"}
-                              </SelectItem>
-                              <SelectItem value="zoom" disabled={!zoomConnected}>
-                                Zoom {!zoomConnected && "(not connected)"}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <Button
-                          onClick={handleCreateMeeting}
-                          disabled={startCall.isPending || generatingLink || !meetingTitle.trim()}
-                          className="w-full gap-2"
-                        >
-                          {(startCall.isPending || generatingLink)
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <Video className="w-4 h-4" />}
-                          {generatingLink
-                            ? "Generating Meet link…"
-                            : startCall.isPending
-                            ? "Starting…"
-                            : meetConnected
-                            ? "Create & Send Invites"
-                            : "Start Meeting"}
-                        </Button>
-                      </div>
-
-                      {/* Right: pre-call prep */}
-                      <div>
-                        {showPrep ? (
-                          <PreCallPanel
-                            participants={parsedParticipants}
-                            meetingType={meetingType}
-                          />
-                        ) : (
-                          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-muted-foreground border border-dashed border-border rounded-xl">
-                            <BookOpen className="w-8 h-8 mb-3 opacity-30" />
-                            <p className="text-sm">Add participant emails to see call prep, previous call history, and AI talking points.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </DialogContent>
+                  {wizardDialog}
                 </Dialog>
               </div>
 
-              {/* ── Join Meeting ──────────────────────────────────────────── */}
+              {/* Join Meeting */}
               <div className="glass rounded-xl p-6 flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
@@ -834,7 +962,7 @@ export default function LiveCall() {
                   <h2 className="font-display font-semibold">Join Meeting</h2>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4 flex-1">
-                  Paste an existing Zoom or Google Meet URL to join with live AI analysis.
+                  Already have a Zoom or Google Meet URL? Paste it here to start live AI analysis.
                 </p>
                 <Input
                   placeholder="https://meet.google.com/abc-def-ghi"
@@ -848,15 +976,13 @@ export default function LiveCall() {
                   variant="secondary"
                   className="gap-2"
                 >
-                  {startCall.isPending
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <ExternalLink className="w-4 h-4" />}
+                  {startCall.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
                   Join Meeting
                 </Button>
               </div>
             </div>
 
-            {/* Schedule a meeting */}
+            {/* Schedule */}
             <div className="glass rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -866,16 +992,18 @@ export default function LiveCall() {
                 <Dialog open={schedOpen} onOpenChange={setSchedOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="gap-2">
-                      <CalendarPlus className="w-3.5 h-3.5" />
-                      Schedule
+                      <CalendarPlus className="w-3.5 h-3.5" /> Schedule
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Schedule a Meeting</DialogTitle>
+                      <DialogTitle>Schedule Meeting</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 pt-2">
-                      <div><Label>Title</Label><Input value={schedTitle} onChange={e => setSchedTitle(e.target.value)} placeholder="Q4 Sales Review" className="mt-1" /></div>
+                      <div>
+                        <Label>Title</Label>
+                        <Input value={schedTitle} onChange={e => setSchedTitle(e.target.value)} className="mt-1" />
+                      </div>
                       <div>
                         <Label>Platform</Label>
                         <Select value={schedProvider} onValueChange={setSchedProvider}>
@@ -886,10 +1014,16 @@ export default function LiveCall() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div><Label>Meeting URL (optional)</Label><Input value={schedUrl} onChange={e => setSchedUrl(e.target.value)} placeholder="https://…" className="mt-1" /></div>
-                      <div><Label>Date & Time</Label><Input type="datetime-local" value={schedTime} onChange={e => setSchedTime(e.target.value)} className="mt-1" /></div>
+                      <div>
+                        <Label>Meeting URL (optional)</Label>
+                        <Input value={schedUrl} onChange={e => setSchedUrl(e.target.value)} className="mt-1" placeholder="https://meet.google.com/…" />
+                      </div>
+                      <div>
+                        <Label>Date & Time</Label>
+                        <Input type="datetime-local" value={schedTime} onChange={e => setSchedTime(e.target.value)} className="mt-1" />
+                      </div>
                       <Button onClick={handleSchedule} disabled={scheduleMeeting.isPending} className="w-full">
-                        {scheduleMeeting.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                        {scheduleMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                         Schedule
                       </Button>
                     </div>
@@ -899,26 +1033,22 @@ export default function LiveCall() {
 
               {scheduledCalls.length > 0 && (
                 <div className="mt-4 space-y-2">
-                  {scheduledCalls.map(sc => (
+                  {scheduledCalls.slice(0, 5).map(sc => (
                     <div key={sc.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{sc.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(sc.scheduled_time), "MMM d, yyyy 'at' h:mm a")}
-                            {" · "}{sc.meeting_provider === "zoom" ? "Zoom" : "Google Meet"}
-                          </p>
-                        </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{sc.title}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3" /> {format(new Date(sc.scheduled_time), "MMM d, h:mm a")}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                      <div className="flex items-center gap-2 ml-4 shrink-0">
                         {sc.meeting_url && (
-                          <Button variant="outline" size="sm" onClick={() => setJoinUrl(sc.meeting_url!)}>
-                            Join
+                          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setJoinUrl(sc.meeting_url!)}>
+                            <ExternalLink className="w-3 h-3" /> Join
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => cancelScheduled.mutate(sc.id)}>
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => cancelScheduled.mutate(sc.id)}>
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
                         </Button>
                       </div>
                     </div>
@@ -926,32 +1056,6 @@ export default function LiveCall() {
                 </div>
               )}
             </div>
-
-            {/* Integration status */}
-            <section>
-              <h2 className="font-display font-semibold mb-3 text-sm">Integration Status</h2>
-              <div className="grid sm:grid-cols-3 gap-3">
-                {[
-                  { provider: "zoom",        name: "Zoom",         connected: zoomConnected },
-                  { provider: "google_meet", name: "Google Meet",  connected: meetConnected },
-                  { provider: "slack",       name: "Slack",        connected: isProviderConnected("slack") },
-                ].map(int => (
-                  <div key={int.provider} className="glass rounded-xl p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium">{int.name}</span>
-                    <div className="flex items-center gap-2">
-                      {int.connected && int.provider === "google_meet" && (
-                        <span className="text-xs text-primary">auto-link</span>
-                      )}
-                      <span className={cn("text-xs px-2 py-0.5 rounded-full",
-                        int.connected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      )}>
-                        {int.connected ? "Connected" : "Not connected"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
           </>
         )}
       </div>
