@@ -1,11 +1,15 @@
 /**
- * MessagesPage.tsx — Fixsense Sales Intelligence Communication Hub v3
+ * MessagesPage.tsx — Fixsense Sales Intelligence Communication Hub v4
  *
- * Phase 1 Foundation:
- *  ✦ Deal Rooms — conversations tied to calls/deals with metadata header
- *  ✦ User Status — 🟢 Available | 🔴 On a Call | 📞 In a Meeting | 🌙 Away
- *  ✦ Global Search — unified search across messages, calls, transcripts
- *  ✦ All original messaging features preserved
+ * FIXES applied vs v3:
+ *  1. Removed local useUserStatus hook (localStorage + broadcast) —
+ *     replaced with the DB-backed `useUserStatus` from src/hooks/useUserStatus.ts
+ *  2. Removed buildDealRoomsFromCalls() client-side fabrication —
+ *     replaced with real `useDealRooms()` from src/hooks/useDealRooms.ts
+ *  3. Deal room chat now uses `room.conversation_id` (real DB conversation)
+ *     instead of the fake `deal_${call_id}` string
+ *  4. `activeDealRoom` now typed as the real `DealRoom` from useDealRooms.ts
+ *  5. Status picker wired to `setStatus()` from DB-backed hook
  */
 
 import {
@@ -33,7 +37,6 @@ import {
   getConversationName, getConversationInitials,
 } from "@/hooks/useTeamMessaging";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useCalls } from "@/hooks/useCalls";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -46,8 +49,20 @@ import type { TeamMember } from "@/hooks/useTeam";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useQueryClient } from "@tanstack/react-query";
 
+// ── DB-backed hooks (replaces local versions) ──────────────────────────
+import {
+  useUserStatus,
+  STATUS_CONFIG,
+  type UserStatus,
+} from "@/hooks/useUserStatus";
+import {
+  useDealRooms,
+  DEAL_STAGE_CONFIG,
+  type DealRoom,
+} from "@/hooks/useDealRooms";
+
 // ─────────────────────────────────────────────────────────────
-//  TYPES
+//  TYPES (non-deal-room, non-status types stay local)
 // ─────────────────────────────────────────────────────────────
 interface RtMsg {
   id: string;
@@ -75,43 +90,6 @@ interface ScheduledMsg {
   created_at: string;
 }
 
-// ── User Status Types ──────────────────────────────────────
-type UserStatus = "available" | "on_call" | "in_meeting" | "away" | "busy";
-
-interface UserStatusInfo {
-  status: UserStatus;
-  label: string;
-  emoji: string;
-  color: string;
-  bgColor: string;
-  custom?: string;
-}
-
-const STATUS_CONFIG: Record<UserStatus, Omit<UserStatusInfo, "status" | "custom">> = {
-  available:  { label: "Available",   emoji: "🟢", color: "#22c55e", bgColor: "rgba(34,197,94,.15)"   },
-  on_call:    { label: "On a Call",   emoji: "🔴", color: "#ef4444", bgColor: "rgba(239,68,68,.15)"   },
-  in_meeting: { label: "In a Meeting",emoji: "📞", color: "#f59e0b", bgColor: "rgba(245,158,11,.15)"  },
-  away:       { label: "Away",        emoji: "🌙", color: "#8b5cf6", bgColor: "rgba(139,92,246,.15)"  },
-  busy:       { label: "Busy",        emoji: "⛔", color: "#64748b", bgColor: "rgba(100,116,139,.15)" },
-};
-
-// ── Deal Room Types ────────────────────────────────────────
-interface DealRoom {
-  id: string;
-  name: string;
-  call_id?: string;
-  deal_stage: "discovery" | "demo" | "negotiation" | "won" | "lost" | "at_risk";
-  sentiment_score?: number;
-  last_call_score?: number;
-  next_step?: string;
-  company?: string;
-  unread_count: number;
-  last_message?: string;
-  last_activity?: string;
-  participants: string[];
-}
-
-// ── Search Result Types ────────────────────────────────────
 interface SearchResult {
   type: "message" | "call" | "transcript";
   id: string;
@@ -171,18 +149,6 @@ function renderMd(t: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DEAL STAGE CONFIG
-// ─────────────────────────────────────────────────────────────
-const DEAL_STAGE_CONFIG = {
-  discovery:   { label: "Discovery",   color: "#60a5fa", bg: "rgba(96,165,250,.12)",  icon: "🔍" },
-  demo:        { label: "Demo",        color: "#a78bfa", bg: "rgba(167,139,250,.12)", icon: "🎯" },
-  negotiation: { label: "Negotiation", color: "#fbbf24", bg: "rgba(251,191,36,.12)",  icon: "🤝" },
-  won:         { label: "Won",         color: "#22c55e", bg: "rgba(34,197,94,.12)",   icon: "🎉" },
-  lost:        { label: "Lost",        color: "#ef4444", bg: "rgba(239,68,68,.12)",   icon: "❌" },
-  at_risk:     { label: "At Risk",     color: "#f97316", bg: "rgba(249,115,22,.12)",  icon: "⚠️" },
-};
-
-// ─────────────────────────────────────────────────────────────
 //  PRESENCE HOOK
 // ─────────────────────────────────────────────────────────────
 function usePresence(teamId?: string, uid?: string) {
@@ -200,65 +166,7 @@ function usePresence(teamId?: string, uid?: string) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  USER STATUS HOOK
-// ─────────────────────────────────────────────────────────────
-function useUserStatus(userId?: string) {
-  const [myStatus, setMyStatus] = useState<UserStatus>("available");
-  const [customText, setCustomText] = useState("");
-  const [teamStatuses, setTeamStatuses] = useState<Map<string, UserStatus>>(new Map());
-
-  // Load saved status
-  useEffect(() => {
-    if (!userId) return;
-    const saved = localStorage.getItem(`fixsense_status_${userId}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setMyStatus(parsed.status || "available");
-        setCustomText(parsed.custom || "");
-      } catch {}
-    }
-  }, [userId]);
-
-  // Broadcast status via realtime
-  useEffect(() => {
-    if (!userId) return;
-    const ch = supabase.channel(`user_status`)
-      .on("broadcast", { event: "status_update" }, ({ payload }: any) => {
-        if (payload.user_id !== userId) {
-          setTeamStatuses(prev => new Map(prev).set(payload.user_id, payload.status));
-        }
-      })
-      .subscribe(async (st) => {
-        if (st === "SUBSCRIBED") {
-          await ch.send({
-            type: "broadcast",
-            event: "status_update",
-            payload: { user_id: userId, status: myStatus },
-          });
-        }
-      });
-    return () => { supabase.removeChannel(ch); };
-  }, [userId, myStatus]);
-
-  const updateStatus = useCallback((status: UserStatus, custom?: string) => {
-    setMyStatus(status);
-    if (custom !== undefined) setCustomText(custom);
-    if (userId) {
-      localStorage.setItem(`fixsense_status_${userId}`, JSON.stringify({ status, custom }));
-    }
-  }, [userId]);
-
-  const getStatus = useCallback((uid: string): UserStatus => {
-    if (uid === userId) return myStatus;
-    return teamStatuses.get(uid) || "available";
-  }, [userId, myStatus, teamStatuses]);
-
-  return { myStatus, customText, updateStatus, getStatus };
-}
-
-// ─────────────────────────────────────────────────────────────
-//  USER STATUS BADGE
+//  STATUS BADGE
 // ─────────────────────────────────────────────────────────────
 function StatusBadge({ status, size = "sm" }: { status: UserStatus; size?: "xs" | "sm" | "md" }) {
   const cfg = STATUS_CONFIG[status];
@@ -325,7 +233,7 @@ function StatusPicker({
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DEAL ROOM CARD
+//  DEAL ROOM CARD  (uses real DealRoom type from useDealRooms)
 // ─────────────────────────────────────────────────────────────
 function DealRoomCard({
   room, isSelected, onClick,
@@ -334,7 +242,7 @@ function DealRoomCard({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const stage = DEAL_STAGE_CONFIG[room.deal_stage];
+  const stage = DEAL_STAGE_CONFIG[room.stage];
   const sentimentColor = room.sentiment_score
     ? room.sentiment_score >= 70 ? "#22c55e"
       : room.sentiment_score >= 40 ? "#f59e0b"
@@ -351,11 +259,11 @@ function DealRoomCard({
           {stage.icon}
         </div>
         <div className="dr-card-info">
-          <div className="dr-card-name">{room.name}</div>
+          <div className="dr-card-name">{room.deal_name}</div>
           {room.company && <div className="dr-card-company">{room.company}</div>}
         </div>
-        {room.unread_count > 0 && (
-          <div className="dr-unread">{room.unread_count > 9 ? "9+" : room.unread_count}</div>
+        {(room.unread_count ?? 0) > 0 && (
+          <div className="dr-unread">{(room.unread_count ?? 0) > 9 ? "9+" : room.unread_count}</div>
         )}
       </div>
       <div className="dr-card-meta">
@@ -368,9 +276,6 @@ function DealRoomCard({
           </span>
         )}
       </div>
-      {room.last_message && (
-        <p className="dr-last-msg">{room.last_message}</p>
-      )}
       {room.next_step && (
         <div className="dr-next-step">
           <Target style={{ width: 9, height: 9, flexShrink: 0 }} />
@@ -382,10 +287,10 @@ function DealRoomCard({
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DEAL ROOM HEADER (shown at top of chat when in a deal room)
+//  DEAL ROOM HEADER
 // ─────────────────────────────────────────────────────────────
 function DealRoomHeader({ room }: { room: DealRoom }) {
-  const stage = DEAL_STAGE_CONFIG[room.deal_stage];
+  const stage = DEAL_STAGE_CONFIG[room.stage];
   const sentimentColor = room.sentiment_score
     ? room.sentiment_score >= 70 ? "#22c55e"
       : room.sentiment_score >= 40 ? "#f59e0b"
@@ -399,7 +304,7 @@ function DealRoomHeader({ room }: { room: DealRoom }) {
           <Building2 style={{ width: 14, height: 14 }} />
         </div>
         <div>
-          <div className="drh-name">{room.name}</div>
+          <div className="drh-name">{room.deal_name}</div>
           {room.company && <div className="drh-company">{room.company}</div>}
         </div>
       </div>
@@ -441,18 +346,15 @@ function DealRoomHeader({ room }: { room: DealRoom }) {
 function GlobalSearchPanel({
   onClose,
   onNavigate,
-  calls,
 }: {
   onClose: () => void;
   onNavigate: (convId?: string) => void;
-  calls: any[];
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "messages" | "calls" | "transcripts">("all");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -468,73 +370,41 @@ function GlobalSearchPanel({
       setLoading(true);
       try {
         const found: SearchResult[] = [];
-        const q = query.toLowerCase();
 
-        // Search messages
         if (filter === "all" || filter === "messages") {
           const { data: msgs } = await supabase
             .from("team_messages")
             .select("id, message_text, created_at, conversation_id, sender_id")
             .ilike("message_text", `%${query}%`)
             .limit(10);
-
           if (msgs) {
             msgs.forEach((m: any) => {
               found.push({
-                type: "message",
-                id: m.id,
-                title: "Message",
-                preview: m.message_text,
-                timestamp: m.created_at,
+                type: "message", id: m.id, title: "Message",
+                preview: m.message_text, timestamp: m.created_at,
                 conversation_id: m.conversation_id,
               });
             });
           }
         }
 
-        // Search calls
-        if (filter === "all" || filter === "calls") {
-          const matchedCalls = calls.filter(c =>
-            c.name?.toLowerCase().includes(q) ||
-            c.participants?.some((p: string) => p.toLowerCase().includes(q))
-          );
-          matchedCalls.slice(0, 8).forEach(c => {
-            found.push({
-              type: "call",
-              id: c.id,
-              title: c.name,
-              preview: `${c.status || "completed"} · ${c.duration_minutes ? `${c.duration_minutes} min` : "—"} · Score: ${c.sentiment_score || 0}%`,
-              timestamp: c.date,
-              call_id: c.id,
-              score: c.sentiment_score,
-            });
-          });
-        }
-
-        // Search summaries (transcripts)
         if (filter === "all" || filter === "transcripts") {
           const { data: summaries } = await supabase
             .from("call_summaries")
             .select("id, call_id, summary, created_at")
             .ilike("summary", `%${query}%`)
             .limit(5);
-
           if (summaries) {
             summaries.forEach((s: any) => {
-              const matchedCall = calls.find(c => c.id === s.call_id);
               found.push({
-                type: "transcript",
-                id: s.id,
-                title: matchedCall?.name || "Call Transcript",
-                preview: s.summary || "",
-                timestamp: s.created_at,
+                type: "transcript", id: s.id, title: "Call Transcript",
+                preview: s.summary || "", timestamp: s.created_at,
                 call_id: s.call_id,
               });
             });
           }
         }
 
-        // Sort by timestamp desc
         found.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         setResults(found);
       } catch (e) {
@@ -544,20 +414,18 @@ function GlobalSearchPanel({
       }
     }, 300);
     return () => clearTimeout(timeout);
-  }, [query, filter, calls]);
+  }, [query, filter]);
 
   const typeIcon = (type: SearchResult["type"]) => {
     if (type === "message") return <MessageSquare style={{ width: 13, height: 13 }} />;
     if (type === "call") return <Phone style={{ width: 13, height: 13 }} />;
     return <FileText style={{ width: 13, height: 13 }} />;
   };
-
   const typeColor = (type: SearchResult["type"]) => {
     if (type === "message") return "#818cf8";
     if (type === "call") return "#2dd4bf";
     return "#f59e0b";
   };
-
   const handleResultClick = (r: SearchResult) => {
     if (r.conversation_id) onNavigate(r.conversation_id);
     else if (r.call_id) window.location.href = `/dashboard/calls/${r.call_id}`;
@@ -565,56 +433,34 @@ function GlobalSearchPanel({
   };
 
   const filterTabs: { key: typeof filter; label: string; icon: React.ElementType }[] = [
-    { key: "all",         label: "All",         icon: Globe },
-    { key: "messages",    label: "Messages",    icon: MessageSquare },
-    { key: "calls",       label: "Calls",       icon: Phone },
+    { key: "all", label: "All", icon: Globe },
+    { key: "messages", label: "Messages", icon: MessageSquare },
+    { key: "calls", label: "Calls", icon: Phone },
     { key: "transcripts", label: "Transcripts", icon: FileText },
   ];
 
   return (
     <div className="gs-overlay">
-      <div ref={ref} className="gs-panel">
-        {/* Search input */}
+      <div className="gs-panel">
         <div className="gs-input-wrap">
           <Search style={{ width: 18, height: 18, color: "rgba(255,255,255,.4)", flexShrink: 0 }} />
-          <input
-            ref={inputRef}
-            className="gs-input"
-            placeholder="Search messages, calls, transcripts…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
+          <input ref={inputRef} className="gs-input" placeholder="Search messages, calls, transcripts…"
+            value={query} onChange={e => setQuery(e.target.value)} />
           {loading && <Loader2 style={{ width: 16, height: 16, color: "#7c3aed", animation: "spin 1s linear infinite", flexShrink: 0 }} />}
-          <button className="gs-close" onClick={onClose}>
-            <X style={{ width: 14, height: 14 }} />
-          </button>
+          <button className="gs-close" onClick={onClose}><X style={{ width: 14, height: 14 }} /></button>
         </div>
-
-        {/* Filter tabs */}
         <div className="gs-filters">
           {filterTabs.map(t => (
-            <button
-              key={t.key}
-              className={cn("gs-filter", filter === t.key && "gs-filter--on")}
-              onClick={() => setFilter(t.key)}
-            >
-              <t.icon style={{ width: 11, height: 11 }} />
-              {t.label}
+            <button key={t.key} className={cn("gs-filter", filter === t.key && "gs-filter--on")} onClick={() => setFilter(t.key)}>
+              <t.icon style={{ width: 11, height: 11 }} />{t.label}
             </button>
           ))}
         </div>
-
-        {/* Results */}
         <div className="gs-results">
           {!query.trim() ? (
             <div className="gs-empty">
               <Search style={{ width: 32, height: 32, opacity: .15 }} />
               <p>Search across all your messages, calls and transcripts</p>
-              <div className="gs-tips">
-                <span className="gs-tip">Try: "pricing objection"</span>
-                <span className="gs-tip">Try: "Acme Corp"</span>
-                <span className="gs-tip">Try: "follow up"</span>
-              </div>
             </div>
           ) : results.length === 0 && !loading ? (
             <div className="gs-empty">
@@ -637,15 +483,7 @@ function GlobalSearchPanel({
                       <span className="gs-result-type" style={{ color: typeColor(r.type) }}>{r.type}</span>
                       <span className="gs-result-time">{fmtTime(r.timestamp)}</span>
                     </div>
-                    <p className="gs-result-preview">
-                      {r.preview.slice(0, 120)}{r.preview.length > 120 ? "…" : ""}
-                    </p>
-                    {r.score != null && (
-                      <div className="gs-result-score">
-                        <Activity style={{ width: 9, height: 9 }} />
-                        {r.score}% sentiment
-                      </div>
-                    )}
+                    <p className="gs-result-preview">{r.preview.slice(0, 120)}{r.preview.length > 120 ? "…" : ""}</p>
                   </div>
                   <ChevronRight style={{ width: 13, height: 13, color: "rgba(255,255,255,.2)", flexShrink: 0 }} />
                 </button>
@@ -800,15 +638,12 @@ function ScheduleDialog({ convId, myId, text, onClose, onScheduled }: {
     setSaving(true);
     try {
       await supabase.from("scheduled_messages" as any).insert({
-        sender_id: myId,
-        conversation_id: convId,
+        sender_id: myId, conversation_id: convId,
         message_text: text.trim(),
-        scheduled_for: new Date(when).toISOString(),
-        status: "pending",
+        scheduled_for: new Date(when).toISOString(), status: "pending",
       });
       toast({ title: "Message scheduled!", description: `Will send ${format(new Date(when), "MMM d 'at' h:mm a")}` });
-      onScheduled();
-      onClose();
+      onScheduled(); onClose();
     } catch {
       toast({ title: "Failed to schedule", variant: "destructive" });
     } finally { setSaving(false); }
@@ -963,12 +798,6 @@ function Composer({
   };
 
   const canSend = value.trim().length > 0 && !busy && !disabled;
-  const fmtBtns = [
-    { Icon: Bold,   title: "Bold",   fn: () => wrapSelection("**") },
-    { Icon: Italic, title: "Italic", fn: () => wrapSelection("*") },
-    { Icon: Code,   title: "Code",   fn: () => wrapSelection("`") },
-    { Icon: AtSign, title: "Mention",fn: () => { onChange(value + "@"); setTimeout(()=>taRef.current?.focus(),0); } },
-  ];
 
   return (
     <div className="cmp-wrap">
@@ -980,9 +809,13 @@ function Composer({
           <button className="cmp-reply-x" onClick={onCancelReply}><X style={{width:11,height:11}}/></button>
         </div>
       )}
-
       <div className="cmp-fmt">
-        {fmtBtns.map(({ Icon, title, fn }) => (
+        {[
+          { Icon: Bold,   title: "Bold",   fn: () => wrapSelection("**") },
+          { Icon: Italic, title: "Italic", fn: () => wrapSelection("*") },
+          { Icon: Code,   title: "Code",   fn: () => wrapSelection("`") },
+          { Icon: AtSign, title: "Mention",fn: () => { onChange(value + "@"); setTimeout(()=>taRef.current?.focus(),0); } },
+        ].map(({ Icon, title, fn }) => (
           <button key={title} title={title} className="cmp-fmt-btn" onClick={fn}>
             <Icon style={{width:12,height:12}}/>
           </button>
@@ -991,12 +824,8 @@ function Composer({
         <button className={cn("cmp-fmt-btn", showPreview && "cmp-fmt-btn--on")} title="Preview" onClick={() => setShowPreview(p=>!p)}>
           <Eye style={{width:12,height:12}}/>
         </button>
-        <button
-          className="cmp-fmt-btn cmp-fmt-btn--schedule"
-          title="Schedule message"
-          disabled={!value.trim()}
-          onClick={() => value.trim() && onSchedule(value)}
-        >
+        <button className="cmp-fmt-btn cmp-fmt-btn--schedule" title="Schedule message"
+          disabled={!value.trim()} onClick={() => value.trim() && onSchedule(value)}>
           <Clock style={{width:12,height:12}}/><span className="cmp-fmt-lbl">Schedule</span>
         </button>
       </div>
@@ -1099,10 +928,8 @@ function ThreadPanel({ parent, members, myId, onClose }: {
     setSending(true);
     try {
       await supabase.from("team_messages" as any).insert({
-        conversation_id: parent.conversation_id,
-        sender_id: myId,
-        message_text: input.trim(),
-        parent_id: parent.id,
+        conversation_id: parent.conversation_id, sender_id: myId,
+        message_text: input.trim(), parent_id: parent.id,
       });
       setInput("");
     } catch { toast({ title: "Failed to send reply", variant: "destructive" }); }
@@ -1110,7 +937,6 @@ function ThreadPanel({ parent, members, myId, onClose }: {
   };
 
   const pSender = parent.sender?.full_name || parent.sender?.email || "Unknown";
-
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
@@ -1156,12 +982,9 @@ function ThreadPanel({ parent, members, myId, onClose }: {
             })}
           <div ref={botRef}/>
         </div>
-        <Composer
-          value={input} onChange={setInput} onSend={send}
+        <Composer value={input} onChange={setInput} onSend={send}
           onFile={()=>{}} onSchedule={()=>{}}
-          members={members} myId={myId}
-          placeholder="Reply in thread…" busy={sending}
-        />
+          members={members} myId={myId} placeholder="Reply in thread…" busy={sending}/>
       </div>
     </div>
   );
@@ -1179,7 +1002,6 @@ function PinsPanel({ convId, onClose }: { convId:string; onClose:()=>void }) {
     } catch { setLoading(false); }
   },[convId]);
   useEffect(()=>{ load(); },[load]);
-
   return (
     <div className="thread-overlay">
       <div className="thread-panel">
@@ -1290,7 +1112,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
   const typTimer  = useRef<NodeJS.Timeout|null>(null);
 
   const conv = convs.find(c=>c.id===convId);
-  const name = conv ? getConversationName(conv) : dealRoom?.name || "Chat";
+  const name = conv ? getConversationName(conv) : dealRoom?.deal_name || "Chat";
   const isGrp= conv?.is_group ?? false;
   const otherId = !isGrp ? conv?.participants?.[0]?.user_id : undefined;
   const otherOn = otherId ? isOnline(otherId) : false;
@@ -1411,10 +1233,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
 
   return (
     <div className="thread">
-      {/* DEAL ROOM HEADER */}
       {dealRoom && <DealRoomHeader room={dealRoom} />}
 
-      {/* CHAT HEADER */}
       <div className="chat-hdr">
         <button className="back-btn" onClick={onBack}><ArrowLeft style={{width:15,height:15}}/></button>
         <div style={{position:"relative",flexShrink:0}}>
@@ -1459,7 +1279,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
       {showSched && <ScheduledList convId={convId} myId={myId} onClose={()=>setShowSched(false)}/>}
       {thread && <ThreadPanel parent={thread} members={members} myId={myId} onClose={()=>setThread(null)}/>}
 
-      {/* MESSAGES */}
       <div className="msgs-area">
         {messagesLoading ? <div className="center-spin"><Loader2 className="spin"/></div>
           : messages.length===0 ? (
@@ -1469,9 +1288,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
                   ? <Building2 style={{width:22,height:22,color:"#60a5fa"}}/>
                   : <MessageSquare style={{width:22,height:22,color:"#7c3aed"}}/>}
               </div>
-              <p className="empty-title">
-                {dealRoom ? `${dealRoom.name} Deal Room` : "No messages yet"}
-              </p>
+              <p className="empty-title">{dealRoom ? `${dealRoom.deal_name} Deal Room` : "No messages yet"}</p>
               <p className="empty-sub">
                 {dealRoom
                   ? "Discuss this deal, share insights, and track next steps"
@@ -1490,9 +1307,9 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
                 const isEd=editId===msg.id;
                 const nm=msg.sender?.full_name||msg.sender?.email||"Unknown";
                 const isImg=(t?:string|null)=>!!t?.startsWith("image/");
-                const isSystem = msg.sender_id === "system";
+                // System messages from sentinel UUID
+                const isSystem = msg.sender_id === "00000000-0000-0000-0000-000000000000";
 
-                // System messages (AI summaries, pipeline updates) get special treatment
                 if (isSystem) {
                   return (
                     <div key={msg.id} className="sys-msg">
@@ -1538,10 +1355,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
                           )}
                         </div>
                       )}
-
                       {!isDel&&!isEd&&<ReactBar msgId={msg.id} myId={myId}/>}
                       {!isDel&&!isEd&&<ReplyCountBadge msgId={msg.id} onClick={()=>setThread(msg as RtMsg)}/>}
-
                       {!isEd&&!isDel&&(
                         <div className={cn("ha-row",isMe?"ha-row--me":"ha-row--them")}>
                           {[
@@ -1557,7 +1372,6 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
                           ))}
                         </div>
                       )}
-
                       <div className={cn("msg-meta",isMe&&"msg-meta--me")}>
                         <span className="meta-time">{format(new Date(msg.created_at),"h:mm a")}</span>
                         {showRec&&st==="read"&&<CheckCheck style={{width:12,height:12,color:"#818cf8"}}/>}
@@ -1597,13 +1411,12 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
         onChange={e=>{const f=e.target.files?.[0];if(f&&f.size<=20*1024*1024)setPFile(f);e.target.value="";}}
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"/>
 
-      <Composer
-        value={input} onChange={handleInput} onSend={handleSend}
+      <Composer value={input} onChange={handleInput} onSend={handleSend}
         onFile={()=>fileRef.current?.click()}
         onSchedule={(text) => setSched(text)}
         members={members} myId={myId} busy={busy}
         replyTo={quoteReply} onCancelReply={()=>setQuoteReply(null)}
-        placeholder={dealRoom ? `Message in ${dealRoom.name}…` : "Message… (@ to mention)"}
+        placeholder={dealRoom ? `Message in ${dealRoom.deal_name}…` : "Message… (@ to mention)"}
       />
 
       {scheduleFor && (
@@ -1746,61 +1559,21 @@ function NotifsPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DEAL ROOMS GENERATOR (from calls)
-// ─────────────────────────────────────────────────────────────
-function buildDealRoomsFromCalls(calls: any[]): DealRoom[] {
-  return calls
-    .filter(c => c.status !== "live")
-    .slice(0, 12)
-    .map(c => {
-      const stage: DealRoom["deal_stage"] =
-        c.status === "Won" ? "won"
-        : c.status === "Lost" ? "lost"
-        : c.status === "At Risk" ? "at_risk"
-        : c.meeting_type === "demo" ? "demo"
-        : c.meeting_type === "negotiation" ? "negotiation"
-        : "discovery";
-
-      return {
-        id: `dr_${c.id}`,
-        name: c.name,
-        call_id: c.id,
-        deal_stage: stage,
-        sentiment_score: c.sentiment_score,
-        last_call_score: c.sentiment_score ? Math.round(c.sentiment_score / 10) : undefined,
-        company: c.participants?.[0] || undefined,
-        unread_count: 0,
-        last_message: undefined,
-        last_activity: c.date,
-        participants: c.participants || [],
-        next_step: stage === "at_risk"
-          ? "Review pricing concerns"
-          : stage === "demo"
-          ? "Send follow-up proposal"
-          : undefined,
-      };
-    });
-}
-
-// ─────────────────────────────────────────────────────────────
 //  ROOT PAGE
 // ─────────────────────────────────────────────────────────────
 export default function MessagesPage() {
   const { user } = useAuth();
   const { team, members } = useTeam();
+
+  // ── DB-backed status (replaces local hook) ─────────────────────────
+  const { myStatus, setStatus, getStatus } = useUserStatus(team?.id);
+
+  // ── DB-backed deal rooms (replaces buildDealRoomsFromCalls) ────────
+  const { dealRooms, isLoading: dealRoomsLoading } = useDealRooms();
+
   const { conversations, conversationsLoading, totalUnread, refetchConversations } = useTeamMessaging(team?.id);
   const { unreadCount: notifCount } = useNotifications();
-  const { data: calls = [] } = useCalls();
   const isOnline = usePresence(team?.id, user?.id);
-  const { myStatus, updateStatus, getStatus } = useUserStatus(user?.id);
-
-  // Status update when on a live call
-  useEffect(() => {
-    const hasLiveCall = calls.some((c: any) => c.status === "live");
-    if (hasLiveCall && myStatus !== "on_call") {
-      updateStatus("on_call");
-    }
-  }, [calls, myStatus, updateStatus]);
 
   const [sel, setSel]             = useState<string|null>(null);
   const [tab, setTab]             = useState<"deals"|"chats"|"notifs">("deals");
@@ -1808,31 +1581,31 @@ export default function MessagesPage() {
   const [mobile, setMobile]       = useState<"list"|"chat">("list");
   const [showSearch, setShowSearch] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+  // activeDealRoom is now the real DealRoom from useDealRooms
   const [activeDealRoom, setActiveDealRoom] = useState<DealRoom|null>(null);
 
-  // Build deal rooms from calls
-  const dealRooms = useMemo(() => buildDealRoomsFromCalls(calls), [calls]);
-
-  // Stats
-  const atRiskDeals = dealRooms.filter(d => d.deal_stage === "at_risk").length;
-  const wonDeals = dealRooms.filter(d => d.deal_stage === "won").length;
-  const totalBadge = totalUnread + notifCount;
+  // Stats derived from real deal rooms
+  const atRiskDeals = dealRooms.filter(d => d.stage === "at_risk").length;
+  const wonDeals    = dealRooms.filter(d => d.stage === "won").length;
+  const totalBadge  = totalUnread + notifCount + (dealRooms.reduce((s, r) => s + (r.unread_count ?? 0), 0));
 
   const myStatusCfg = STATUS_CONFIG[myStatus];
 
   const pick = (id: string) => { setSel(id); setMobile("chat"); setTab("chats"); setActiveDealRoom(null); };
+
+  // When a deal room is selected, open its real conversation_id
   const pickDealRoom = (room: DealRoom) => {
     setActiveDealRoom(room);
     setSel(null);
     setMobile("chat");
   };
+
   const back = () => { setMobile("list"); setActiveDealRoom(null); };
 
   const handleSearchNavigate = (convId?: string) => {
     if (convId) { setSel(convId); setMobile("chat"); }
   };
 
-  // Keyboard shortcut for search
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setShowSearch(true); }
@@ -1841,15 +1614,19 @@ export default function MessagesPage() {
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  const dmConvs = conversations.filter(c => !c.is_group);
+  const dmConvs    = conversations.filter(c => !c.is_group);
   const groupConvs = conversations.filter(c => c.is_group);
+
+  // The conversation ID to render in ChatThread:
+  // - for regular convos: sel
+  // - for deal rooms: activeDealRoom.conversation_id (real DB id)
+  const activeChatConvId = activeDealRoom?.conversation_id ?? sel;
 
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
 
-        /* ══ ROOT ══════════════════════════════════════════════════════════ */
         .mp {
           --bg0:#060912; --bg1:#0b0f1c; --bg2:#0f1424;
           --bdr:rgba(255,255,255,.07); --bdr2:rgba(255,255,255,.04);
@@ -1873,273 +1650,98 @@ export default function MessagesPage() {
         @keyframes searchSlide{ from{opacity:0;transform:translateY(-20px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
         @keyframes statusPop{ from{opacity:0;transform:translateY(8px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
 
-        /* ══ TOPBAR ════════════════════════════════════════════════════════ */
-        .topbar{
-          display:flex; align-items:center; justify-content:space-between;
-          padding:0 18px; height:52px; flex-shrink:0;
-          background:rgba(11,15,28,.97);
-          border-bottom:1px solid var(--bdr);
-          backdrop-filter:blur(20px);
-          gap:10px;
-        }
+        .topbar{ display:flex; align-items:center; justify-content:space-between; padding:0 18px; height:52px; flex-shrink:0; background:rgba(11,15,28,.97); border-bottom:1px solid var(--bdr); backdrop-filter:blur(20px); gap:10px; }
         .topbar-l{ display:flex; align-items:center; gap:9px; min-width:0; }
-        .topbar-icon{
-          width:30px; height:30px; border-radius:9px;
-          background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.2);
-          display:flex; align-items:center; justify-content:center; flex-shrink:0;
-        }
+        .topbar-icon{ width:30px; height:30px; border-radius:9px; background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
         .topbar-title{ font-size:15px; font-weight:700; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; white-space:nowrap; }
-        .topbar-badge{
-          font-size:10px; font-weight:700;
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          color:#fff; padding:2px 8px; border-radius:20px;
-          box-shadow:0 2px 8px var(--acg); flex-shrink:0;
-        }
+        .topbar-badge{ font-size:10px; font-weight:700; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; padding:2px 8px; border-radius:20px; box-shadow:0 2px 8px var(--acg); flex-shrink:0; }
         .topbar-r{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
-        .topbar-btn{
-          width:30px; height:30px; border-radius:8px;
-          background:rgba(255,255,255,.04); border:1px solid var(--bdr);
-          display:flex; align-items:center; justify-content:center;
-          cursor:pointer; color:var(--t3); transition:.13s;
-        }
-        .topbar-btn:hover{ background:rgba(255,255,255,.09); color:var(--t1); }
-
-        /* Search button with shortcut */
-        .search-btn{
-          display:flex; align-items:center; gap:7px;
-          background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09);
-          border-radius:9px; padding:6px 12px;
-          color:var(--t3); font-size:12px; cursor:pointer; transition:.13s;
-          font-family:'DM Sans',sans-serif;
-        }
-        .search-btn:hover{ background:rgba(255,255,255,.07); color:var(--t2); border-color:rgba(255,255,255,.14); }
-        .search-shortcut{
-          font-size:10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1);
-          border-radius:5px; padding:1px 5px; color:var(--t4); font-family:monospace;
-        }
-
-        /* Status button */
-        .status-btn{
-          display:flex; align-items:center; gap:6px;
-          background:rgba(255,255,255,.04); border:1px solid var(--bdr);
-          border-radius:9px; padding:5px 10px;
-          cursor:pointer; font-size:12px; color:var(--t2);
-          transition:.13s; font-family:'DM Sans',sans-serif;
-          position:relative;
-        }
+        .search-btn{ display:flex; align-items:center; gap:7px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09); border-radius:9px; padding:6px 12px; color:var(--t3); font-size:12px; cursor:pointer; transition:.13s; font-family:'DM Sans',sans-serif; }
+        .search-btn:hover{ background:rgba(255,255,255,.07); color:var(--t2); }
+        .search-shortcut{ font-size:10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); border-radius:5px; padding:1px 5px; color:var(--t4); font-family:monospace; }
+        .status-btn{ display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.04); border:1px solid var(--bdr); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px; color:var(--t2); transition:.13s; font-family:'DM Sans',sans-serif; position:relative; }
         .status-btn:hover{ background:rgba(255,255,255,.08); }
         .status-btn-emoji{ font-size:13px; }
         .status-btn-label{ display:none; }
         @media(min-width:900px){ .status-btn-label{ display:inline; } }
-
-        .new-btn{
-          display:flex; align-items:center; gap:6px;
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          border:none; border-radius:9px; padding:7px 14px;
-          color:#fff; font-size:12px; font-weight:600; cursor:pointer;
-          box-shadow:0 3px 12px var(--acg); font-family:'DM Sans',sans-serif;
-          transition:transform .15s, box-shadow .15s; white-space:nowrap;
-        }
+        .new-btn{ display:flex; align-items:center; gap:6px; background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; border-radius:9px; padding:7px 14px; color:#fff; font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 3px 12px var(--acg); font-family:'DM Sans',sans-serif; transition:transform .15s, box-shadow .15s; white-space:nowrap; }
         .new-btn:hover{ transform:translateY(-1px); box-shadow:0 6px 18px var(--acg); }
 
-        /* ══ STATUS PICKER ══════════════════════════════════════════════════ */
-        .status-picker{
-          position:absolute; top:calc(100% + 8px); right:0; z-index:9999;
-          background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1);
-          border-radius:14px; padding:8px; width:220px;
-          box-shadow:0 20px 60px rgba(0,0,0,.7);
-          animation:statusPop .16s ease;
-        }
+        .status-picker{ position:absolute; top:calc(100% + 8px); right:0; z-index:9999; background:rgba(10,13,22,.98); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:8px; width:220px; box-shadow:0 20px 60px rgba(0,0,0,.7); animation:statusPop .16s ease; }
         .sp-title{ font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; padding:4px 8px 8px; }
-        .sp-item{
-          display:flex; align-items:center; gap:9px; width:100%;
-          padding:9px 10px; border-radius:9px; background:transparent; border:none;
-          cursor:pointer; transition:.12s; font-family:'DM Sans',sans-serif;
-        }
+        .sp-item{ display:flex; align-items:center; gap:9px; width:100%; padding:9px 10px; border-radius:9px; background:transparent; border:none; cursor:pointer; transition:.12s; font-family:'DM Sans',sans-serif; }
         .sp-item:hover{ background:rgba(255,255,255,.06); }
         .sp-item--active{ background:rgba(124,58,237,.1); }
         .sp-emoji{ font-size:16px; }
         .sp-label{ font-size:13px; font-weight:500; color:var(--t1); }
         .sp-divider{ height:1px; background:var(--bdr2); margin:6px 0; }
-        .sp-input{
-          width:100%; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09);
-          border-radius:8px; padding:7px 10px; color:var(--t1);
-          font-size:12px; font-family:'DM Sans',sans-serif; outline:none;
-        }
+        .sp-input{ width:100%; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:8px; padding:7px 10px; color:var(--t1); font-size:12px; font-family:'DM Sans',sans-serif; outline:none; }
         .sp-input::placeholder{ color:var(--t4); }
         .sp-input:focus{ border-color:rgba(124,58,237,.4); }
 
-        /* ══ GLOBAL SEARCH ══════════════════════════════════════════════════ */
-        .gs-overlay{
-          position:fixed; inset:0; z-index:9990;
-          background:rgba(0,0,0,.7); backdrop-filter:blur(8px);
-          display:flex; align-items:flex-start; justify-content:center;
-          padding-top:80px;
-          animation:fadeIn .15s ease;
-        }
-        .gs-panel{
-          width:100%; max-width:640px; margin:0 16px;
-          background:rgba(10,13,22,.99); border:1px solid rgba(255,255,255,.1);
-          border-radius:18px; overflow:hidden;
-          box-shadow:0 40px 100px rgba(0,0,0,.8);
-          animation:searchSlide .18s ease;
-          max-height:calc(100vh - 120px);
-          display:flex; flex-direction:column;
-        }
-        .gs-input-wrap{
-          display:flex; align-items:center; gap:12px;
-          padding:16px 20px; border-bottom:1px solid var(--bdr);
-        }
-        .gs-input{
-          flex:1; background:transparent; border:none; outline:none;
-          color:var(--t1); font-size:16px; font-family:'DM Sans',sans-serif;
-        }
+        .gs-overlay{ position:fixed; inset:0; z-index:9990; background:rgba(0,0,0,.7); backdrop-filter:blur(8px); display:flex; align-items:flex-start; justify-content:center; padding-top:80px; animation:fadeIn .15s ease; }
+        .gs-panel{ width:100%; max-width:640px; margin:0 16px; background:rgba(10,13,22,.99); border:1px solid rgba(255,255,255,.1); border-radius:18px; overflow:hidden; box-shadow:0 40px 100px rgba(0,0,0,.8); animation:searchSlide .18s ease; max-height:calc(100vh - 120px); display:flex; flex-direction:column; }
+        .gs-input-wrap{ display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--bdr); }
+        .gs-input{ flex:1; background:transparent; border:none; outline:none; color:var(--t1); font-size:16px; font-family:'DM Sans',sans-serif; }
         .gs-input::placeholder{ color:var(--t4); }
-        .gs-close{
-          background:rgba(255,255,255,.07); border:1px solid var(--bdr);
-          border-radius:7px; width:28px; height:28px; display:flex;
-          align-items:center; justify-content:center; cursor:pointer; color:var(--t3);
-          flex-shrink:0; transition:.12s;
-        }
+        .gs-close{ background:rgba(255,255,255,.07); border:1px solid var(--bdr); border-radius:7px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t3); flex-shrink:0; transition:.12s; }
         .gs-close:hover{ color:var(--t1); background:rgba(255,255,255,.12); }
-        .gs-filters{
-          display:flex; gap:4px; padding:10px 16px;
-          border-bottom:1px solid var(--bdr2); flex-shrink:0; flex-wrap:wrap;
-        }
-        .gs-filter{
-          display:flex; align-items:center; gap:5px;
-          padding:4px 10px; border-radius:20px;
-          background:transparent; border:1px solid transparent;
-          color:var(--t3); font-size:11px; font-weight:600;
-          cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s;
-        }
+        .gs-filters{ display:flex; gap:4px; padding:10px 16px; border-bottom:1px solid var(--bdr2); flex-shrink:0; flex-wrap:wrap; }
+        .gs-filter{ display:flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; background:transparent; border:1px solid transparent; color:var(--t3); font-size:11px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s; }
         .gs-filter:hover{ background:rgba(255,255,255,.05); color:var(--t1); }
         .gs-filter--on{ background:var(--acs); border-color:rgba(124,58,237,.3); color:#a78bfa; }
         .gs-results{ flex:1; overflow-y:auto; padding:8px 0; }
-        .gs-empty{
-          display:flex; flex-direction:column; align-items:center; gap:10px;
-          padding:48px 20px; text-align:center; color:var(--t3);
-        }
+        .gs-empty{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:48px 20px; text-align:center; color:var(--t3); }
         .gs-empty p{ font-size:13px; margin:0; }
-        .gs-tips{ display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:4px; }
-        .gs-tip{
-          font-size:11px; padding:3px 10px; border-radius:20px;
-          background:rgba(255,255,255,.05); border:1px solid var(--bdr); color:var(--t4);
-        }
         .gs-count{ font-size:10px; font-weight:600; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; padding:4px 20px 8px; }
-        .gs-result{
-          display:flex; align-items:center; gap:12px; width:100%;
-          padding:11px 20px; background:transparent; border:none;
-          cursor:pointer; text-align:left; transition:.12s;
-          border-bottom:1px solid var(--bdr2); font-family:'DM Sans',sans-serif;
-        }
+        .gs-result{ display:flex; align-items:center; gap:12px; width:100%; padding:11px 20px; background:transparent; border:none; cursor:pointer; text-align:left; transition:.12s; border-bottom:1px solid var(--bdr2); font-family:'DM Sans',sans-serif; }
         .gs-result:last-child{ border-bottom:none; }
         .gs-result:hover{ background:rgba(255,255,255,.03); }
-        .gs-result-icon{
-          width:32px; height:32px; border-radius:9px; flex-shrink:0;
-          display:flex; align-items:center; justify-content:center;
-        }
+        .gs-result-icon{ width:32px; height:32px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
         .gs-result-body{ flex:1; min-width:0; }
         .gs-result-top{ display:flex; align-items:center; gap:8px; margin-bottom:3px; }
         .gs-result-title{ font-size:13px; font-weight:600; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
         .gs-result-type{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; flex-shrink:0; }
         .gs-result-time{ font-size:10px; color:var(--t4); flex-shrink:0; }
         .gs-result-preview{ font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0; }
-        .gs-result-score{ display:inline-flex; align-items:center; gap:4px; font-size:10px; color:var(--t4); margin-top:3px; }
 
-        /* ══ BODY ══════════════════════════════════════════════════════════ */
         .body{ display:flex; flex:1; min-height:0; }
-        .sidebar{
-          width:288px; flex-shrink:0; display:flex; flex-direction:column;
-          border-right:1px solid var(--bdr); background:var(--bg1);
-        }
-        @media(max-width:767px){
-          .sidebar{ width:100%; border-right:none; }
-          .sidebar--hidden{ display:none; }
-        }
-        .tabs{
-          display:flex; gap:4px; padding:7px 9px;
-          border-bottom:1px solid var(--bdr2); flex-shrink:0;
-        }
-        .tab{
-          flex:1; display:flex; align-items:center; justify-content:center; gap:5px;
-          padding:7px 0; border-radius:8px; background:transparent;
-          border:1px solid transparent; color:var(--t3);
-          font-size:12px; font-weight:600; cursor:pointer; transition:all .13s;
-          font-family:'DM Sans',sans-serif;
-        }
+        .sidebar{ width:288px; flex-shrink:0; display:flex; flex-direction:column; border-right:1px solid var(--bdr); background:var(--bg1); }
+        @media(max-width:767px){ .sidebar{ width:100%; border-right:none; } .sidebar--hidden{ display:none; } }
+        .tabs{ display:flex; gap:4px; padding:7px 9px; border-bottom:1px solid var(--bdr2); flex-shrink:0; }
+        .tab{ flex:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:7px 0; border-radius:8px; background:transparent; border:1px solid transparent; color:var(--t3); font-size:12px; font-weight:600; cursor:pointer; transition:all .13s; font-family:'DM Sans',sans-serif; }
         .tab--on{ background:var(--acs); border-color:rgba(124,58,237,.25); color:#a78bfa; }
         .tab-badge{ background:var(--ac); color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:10px; }
 
-        /* ══ SIDEBAR SECTIONS ══════════════════════════════════════════════ */
         .sb-section{ margin-bottom:2px; }
-        .sb-section-hdr{
-          display:flex; align-items:center; gap:6px; width:100%;
-          padding:6px 12px; background:transparent; border:none;
-          cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s;
-        }
+        .sb-section-hdr{ display:flex; align-items:center; gap:6px; width:100%; padding:6px 12px; background:transparent; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s; }
         .sb-section-hdr:hover{ background:rgba(255,255,255,.03); }
         .sb-section-label{ font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em; flex:1; text-align:left; }
         .sb-section-ct{ background:var(--acs); color:#a78bfa; font-size:9px; padding:1px 6px; border-radius:10px; }
 
-        /* ══ DEAL ROOMS ════════════════════════════════════════════════════ */
         .deals-panel{ flex:1; overflow-y:auto; padding:4px 8px 8px; }
-
-        /* Deal stats bar */
-        .deal-stats{
-          display:grid; grid-template-columns:1fr 1fr 1fr;
-          gap:6px; padding:8px 10px; margin-bottom:4px;
-        }
-        .deal-stat{
-          background:rgba(255,255,255,.03); border:1px solid var(--bdr2);
-          border-radius:10px; padding:8px 10px; text-align:center;
-        }
+        .deal-stats{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding:8px 10px; margin-bottom:4px; }
+        .deal-stat{ background:rgba(255,255,255,.03); border:1px solid var(--bdr2); border-radius:10px; padding:8px 10px; text-align:center; }
         .deal-stat-val{ font-size:18px; font-weight:800; font-family:'Bricolage Grotesque',sans-serif; color:var(--t1); }
         .deal-stat-lbl{ font-size:9px; color:var(--t4); text-transform:uppercase; letter-spacing:.06em; }
 
-        .dr-card{
-          width:100%; text-align:left; background:rgba(255,255,255,.02);
-          border:1px solid rgba(255,255,255,.05); border-radius:11px;
-          padding:10px 11px; margin-bottom:5px; cursor:pointer; transition:all .13s;
-          font-family:'DM Sans',sans-serif;
-        }
+        .dr-card{ width:100%; text-align:left; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.05); border-radius:11px; padding:10px 11px; margin-bottom:5px; cursor:pointer; transition:all .13s; font-family:'DM Sans',sans-serif; }
         .dr-card:hover{ background:rgba(255,255,255,.05); border-color:rgba(96,165,250,.2); }
         .dr-card--active{ background:rgba(96,165,250,.07)!important; border-color:rgba(96,165,250,.3)!important; }
         .dr-card-top{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-        .dr-card-icon{
-          width:28px; height:28px; border-radius:7px; flex-shrink:0;
-          display:flex; align-items:center; justify-content:center; font-size:14px;
-        }
+        .dr-card-icon{ width:28px; height:28px; border-radius:7px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; }
         .dr-card-info{ flex:1; min-width:0; }
         .dr-card-name{ font-size:12px; font-weight:600; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .dr-card-company{ font-size:10px; color:var(--t3); }
-        .dr-unread{
-          min-width:16px; height:16px; border-radius:8px;
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          font-size:9px; font-weight:700; color:#fff; padding:0 3px;
-          display:flex; align-items:center; justify-content:center; flex-shrink:0;
-        }
+        .dr-unread{ min-width:16px; height:16px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#6d28d9); font-size:9px; font-weight:700; color:#fff; padding:0 3px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
         .dr-card-meta{ display:flex; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap; }
         .dr-stage-badge{ font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; }
         .dr-sentiment{ font-size:10px; font-weight:500; }
-        .dr-last-msg{ font-size:11px; color:var(--t3); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .dr-next-step{
-          display:flex; align-items:center; gap:5px;
-          font-size:10px; color:#60a5fa; margin-top:5px;
-          background:rgba(96,165,250,.08); border-radius:6px; padding:3px 7px;
-        }
+        .dr-next-step{ display:flex; align-items:center; gap:5px; font-size:10px; color:#60a5fa; margin-top:5px; background:rgba(96,165,250,.08); border-radius:6px; padding:3px 7px; }
 
-        /* ══ DEAL ROOM HEADER ══════════════════════════════════════════════ */
-        .drh-wrap{
-          display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-          padding:10px 16px; border-bottom:1px solid rgba(96,165,250,.12);
-          background:rgba(96,165,250,.04); flex-shrink:0;
-        }
+        .drh-wrap{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid rgba(96,165,250,.12); background:rgba(96,165,250,.04); flex-shrink:0; }
         .drh-left{ display:flex; align-items:center; gap:9px; }
-        .drh-icon{
-          width:32px; height:32px; border-radius:8px; flex-shrink:0;
-          display:flex; align-items:center; justify-content:center;
-        }
+        .drh-icon{ width:32px; height:32px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
         .drh-name{ font-size:13px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; }
         .drh-company{ font-size:10px; color:var(--t3); }
         .drh-stats{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-left:auto; }
@@ -2149,37 +1751,14 @@ export default function MessagesPage() {
         .drh-stat--next{ max-width:200px; }
         .drh-stat-val--next{ font-size:11px; color:#60a5fa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-        /* ══ CONV LIST ═════════════════════════════════════════════════════ */
         .conv-list{ flex:1; overflow-y:auto; padding:0 6px 8px; }
-        .conv-group{ margin-bottom:6px; }
-        .conv-group-lbl{
-          display:flex; align-items:center; gap:6px; padding:5px 10px 3px;
-          font-size:10px; font-weight:700; color:var(--t4); text-transform:uppercase; letter-spacing:.08em;
-        }
-        .conv-group-ct{ margin-left:auto; background:var(--acs); color:#a78bfa; font-size:9px; padding:1px 6px; border-radius:10px; }
-        .conv-item{
-          width:100%; display:flex; align-items:center; gap:9px;
-          padding:9px 10px; border-radius:10px; border:1px solid transparent;
-          background:transparent; cursor:pointer; text-align:left;
-          transition:all .12s; margin-bottom:2px; font-family:'DM Sans',sans-serif;
-        }
+        .conv-item{ width:100%; display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:10px; border:1px solid transparent; background:transparent; cursor:pointer; text-align:left; transition:all .12s; margin-bottom:2px; font-family:'DM Sans',sans-serif; }
         .conv-item:hover{ background:rgba(255,255,255,.03); }
         .conv-item--active{ background:var(--acs)!important; border-color:rgba(124,58,237,.22)!important; }
         .conv-av-wrap{ position:relative; flex-shrink:0; }
-        .conv-av{
-          width:38px; height:38px; border-radius:11px;
-          background:rgba(124,58,237,.18); border:1px solid rgba(124,58,237,.2);
-          display:flex; align-items:center; justify-content:center;
-          font-size:12px; font-weight:700; color:#a78bfa;
-        }
+        .conv-av{ width:38px; height:38px; border-radius:11px; background:rgba(124,58,237,.18); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#a78bfa; }
         .conv-av--grp{ background:rgba(139,92,246,.15); color:#c084fc; }
-        .conv-unread{
-          position:absolute; top:-4px; left:-4px; min-width:16px; height:16px;
-          border-radius:8px; background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          display:flex; align-items:center; justify-content:center;
-          font-size:9px; font-weight:700; color:#fff; padding:0 3px;
-          box-shadow:0 2px 6px var(--acg);
-        }
+        .conv-unread{ position:absolute; top:-4px; left:-4px; min-width:16px; height:16px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#6d28d9); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#fff; padding:0 3px; box-shadow:0 2px 6px var(--acg); }
         .conv-info{ flex:1; min-width:0; }
         .conv-row1{ display:flex; justify-content:space-between; align-items:baseline; gap:4px; }
         .conv-name{ font-size:13px; font-weight:500; color:rgba(255,255,255,.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -2189,89 +1768,33 @@ export default function MessagesPage() {
         .conv-chev{ color:var(--t4); flex-shrink:0; }
         @media(min-width:768px){ .conv-chev{ display:none; } }
 
-        /* ══ RIGHT PANEL ════════════════════════════════════════════════════ */
         .right{ flex:1; display:flex; flex-direction:column; min-width:0; background:rgba(6,9,18,.7); }
         @media(max-width:767px){ .right--hidden{ display:none; } }
-        .right-empty{
-          flex:1; display:flex; flex-direction:column;
-          align-items:center; justify-content:center; text-align:center; padding:40px;
-        }
-        .re-icon{
-          width:72px; height:72px; border-radius:20px; margin-bottom:20px;
-          background:rgba(96,165,250,.08); border:1px solid rgba(96,165,250,.15);
-          display:flex; align-items:center; justify-content:center;
-        }
+        .right-empty{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px; }
+        .re-icon{ width:72px; height:72px; border-radius:20px; margin-bottom:20px; background:rgba(96,165,250,.08); border:1px solid rgba(96,165,250,.15); display:flex; align-items:center; justify-content:center; }
         .right-empty h3{ font-size:18px; font-weight:700; color:#64748b; font-family:'Bricolage Grotesque',sans-serif; margin:0 0 8px; }
         .right-empty p{ font-size:13px; color:var(--t4); max-width:280px; line-height:1.6; margin:0 0 24px; }
         .re-actions{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
-        .re-btn{
-          display:inline-flex; align-items:center; gap:7px;
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          border:none; border-radius:10px; padding:9px 18px;
-          color:#fff; font-size:13px; font-weight:600; cursor:pointer;
-          font-family:'DM Sans',sans-serif;
-        }
-        .re-btn-secondary{
-          display:inline-flex; align-items:center; gap:7px;
-          background:rgba(96,165,250,.1); border:1px solid rgba(96,165,250,.2);
-          border-radius:10px; padding:9px 18px;
-          color:#60a5fa; font-size:13px; font-weight:600; cursor:pointer;
-          font-family:'DM Sans',sans-serif;
-        }
+        .re-btn{ display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; border-radius:10px; padding:9px 18px; color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }
+        .re-btn-secondary{ display:inline-flex; align-items:center; gap:7px; background:rgba(96,165,250,.1); border:1px solid rgba(96,165,250,.2); border-radius:10px; padding:9px 18px; color:#60a5fa; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }
 
-        /* ══ DEAL ROOM EMPTY STATE ══════════════════════════════════════════ */
-        .dr-empty-state{
-          flex:1; display:flex; flex-direction:column;
-          align-items:center; justify-content:center; text-align:center; padding:40px;
-        }
-
-        /* ══ SYSTEM MESSAGES ════════════════════════════════════════════════ */
-        .sys-msg{
-          display:flex; align-items:flex-start; gap:9px;
-          margin:10px 0; padding:11px 14px;
-          background:rgba(96,165,250,.05); border:1px solid rgba(96,165,250,.12);
-          border-radius:12px; border-left:3px solid rgba(96,165,250,.4);
-        }
-        .sys-msg-icon{
-          width:22px; height:22px; border-radius:6px; flex-shrink:0;
-          background:rgba(96,165,250,.15); color:#60a5fa;
-          display:flex; align-items:center; justify-content:center; margin-top:1px;
-        }
+        .sys-msg{ display:flex; align-items:flex-start; gap:9px; margin:10px 0; padding:11px 14px; background:rgba(96,165,250,.05); border:1px solid rgba(96,165,250,.12); border-radius:12px; border-left:3px solid rgba(96,165,250,.4); }
+        .sys-msg-icon{ width:22px; height:22px; border-radius:6px; flex-shrink:0; background:rgba(96,165,250,.15); color:#60a5fa; display:flex; align-items:center; justify-content:center; margin-top:1px; }
         .sys-msg-body{ flex:1; font-size:12px; color:rgba(255,255,255,.7); line-height:1.55; }
         .sys-msg-time{ font-size:10px; color:var(--t4); flex-shrink:0; margin-top:3px; }
 
-        /* ══ CHAT THREAD ════════════════════════════════════════════════════ */
         .thread{ display:flex; flex-direction:column; height:100%; position:relative; }
-        .chat-hdr{
-          display:flex; align-items:center; gap:9px; padding:10px 14px; flex-shrink:0;
-          background:rgba(11,15,28,.93); border-bottom:1px solid var(--bdr);
-          backdrop-filter:blur(20px); flex-wrap:nowrap; min-width:0;
-        }
-        .back-btn{
-          background:rgba(255,255,255,.05); border:1px solid var(--bdr);
-          border-radius:8px; width:29px; height:29px; min-width:29px;
-          display:flex; align-items:center; justify-content:center;
-          cursor:pointer; color:var(--t2); flex-shrink:0; transition:.12s;
-        }
+        .chat-hdr{ display:flex; align-items:center; gap:9px; padding:10px 14px; flex-shrink:0; background:rgba(11,15,28,.93); border-bottom:1px solid var(--bdr); backdrop-filter:blur(20px); flex-wrap:nowrap; min-width:0; }
+        .back-btn{ background:rgba(255,255,255,.05); border:1px solid var(--bdr); border-radius:8px; width:29px; height:29px; min-width:29px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t2); flex-shrink:0; transition:.12s; }
         .back-btn:hover{ background:rgba(255,255,255,.09); }
         @media(min-width:768px){ .back-btn{ display:none; } }
-        .chat-av{
-          width:34px; height:34px; border-radius:9px; flex-shrink:0; min-width:34px;
-          background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25));
-          border:1px solid rgba(124,58,237,.28);
-          display:flex; align-items:center; justify-content:center;
-        }
+        .chat-av{ width:34px; height:34px; border-radius:9px; flex-shrink:0; min-width:34px; background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25)); border:1px solid rgba(124,58,237,.28); display:flex; align-items:center; justify-content:center; }
         .chat-info{ flex:1; min-width:0; }
         .chat-name{ font-size:14px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .chat-sub{ font-size:11px; margin:0; }
         .chat-typing{ font-size:11px; margin:0; color:#a78bfa; font-style:italic; }
         .hdr-acts{ display:flex; align-items:center; gap:3px; flex-shrink:0; }
-        .hdr-btn{
-          width:27px; height:27px; border-radius:7px;
-          background:transparent; border:1px solid transparent;
-          display:flex; align-items:center; justify-content:center;
-          cursor:pointer; color:var(--t3); transition:.12s;
-        }
+        .hdr-btn{ width:27px; height:27px; border-radius:7px; background:transparent; border:1px solid transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--t3); transition:.12s; }
         .hdr-btn:hover{ background:rgba(255,255,255,.06); color:var(--t1); }
         .hdr-btn--on{ background:var(--acs); border-color:rgba(124,58,237,.3); color:#a78bfa; }
         .hdr-btn--muted{ color:#f59e0b; }
@@ -2281,7 +1804,6 @@ export default function MessagesPage() {
         .typing-dots span:nth-child(2){ animation:bounce 1.2s .2s infinite; }
         .typing-dots span:nth-child(3){ animation:bounce 1.2s .4s infinite; }
 
-        /* ══ MESSAGES ══════════════════════════════════════════════════════ */
         .msgs-area{ flex:1; overflow-y:auto; padding:14px 16px; }
         @media(max-width:767px){ .msgs-area{ padding:10px 10px 10px; } }
         .center-spin{ display:flex; justify-content:center; padding:40px 0; }
@@ -2300,13 +1822,7 @@ export default function MessagesPage() {
         .msg-them{ justify-content:flex-start; margin-top:3px; }
         .msg-row:not(.msg-same){ margin-top:10px; }
         .msg-new .bubble{ animation:pop .22s ease forwards; }
-        .msg-av{
-          width:30px; height:30px; border-radius:8px; flex-shrink:0; min-width:30px;
-          background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.2);
-          display:flex; align-items:center; justify-content:center;
-          font-size:11px; font-weight:700; color:#818cf8;
-          margin-right:8px; margin-top:2px;
-        }
+        .msg-av{ width:30px; height:30px; border-radius:8px; flex-shrink:0; min-width:30px; background:rgba(124,58,237,.2); border:1px solid rgba(124,58,237,.2); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#818cf8; margin-right:8px; margin-top:2px; }
         .msg-av.small{ width:26px; height:26px; font-size:10px; margin-right:6px; min-width:26px; }
         .msg-av-sp{ width:38px; flex-shrink:0; min-width:38px; }
         .msg-body{ display:flex; flex-direction:column; max-width:72%; position:relative; }
@@ -2316,17 +1832,8 @@ export default function MessagesPage() {
         .msg-sender{ font-size:10px; color:var(--t3); margin:0 0 3px 2px; font-weight:500; }
 
         .bubble{ padding:9px 13px; line-height:1.55; cursor:context-menu; word-break:break-word; transition:all .13s; }
-        .bubble.me{
-          background:linear-gradient(135deg,#7c3aed,#6d28d9);
-          border:1px solid rgba(124,58,237,.4);
-          border-radius:16px 16px 4px 16px;
-          box-shadow:0 3px 16px rgba(124,58,237,.28);
-        }
-        .bubble.them{
-          background:rgba(255,255,255,.06);
-          border:1px solid rgba(255,255,255,.07);
-          border-radius:16px 16px 16px 4px;
-        }
+        .bubble.me{ background:linear-gradient(135deg,#7c3aed,#6d28d9); border:1px solid rgba(124,58,237,.4); border-radius:16px 16px 4px 16px; box-shadow:0 3px 16px rgba(124,58,237,.28); }
+        .bubble.them{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.07); border-radius:16px 16px 16px 4px; }
         .bubble-txt{ font-size:13px; color:#fff; margin:0; font-family:'DM Sans',sans-serif; line-height:1.6; }
         .bubble.them .bubble-txt{ color:rgba(255,255,255,.84); }
         @media(max-width:767px){ .bubble-txt{ font-size:14px; } .bubble{ padding:10px 14px; } }
@@ -2335,12 +1842,7 @@ export default function MessagesPage() {
         .md-mention{ color:#c084fc; font-weight:700; background:rgba(192,132,252,.1); border-radius:4px; padding:0 3px; }
         .md-mention--all{ color:#fbbf24; background:rgba(251,191,36,.12); }
 
-        .reply-count-badge{
-          display:inline-flex; align-items:center; gap:4px; margin-top:4px;
-          padding:2px 8px 2px 6px; background:var(--acs);
-          border:1px solid rgba(124,58,237,.3); border-radius:20px;
-          font-size:10px; font-weight:600; color:#a78bfa; cursor:pointer; transition:all .13s;
-        }
+        .reply-count-badge{ display:inline-flex; align-items:center; gap:4px; margin-top:4px; padding:2px 8px 2px 6px; background:var(--acs); border:1px solid rgba(124,58,237,.3); border-radius:20px; font-size:10px; font-weight:600; color:#a78bfa; cursor:pointer; transition:all .13s; }
         .reply-count-badge:hover{ background:rgba(124,58,237,.2); }
 
         .rxn-bar{ display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; align-items:center; }
@@ -2375,7 +1877,6 @@ export default function MessagesPage() {
         .msg-meta--me{ justify-content:flex-end; }
         .meta-time{ font-size:10px; color:var(--t4); }
 
-        /* ══ COMPOSER ═══════════════════════════════════════════════════════ */
         .cmp-wrap{ border-top:1px solid var(--bdr2); background:rgba(11,15,28,.85); backdrop-filter:blur(12px); flex-shrink:0; }
         .cmp-reply{ display:flex; align-items:center; gap:7px; padding:7px 14px; background:rgba(124,58,237,.08); border-bottom:1px solid rgba(124,58,237,.15); }
         .cmp-reply-name{ font-size:11px; font-weight:700; color:#a78bfa; flex-shrink:0; }
@@ -2414,7 +1915,6 @@ export default function MessagesPage() {
         .cmp-hint{ font-size:10px; color:var(--t4); text-align:center; padding:0 0 8px; margin:0; font-family:'DM Sans',sans-serif; }
         @media(max-width:767px){ .cmp-hint{ display:none; } }
 
-        /* ══ SCHEDULE DIALOG ════════════════════════════════════════════════ */
         .sch-dlg{ background:#0d1117!important; border:1px solid rgba(255,255,255,.08)!important; border-radius:16px!important; }
         .sch-title{ display:flex; align-items:center; gap:8px; font-family:'Bricolage Grotesque',sans-serif; color:#f0f6fc; font-size:16px; }
         .sch-preview{ padding:10px 14px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:10px; margin-bottom:4px; }
@@ -2436,7 +1936,6 @@ export default function MessagesPage() {
         .sched-txt{ font-size:12px; color:rgba(255,255,255,.6); line-height:1.4; }
         .sched-cancel{ display:inline-flex; align-items:center; gap:4px; font-size:10px; color:#f87171; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.2); border-radius:6px; padding:3px 8px; cursor:pointer; align-self:flex-end; font-family:'DM Sans',sans-serif; transition:.12s; }
 
-        /* ══ THREAD / PANELS ════════════════════════════════════════════════ */
         .thread-overlay{ position:absolute; inset:0; z-index:40; pointer-events:none; }
         .thread-panel{ position:absolute; right:0; top:0; bottom:0; width:360px; background:var(--bg2); border-left:1px solid var(--bdr); display:flex; flex-direction:column; pointer-events:all; animation:slideIn .22s ease; box-shadow:-20px 0 60px rgba(0,0,0,.5); }
         @media(max-width:767px){ .thread-panel{ width:100%; border-left:none; } }
@@ -2453,7 +1952,6 @@ export default function MessagesPage() {
         .pin-txt{ font-size:12px; color:rgba(255,255,255,.7); margin:0 0 3px; line-height:1.4; }
         .pin-meta{ font-size:10px; color:var(--t4); margin:0; }
 
-        /* ══ ATTACHMENTS ════════════════════════════════════════════════════ */
         .attach{ margin-bottom:6px; }
         .attach-img{ border-radius:8px; max-width:100%; max-height:160px; object-fit:cover; display:block; }
         .attach-file{ display:flex; align-items:center; gap:7px; padding:7px 10px; border-radius:8px; text-decoration:none; background:rgba(255,255,255,.1); font-size:12px; color:rgba(255,255,255,.85); }
@@ -2463,7 +1961,6 @@ export default function MessagesPage() {
         .fp-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:#94a3b8; }
         .fp-size{ font-size:10px; color:var(--t3); flex-shrink:0; }
 
-        /* ══ CONTEXT MENU ═══════════════════════════════════════════════════ */
         .ctx-menu{ background:rgba(10,13,22,.97); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.08); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.7); overflow:hidden; width:190px; animation:fadeIn .12s ease; }
         .ctx-item{ display:flex; align-items:center; gap:9px; width:100%; padding:9px 14px; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.05); color:rgba(255,255,255,.7); font-size:12px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; transition:.12s; }
         .ctx-item:last-child{ border-bottom:none; }
@@ -2471,7 +1968,6 @@ export default function MessagesPage() {
         .ctx-item--danger{ color:#f87171; }
         .ctx-item--danger:hover{ background:rgba(239,68,68,.12); }
 
-        /* ══ NOTIFICATIONS ══════════════════════════════════════════════════ */
         .notif-panel{ display:flex; flex-direction:column; height:100%; }
         .notif-hdr{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--bdr); background:rgba(11,15,28,.9); flex-shrink:0; flex-wrap:wrap; gap:7px; }
         .notif-title{ font-size:14px; font-weight:600; color:var(--t1); font-family:'Bricolage Grotesque',sans-serif; }
@@ -2487,10 +1983,8 @@ export default function MessagesPage() {
         .notif-txt--bold{ font-weight:600; color:rgba(255,255,255,.88); }
         .notif-dot{ width:7px; height:7px; border-radius:50%; background:var(--ac); flex-shrink:0; margin-top:5px; }
 
-        /* ══ PRESENCE DOT ═══════════════════════════════════════════════════ */
         .pres-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; border:2px solid var(--bg1); flex-shrink:0; }
 
-        /* ══ MOBILE BOTTOM NAV ══════════════════════════════════════════════ */
         .bnav{ display:none; position:fixed; bottom:0; left:0; right:0; background:rgba(11,15,28,.98); backdrop-filter:blur(20px); border-top:1px solid var(--bdr); z-index:50; padding-bottom:env(safe-area-inset-bottom,0); }
         @media(max-width:767px){ .bnav{ display:flex; } }
         .bnav-btn{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:10px 0; background:transparent; border:none; cursor:pointer; color:var(--t3); font-size:10px; font-weight:600; font-family:'DM Sans',sans-serif; transition:color .13s; }
@@ -2498,7 +1992,6 @@ export default function MessagesPage() {
         .bnav-icon{ position:relative; }
         .bnav-badge{ position:absolute; top:-4px; right:-6px; width:14px; height:14px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#6d28d9); font-size:8px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px var(--acg); }
 
-        /* ══ SCROLLBARS ═════════════════════════════════════════════════════ */
         .msgs-area::-webkit-scrollbar, .conv-list::-webkit-scrollbar, .notif-list::-webkit-scrollbar, .thread-body::-webkit-scrollbar, .deals-panel::-webkit-scrollbar, .gs-results::-webkit-scrollbar { width:3px; }
         .msgs-area::-webkit-scrollbar-thumb, .conv-list::-webkit-scrollbar-thumb, .notif-list::-webkit-scrollbar-thumb, .thread-body::-webkit-scrollbar-thumb, .deals-panel::-webkit-scrollbar-thumb, .gs-results::-webkit-scrollbar-thumb { background:rgba(124,58,237,.2); border-radius:2px; }
 
@@ -2528,14 +2021,13 @@ export default function MessagesPage() {
               )}
             </div>
             <div className="topbar-r">
-              {/* Search */}
               <button className="search-btn" onClick={() => setShowSearch(true)}>
                 <Search style={{ width: 13, height: 13 }} />
                 <span>Search</span>
                 <span className="search-shortcut">⌘K</span>
               </button>
 
-              {/* Status picker */}
+              {/* Status picker — wired to DB-backed setStatus */}
               <div style={{ position: "relative" }}>
                 <button className="status-btn" onClick={() => setShowStatusPicker(p => !p)}>
                   <span className="status-btn-emoji">{myStatusCfg.emoji}</span>
@@ -2545,7 +2037,7 @@ export default function MessagesPage() {
                 {showStatusPicker && (
                   <StatusPicker
                     current={myStatus}
-                    onSelect={updateStatus}
+                    onSelect={(status, custom) => setStatus(status, custom)}
                     onClose={() => setShowStatusPicker(false)}
                   />
                 )}
@@ -2579,7 +2071,6 @@ export default function MessagesPage() {
               {/* DEALS TAB */}
               {tab === "deals" && (
                 <div className="deals-panel">
-                  {/* Quick stats */}
                   <div className="deal-stats">
                     <div className="deal-stat">
                       <div className="deal-stat-val" style={{ color: "#22c55e" }}>{wonDeals}</div>
@@ -2595,48 +2086,39 @@ export default function MessagesPage() {
                     </div>
                   </div>
 
-                  {dealRooms.length === 0 ? (
+                  {dealRoomsLoading ? (
+                    <div className="center-spin"><Loader2 className="spin" /></div>
+                  ) : dealRooms.length === 0 ? (
                     <div className="panel-empty">
                       <Briefcase style={{ width: 28, height: 28, opacity: .2 }} />
                       <p>No deal rooms yet</p>
-                      <p style={{ fontSize: 11 }}>Complete a call to create a deal room</p>
+                      <p style={{ fontSize: 11 }}>Complete a call to auto-create a deal room</p>
                     </div>
                   ) : (
                     <>
-                      {/* At Risk first */}
                       {atRiskDeals > 0 && (
                         <SidebarSection label="At Risk" icon={AlertTriangle} count={atRiskDeals}>
-                          {dealRooms.filter(d => d.deal_stage === "at_risk").map(room => (
-                            <DealRoomCard
-                              key={room.id}
-                              room={room}
+                          {dealRooms.filter(d => d.stage === "at_risk").map(room => (
+                            <DealRoomCard key={room.id} room={room}
                               isSelected={activeDealRoom?.id === room.id}
-                              onClick={() => pickDealRoom(room)}
-                            />
+                              onClick={() => pickDealRoom(room)} />
                           ))}
                         </SidebarSection>
                       )}
-
-                      <SidebarSection label="Active Deals" icon={Activity} count={dealRooms.filter(d => !["won","lost","at_risk"].includes(d.deal_stage)).length}>
-                        {dealRooms.filter(d => !["won","lost","at_risk"].includes(d.deal_stage)).map(room => (
-                          <DealRoomCard
-                            key={room.id}
-                            room={room}
+                      <SidebarSection label="Active Deals" icon={Activity}
+                        count={dealRooms.filter(d => !["won","lost","at_risk"].includes(d.stage)).length}>
+                        {dealRooms.filter(d => !["won","lost","at_risk"].includes(d.stage)).map(room => (
+                          <DealRoomCard key={room.id} room={room}
                             isSelected={activeDealRoom?.id === room.id}
-                            onClick={() => pickDealRoom(room)}
-                          />
+                            onClick={() => pickDealRoom(room)} />
                         ))}
                       </SidebarSection>
-
                       {wonDeals > 0 && (
                         <SidebarSection label="Won" icon={Award} count={wonDeals} defaultOpen={false}>
-                          {dealRooms.filter(d => d.deal_stage === "won").map(room => (
-                            <DealRoomCard
-                              key={room.id}
-                              room={room}
+                          {dealRooms.filter(d => d.stage === "won").map(room => (
+                            <DealRoomCard key={room.id} room={room}
                               isSelected={activeDealRoom?.id === room.id}
-                              onClick={() => pickDealRoom(room)}
-                            />
+                              onClick={() => pickDealRoom(room)} />
                           ))}
                         </SidebarSection>
                       )}
@@ -2682,7 +2164,6 @@ export default function MessagesPage() {
                           })}
                         </SidebarSection>
                       )}
-
                       {dmConvs.length > 0 && (
                         <SidebarSection label="Direct Messages" icon={MessageSquare} count={dmConvs.length}>
                           {dmConvs.map(c => {
@@ -2723,26 +2204,15 @@ export default function MessagesPage() {
 
             {/* ── RIGHT PANEL ── */}
             <div className={cn("right", mobile === "list" && "right--hidden")}>
-              {activeDealRoom ? (
-                // Deal Room view — full chat with deal context header
+              {activeChatConvId ? (
                 <ChatThread
-                  convId={`deal_${activeDealRoom.call_id || activeDealRoom.id}`}
+                  convId={activeChatConvId}
                   convs={conversations}
                   onBack={back}
                   isOnline={isOnline}
                   members={members}
                   myId={user?.id ?? ""}
-                  dealRoom={activeDealRoom}
-                  getStatus={getStatus}
-                />
-              ) : sel ? (
-                <ChatThread
-                  convId={sel}
-                  convs={conversations}
-                  onBack={back}
-                  isOnline={isOnline}
-                  members={members}
-                  myId={user?.id ?? ""}
+                  dealRoom={activeDealRoom ?? undefined}
                   getStatus={getStatus}
                 />
               ) : (
@@ -2769,10 +2239,8 @@ export default function MessagesPage() {
                     }}>
                       <AlertTriangle style={{ width: 14, height: 14 }} />
                       <span><strong>{atRiskDeals}</strong> deal{atRiskDeals !== 1 ? "s" : ""} need{atRiskDeals === 1 ? "s" : ""} your attention</span>
-                      <button
-                        onClick={() => setTab("deals")}
-                        style={{ marginLeft: "auto", background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
-                      >
+                      <button onClick={() => setTab("deals")}
+                        style={{ marginLeft: "auto", background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
                         Review →
                       </button>
                     </div>
@@ -2785,7 +2253,7 @@ export default function MessagesPage() {
           {/* ── MOBILE BOTTOM NAV ── */}
           <nav className="bnav">
             {([
-              { id: "deals"  as const, label: "Deals",  Icon: Briefcase,    badge: atRiskDeals },
+              { id: "deals"  as const, label: "Deals",  Icon: Briefcase,     badge: atRiskDeals },
               { id: "chats"  as const, label: "Chats",  Icon: MessageSquare, badge: totalUnread },
               { id: "notifs" as const, label: "Alerts", Icon: Bell,          badge: notifCount },
             ]).map(t => (
@@ -2805,16 +2273,13 @@ export default function MessagesPage() {
           </nav>
         </div>
 
-        {/* ── GLOBAL SEARCH ── */}
         {showSearch && (
           <GlobalSearchPanel
             onClose={() => setShowSearch(false)}
             onNavigate={handleSearchNavigate}
-            calls={calls}
           />
         )}
 
-        {/* ── NEW CONVERSATION DIALOG ── */}
         {team && (
           <NewConvDialog
             open={newOpen} onClose={() => setNewOpen(false)}
