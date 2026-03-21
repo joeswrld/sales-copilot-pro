@@ -1,12 +1,13 @@
 /**
- * LiveMeeting.tsx — Fixsense Live Meeting Cockpit v2
+ * LiveMeeting.tsx — v3
  *
- * New in v2:
- *  1. Mobile-first tabbed layout (Transcript / Insights / Objections)
- *  2. Loopback/stereo-mix fallback audio capture detection
- *  3. Status wiring via onCallEnded callback (consistent with LiveCall.tsx)
- *  4. Cross-device continuity: URL-based call ID, always resumes correctly
- *  5. Desktop layout preserved + enhanced with meeting URL open button
+ * Key changes from v2:
+ *  1. Uses useAudioCapture v3 (dual-stream: tab + mic merged via AudioContext)
+ *  2. AudioCapturePanel: step-by-step visual guide so users know exactly
+ *     what to do in Chrome's screen share picker to get both sides captured
+ *  3. CaptureStatusBadge: shows capture quality (both sides / mic only)
+ *  4. isFullCapture badge in transcript header
+ *  5. Mobile: same improvements, compact layout
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -15,18 +16,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   Mic, MicOff, AlertCircle, Lightbulb, TrendingUp, Clock, Loader2,
   Video, MonitorUp, ExternalLink, MessageSquare, BarChart3, Target,
-  Headphones, ChevronRight, Zap,
+  CheckCircle2, Circle, Radio, Users, Headphones, ChevronDown,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useLiveCall } from "@/hooks/useLiveCall";
-import { useAudioCapture } from "@/hooks/useAudioCapture";
-import { useTeam } from "@/hooks/useTeam";
+import { Button }        from "@/components/ui/button";
+import { cn }            from "@/lib/utils";
+import { useLiveCall }   from "@/hooks/useLiveCall";
+import { useAudioCapture, type CaptureSource, type CaptureStep } from "@/hooks/useAudioCapture";
+import { useTeam }       from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { toast } from "sonner";
+import { useIsMobile }   from "@/hooks/use-mobile";
+import { toast }         from "sonner";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const MEETING_TYPE_LABELS: Record<string, string> = {
   discovery:   "Discovery Call",
@@ -44,69 +45,281 @@ const DISCOVERY_REMINDERS = [
   "Ask about competing solutions",
 ];
 
-// ─── Mobile tabbed view ───────────────────────────────────────────────────────
+// ─── Capture status badge ─────────────────────────────────────────────────────
 
-interface MobileLiveMeetingProps {
-  transcripts:     any[];
-  objections:      any[];
-  topics:          any[];
-  talkRatio:       { rep: number; prospect: number };
-  engagementScore: number;
-  questionsCount:  number;
-  elapsed:         number;
-  meetingType?:    string;
-  isCapturing:     boolean;
-  capabilities:    any;
-  formatTime:      (s: number) => string;
-  transcriptEndRef: React.RefObject<HTMLDivElement>;
+function CaptureStatusBadge({
+  isCapturing,
+  captureSource,
+  isFullCapture,
+}: {
+  isCapturing:    boolean;
+  captureSource:  CaptureSource;
+  isFullCapture:  boolean;
+}) {
+  if (!isCapturing) return null;
+
+  if (isFullCapture) {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-medium">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        Both sides captured
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-xs font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+      {captureSource === "mic" ? "Your mic only" : "Meeting audio only"}
+    </div>
+  );
 }
 
-function MobileLiveMeeting({
-  transcripts, objections, topics, talkRatio, engagementScore,
-  questionsCount, elapsed, meetingType, isCapturing, capabilities,
-  formatTime, transcriptEndRef,
-}: MobileLiveMeetingProps) {
-  const [activeTab, setActiveTab] = useState<"transcript" | "insights" | "objections">("transcript");
+// ─── Audio capture panel (desktop) ───────────────────────────────────────────
+// Shows step-by-step instructions so the user knows exactly what to do.
 
-  const tabs = [
-    { id: "transcript" as const,  label: "Live" },
-    { id: "insights"   as const,  label: "Insights" },
-    {
-      id: "objections" as const,
-      label: objections.length > 0 ? `Objections (${objections.length})` : "Objections",
-    },
+function AudioCapturePanel({
+  isCapturing,
+  captureStep,
+  captureSource,
+  captureSourceLabel,
+  isFullCapture,
+  error,
+  capabilities,
+  onStart,
+  onStop,
+}: {
+  isCapturing:        boolean;
+  captureStep:        CaptureStep;
+  captureSource:      CaptureSource;
+  captureSourceLabel: string | null;
+  isFullCapture:      boolean;
+  error:              string | null;
+  capabilities:       { tabAudio: boolean; micAudio: boolean; isMobile: boolean };
+  onStart:            () => void;
+  onStop:             () => void;
+}) {
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  if (error) {
+    return (
+      <div className="glass rounded-xl p-4 border border-destructive/20 bg-destructive/5 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-destructive">Audio capture failed</p>
+          <p className="text-xs text-muted-foreground mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isCapturing) {
+    return (
+      <div className={cn(
+        "glass rounded-xl p-4 flex items-center gap-3 border",
+        isFullCapture
+          ? "border-green-500/25 bg-green-500/5"
+          : "border-yellow-500/25 bg-yellow-500/5"
+      )}>
+        <div className={cn(
+          "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
+          isFullCapture ? "bg-green-500/15" : "bg-yellow-500/15"
+        )}>
+          <Radio className={cn("w-4 h-4", isFullCapture ? "text-green-400" : "text-yellow-400")} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={cn("text-sm font-medium", isFullCapture ? "text-green-400" : "text-yellow-400")}>
+            {isFullCapture ? "Full transcription active" : "Partial capture active"}
+          </p>
+          {captureSourceLabel && (
+            <p className="text-xs text-muted-foreground mt-0.5">{captureSourceLabel}</p>
+          )}
+          {!isFullCapture && captureSource === "mic" && (
+            <p className="text-xs text-yellow-500/80 mt-1">
+              Your prospect's voice won't be transcribed. Stop and restart, then tick "Share tab audio" in Chrome.
+            </p>
+          )}
+        </div>
+        <Button
+          onClick={onStop}
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-destructive shrink-0 text-xs"
+        >
+          Stop
+        </Button>
+      </div>
+    );
+  }
+
+  // Requesting state
+  if (captureStep === "requesting_display" || captureStep === "requesting_mic") {
+    return (
+      <div className="glass rounded-xl p-4 border border-primary/20 bg-primary/5 flex items-center gap-3">
+        <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
+        <div>
+          <p className="text-sm font-medium">
+            {captureStep === "requesting_display"
+              ? "Select the tab with your meeting…"
+              : "Allowing microphone access…"}
+          </p>
+          {captureStep === "requesting_display" && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              In Chrome's popup: select your meeting tab, then tick <strong>"Share tab audio"</strong>
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Idle — show the main CTA with optional step-by-step instructions
+  return (
+    <div className="glass rounded-xl border border-accent/20 overflow-hidden">
+      {/* Main row */}
+      <div className="p-4 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+          <MonitorUp className="w-4 h-4 text-accent" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Enable audio capture</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {capabilities.tabAudio
+              ? "Captures both you and your prospect for full AI transcription"
+              : "Captures your microphone for partial transcription"}
+          </p>
+          {/* Inline step hints */}
+          {capabilities.tabAudio && (
+            <button
+              onClick={() => setShowInstructions(v => !v)}
+              className="flex items-center gap-1 text-xs text-primary mt-1.5 hover:underline"
+            >
+              How does it work?
+              <ChevronDown className={cn("w-3 h-3 transition-transform", showInstructions && "rotate-180")} />
+            </button>
+          )}
+        </div>
+        <Button
+          onClick={onStart}
+          size="sm"
+          className="gap-2 shrink-0"
+          disabled={!capabilities.tabAudio && !capabilities.micAudio}
+        >
+          <Mic className="w-3.5 h-3.5" />
+          {capabilities.tabAudio ? "Capture Both Sides" : "Capture Mic Audio"}
+        </Button>
+      </div>
+
+      {/* Expandable step-by-step instructions */}
+      {showInstructions && capabilities.tabAudio && (
+        <div className="border-t border-border bg-secondary/30 px-4 py-3">
+          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+            What will happen
+          </p>
+          <ol className="space-y-2">
+            {[
+              {
+                icon: <MonitorUp className="w-3.5 h-3.5 text-primary" />,
+                text: <>Chrome shows a screen share picker. Select the <strong>tab running your meeting</strong> (Google Meet, Zoom, etc.).</>,
+              },
+              {
+                icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />,
+                text: <>In that same picker, tick the <strong>"Share tab audio"</strong> checkbox at the bottom left. This is what captures your prospect's voice.</>,
+              },
+              {
+                icon: <Mic className="w-3.5 h-3.5 text-primary" />,
+                text: <>Chrome then asks for <strong>microphone access</strong>. Allow it — this captures your own voice.</>,
+              },
+              {
+                icon: <Radio className="w-3.5 h-3.5 text-green-400" />,
+                text: <>Both audio streams are merged. You'll see <strong>"Both sides captured"</strong> and transcription starts immediately.</>,
+              },
+            ].map((step, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-xs text-muted-foreground">
+                <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
+                  {i + 1}
+                </span>
+                <span>{step.text}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border">
+            <strong>Not seeing "Share tab audio"?</strong> Make sure you're on Chrome or Edge on a desktop computer.
+            Safari and Firefox don't support tab audio capture.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Mobile tabbed layout ─────────────────────────────────────────────────────
+
+type MobileTab = "transcript" | "insights" | "objections";
+
+function MobileLiveMeeting({
+  transcripts,
+  objections,
+  topics,
+  talkRatio,
+  engagementScore,
+  questionsCount,
+  elapsed,
+  meetingType,
+  isCapturing,
+  isFullCapture,
+  captureSource,
+  capabilities,
+  formatTime,
+  transcriptEndRef,
+}: {
+  transcripts:        any[];
+  objections:         any[];
+  topics:             any[];
+  talkRatio:          { rep: number; prospect: number };
+  engagementScore:    number;
+  questionsCount:     number;
+  elapsed:            number;
+  meetingType:        string | undefined;
+  isCapturing:        boolean;
+  isFullCapture:      boolean;
+  captureSource:      CaptureSource;
+  capabilities:       { tabAudio: boolean; micAudio: boolean };
+  formatTime:         (s: number) => string;
+  transcriptEndRef:   React.RefObject<HTMLDivElement>;
+}) {
+  const [activeTab, setActiveTab] = useState<MobileTab>("transcript");
+
+  const tabs: { id: MobileTab; label: string; badge?: number }[] = [
+    { id: "transcript", label: "Live" },
+    { id: "insights",   label: "Insights" },
+    { id: "objections", label: "Objections", badge: objections.length || undefined },
   ];
 
   return (
-    <div className="flex flex-col" style={{ minHeight: 0, flex: 1 }}>
+    <div className="flex flex-col h-full">
       {/* Compact status strip */}
-      <div className="flex items-center justify-between px-3 py-2 bg-secondary/30 rounded-lg mb-3 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-          <span className="font-medium text-destructive">LIVE</span>
-          <span className="text-muted-foreground ml-1">{formatTime(elapsed)}</span>
-        </div>
-        <div className="flex gap-3 text-muted-foreground">
-          <span className="text-primary font-medium">You {talkRatio.rep}%</span>
-          <span>Prospect {talkRatio.prospect}%</span>
-        </div>
-        <span className={cn(
-          "font-medium",
-          engagementScore >= 70 ? "text-green-500"
-            : engagementScore >= 40 ? "text-yellow-500"
-            : "text-red-400"
-        )}>
-          {engagementScore}%
-        </span>
+      <div className="flex items-center justify-between px-3 py-2 bg-secondary/40 rounded-lg mb-3 text-xs shrink-0">
+        <span className="font-mono font-bold">{formatTime(elapsed)}</span>
+        {isCapturing ? (
+          <CaptureStatusBadge
+            isCapturing={isCapturing}
+            captureSource={captureSource}
+            isFullCapture={isFullCapture}
+          />
+        ) : (
+          <span className="text-muted-foreground">Audio not capturing</span>
+        )}
+        <span className="text-primary font-medium">{engagementScore}%</span>
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-border mb-3">
+      <div className="flex border-b border-border mb-3 shrink-0">
         {tabs.map(tab => (
           <button
             key={tab.id}
             className={cn(
-              "flex-1 py-2 text-xs font-medium border-b-2 transition-colors",
+              "flex-1 py-2 text-xs font-medium border-b-2 transition-colors relative",
               activeTab === tab.id
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground"
@@ -114,170 +327,123 @@ function MobileLiveMeeting({
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
+            {tab.badge ? (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-white text-[10px]">
+                {tab.badge}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
-        {/* ── Transcript ─────────────────────────────────────────────────── */}
         {activeTab === "transcript" && (
-          <div className="space-y-3 pb-6">
+          <div className="space-y-3 pb-4">
             {transcripts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-sm">
-                {isCapturing ? (
-                  <>
-                    <Loader2 className="w-6 h-6 animate-spin mb-3 opacity-50" />
-                    <p>Listening for audio…</p>
-                    <p className="text-xs mt-1 text-center px-4">
-                      Transcript will appear as speech is detected
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-10 h-10 mb-3 opacity-30" />
-                    <p className="text-center px-4">
-                      {capabilities.tabAudio
-                        ? "Tap 'Share Audio' to begin"
-                        : capabilities.micAudio
-                        ? "Tap 'Mic Audio' to begin"
-                        : "Audio capture not supported on this browser"}
-                    </p>
-                  </>
-                )}
+              <div className="text-center py-16 text-muted-foreground">
+                <Mic className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">
+                  {isCapturing
+                    ? "Listening — transcription will appear shortly…"
+                    : capabilities.tabAudio
+                      ? "Tap 'Capture Both Sides' to start"
+                      : "Tap 'Capture Mic Audio' to start"}
+                </p>
               </div>
             ) : (
-              <>
-                {transcripts.map((line: any) => (
-                  <div
-                    key={line.id}
-                    className={cn(
-                      "text-sm leading-relaxed",
-                      line.speaker !== "Rep" && "pl-3 border-l-2 border-accent/40"
-                    )}
-                  >
-                    <span className={cn(
-                      "text-xs font-semibold mr-2",
-                      line.speaker === "Rep" ? "text-primary" : "text-accent"
-                    )}>
-                      {line.speaker}
-                    </span>
-                    <span className="text-xs text-muted-foreground mr-2">
-                      {new Date(line.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </span>
-                    <span>{line.text}</span>
-                  </div>
-                ))}
-                <div ref={transcriptEndRef} />
-              </>
+              transcripts.map((line: any) => (
+                <div
+                  key={line.id}
+                  className={cn("text-sm", line.speaker !== "Rep" && "pl-3 border-l-2 border-accent/40")}
+                >
+                  <span className={cn(
+                    "text-xs font-medium mr-2",
+                    line.speaker === "Rep" ? "text-primary" : "text-accent"
+                  )}>
+                    {line.speaker}
+                  </span>
+                  <span className="text-muted-foreground text-xs mr-2">
+                    {new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span>{line.text}</span>
+                </div>
+              ))
             )}
+            <div ref={transcriptEndRef} />
           </div>
         )}
 
-        {/* ── Insights ───────────────────────────────────────────────────── */}
         {activeTab === "insights" && (
-          <div className="space-y-3 pb-6">
-            {/* Talk ratio */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
+          <div className="space-y-3 pb-4">
+            <div className="glass rounded-lg p-3">
+              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                 <BarChart3 className="w-3 h-3" /> Talk Ratio
-              </h3>
-              <div className="flex justify-between text-xs mb-2">
-                <span className="text-primary">You ({talkRatio.rep}%)</span>
-                <span className="text-accent">Prospect ({talkRatio.prospect}%)</span>
+              </p>
+              <div className="flex justify-between text-xs mb-1.5">
+                <span className="text-primary">You {talkRatio.rep}%</span>
+                <span className="text-accent">Prospect {talkRatio.prospect}%</span>
               </div>
               <div className="h-2.5 rounded-full bg-muted flex overflow-hidden">
-                <div className="h-full bg-primary transition-all duration-500" style={{ width: `${talkRatio.rep}%` }} />
-                <div className="h-full bg-accent transition-all duration-500" style={{ width: `${talkRatio.prospect}%` }} />
+                <div className="h-full bg-primary transition-all" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent transition-all" style={{ width: `${talkRatio.prospect}%` }} />
               </div>
               {talkRatio.rep > 65 && transcripts.length > 5 && (
-                <p className="text-xs text-yellow-500 mt-2">
-                  ⚠️ You're speaking more than 65% — let the prospect talk more
-                </p>
+                <p className="text-xs text-yellow-500 mt-1.5">⚠️ You're speaking too much. Ask more questions.</p>
               )}
             </div>
 
-            {/* Quick stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="glass rounded-xl p-3 text-center">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="glass rounded-lg p-3 text-center">
                 <div className="text-2xl font-bold font-display text-primary">{engagementScore}%</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Engagement</div>
+                <div className="text-xs text-muted-foreground">Engagement</div>
               </div>
-              <div className="glass rounded-xl p-3 text-center">
+              <div className="glass rounded-lg p-3 text-center">
                 <div className="text-2xl font-bold font-display">{questionsCount}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Questions</div>
+                <div className="text-xs text-muted-foreground">Questions</div>
               </div>
-              <div className="glass rounded-xl p-3 text-center">
+              <div className="glass rounded-lg p-3 text-center">
                 <div className="text-2xl font-bold font-display">{objections.length}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Objections</div>
+                <div className="text-xs text-muted-foreground">Objections</div>
               </div>
-              <div className="glass rounded-xl p-3 text-center">
+              <div className="glass rounded-lg p-3 text-center">
                 <div className="text-2xl font-bold font-display">{topics.length}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Topics</div>
+                <div className="text-xs text-muted-foreground">Topics</div>
               </div>
             </div>
 
-            {/* Discovery reminders */}
             {meetingType === "discovery" && (
-              <div className="glass rounded-xl p-4">
-                <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                  <Target className="w-3 h-3" /> Discovery Reminders
-                </h3>
-                <ul className="space-y-2">
+              <div className="glass rounded-lg p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  <Target className="w-3 h-3 inline mr-1" /> Discovery Reminders
+                </p>
+                <ul className="space-y-1.5">
                   {DISCOVERY_REMINDERS.map((r, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
-                        {i + 1}
-                      </span>
-                      {r}
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <Circle className="w-2 h-2 mt-1 shrink-0 opacity-40" />{r}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-
-            {/* Topics */}
-            {topics.length > 0 && (
-              <div className="glass rounded-xl p-4">
-                <h3 className="text-xs font-medium text-muted-foreground mb-2">Key Topics</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {topics.map((t: any) => (
-                    <span key={t.id} className="text-xs px-2 py-1 rounded-full bg-secondary">
-                      {t.topic}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* ── Objections ─────────────────────────────────────────────────── */}
         {activeTab === "objections" && (
-          <div className="space-y-2 pb-6">
+          <div className="space-y-2 pb-4">
             {objections.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                <AlertCircle className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                No objections detected yet
+              <div className="text-center py-16 text-muted-foreground">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No objections detected yet</p>
               </div>
             ) : (
               objections.map((obj: any) => (
-                <div
-                  key={obj.id}
-                  className={cn(
-                    "glass rounded-xl p-3 text-xs border",
-                    (obj.confidence_score || 0) > 0.7
-                      ? "border-destructive/20 bg-destructive/5"
-                      : "border-accent/20 bg-accent/5"
-                  )}
-                >
-                  <p className="font-medium mb-1">{obj.objection_type}</p>
+                <div key={obj.id} className="glass rounded-lg p-3 text-xs border border-destructive/20 bg-destructive/5">
+                  <p className="font-medium">{obj.objection_type}</p>
                   {obj.suggestion && (
-                    <div className="flex items-start gap-1.5 text-muted-foreground">
+                    <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
                       <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                      <span>{obj.suggestion}</span>
+                      {obj.suggestion}
                     </div>
                   )}
                 </div>
@@ -290,21 +456,6 @@ function MobileLiveMeeting({
   );
 }
 
-// ─── Improved audio capture with loopback detection ──────────────────────────
-// Extends useAudioCapture with a "stereo mix" loopback device check
-
-async function detectLoopbackDevice(): Promise<MediaDeviceInfo | null> {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    return devices.find(d =>
-      d.kind === "audioinput" &&
-      /stereo mix|what u hear|loopback|virtual cable|vb-audio|soundflower/i.test(d.label)
-    ) ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function LiveMeeting() {
@@ -312,54 +463,38 @@ export default function LiveMeeting() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // ── Status wiring ────────────────────────────────────────────────────────
+  // Status wiring
   const { team } = useTeam();
-  const { onCallEnded } = useUserStatus(team?.id);
+  const { setStatus } = useUserStatus(team?.id);
 
-  const {
-    liveCall, isLive, isLoading,
-    transcripts, objections, topics,
-    endCall, callId,
-  } = useLiveCall({
-    onCallEnded,
+  const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } = useLiveCall({
+    onCallEnded: () => setStatus("available"),
   });
 
-  const [elapsed, setElapsed]           = useState(0);
+  const [elapsed, setElapsed]       = useState(0);
   const [meetPopupOpen, setMeetPopupOpen] = useState(false);
-  const [loopbackDevice, setLoopbackDevice] = useState<MediaDeviceInfo | null>(null);
-  const intervalRef    = useRef<number>();
+  const intervalRef      = useRef<number>();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   const {
     isCapturing,
     error: captureError,
+    captureSource,
+    captureSourceLabel,
+    captureButtonLabel,
+    captureStep,
+    isFullCapture,
+    capabilities,
     startCapture,
     stopCapture,
-    captureSource,
-    capabilities,
   } = useAudioCapture({
-    callId:           callId || null,
+    callId: callId || null,
     onChunkProcessed: (result) => {
       if (result?.analysis) console.log("Chunk processed:", result.analysis);
     },
   });
 
-  // Detect loopback device on mount
-  useEffect(() => {
-    detectLoopbackDevice().then(setLoopbackDevice);
-  }, []);
-
-  const canStartCapture = capabilities.webmRecorder &&
-    (capabilities.tabAudio || capabilities.micAudio);
-
-  // Caption for the capture button — prioritize clarity on mobile
-  const captureButtonLabel = capabilities.tabAudio
-    ? "Share Audio"
-    : capabilities.micAudio
-    ? "Mic Audio"
-    : "Unsupported";
-
-  // ── Derived analytics ────────────────────────────────────────────────────
+  // ── Derived analytics ──────────────────────────────────────────────────────
   const talkRatio = useMemo(() => {
     if (transcripts.length === 0) return { rep: 0, prospect: 0 };
     const repWords = transcripts
@@ -378,14 +513,14 @@ export default function LiveMeeting() {
 
   const questionsCount = useMemo(
     () => transcripts.filter(t => t.text.includes("?")).length,
-    [transcripts]
+    [transcripts],
   );
 
-  const meetingType  = (liveCall as any)?.meeting_type as string | undefined;
-  const meetingUrl   = (liveCall as any)?.meeting_url as string | undefined;
+  const meetingType    = (liveCall as any)?.meeting_type as string | undefined;
+  const meetingUrl     = (liveCall as any)?.meeting_url as string | undefined;
   const engagementScore = liveCall?.sentiment_score || 0;
 
-  // ── Timer ────────────────────────────────────────────────────────────────
+  // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (isLive && liveCall?.start_time) {
       const start = new Date(liveCall.start_time).getTime();
@@ -398,12 +533,10 @@ export default function LiveMeeting() {
     }
   }, [isLive, liveCall?.start_time]);
 
-  // Auto-scroll transcript
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts.length]);
 
-  // Redirect when call ends or not found
   useEffect(() => {
     if (!isLoading && !isLive) navigate("/dashboard/live");
   }, [isLoading, isLive, navigate]);
@@ -411,7 +544,7 @@ export default function LiveMeeting() {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
-  // ── End call ─────────────────────────────────────────────────────────────
+  // ── End call ───────────────────────────────────────────────────────────────
   const handleEnd = useCallback(async () => {
     stopCapture();
     try {
@@ -423,8 +556,7 @@ export default function LiveMeeting() {
     }
   }, [endCall, stopCapture, navigate, callId]);
 
-  // ── Open meeting in popup ────────────────────────────────────────────────
-  const handleOpenMeetPopup = () => {
+  const handleOpenMeeting = () => {
     const url = meetingUrl || liveCall?.meeting_id;
     if (url && (url.startsWith("http") || url.includes("meet.google.com"))) {
       window.open(url, "fixsense-meeting", "width=1000,height=700,menubar=no,toolbar=no");
@@ -434,7 +566,6 @@ export default function LiveMeeting() {
     }
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <DashboardLayout>
@@ -465,23 +596,37 @@ export default function LiveMeeting() {
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {!isCapturing && (
+              {!isCapturing && captureStep === "idle" && (
                 <Button
                   onClick={startCapture}
                   variant="outline"
                   size="sm"
                   className="gap-1.5 h-8 text-xs"
-                  disabled={!canStartCapture}
+                  disabled={!capabilities.micAudio}
                 >
-                  <MonitorUp className="w-3.5 h-3.5" />
-                  {captureButtonLabel}
+                  <Mic className="w-3.5 h-3.5" />
+                  {capabilities.tabAudio ? "Capture Audio" : "Mic Audio"}
                 </Button>
               )}
-              {isCapturing && (
-                <div className="flex items-center gap-1.5 text-xs text-primary px-2 py-1 bg-primary/10 rounded-full">
-                  <Mic className="w-3 h-3" />
-                  {captureSource === "tab" ? "Tab" : "Mic"}
+              {(captureStep === "requesting_display" || captureStep === "requesting_mic") && (
+                <div className="flex items-center gap-1.5 text-xs text-primary px-2 py-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Requesting…
                 </div>
+              )}
+              {isCapturing && (
+                <button
+                  onClick={stopCapture}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full",
+                    isFullCapture
+                      ? "bg-green-500/15 text-green-400"
+                      : "bg-yellow-500/15 text-yellow-400"
+                  )}
+                >
+                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isFullCapture ? "bg-green-400" : "bg-yellow-400")} />
+                  {isFullCapture ? "Both sides" : "Mic only"}
+                </button>
               )}
               <Button
                 onClick={handleEnd}
@@ -498,27 +643,11 @@ export default function LiveMeeting() {
             </div>
           </div>
 
-          {/* Audio capture prompt (compact) */}
-          {!isCapturing && !captureError && (
-            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-accent/5 border border-accent/20 text-xs text-muted-foreground flex-shrink-0">
-              <MonitorUp className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
-              <span>
-                {capabilities.tabAudio
-                  ? "Share tab audio for live transcription"
-                  : capabilities.micAudio
-                  ? "Share microphone for transcription (rep voice only)"
-                  : "Audio capture not supported — use desktop Chrome/Edge"}
-              </span>
-            </div>
-          )}
-
-          {/* Loopback device detected */}
-          {loopbackDevice && !isCapturing && (
-            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs flex-shrink-0">
-              <Headphones className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span className="text-primary">
-                Stereo Mix detected — captures both sides of the call
-              </span>
+          {/* Mobile capture warning if mic-only */}
+          {isCapturing && !isFullCapture && captureSource === "mic" && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400 flex-shrink-0">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Only your voice is being transcribed. Your prospect's words won't appear.
             </div>
           )}
 
@@ -534,6 +663,8 @@ export default function LiveMeeting() {
               elapsed={elapsed}
               meetingType={meetingType}
               isCapturing={isCapturing}
+              isFullCapture={isFullCapture}
+              captureSource={captureSource}
               capabilities={capabilities}
               formatTime={formatTime}
               transcriptEndRef={transcriptEndRef}
@@ -550,12 +681,13 @@ export default function LiveMeeting() {
   return (
     <DashboardLayout>
       <div className="space-y-4">
-        {/* Header */}
+
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold font-display">{liveCall?.name || "Live Meeting"}</h1>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm text-muted-foreground">Real-time AI-powered call intelligence</p>
+              <p className="text-sm text-muted-foreground">Real-time AI call intelligence</p>
               {meetingType && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                   {MEETING_TYPE_LABELS[meetingType] || meetingType}
@@ -564,22 +696,10 @@ export default function LiveMeeting() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={handleOpenMeetPopup} variant="outline" className="gap-2" size="sm">
+            <Button onClick={handleOpenMeeting} variant="outline" className="gap-2" size="sm">
               <ExternalLink className="w-4 h-4" />
               {meetPopupOpen ? "Reopen Meeting" : "Open Meeting"}
             </Button>
-            {!isCapturing && (
-              <Button
-                onClick={startCapture}
-                variant="outline"
-                className="gap-2"
-                size="sm"
-                disabled={!canStartCapture}
-              >
-                <MonitorUp className="w-4 h-4" />
-                {capabilities.tabAudio ? "Share Tab Audio" : capabilities.micAudio ? "Share Mic Audio" : "Audio Unsupported"}
-              </Button>
-            )}
             <Button
               onClick={handleEnd}
               variant="destructive"
@@ -594,7 +714,7 @@ export default function LiveMeeting() {
           </div>
         </div>
 
-        {/* Status bar */}
+        {/* ── Status bar ─────────────────────────────────────────────────── */}
         <div className="flex items-center gap-4 text-sm flex-wrap">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
@@ -608,55 +728,48 @@ export default function LiveMeeting() {
               <Video className="w-3 h-3" /> {liveCall.platform}
             </div>
           )}
-          {isCapturing && (
-            <div className="flex items-center gap-1.5 text-primary">
-              <Mic className="w-3 h-3" />
-              <span className="text-xs">
-                Capturing {captureSource === "tab" ? "tab audio" : "microphone"}
-              </span>
-            </div>
-          )}
           {(liveCall?.participants as string[] | undefined)?.length ? (
             <div className="flex items-center gap-1 text-muted-foreground text-xs">
+              <Users className="w-3 h-3" />
               {(liveCall!.participants as string[]).join(", ")}
             </div>
           ) : null}
-          {captureError && <span className="text-xs text-destructive">{captureError}</span>}
+          <CaptureStatusBadge
+            isCapturing={isCapturing}
+            captureSource={captureSource}
+            isFullCapture={isFullCapture}
+          />
         </div>
 
-        {/* Loopback device notice */}
-        {loopbackDevice && !isCapturing && (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
-            <Headphones className="w-4 h-4 text-primary shrink-0" />
-            <span>
-              <strong>Stereo Mix / loopback device detected</strong> — this will capture both your voice and the
-              prospect's, giving you a complete transcript. Click "Share Tab Audio" and select it.
-            </span>
-          </div>
-        )}
+        {/* ── Audio capture panel ─────────────────────────────────────────── */}
+        <AudioCapturePanel
+          isCapturing={isCapturing}
+          captureStep={captureStep}
+          captureSource={captureSource}
+          captureSourceLabel={captureSourceLabel}
+          isFullCapture={isFullCapture}
+          error={captureError}
+          capabilities={capabilities}
+          onStart={startCapture}
+          onStop={stopCapture}
+        />
 
-        {/* Audio capture prompt */}
-        {!isCapturing && !captureError && (
-          <div className="glass rounded-xl p-4 border border-accent/20 bg-accent/5 flex items-start gap-3">
-            <MonitorUp className="w-5 h-5 text-accent shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium">Enable audio capture for live transcription</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {capabilities.tabAudio
-                  ? "Click \"Share Tab Audio\" and select the browser tab running your meeting. Fixsense transcribes and analyzes in real time."
-                  : capabilities.micAudio
-                  ? "Tab audio isn't supported. \"Share Mic Audio\" captures your voice. Consider using a loopback virtual device for both sides."
-                  : "Audio capture isn't supported on this browser. Use desktop Chrome/Edge for full transcription."}
-              </p>
-            </div>
-          </div>
-        )}
-
+        {/* ── Main content grid ───────────────────────────────────────────── */}
         <div className="grid lg:grid-cols-3 gap-4">
-          {/* ── Transcription ─────────────────────────────────────────────── */}
+
+          {/* Transcription */}
           <div className="lg:col-span-2 glass rounded-xl flex flex-col max-h-[600px]">
-            <div className="p-4 border-b border-border">
+            <div className="p-4 border-b border-border flex items-center justify-between">
               <h2 className="font-display font-semibold text-sm">Live Transcription</h2>
+              {isCapturing && (
+                <div className={cn(
+                  "flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full",
+                  isFullCapture ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"
+                )}>
+                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isFullCapture ? "bg-green-400" : "bg-yellow-400")} />
+                  {isFullCapture ? "Both sides" : captureSource === "mic" ? "Your voice only" : "Meeting audio only"}
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {transcripts.length === 0 ? (
@@ -665,18 +778,12 @@ export default function LiveMeeting() {
                     <>
                       <Loader2 className="w-6 h-6 animate-spin mb-3 opacity-50" />
                       <p className="text-sm">Listening for audio…</p>
-                      <p className="text-xs mt-1">Transcription will appear as speech is detected</p>
+                      <p className="text-xs mt-1 opacity-60">Transcription appears as speech is detected</p>
                     </>
                   ) : (
                     <>
-                      <Mic className="w-10 h-10 mb-3 opacity-30" />
-                      <p className="text-sm">
-                        {capabilities.tabAudio
-                          ? "Share tab audio to begin transcription"
-                          : capabilities.micAudio
-                          ? "Share microphone audio to begin transcription"
-                          : "Audio capture not supported on this device"}
-                      </p>
+                      <Mic className="w-10 h-10 mb-3 opacity-20" />
+                      <p className="text-sm">Click "Capture Both Sides" above to start</p>
                     </>
                   )}
                 </div>
@@ -687,7 +794,7 @@ export default function LiveMeeting() {
                       key={line.id}
                       className={cn(
                         "animate-slide-up",
-                        line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : "",
+                        line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : ""
                       )}
                     >
                       <div className="flex items-center gap-2 mb-1">
@@ -712,8 +819,9 @@ export default function LiveMeeting() {
             </div>
           </div>
 
-          {/* ── AI Insights Sidebar ───────────────────────────────────────── */}
+          {/* AI Insights Sidebar */}
           <div className="space-y-4">
+
             {/* Talk Ratio */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
@@ -750,23 +858,28 @@ export default function LiveMeeting() {
               </div>
             </div>
 
-            {/* Stats */}
+            {/* Quick stats */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
                 <MessageSquare className="w-3 h-3" /> Call Stats
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Questions",  val: questionsCount },
-                  { label: "Objections", val: objections.length },
-                  { label: "Topics",     val: topics.length },
-                  { label: "Duration",   val: formatTime(elapsed) },
-                ].map(s => (
-                  <div key={s.label}>
-                    <div className="text-lg font-bold font-display">{s.val}</div>
-                    <div className="text-xs text-muted-foreground">{s.label}</div>
-                  </div>
-                ))}
+                <div>
+                  <div className="text-lg font-bold font-display">{questionsCount}</div>
+                  <div className="text-xs text-muted-foreground">Questions</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display">{objections.length}</div>
+                  <div className="text-xs text-muted-foreground">Objections</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display">{topics.length}</div>
+                  <div className="text-xs text-muted-foreground">Topics</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold font-display font-mono">{formatTime(elapsed)}</div>
+                  <div className="text-xs text-muted-foreground">Duration</div>
+                </div>
               </div>
             </div>
 
@@ -776,7 +889,7 @@ export default function LiveMeeting() {
                 <AlertCircle className="w-3 h-3" /> Objections ({objections.length})
               </h3>
               {objections.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No objections yet</p>
+                <p className="text-xs text-muted-foreground">No objections detected yet</p>
               ) : (
                 <div className="space-y-3 max-h-[200px] overflow-y-auto">
                   {objections.map(obj => (
@@ -786,7 +899,7 @@ export default function LiveMeeting() {
                         "rounded-lg p-3 text-xs",
                         (obj.confidence_score || 0) > 0.7
                           ? "bg-destructive/10 border border-destructive/20"
-                          : "bg-accent/10 border border-accent/20",
+                          : "bg-accent/10 border border-accent/20"
                       )}
                     >
                       <p className="font-medium mb-1">{obj.objection_type}</p>
@@ -809,25 +922,28 @@ export default function LiveMeeting() {
                   <Target className="w-3 h-3" /> Discovery Reminders
                 </h3>
                 <ul className="space-y-2">
-                  {DISCOVERY_REMINDERS.map((r, i) => (
+                  {DISCOVERY_REMINDERS.map((reminder, i) => (
                     <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
                       <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
                         {i + 1}
                       </span>
-                      {r}
+                      {reminder}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Topics */}
+            {/* Key Topics */}
             <div className="glass rounded-xl p-4">
               <h3 className="text-xs font-medium text-muted-foreground mb-3">Key Topics</h3>
               <div className="flex flex-wrap gap-1.5">
                 {topics.length > 0 ? (
                   topics.map(t => (
-                    <span key={t.id} className="text-xs px-2 py-1 rounded-full bg-secondary">
+                    <span
+                      key={t.id}
+                      className="text-xs px-2 py-1 rounded-full bg-secondary text-secondary-foreground"
+                    >
                       {t.topic}
                     </span>
                   ))
@@ -836,6 +952,7 @@ export default function LiveMeeting() {
                 )}
               </div>
             </div>
+
           </div>
         </div>
       </div>
