@@ -16,20 +16,11 @@ import { useLiveCall } from "@/hooks/useLiveCall";
 import { useScheduledCalls } from "@/hooks/useScheduledCalls";
 import { useIntegrations } from "@/hooks/useSettings";
 import { useMeetingUsage } from "@/hooks/useMeetingUsage";
-import { MeetingUsageCard } from "@/components/MeetingUsageCard";
+import { useTeam } from "@/hooks/useTeam";
+import { useUserStatus } from "@/hooks/useUserStatus";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useUserStatus } from "@/hooks/useUserStatus";
-
-// Inside the component:
-const { team } = useTeam();
-const { setStatus } = useUserStatus(team?.id);
-
-const { startCall, endCall, ... } = useLiveCall({
-  onCallStarted: () => setStatus("on_call"),
-  onCallEnded:   () => setStatus("available"),
-});
 
 function detectProvider(url: string): string | null {
   if (/zoom\.(us|com)/i.test(url)) return "zoom";
@@ -81,22 +72,29 @@ function MeetingLimitReached({ planName, used, limit }: { planName: string; used
 
 export default function LiveCall() {
   const navigate = useNavigate();
-  const { liveCall, isLive, isLoading, startCall } = useLiveCall();
-  const { scheduledCalls, isLoading: schedLoading, scheduleMeeting, cancelScheduled } = useScheduledCalls();
+
+  // ── All hooks called inside the component ────────────────────────────
+  const { team } = useTeam();
+  const { onCallStarted, onCallEnded } = useUserStatus(team?.id);
+
+  const { liveCall, isLive, isLoading, startCall } = useLiveCall({
+    onCallStarted,
+    onCallEnded,
+  });
+
+  const { scheduledCalls, scheduleMeeting, cancelScheduled } = useScheduledCalls();
   const { integrations } = useIntegrations();
   const { usage, isLoading: usageLoading } = useMeetingUsage();
 
-  // Create Meeting state
+  // ── Local state ───────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingType, setMeetingType] = useState("discovery");
   const [participants, setParticipants] = useState("");
   const [platform, setPlatform] = useState("google_meet");
 
-  // Join Meeting state
   const [joinUrl, setJoinUrl] = useState("");
 
-  // Schedule state
   const [schedOpen, setSchedOpen] = useState(false);
   const [schedTitle, setSchedTitle] = useState("");
   const [schedProvider, setSchedProvider] = useState("google_meet");
@@ -205,7 +203,6 @@ export default function LiveCall() {
           <p className="text-sm text-muted-foreground">Start, join, or schedule sales meetings with real-time AI analysis</p>
         </div>
 
-        {/* ── Meeting Usage Card ─────────────────────────────────────── */}
         {usage && (
           <Card className="border-border">
             <CardHeader className="pb-3">
@@ -290,12 +287,10 @@ export default function LiveCall() {
           </Card>
         )}
 
-        {/* Limit reached full-page state */}
         {atLimit && usage && (
           <MeetingLimitReached planName={usage.planName} used={usage.used} limit={usage.limit} />
         )}
 
-        {/* Only show action cards if not at limit */}
         {!atLimit && (
           <>
             {!anyMeetingConnected && (
@@ -469,7 +464,6 @@ export default function LiveCall() {
           </>
         )}
 
-        {/* Integration status — always visible */}
         <section>
           <h2 className="font-display font-semibold mb-3">Integration Status</h2>
           <div className="grid sm:grid-cols-3 gap-3">
