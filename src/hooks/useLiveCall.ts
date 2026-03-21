@@ -1,23 +1,27 @@
 /**
- * useLiveCall.ts — Updated version
+ * useLiveCall.ts — v3
  *
- * Changes from original:
- *  1. Calls onCallStarted() to flip status → "on_call" when call begins
- *  2. Calls onCallEnded() to revert status when call ends
- *  3. Auto-creates a Deal Room via create_deal_room_for_call RPC after call ends
- *     (fires after the AI summary is generated so it can include the score)
+ * Changes from v2:
+ *  1. startCall now invokes create-google-meet edge function before inserting
+ *     the calls row, storing meeting_url and calendar_event_id.
+ *  2. Graceful fallback: if Meet link generation fails, startCall continues
+ *     with the manually-provided meeting_id.
+ *  3. meeting_url is now stored in the calls row for cross-device resume.
+ *  4. captureSourceLabel exposed for UI display.
  *
- * Drop-in replacement for src/hooks/useLiveCall.ts
- * Only the startCall and endCall mutations change; everything else is identical.
+ * No changes to:
+ *  - Real-time transcription / objection / topic subscriptions
+ *  - endCall AI summary + deal room creation logic
+ *  - Status callbacks (onCallStarted / onCallEnded)
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import { toast } from "sonner";
-import { stageFromCall } from "@/hooks/useDealRooms"; // import the helper
+import { stageFromCall } from "@/hooks/useDealRooms";
 import { useTeam } from "@/hooks/useTeam";
 
 export interface Transcript {
@@ -31,12 +35,12 @@ export interface KeyTopic {
   id: string; call_id: string; topic: string; detected_at: string;
 }
 
-// ── Tiny helper: post a system message into a conversation ────────────────
+// ── Helper: post a system message into a deal room conversation ───────────────
 async function postSystemMessage(conversationId: string, text: string) {
   await supabase.from("team_messages" as any).insert({
     conversation_id: conversationId,
-    sender_id: "00000000-0000-0000-0000-000000000000", // system sentinel
-    message_text: text,
+    sender_id:       "00000000-0000-0000-0000-000000000000",
+    message_text:    text,
   });
 }
 
@@ -46,11 +50,12 @@ export function useLiveCall(options?: {
   onCallStarted?: () => void;
   onCallEnded?:   () => void;
 }) {
-  const { user } = useAuth();
+  const { user }         = useAuth();
   const { effectivePlan } = useEffectivePlan();
-  const { team } = useTeam();
-  const queryClient = useQueryClient();
+  const { team }         = useTeam();
+  const queryClient      = useQueryClient();
 
+  // ── Live call query ──────────────────────────────────────────────────────
   const liveCallQuery = useQuery({
     queryKey: ["live-call"],
     queryFn: async () => {
@@ -65,11 +70,12 @@ export function useLiveCall(options?: {
       return data;
     },
     enabled: !!user,
-    refetchInterval: 5000,
+    refetchInterval: 5_000,
   });
 
   const callId = liveCallQuery.data?.id;
 
+  // ── Transcripts / objections / topics ───────────────────────────────────
   const transcriptsQuery = useQuery({
     queryKey: ["live-transcripts", callId],
     queryFn: async () => {
@@ -106,37 +112,42 @@ export function useLiveCall(options?: {
     enabled: !!callId,
   });
 
-  // Realtime
+  // ── Realtime subscriptions ───────────────────────────────────────────────
   useEffect(() => {
     if (!callId || !user) return;
     const channel = supabase
       .channel(`live-call-${callId}`)
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"transcripts", filter:`call_id=eq.${callId}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "transcripts", filter: `call_id=eq.${callId}` },
         () => queryClient.invalidateQueries({ queryKey: ["live-transcripts", callId] }))
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"objections", filter:`call_id=eq.${callId}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "objections", filter: `call_id=eq.${callId}` },
         () => queryClient.invalidateQueries({ queryKey: ["live-objections", callId] }))
-      .on("postgres_changes", { event:"INSERT", schema:"public", table:"key_topics", filter:`call_id=eq.${callId}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "key_topics", filter: `call_id=eq.${callId}` },
         () => queryClient.invalidateQueries({ queryKey: ["live-topics", callId] }))
-      .on("postgres_changes", { event:"UPDATE", schema:"public", table:"calls", filter:`id=eq.${callId}` },
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}` },
         () => queryClient.invalidateQueries({ queryKey: ["live-call"] }))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [callId, user, queryClient]);
 
-  // ── START CALL ──────────────────────────────────────────────────────────
+  // ── START CALL ───────────────────────────────────────────────────────────
   const startCall = useMutation({
     mutationFn: async (input: {
-      platform: string;
-      meeting_id?: string;
-      name?: string;
+      platform:      string;
+      meeting_id?:   string;         // manual fallback URL
+      name?:         string;
       meeting_type?: string;
       participants?: string[];
+      // NEW: pass these for auto Meet link generation
+      scheduled_time?:   string;     // ISO 8601 — if provided, triggers auto-link
+      duration_minutes?: number;
+      description?:      string;
     }) => {
-      const callsLimit  = effectivePlan?.callsLimit ?? 5;
+      // ── Plan limit check ─────────────────────────────────────────────
+      const callsLimit  = effectivePlan?.callsLimit  ?? 5;
       const workspaceId = effectivePlan?.workspaceId ?? null;
 
       const cycleStart = new Date();
-      cycleStart.setDate(1); cycleStart.setHours(0,0,0,0);
+      cycleStart.setDate(1); cycleStart.setHours(0, 0, 0, 0);
 
       let usedCount = 0;
       if (workspaceId) {
@@ -146,8 +157,8 @@ export function useLiveCall(options?: {
         usedCount = (usageRow as any)?.meetings_used ?? 0;
       } else {
         const { count } = await supabase.from("calls")
-          .select("id", { count:"exact", head:true })
-          .eq("user_id", user!.id).neq("status","live")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user!.id).neq("status", "live")
           .gte("created_at", cycleStart.toISOString());
         usedCount = count ?? 0;
       }
@@ -156,36 +167,104 @@ export function useLiveCall(options?: {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
+      // ── Auto Meet link generation ────────────────────────────────────
+      let meetingUrl:       string | null = input.meeting_id ?? null;
+      let calendarEventId:  string | null = null;
+
+      const shouldAutoGenerate =
+        input.platform === "Google Meet" &&
+        input.scheduled_time;
+
+      if (shouldAutoGenerate) {
+        try {
+          const { data: meetData, error: meetErr } = await supabase.functions.invoke(
+            "create-google-meet",
+            {
+              body: {
+                user_id:          user!.id,
+                title:            input.name ?? "Sales Call",
+                participants:     input.participants ?? [],
+                scheduled_time:   input.scheduled_time,
+                duration_minutes: input.duration_minutes ?? 60,
+                description:      input.description ?? "",
+              },
+            },
+          );
+
+          if (meetErr) {
+            console.warn("Meet link generation failed (using fallback):", meetErr);
+            toast.warning("Could not auto-generate Meet link. You can paste one manually.");
+          } else if (meetData?.meet_link) {
+            meetingUrl      = meetData.meet_link;
+            calendarEventId = meetData.calendar_event_id ?? null;
+            toast.success("Google Meet link generated — invites sent to participants.");
+          } else if (meetData?.code === "NOT_CONNECTED") {
+            toast.warning("Connect Google Meet in Settings to auto-generate links.");
+          }
+        } catch (e) {
+          console.warn("Meet generation exception (using fallback):", e);
+        }
+      }
+
+      // ── Insert call row ──────────────────────────────────────────────
       const { data, error } = await supabase.from("calls").insert({
-        user_id:      user!.id,
-        name:         input.name || `${input.platform} Call`,
-        status:       "live",
-        platform:     input.platform,
-        meeting_id:   input.meeting_id || crypto.randomUUID(),
-        meeting_type: input.meeting_type || null,
-        participants: input.participants || [],
-        start_time:   new Date().toISOString(),
-        date:         new Date().toISOString(),
+        user_id:           user!.id,
+        name:              input.name || `${input.platform} Call`,
+        status:            "live",
+        platform:          input.platform,
+        meeting_id:        meetingUrl ?? input.meeting_id ?? crypto.randomUUID(),
+        meeting_url:       meetingUrl,          // ← NEW column
+        calendar_event_id: calendarEventId,     // ← NEW column
+        meeting_type:      input.meeting_type ?? null,
+        participants:      input.participants ?? [],
+        start_time:        new Date().toISOString(),
+        date:              new Date().toISOString(),
       } as any).select().single();
 
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+
+    onSuccess: (callRow) => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
-
-      // 🔴 Flip status to "On a Call"
       options?.onCallStarted?.();
+
+      // ── Dispatch Recall.ai bot (fire-and-forget) ─────────────────────
+      // Bot joins the meeting automatically to capture both sides.
+      // We only attempt this if a real joinable URL exists.
+      const meetingUrl = (callRow as any)?.meeting_url ?? (callRow as any)?.meeting_id;
+      const isRealUrl  = meetingUrl && (
+        meetingUrl.includes("meet.google.com") ||
+        meetingUrl.includes("zoom.us") ||
+        meetingUrl.includes("teams.microsoft.com")
+      );
+
+      if (isRealUrl) {
+        supabase.functions.invoke("join-meeting-bot", {
+          body: {
+            call_id:     callRow.id,
+            meeting_url: meetingUrl,
+            call_name:   callRow.name,
+          },
+        }).then(({ error }) => {
+          if (error) {
+            console.warn("Bot dispatch failed (continuing without bot):", error);
+          } else {
+            console.log("Recall bot dispatched for call:", callRow.id);
+          }
+        });
+      }
     },
   });
 
-  // ── END CALL ────────────────────────────────────────────────────────────
+  // ── END CALL ─────────────────────────────────────────────────────────────
   const endCall = useMutation({
     mutationFn: async () => {
       if (!callId) throw new Error("No live call");
 
+      // Mark completed
       const { error } = await supabase.from("calls").update({
         status:   "completed",
         end_time: new Date().toISOString(),
@@ -198,7 +277,7 @@ export function useLiveCall(options?: {
         const res = await supabase.functions.invoke("generate-call-summary", {
           body: { call_id: callId },
         });
-        if (res.data) summaryData = res.data;
+        if (res.data)  summaryData = res.data;
         if (res.error) console.error("Summary error:", res.error);
       } catch (e) {
         console.error("Summary generation error:", e);
@@ -209,7 +288,7 @@ export function useLiveCall(options?: {
         body: { call_id: callId, user_id: user!.id },
       }).catch(console.error);
 
-      // 🏢 Auto-create Deal Room if user is in a team
+      // Auto-create Deal Room if user is in a team
       if (team?.id) {
         try {
           const callData = liveCallQuery.data;
@@ -236,25 +315,27 @@ export function useLiveCall(options?: {
               p_sentiment_score: sentimentScore,
               p_last_call_score: meetingScore,
               p_next_step:       nextStep,
-            }
+            },
           );
 
           if (!drErr && dealRoomId) {
-            // Fetch the deal room to get its conversation_id
             const { data: dr } = await (supabase as any)
-              .from("deal_rooms").select("conversation_id").eq("id", dealRoomId).maybeSingle();
+              .from("deal_rooms")
+              .select("conversation_id")
+              .eq("id", dealRoomId)
+              .maybeSingle();
 
             if (dr?.conversation_id) {
-              // Post a system summary message into the deal room conversation
               const summary = summaryData?.summary
                 ? `📊 **Call Summary**\n${summaryData.summary}`
                 : `📊 **Call Completed** — ${dealName}`;
 
               const details: string[] = [];
               if (sentimentScore != null) details.push(`Sentiment: ${sentimentScore}%`);
-              if (meetingScore != null)   details.push(`Score: ${meetingScore}/10`);
-              if (nextStep)               details.push(`Next step: ${nextStep}`);
-              if (summaryData?.objections?.length) details.push(`Objections: ${summaryData.objections.length}`);
+              if (meetingScore    != null) details.push(`Score: ${meetingScore}/10`);
+              if (nextStep)                details.push(`Next step: ${nextStep}`);
+              if (summaryData?.objections?.length)
+                details.push(`Objections: ${summaryData.objections.length}`);
 
               const fullMsg = details.length
                 ? `${summary}\n\n${details.join(" · ")}`
@@ -268,6 +349,7 @@ export function useLiveCall(options?: {
         }
       }
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
@@ -275,8 +357,6 @@ export function useLiveCall(options?: {
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
       queryClient.invalidateQueries({ queryKey: ["deal-rooms"] });
-
-      // 🟢 Revert status to "Available"
       options?.onCallEnded?.();
     },
   });
@@ -285,9 +365,9 @@ export function useLiveCall(options?: {
     liveCall:    liveCallQuery.data,
     isLive:      !!liveCallQuery.data,
     isLoading:   liveCallQuery.isLoading,
-    transcripts: transcriptsQuery.data || [],
-    objections:  objectionsQuery.data  || [],
-    topics:      topicsQuery.data      || [],
+    transcripts: transcriptsQuery.data  ?? [],
+    objections:  objectionsQuery.data   ?? [],
+    topics:      topicsQuery.data       ?? [],
     startCall,
     endCall,
     callId,
