@@ -16,7 +16,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   Mic, MicOff, AlertCircle, Lightbulb, TrendingUp, Clock, Loader2,
   Video, MonitorUp, ExternalLink, MessageSquare, BarChart3, Target,
-  CheckCircle2, Circle, Radio, Users, Headphones, ChevronDown,
+  CheckCircle2, Circle, Radio, Users, Headphones, ChevronDown, Bot,
 } from "lucide-react";
 import { Button }        from "@/components/ui/button";
 import { cn }            from "@/lib/utils";
@@ -25,6 +25,7 @@ import { useAudioCapture, type CaptureSource, type CaptureStep } from "@/hooks/u
 import { useTeam }       from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useIsMobile }   from "@/hooks/use-mobile";
+import { supabase }      from "@/integrations/supabase/client";
 import { toast }         from "sonner";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -75,7 +76,117 @@ function CaptureStatusBadge({
   );
 }
 
-// ─── Audio capture panel (desktop) ───────────────────────────────────────────
+// ─── Bot status banner ────────────────────────────────────────────────────────
+// Shows the Recall.ai bot status — replaces the manual audio capture panel
+// when the bot is active.
+
+type BotStatus =
+  | "none"
+  | "joining"
+  | "in_waiting_room"
+  | "in_call_not_recording"
+  | "recording_permission_allowed"
+  | "recording_permission_denied"
+  | "in_call"
+  | "recording"
+  | "call_ended"
+  | "done"
+  | "failed";
+
+function useBotStatus(callId: string | undefined) {
+  const [botStatus, setBotStatus] = useState<BotStatus>("none");
+
+  useEffect(() => {
+    if (!callId) return;
+
+    // Poll the call row for bot status updates
+    const fetch = async () => {
+      const { data } = await supabase
+        .from("calls")
+        .select("recall_bot_status")
+        .eq("id", callId)
+        .maybeSingle();
+      if (data?.recall_bot_status) {
+        setBotStatus((data.recall_bot_status as BotStatus) ?? "none");
+      }
+    };
+
+    fetch();
+
+    // Also subscribe to realtime changes so status updates instantly
+    const ch = supabase
+      .channel(`bot-status:${callId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}` },
+        (payload: any) => {
+          if (payload.new?.recall_bot_status) {
+            setBotStatus(payload.new.recall_bot_status as BotStatus);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  }, [callId]);
+
+  const isActive  = ["joining", "in_waiting_room", "in_call_not_recording",
+    "recording_permission_allowed", "in_call", "recording"].includes(botStatus);
+  const isCapturing = botStatus === "recording" || botStatus === "recording_permission_allowed";
+  const isFailed  = botStatus === "failed" || botStatus === "recording_permission_denied";
+
+  return { botStatus, isActive, isCapturing, isFailed };
+}
+
+function BotStatusBanner({
+  botStatus,
+  isFailed,
+  isActive,
+  isBotCapturing,
+  onFallback,
+}: {
+  botStatus:      BotStatus;
+  isFailed:       boolean;
+  isActive:       boolean;
+  isBotCapturing: boolean;
+  onFallback:     () => void;
+}) {
+  if (botStatus === "none") return null;
+
+  const states: Record<BotStatus, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
+    none:                          { label: "", color: "", bg: "", border: "", icon: null },
+    joining:                       { label: "Fixsense AI is joining the meeting…",                color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <Loader2 className="w-4 h-4 animate-spin text-primary" /> },
+    in_waiting_room:               { label: "Fixsense AI is in the waiting room — please admit it", color: "text-yellow-400", bg: "bg-yellow-500/5",  border: "border-yellow-500/20",  icon: <Loader2 className="w-4 h-4 animate-spin text-yellow-400" /> },
+    in_call_not_recording:         { label: "Fixsense AI joined — waiting to start recording",     color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <Loader2 className="w-4 h-4 animate-spin text-primary" /> },
+    recording_permission_allowed:  { label: "🎙️ Fixsense AI is recording — both sides captured",  color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    in_call:                       { label: "🎙️ Fixsense AI is in the call — recording both sides", color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    recording:                     { label: "🎙️ Fixsense AI is recording — both sides captured",  color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    recording_permission_denied:   { label: "Recording permission denied — click 'Allow' in Meet", color: "text-yellow-400", bg: "bg-yellow-500/5",  border: "border-yellow-500/20",  icon: <AlertCircle className="w-4 h-4 text-yellow-400" /> },
+    call_ended:                    { label: "Fixsense AI has left the meeting",                    color: "text-muted-foreground", bg: "bg-muted/30", border: "border-border",        icon: <Bot className="w-4 h-4 opacity-40" /> },
+    done:                          { label: "Bot recording complete — transcript processing",      color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <CheckCircle2 className="w-4 h-4 text-primary" /> },
+    failed:                        { label: "Bot failed to join — use manual capture below",       color: "text-red-400",    bg: "bg-red-500/5",     border: "border-red-500/20",     icon: <AlertCircle className="w-4 h-4 text-red-400" /> },
+  };
+
+  const state = states[botStatus] ?? states.joining;
+
+  return (
+    <div className={cn("rounded-xl p-3.5 border flex items-center gap-3", state.bg, state.border)}>
+      <div className="shrink-0">{state.icon}</div>
+      <p className={cn("text-sm flex-1", state.color)}>{state.label}</p>
+      {isFailed && (
+        <Button onClick={onFallback} size="sm" variant="outline" className="text-xs gap-1.5 shrink-0">
+          <Mic className="w-3 h-3" />
+          Use mic instead
+        </Button>
+      )}
+      {botStatus === "in_waiting_room" && (
+        <span className="text-xs text-muted-foreground shrink-0">
+          Check the "Admit" dialog in your meeting
+        </span>
+      )}
+    </div>
+  );
+}
 // Shows step-by-step instructions so the user knows exactly what to do.
 
 function AudioCapturePanel({
@@ -494,6 +605,22 @@ export default function LiveMeeting() {
     },
   });
 
+  // ── Recall bot status ──────────────────────────────────────────────────────
+  const {
+    botStatus,
+    isActive:       isBotActive,
+    isCapturing:    isBotCapturing,
+    isFailed:       isBotFailed,
+  } = useBotStatus(callId);
+
+  // If bot is capturing, hide the manual audio capture panel.
+  // If bot failed, show fallback panel automatically.
+  const [showFallbackCapture, setShowFallbackCapture] = useState(false);
+  const showManualCapture = !isBotActive || showFallbackCapture || isBotFailed;
+
+  // Overall capture quality for status badge
+  const effectivelyCapturingBothSides = isBotCapturing || isFullCapture;
+
   // ── Derived analytics ──────────────────────────────────────────────────────
   const talkRatio = useMemo(() => {
     if (transcripts.length === 0) return { rep: 0, prospect: 0 };
@@ -734,25 +861,46 @@ export default function LiveMeeting() {
               {(liveCall!.participants as string[]).join(", ")}
             </div>
           ) : null}
-          <CaptureStatusBadge
-            isCapturing={isCapturing}
-            captureSource={captureSource}
-            isFullCapture={isFullCapture}
-          />
+          {/* Show bot capture status or manual capture status */}
+          {isBotCapturing ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-medium">
+              <Bot className="w-3 h-3" />
+              AI bot capturing both sides
+            </div>
+          ) : (
+            <CaptureStatusBadge
+              isCapturing={isCapturing}
+              captureSource={captureSource}
+              isFullCapture={isFullCapture}
+            />
+          )}
         </div>
 
-        {/* ── Audio capture panel ─────────────────────────────────────────── */}
-        <AudioCapturePanel
-          isCapturing={isCapturing}
-          captureStep={captureStep}
-          captureSource={captureSource}
-          captureSourceLabel={captureSourceLabel}
-          isFullCapture={isFullCapture}
-          error={captureError}
-          capabilities={capabilities}
-          onStart={startCapture}
-          onStop={stopCapture}
-        />
+        {/* ── Bot status banner ──────────────────────────────────────────── */}
+        {botStatus !== "none" && (
+          <BotStatusBanner
+            botStatus={botStatus}
+            isFailed={isBotFailed}
+            isActive={isBotActive}
+            isBotCapturing={isBotCapturing}
+            onFallback={() => setShowFallbackCapture(true)}
+          />
+        )}
+
+        {/* ── Manual audio capture panel (hidden when bot is working) ────── */}
+        {showManualCapture && (
+          <AudioCapturePanel
+            isCapturing={isCapturing}
+            captureStep={captureStep}
+            captureSource={captureSource}
+            captureSourceLabel={captureSourceLabel}
+            isFullCapture={isFullCapture}
+            error={captureError}
+            capabilities={capabilities}
+            onStart={startCapture}
+            onStop={stopCapture}
+          />
+        )}
 
         {/* ── Main content grid ───────────────────────────────────────────── */}
         <div className="grid lg:grid-cols-3 gap-4">
@@ -761,13 +909,13 @@ export default function LiveMeeting() {
           <div className="lg:col-span-2 glass rounded-xl flex flex-col max-h-[600px]">
             <div className="p-4 border-b border-border flex items-center justify-between">
               <h2 className="font-display font-semibold text-sm">Live Transcription</h2>
-              {isCapturing && (
+              {(isCapturing || isBotCapturing) && (
                 <div className={cn(
                   "flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full",
-                  isFullCapture ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"
+                  (isFullCapture || isBotCapturing) ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"
                 )}>
-                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isFullCapture ? "bg-green-400" : "bg-yellow-400")} />
-                  {isFullCapture ? "Both sides" : captureSource === "mic" ? "Your voice only" : "Meeting audio only"}
+                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", (isFullCapture || isBotCapturing) ? "bg-green-400" : "bg-yellow-400")} />
+                  {isBotCapturing ? "Both sides via AI bot" : isFullCapture ? "Both sides" : captureSource === "mic" ? "Your voice only" : "Meeting audio only"}
                 </div>
               )}
             </div>
