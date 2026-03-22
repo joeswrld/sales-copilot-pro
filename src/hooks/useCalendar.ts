@@ -139,7 +139,12 @@ export function useCalendar() {
       if (!user?.id) return;
       await supabase
         .from("integrations")
-        .update({ status: "disconnected", access_token: null, refresh_token: null })
+        .update({
+          status:                  "disconnected",
+          access_token_encrypted:  null,
+          refresh_token_encrypted: null,
+          expires_at:              null,
+        } as any)
         .eq("user_id", user.id)
         .eq("provider", "google_calendar");
     },
@@ -155,7 +160,7 @@ export function useCalendar() {
     if (!user?.id || isSyncing) return;
     setIsSyncing(true);
     try {
-      const { error } = await supabase.functions.invoke("sync-calendar", {
+      const { error } = await supabase.functions.invoke("sync-google-calendar", {
         body: { user_id: user.id },
       });
       if (error) throw error;
