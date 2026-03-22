@@ -238,7 +238,8 @@ export function useLiveCall(options?: {
       const isRealUrl  = meetingUrl && (
         meetingUrl.includes("meet.google.com") ||
         meetingUrl.includes("zoom.us") ||
-        meetingUrl.includes("teams.microsoft.com")
+        meetingUrl.includes("teams.microsoft.com") ||
+        meetingUrl.includes(".daily.co")
       );
 
       if (isRealUrl) {
