@@ -50,9 +50,10 @@ import { cn }                 from "@/lib/utils";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-function detectProvider(url: string): "zoom" | "google_meet" | null {
+function detectProvider(url: string): "zoom" | "google_meet" | "daily" | null {
   if (/zoom\.(us|com)/i.test(url)) return "zoom";
   if (/meet\.google\.com/i.test(url)) return "google_meet";
+  if (/\.daily\.co\//i.test(url)) return "daily";
   return null;
 }
 
@@ -184,7 +185,7 @@ interface WizardState {
   meetLink:        string | null;   // null means generation failed — user must paste
   calEventId:      string | null;
   invitesSent:     boolean;
-  method:          "calendar" | "spaces" | "manual" | null;
+  method:          "calendar" | "spaces" | "service_account" | "daily" | "manual" | null;
   // User-entered fallback URL (when meetLink is null)
   manualUrl:       string;
   // UX
@@ -226,22 +227,29 @@ function WizardReady({
 }) {
   const displayLink = wizard.meetLink ?? wizard.manualUrl;
   const isValidLink = !!displayLink && !!detectProvider(displayLink);
+  const needsManual = !wizard.meetLink; // generation failed, user must paste
 
   const copyLink = () => {
     if (!displayLink) return;
     navigator.clipboard.writeText(displayLink);
     setWizard(w => ({ ...w, copied: true }));
-    toast.success("Link copied to clipboard!");
+    toast.success("Meeting link copied!");
     setTimeout(() => setWizard(w => ({ ...w, copied: false })), 3000);
   };
 
   const shareLink = async () => {
     if (!displayLink) return;
     if (navigator.share) {
-      await navigator.share({ title: meetingTitle, url: displayLink });
+      try {
+        await navigator.share({ title: meetingTitle, text: `Join my meeting: ${displayLink}`, url: displayLink });
+      } catch {}
     } else {
       copyLink();
     }
+  };
+
+  const openMeetNew = () => {
+    window.open("https://meet.google.com/new", "_blank");
   };
 
   return (
@@ -263,95 +271,138 @@ function WizardReady({
         </div>
       </div>
 
-      {/* Meeting link box */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="px-4 py-3 bg-secondary/20 border-b border-border">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            {wizard.meetLink ? "Your meeting link" : "Paste your meeting link"}
-          </p>
-        </div>
-
-        <div className="p-4 space-y-3">
-          {wizard.meetLink ? (
-            /* Generated link */
-            <>
-              <div className="flex items-stretch gap-2">
-                <div className="flex-1 min-w-0 bg-background border border-border rounded-lg px-3 py-2.5 font-mono text-sm text-primary truncate flex items-center">
+      {/* ── CASE A: Link was generated ──────────────────────────────────── */}
+      {wizard.meetLink && (
+        <>
+          {/* Big link display */}
+          <div className="rounded-xl border-2 border-primary/20 bg-primary/5 overflow-hidden">
+            <div className="px-4 py-2.5 bg-primary/10 border-b border-primary/15 flex items-center gap-2">
+              <Video className="w-3.5 h-3.5 text-primary" />
+              <p className="text-xs font-semibold text-primary">Your meeting link is ready</p>
+              {wizard.method === "calendar" && wizard.invitesSent && participants.length > 0 && (
+                <span className="ml-auto text-xs text-green-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Invites sent
+                </span>
+              )}
+            </div>
+            <div className="p-4 space-y-3">
+              {/* Link row */}
+              <div className="flex items-center gap-2 bg-background rounded-lg border border-border px-3 py-2.5">
+                <span className="flex-1 min-w-0 font-mono text-sm text-primary truncate select-all">
                   {wizard.meetLink}
-                </div>
-                <Button variant="outline" size="sm" className="gap-1.5 shrink-0 h-auto" onClick={copyLink}>
-                  {wizard.copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  {wizard.copied ? "Copied!" : "Copy"}
-                </Button>
-                <Button variant="outline" size="sm" className="gap-1.5 shrink-0 h-auto" onClick={shareLink}>
-                  <Share2 className="w-3.5 h-3.5" />
-                  Share
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 px-2.5 gap-1.5 shrink-0 text-xs" onClick={copyLink}>
+                  {wizard.copied
+                    ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Copied!</>
+                    : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </Button>
               </div>
 
-              <a
-                href={wizard.meetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" /> Open in new tab to test the link
-              </a>
+              {/* Share + Open */}
+              <div className="flex gap-2">
+                <Button onClick={shareLink} variant="outline" size="sm" className="flex-1 gap-2">
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share with Prospect
+                </Button>
+                <Button
+                  onClick={() => window.open(wizard.meetLink!, "_blank")}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Test link
+                </Button>
+              </div>
 
-              {wizard.method === "calendar" && wizard.invitesSent && participants.length > 0 && (
-                <p className="text-xs text-green-600 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Calendar invites sent to {participants.join(", ")}
+              {(wizard.method === "daily" || wizard.method === "spaces" || wizard.method === "service_account") && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
+                  <AlertTriangle className="w-3 h-3 text-yellow-500 shrink-0" />
+                  {wizard.method === "daily"
+                    ? "Video link created. Share it manually — no calendar invite sent."
+                    : "No calendar invite sent — share this link manually (email, WhatsApp, SMS)."}
                 </p>
               )}
-              {wizard.method === "spaces" && (
-                <p className="text-xs text-yellow-600 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3 h-3" />
-                  No calendar invite sent (Google Calendar not connected). Share this link manually.
-                </p>
-              )}
-            </>
-          ) : (
-            /* Manual entry — link generation failed */
-            <>
-              <p className="text-xs text-muted-foreground">
-                Auto-generation wasn't available. Go to{" "}
-                <a href="https://meet.google.com/new" target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium">
-                  meet.google.com/new
-                </a>{" "}
-                to create a free link, then paste it here.
-              </p>
+            </div>
+          </div>
+
+          {/* How it works steps */}
+          <div className="rounded-xl border border-border bg-secondary/10 p-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">What to do next</p>
+            <div className="space-y-2.5">
+              {[
+                { icon: <Share2 className="w-3.5 h-3.5 text-primary" />, text: "Send this link to your prospect via email, WhatsApp, or SMS." },
+                { icon: <Users className="w-3.5 h-3.5 text-primary" />, text: "Wait for your prospect to click and join the meeting." },
+                { icon: <Video className="w-3.5 h-3.5 text-primary" />, text: <>Click <strong className="text-foreground">Start Meeting Now</strong> below when you're both ready.</> },
+                { icon: <Bot className="w-3.5 h-3.5 text-green-500" />,  text: "Fixsense AI joins silently and transcribes both sides — no action needed." },
+              ].map((step, i) => (
+                <div key={i} className="flex items-start gap-2.5 text-xs text-muted-foreground">
+                  <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">{i + 1}</span>
+                  <div className="flex items-start gap-1.5 flex-1 mt-0.5">
+                    {step.icon}
+                    <span>{step.text}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── CASE B: Link generation failed — manual entry ──────────────── */}
+      {needsManual && (
+        <div className="rounded-xl border-2 border-dashed border-border overflow-hidden">
+          <div className="px-4 py-3 bg-secondary/20 border-b border-border">
+            <p className="text-sm font-semibold">Get a meeting link</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Create a free Google Meet link in one click, then paste it below.
+            </p>
+          </div>
+          <div className="p-4 space-y-3">
+            {/* One-click create button */}
+            <Button
+              onClick={openMeetNew}
+              variant="outline"
+              className="w-full gap-2 border-primary/30 text-primary hover:bg-primary/5"
+            >
+              <Video className="w-4 h-4" />
+              Open meet.google.com/new →
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              A new tab opens. Click "New meeting" → "Start an instant meeting" → copy the URL → paste below.
+            </p>
+            <div className="relative">
               <Input
                 placeholder="https://meet.google.com/xxx-yyyy-zzz"
                 value={wizard.manualUrl}
                 onChange={e => setWizard(w => ({ ...w, manualUrl: e.target.value, method: "manual" }))}
-                className="font-mono text-sm"
+                className="font-mono text-sm pr-20"
+                autoFocus
               />
-              {wizard.manualUrl && detectProvider(wizard.manualUrl) && (
-                <p className="text-xs text-green-600 flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5" /> Valid Google Meet link
-                </p>
+              {wizard.manualUrl && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {detectProvider(wizard.manualUrl) ? (
+                    <span className="text-xs text-green-600 flex items-center gap-1 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Valid
+                    </span>
+                  ) : (
+                    <span className="text-xs text-red-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Invalid
+                    </span>
+                  )}
+                </div>
               )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* How to share */}
-      {displayLink && (
-        <div className="rounded-xl border border-border bg-secondary/10 p-4 space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">How to share</p>
-          <div className="space-y-2 text-xs text-muted-foreground">
-            {[
-              "Copy the link above and send to your prospect via email, WhatsApp, or SMS.",
-              "Wait for your prospect to join the meeting.",
-              <>Click <strong className="text-foreground">Start Meeting Now</strong> — Fixsense AI joins instantly and transcribes both sides.</>,
-            ].map((step, i) => (
-              <p key={i} className="flex items-start gap-2.5">
-                <span className="w-4 h-4 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">{i + 1}</span>
-                <span>{step}</span>
-              </p>
-            ))}
+            </div>
+            {wizard.manualUrl && detectProvider(wizard.manualUrl) && (
+              <div className="flex gap-2">
+                <Button onClick={copyLink} variant="ghost" size="sm" className="gap-1.5 text-xs flex-1">
+                  <Copy className="w-3.5 h-3.5" /> Copy to share
+                </Button>
+                <Button onClick={shareLink} variant="ghost" size="sm" className="gap-1.5 text-xs flex-1">
+                  <Share2 className="w-3.5 h-3.5" /> Share with prospect
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -420,7 +471,7 @@ export default function LiveCall() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingType, setMeetingType]   = useState("discovery");
   const [participants, setParticipants] = useState("");
-  const [platform, setPlatform]         = useState("google_meet");
+  const [platform, setPlatform]         = useState("daily"); // Daily.co is default — always works
   const [scheduledTime, setScheduledTime] = useState("");
   const [duration, setDuration]         = useState("60");
 
@@ -448,11 +499,14 @@ export default function LiveCall() {
     setCreateOpen(false);
     setWizard(EMPTY_WIZARD);
     setMeetingTitle(""); setMeetingType("discovery");
-    setParticipants(""); setPlatform("google_meet");
+    setParticipants(""); setPlatform("daily");
     setScheduledTime(""); setDuration("60");
   };
 
   // ── STEP 1: Generate link ─────────────────────────────────────────────────
+  // ALWAYS calls create-google-meet regardless of platform selection.
+  // The edge function tries Daily.co first (no user setup needed), then
+  // Google OAuth, then falls back to manual entry.
   const handleGenerateLink = async () => {
     if (!meetingTitle.trim()) { toast.error("Please enter a meeting title"); return; }
     if (usage && !usage.isUnlimited && usage.isAtLimit) {
@@ -462,39 +516,47 @@ export default function LiveCall() {
 
     setGeneratingLink(true);
 
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
     let meetLink:   string | null = null;
     let calEventId: string | null = null;
     let invitesSent               = false;
     let method: WizardState["method"] = null;
 
-    if (platform === "google_meet" && isProviderConnected("google_meet")) {
-      try {
-        const { data, error } = await supabase.functions.invoke("create-google-meet", {
-          body: {
-            user_id:          authUser?.id,
-            title:            meetingTitle.trim(),
-            participants:     parsedParticipants,
-            scheduled_time:   scheduledTime || new Date().toISOString(),
-            duration_minutes: parseInt(duration, 10),
-            meeting_type:     meetingType,
-          },
-        });
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
 
-        if (!error && data?.meet_link) {
-          meetLink    = data.meet_link;
-          calEventId  = data.calendar_event_id ?? null;
-          invitesSent = data.invites_sent ?? false;
-          method      = data.method ?? "calendar";
+      console.log("[create-meeting] calling create-google-meet edge function...");
+
+      const { data, error } = await supabase.functions.invoke("create-google-meet", {
+        body: {
+          user_id:          authUser?.id ?? "anonymous",
+          title:            meetingTitle.trim(),
+          participants:     parsedParticipants,
+          scheduled_time:   scheduledTime || new Date().toISOString(),
+          duration_minutes: parseInt(duration, 10),
+          meeting_type:     meetingType,
+        },
+      });
+
+      console.log("[create-meeting] response:", JSON.stringify(data), "error:", error);
+
+      if (error) {
+        console.error("[create-meeting] invoke error:", error);
+      } else if (data?.meet_link) {
+        meetLink    = data.meet_link;
+        calEventId  = data.calendar_event_id ?? null;
+        invitesSent = data.invites_sent ?? false;
+        method      = data.method ?? "daily";
+        if (method === "calendar" && invitesSent && parsedParticipants.length > 0) {
+          toast.success("Meeting created — calendar invites sent!");
         } else {
-          const code = data?.code ?? "UNKNOWN";
-          console.warn("create-google-meet response:", code, data?.error);
-          // Don't show error toast — step 2 handles fallback gracefully
+          toast.success("Meeting link ready!");
         }
-      } catch (e) {
-        console.warn("create-google-meet exception:", e);
+      } else {
+        // Edge function returned but no link — log what it said
+        console.warn("[create-meeting] no meet_link in response:", JSON.stringify(data));
       }
+    } catch (e: any) {
+      console.error("[create-meeting] exception:", e?.message ?? e);
     }
 
     setGeneratingLink(false);
@@ -515,13 +577,13 @@ export default function LiveCall() {
   const handleStartMeeting = async () => {
     const finalUrl = (wizard.meetLink ?? wizard.manualUrl).trim();
     if (!finalUrl || !detectProvider(finalUrl)) {
-      toast.error("Please add a valid Google Meet or Zoom link first.");
+      toast.error("Please add a valid meeting link (Google Meet, Zoom, or Daily.co).");
       return;
     }
 
     try {
       const call = await startCall.mutateAsync({
-        platform:          platform === "zoom" ? "Zoom" : "Google Meet",
+        platform:          platform === "zoom" ? "Zoom" : detectProvider(finalUrl) === "daily" ? "Daily.co" : "Google Meet",
         meeting_id:        finalUrl,
         meeting_url:       finalUrl,
         calendar_event_id: wizard.calEventId ?? undefined,
@@ -547,7 +609,7 @@ export default function LiveCall() {
   const handleJoinMeeting = async () => {
     if (!joinUrl.trim()) { toast.error("Please paste a meeting URL"); return; }
     const detected = detectProvider(joinUrl);
-    if (!detected) { toast.error("Unsupported URL. Use a Zoom or Google Meet link."); return; }
+    if (!detected) { toast.error("Unsupported URL. Use a Google Meet, Zoom, or Daily.co link."); return; }
     if (usage && !usage.isUnlimited && usage.isAtLimit) {
       toast.error(`You've reached your ${usage.planName} plan limit.`); return;
     }
@@ -672,30 +734,27 @@ export default function LiveCall() {
               <p className="text-xs text-muted-foreground mt-1">Leave empty to start soon</p>
             </div>
 
+            {/* Platform — Daily.co is always available, Google Meet/Zoom need integration */}
             <div>
-              <Label>Platform</Label>
+              <Label>Video platform</Label>
               <Select value={platform} onValueChange={setPlatform}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="google_meet" disabled={!meetConnected}>
-                    Google Meet {!meetConnected ? "(connect in Settings)" : "✦ auto-link"}
+                  <SelectItem value="daily">
+                    Daily.co — auto link (recommended)
                   </SelectItem>
-                  <SelectItem value="zoom" disabled={!zoomConnected}>
-                    Zoom {!zoomConnected && "(connect in Settings)"}
+                  <SelectItem value="google_meet">
+                    Google Meet {meetConnected ? "✦ auto-link" : "(requires Google connection)"}
+                  </SelectItem>
+                  <SelectItem value="zoom">
+                    Zoom {zoomConnected ? "" : "(requires Zoom connection)"}
                   </SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Daily.co links work instantly — no account needed for your prospect.
+              </p>
             </div>
-
-            {!anyConnected && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-600">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>
-                  No meeting integration connected. You can still continue — you'll paste your own link in the next step.
-                  Or <button onClick={() => { closeAndReset(); navigate("/dashboard/settings"); }} className="underline font-medium">connect Google Meet in Settings</button>.
-                </span>
-              </div>
-            )}
 
             <Button
               onClick={handleGenerateLink}
