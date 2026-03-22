@@ -44,3 +44,21 @@ verify_jwt = false
 
 [functions.get-user-active-plan]
 verify_jwt = false
+
+# ── New calendar functions ──────────────────────────────────────────────────
+# verify_jwt = false because Google redirects here directly (no JWT in request)
+
+[functions.google-oauth]
+verify_jwt = false
+
+[functions.sync-google-calendar]
+verify_jwt = false
+
+[functions.dispatch-scheduled-bots]
+verify_jwt = false
+
+[functions.join-meeting-bot]
+verify_jwt = false
+
+[functions.meetingbaas-webhook]
+verify_jwt = false
