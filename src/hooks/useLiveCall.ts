@@ -177,29 +177,40 @@ export function useLiveCall(options?: {
 
       if (shouldAutoGenerate) {
         try {
-          const { data: meetData, error: meetErr } = await supabase.functions.invoke(
-            "create-google-meet",
-            {
-              body: {
-                user_id:          user!.id,
-                title:            input.name ?? "Sales Call",
-                participants:     input.participants ?? [],
-                scheduled_time:   input.scheduled_time,
-                duration_minutes: input.duration_minutes ?? 60,
-                description:      input.description ?? "",
-              },
-            },
-          );
-
-          if (meetErr) {
-            console.warn("Meet link generation failed (using fallback):", meetErr);
+          // Get current session for authorization header
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session?.access_token) {
+            console.warn("No access token available for Meet link generation");
             toast.warning("Could not auto-generate Meet link. You can paste one manually.");
-          } else if (meetData?.meet_link) {
-            meetingUrl      = meetData.meet_link;
-            calendarEventId = meetData.calendar_event_id ?? null;
-            toast.success("Google Meet link generated — invites sent to participants.");
-          } else if (meetData?.code === "NOT_CONNECTED") {
-            toast.warning("Connect Google Meet in Settings to auto-generate links.");
+          } else {
+            const { data: meetData, error: meetErr } = await supabase.functions.invoke(
+              "create-google-meet",
+              {
+                headers: {
+                  "Authorization": `Bearer ${session.access_token}`,
+                },
+                body: {
+                  user_id:          user!.id,
+                  title:            input.name ?? "Sales Call",
+                  participants:     input.participants ?? [],
+                  scheduled_time:   input.scheduled_time,
+                  duration_minutes: input.duration_minutes ?? 60,
+                  description:      input.description ?? "",
+                },
+              },
+            );
+
+            if (meetErr) {
+              console.warn("Meet link generation failed (using fallback):", meetErr);
+              toast.warning("Could not auto-generate Meet link. You can paste one manually.");
+            } else if (meetData?.meet_link) {
+              meetingUrl      = meetData.meet_link;
+              calendarEventId = meetData.calendar_event_id ?? null;
+              toast.success("Google Meet link generated — invites sent to participants.");
+            } else if (meetData?.code === "NOT_CONNECTED") {
+              toast.warning("Connect Google Meet in Settings to auto-generate links.");
+            }
           }
         } catch (e) {
           console.warn("Meet generation exception (using fallback):", e);
