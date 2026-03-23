@@ -24,6 +24,18 @@ const providers: Record<string, ProviderConfig> = {
       "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email",
     clientIdEnv: "GOOGLE_CLIENT_ID",
   },
+  // ── Google Calendar (used by the calendar sync / Live Call feature) ───────
+  // Shares the same Google OAuth app as google_meet but is tracked separately
+  // in the integrations table so connection state is independent.
+  google_calendar: {
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    scopes: [
+      "https://www.googleapis.com/auth/calendar.readonly",
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ].join(" "),
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+  },
   teams: {
     authUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     scopes: "OnlineMeetings.Read Calendars.Read User.Read offline_access",
@@ -103,15 +115,21 @@ Deno.serve(async (req) => {
     // Encode state with provider + user ID for callback
     const state = btoa(JSON.stringify({ provider, userId, redirect_uri: redirect_uri || "" }));
 
+    // Google providers need access_type=offline and prompt=consent to get a refresh token
+    const isGoogle = provider === "google_meet" || provider === "google_calendar";
+
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: callbackUrl,
       response_type: "code",
       scope: config.scopes,
       state,
-      access_type: "offline", // For Google
-      prompt: provider === "google_meet" ? "consent" : "",
     });
+
+    if (isGoogle) {
+      params.set("access_type", "offline");
+      params.set("prompt", "consent");
+    }
 
     const oauthUrl = `${config.authUrl}?${params.toString()}`;
 
