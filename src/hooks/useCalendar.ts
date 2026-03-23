@@ -3,9 +3,13 @@
  *
  * Manages Google Calendar connection and upcoming meeting sync.
  *
- * Fix: connect() now uses the same popup OAuth pattern as other integrations
- * (goes through oauth-connect edge function which attaches the JWT), instead
- * of a bare redirect that had no Authorization header.
+ * Fixes applied:
+ *  1. Ensures a google_calendar integration row exists before trying to connect
+ *     (existing users won't have one from the signup trigger).
+ *  2. Better error surfacing — logs the actual edge-function error body so you
+ *     can see what went wrong instead of a generic non-2xx toast.
+ *  3. The connect() call now upserts the row first so the oauth-callback UPDATE
+ *     always finds a matching row.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -37,6 +41,20 @@ export function useCalendar() {
   const queryClient   = useQueryClient();
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // ── Ensure integration row exists for this user ────────────────────────────
+  // The signup trigger only seeds the 6 default providers; google_calendar is
+  // NOT in that list, so existing users have no row. Without a row the
+  // oauth-callback UPDATE finds nothing and the connection silently fails.
+  const ensureIntegrationRow = useCallback(async () => {
+    if (!user?.id) return;
+    await supabase
+      .from("integrations")
+      .upsert(
+        { user_id: user.id, provider: "google_calendar", status: "disconnected" },
+        { onConflict: "user_id,provider", ignoreDuplicates: true }
+      );
+  }, [user?.id]);
 
   // ── Connection status ──────────────────────────────────────────────────────
   const { data: integration, isLoading: statusLoading } = useQuery({
@@ -100,7 +118,7 @@ export function useCalendar() {
     return () => { supabase.removeChannel(ch); };
   }, [user?.id, queryClient]);
 
-  // ── Listen for OAuth popup success (same pattern as useSettings.ts) ───────
+  // ── Listen for OAuth popup success ────────────────────────────────────────
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "oauth-success" && event.data?.provider === "google_calendar") {
@@ -113,7 +131,7 @@ export function useCalendar() {
     return () => window.removeEventListener("message", handler);
   }, [queryClient]);
 
-  // ── Check for legacy ?calendar= query param after redirect (fallback) ────
+  // ── Check for legacy ?calendar= query param after redirect (fallback) ─────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("calendar") === "connected") {
@@ -132,22 +150,39 @@ export function useCalendar() {
     }
   }, [queryClient]);
 
-  // ── Connect — uses oauth-connect edge function (same as other integrations)
-  // This ensures the JWT Authorization header is sent automatically by
-  // supabase.functions.invoke, fixing the 401 "Missing authorization header".
+  // ── Connect ───────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
     if (!user?.id || isConnecting) return;
     setIsConnecting(true);
     try {
+      // 1. Make sure the integration row exists so the callback UPDATE lands
+      await ensureIntegrationRow();
+
+      // 2. Get the OAuth URL from the edge function
       const redirectUri = `${window.location.origin}/dashboard/live`;
       const { data, error } = await supabase.functions.invoke("oauth-connect", {
         body: { provider: "google_calendar", redirect_uri: redirectUri },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Surface the real error message from the edge function response body
+        let detail = error.message ?? "Unknown error";
+        try {
+          // FunctionsHttpError exposes .context with the response body
+          const ctx = (error as any).context;
+          if (ctx) {
+            const bodyText = typeof ctx === "string" ? ctx : await ctx.text?.();
+            const parsed = bodyText ? JSON.parse(bodyText) : null;
+            if (parsed?.error) detail = parsed.error;
+          }
+        } catch {
+          // ignore parse errors — use the message we already have
+        }
+        throw new Error(detail);
+      }
       if (data?.error) throw new Error(data.error);
 
-      // Open in a popup (same as Zoom, Slack, etc. in SettingsPage)
+      // 3. Open OAuth popup
       const w = 600, h = 700;
       const left = window.screenX + (window.innerWidth - w) / 2;
       const top  = window.screenY + (window.innerHeight - h) / 2;
@@ -157,11 +192,12 @@ export function useCalendar() {
         `width=${w},height=${h},left=${left},top=${top},popup=1`,
       );
     } catch (err: any) {
+      console.error("Calendar connect error:", err);
       toast.error(err.message || "Failed to start Google Calendar connection");
     } finally {
       setIsConnecting(false);
     }
-  }, [user?.id, isConnecting]);
+  }, [user?.id, isConnecting, ensureIntegrationRow]);
 
   // ── Disconnect ────────────────────────────────────────────────────────────
   const disconnect = useMutation({
@@ -190,7 +226,19 @@ export function useCalendar() {
       const { error } = await supabase.functions.invoke("sync-google-calendar", {
         body: { user_id: user.id },
       });
-      if (error) throw error;
+      if (error) {
+        // Try to surface a readable message
+        let detail = error.message ?? "Sync failed";
+        try {
+          const ctx = (error as any).context;
+          if (ctx) {
+            const bodyText = typeof ctx === "string" ? ctx : await ctx.text?.();
+            const parsed = bodyText ? JSON.parse(bodyText) : null;
+            if (parsed?.error) detail = parsed.error;
+          }
+        } catch { /* ignore */ }
+        throw new Error(detail);
+      }
       await queryClient.invalidateQueries({ queryKey: ["upcoming-meetings"] });
       toast.success("Calendar synced!");
     } catch (e: any) {
