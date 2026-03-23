@@ -3,15 +3,9 @@
  *
  * Manages Google Calendar connection and upcoming meeting sync.
  *
- * Returns:
- *   isConnected       — whether Google Calendar is linked
- *   isConnecting      — OAuth flow in progress
- *   upcomingMeetings  — list of meetings from scheduled_calls table
- *   isLoading         — fetching meetings
- *   connect()         — starts Google OAuth flow
- *   disconnect()      — removes the integration
- *   syncNow()         — manually triggers calendar re-sync
- *   isSyncing         — sync in progress
+ * Fix: connect() now uses the same popup OAuth pattern as other integrations
+ * (goes through oauth-connect edge function which attaches the JWT), instead
+ * of a bare redirect that had no Authorization header.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -41,6 +35,7 @@ export interface UpcomingMeeting {
 export function useCalendar() {
   const { user }      = useAuth();
   const queryClient   = useQueryClient();
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // ── Connection status ──────────────────────────────────────────────────────
@@ -57,7 +52,7 @@ export function useCalendar() {
       return data;
     },
     enabled:       !!user?.id,
-    refetchInterval: 10_000, // poll every 10s so UI updates after OAuth redirect
+    refetchInterval: 10_000,
   });
 
   const isConnected = integration?.status === "connected";
@@ -79,7 +74,7 @@ export function useCalendar() {
       return (data ?? []) as UpcomingMeeting[];
     },
     enabled:         !!user?.id && isConnected,
-    refetchInterval: 60_000, // refresh every minute
+    refetchInterval: 60_000,
   });
 
   // ── Realtime: update list when new meetings are synced ────────────────────
@@ -105,14 +100,26 @@ export function useCalendar() {
     return () => { supabase.removeChannel(ch); };
   }, [user?.id, queryClient]);
 
-  // ── Check for calendar=connected in URL after OAuth redirect ─────────────
+  // ── Listen for OAuth popup success (same pattern as useSettings.ts) ───────
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "oauth-success" && event.data?.provider === "google_calendar") {
+        queryClient.invalidateQueries({ queryKey: ["calendar-integration"] });
+        queryClient.invalidateQueries({ queryKey: ["upcoming-meetings"] });
+        toast.success("Google Calendar connected! Syncing your meetings…");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [queryClient]);
+
+  // ── Check for legacy ?calendar= query param after redirect (fallback) ────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("calendar") === "connected") {
       toast.success("Google Calendar connected! Syncing your meetings…");
       queryClient.invalidateQueries({ queryKey: ["calendar-integration"] });
       queryClient.invalidateQueries({ queryKey: ["upcoming-meetings"] });
-      // Clean up URL
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (params.get("calendar") === "denied") {
@@ -125,33 +132,53 @@ export function useCalendar() {
     }
   }, [queryClient]);
 
-  // ── Connect — starts OAuth ─────────────────────────────────────────────────
+  // ── Connect — uses oauth-connect edge function (same as other integrations)
+  // This ensures the JWT Authorization header is sent automatically by
+  // supabase.functions.invoke, fixing the 401 "Missing authorization header".
   const connect = useCallback(async () => {
-    if (!user?.id) return;
-    const supabaseUrl = (supabase as any).supabaseUrl as string;
-    const oauthUrl    = `${supabaseUrl}/functions/v1/google-oauth?action=connect&user_id=${user.id}`;
-    window.location.href = oauthUrl;
-  }, [user?.id]);
+    if (!user?.id || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      const redirectUri = `${window.location.origin}/dashboard/live`;
+      const { data, error } = await supabase.functions.invoke("oauth-connect", {
+        body: { provider: "google_calendar", redirect_uri: redirectUri },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Open in a popup (same as Zoom, Slack, etc. in SettingsPage)
+      const w = 600, h = 700;
+      const left = window.screenX + (window.innerWidth - w) / 2;
+      const top  = window.screenY + (window.innerHeight - h) / 2;
+      window.open(
+        data.url,
+        "oauth-popup",
+        `width=${w},height=${h},left=${left},top=${top},popup=1`,
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Failed to start Google Calendar connection");
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [user?.id, isConnecting]);
 
   // ── Disconnect ────────────────────────────────────────────────────────────
   const disconnect = useMutation({
     mutationFn: async () => {
       if (!user?.id) return;
-      await supabase
-        .from("integrations")
-        .update({
-          status:                  "disconnected",
-          access_token_encrypted:  null,
-          refresh_token_encrypted: null,
-          expires_at:              null,
-        } as any)
-        .eq("user_id", user.id)
-        .eq("provider", "google_calendar");
+      const { error } = await supabase.functions.invoke("oauth-disconnect", {
+        body: { provider: "google_calendar" },
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar-integration"] });
       queryClient.invalidateQueries({ queryKey: ["upcoming-meetings"] });
       toast.success("Google Calendar disconnected.");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to disconnect Google Calendar");
     },
   });
 
@@ -175,6 +202,7 @@ export function useCalendar() {
 
   return {
     isConnected,
+    isConnecting,
     isLoading:       statusLoading || meetingsLoading,
     upcomingMeetings,
     connect,
