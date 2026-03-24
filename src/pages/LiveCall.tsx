@@ -1,12 +1,11 @@
 /**
- * LiveCall.tsx — Fixed v6
+ * LiveCall.tsx — Fixed v7
  *
- * Root causes of "stuck on Preparing" fixed:
- *  1. bot_sessions table may not exist → removed hard dependency
- *  2. No timeout → added 12s auto-timeout with "Taking too long" state + actions
- *  3. Edge function not deployed → detects 404 and shows setup instructions
- *  4. Silent failures → every error path updates status visibly
- *  5. Status advances to "joining" immediately after function responds OK
+ * Key fixes vs v6:
+ *  1. isValidMeetingUrl: strips zero-width/invisible chars, auto-prepends https://
+ *  2. PasteMeetingInput.submit: normalises URL before validation and passing to onJoin
+ *  3. pasteClipboard: strips invisible chars from clipboard text
+ *  4. detectPlatform: also used on the normalised URL so badge + validation are consistent
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -48,6 +47,24 @@ type BotStatus =
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Strip invisible / zero-width characters that mobile keyboards inject */
+function sanitizeUrl(raw: string): string {
+  return raw
+    .trim()
+    // zero-width space, zero-width non-joiner, zero-width joiner, BOM, etc.
+    .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, "")
+    // any remaining non-printable ASCII except normal URL chars
+    .replace(/[^\x20-\x7E]/g, "")
+    .trim();
+}
+
+/** Ensure the URL has a protocol prefix so new URL() can parse it */
+function normalizeUrl(raw: string): string {
+  const s = sanitizeUrl(raw);
+  if (!s) return "";
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+
 function detectPlatform(url: string): "google_meet" | "zoom" | "teams" | "unknown" {
   if (/meet\.google\.com/i.test(url)) return "google_meet";
   if (/zoom\.(us|com)/i.test(url)) return "zoom";
@@ -65,11 +82,12 @@ function getPlatformLabel(platform: string) {
   return m[platform] || "Video Call";
 }
 
-function isValidMeetingUrl(url: string): boolean {
-  if (!url.trim()) return false;
+function isValidMeetingUrl(raw: string): boolean {
+  const normalized = normalizeUrl(raw);
+  if (!normalized) return false;
   try {
-    new URL(url);
-    return detectPlatform(url) !== "unknown";
+    new URL(normalized);
+    return detectPlatform(normalized) !== "unknown";
   } catch {
     return false;
   }
@@ -213,10 +231,8 @@ function useBotDeploy() {
     setError(null);
     setActiveCallId(callId);
 
-    // Start watching realtime immediately
     watchCallForBotStatus(callId);
 
-    // 12-second timeout: if still on preparing/joining → show timeout state
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       setStatus(prev => (prev === "preparing" || prev === "joining") ? "timeout" : prev);
@@ -235,7 +251,6 @@ function useBotDeploy() {
       if (fnErr) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         const msg = fnErr.message || "";
-        // 404 = function not deployed, other = real error
         if (msg.includes("404") || msg.includes("not found") || msg.includes("FunctionsHttpError")) {
           setStatus("no_function");
         } else {
@@ -252,7 +267,6 @@ function useBotDeploy() {
         return;
       }
 
-      // Function responded OK — advance to joining immediately
       setStatus("joining");
 
     } catch (err: any) {
@@ -314,7 +328,6 @@ function BotStatusCard({
 
   return (
     <div className={cn("rounded-2xl border p-5 space-y-4 transition-all duration-300", cfg.bg, cfg.border)}>
-      {/* Row 1: icon + title + desc */}
       <div className="flex items-start gap-3">
         <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border", cfg.bg, cfg.border)}>
           {cfg.spin && <Loader2 className={cn("w-4 h-4 animate-spin", cfg.color)} />}
@@ -345,7 +358,6 @@ function BotStatusCard({
         </div>
       </div>
 
-      {/* Waiting room action */}
       {status === "waiting_room" && (
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3.5">
           <p className="text-xs font-semibold text-yellow-400 mb-1.5 flex items-center gap-1.5">
@@ -364,7 +376,6 @@ function BotStatusCard({
         </div>
       )}
 
-      {/* Active recording chips */}
       {isActive && status !== "waiting_room" && (
         <div className="flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
@@ -379,7 +390,6 @@ function BotStatusCard({
         </div>
       )}
 
-      {/* no_function help */}
       {status === "no_function" && (
         <div className="rounded-xl bg-secondary/40 border border-border p-3.5 text-xs space-y-2">
           <p className="font-semibold text-foreground">Deploy the edge function to enable the bot:</p>
@@ -390,7 +400,6 @@ function BotStatusCard({
         </div>
       )}
 
-      {/* Buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         {isActive && (
           <>
@@ -459,7 +468,10 @@ function PasteMeetingInput({ onJoin, isLoading, disabled }: {
   const [url, setUrl] = useState("");
   const [err, setErr] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const platform = url ? detectPlatform(url) : null;
+
+  // Derive platform from the normalised URL so badge matches validation
+  const normalized = normalizeUrl(url);
+  const platform = normalized ? detectPlatform(normalized) : null;
 
   const platformBadge: Record<string, string> = {
     google_meet: "text-blue-400 bg-blue-500/15 border-blue-500/25",
@@ -469,17 +481,25 @@ function PasteMeetingInput({ onJoin, isLoading, disabled }: {
 
   const pasteClipboard = async () => {
     try {
-      const text = await navigator.clipboard.readText();
-      if (text.trim()) { setUrl(text.trim()); setErr(""); }
-    } catch { inputRef.current?.focus(); }
+      const raw = await navigator.clipboard.readText();
+      const cleaned = sanitizeUrl(raw);
+      if (cleaned) { setUrl(cleaned); setErr(""); }
+    } catch {
+      inputRef.current?.focus();
+    }
   };
 
   const submit = () => {
-    const v = url.trim();
-    if (!v) { setErr("Paste a meeting URL to continue"); return; }
-    if (!isValidMeetingUrl(v)) { setErr("Only Google Meet and Zoom links are supported"); return; }
+    const cleaned = sanitizeUrl(url);
+    if (!cleaned) { setErr("Paste a meeting URL to continue"); return; }
+
+    const norm = normalizeUrl(cleaned);
+    if (!isValidMeetingUrl(cleaned)) {
+      setErr("Only Google Meet and Zoom links are supported");
+      return;
+    }
     setErr("");
-    onJoin(v);
+    onJoin(norm); // always pass the normalised (https://) URL
   };
 
   return (
