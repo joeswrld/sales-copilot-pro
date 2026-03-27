@@ -767,8 +767,7 @@ export default function LandingPage() {
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
             <div className="tag-pill">
-              <span className="live-dot" />
-              {user ? `Welcome back, ${displayName} — your dashboard is ready` : "Used by modern sales teams worldwide"}
+              
             </div>
           </div>
 
