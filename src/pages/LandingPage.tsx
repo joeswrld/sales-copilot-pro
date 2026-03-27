@@ -766,9 +766,7 @@ export default function LandingPage() {
 
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-            <div className="tag-pill">
-              
-            </div>
+            
           </div>
 
           <h1 className="hero-title">
