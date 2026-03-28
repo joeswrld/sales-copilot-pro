@@ -1184,9 +1184,8 @@ export default function LandingPage() {
           <FadeIn>
             <h2 className="final-cta-title">
               {user
-                ? <>Your pipeline is<br /><em>waiting</em></>
-                : <>Stop losing deals to<br /><em>missing information</>}
-              </em>
+  ? <>Your pipeline is<br /><em>waiting</em></>
+  : <>Stop losing deals to<br /><em>missing information</em></>}
             </h2>
             <p className="final-cta-desc">
               {user
