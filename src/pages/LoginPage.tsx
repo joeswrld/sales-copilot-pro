@@ -767,7 +767,7 @@ export default function LoginPage() {
               </div>
             ) : (
               <div style={{ marginBottom: "20px" }}>
-                <div style={{ fontSize: "18px", fontWeight: 700, color: var(--ink), letterSpacing: "-0.03em", marginBottom: "5px" }}>Reset your password</div>
+                <div style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a", letterSpacing: "-0.03em", marginBottom: "5px" }}>Reset your password</div>
                 <div style={{ fontSize: "13px", color: "#64748b" }}>Enter your email to receive a reset link.</div>
               </div>
             )}
