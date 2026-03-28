@@ -611,7 +611,7 @@ export default function LandingPage() {
           font-size: 15px; color: var(--ink-2); line-height: 1.7;
           font-weight: 400; flex: 1; margin-bottom: 24px;
         }
-        .testimonial-quote::before { content: '\201C'; color: var(--teal); font-size: 20px; font-family: var(--font-serif); line-height: 0; vertical-align: -5px; margin-right: 2px; }
+        .testimonial-quote::before { content: '"'; color: var(--teal); font-size: 20px; font-family: var(--font-serif); line-height: 0; vertical-align: -5px; margin-right: 2px; }
         .testimonial-author { display: flex; align-items: center; gap: 12px; }
         .testimonial-av {
           width: 40px; height: 40px; border-radius: 50%;
