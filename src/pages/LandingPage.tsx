@@ -863,9 +863,7 @@ export default function LandingPage() {
         <div className="hero-grid" />
 
         <div className="hero-eyebrow">
-          <div className="hero-eyebrow-dot" />
-          AI Sales Intelligence Platform
-        </div>
+          
 
         <h1 className="hero-title">
           Win more deals with<br />
