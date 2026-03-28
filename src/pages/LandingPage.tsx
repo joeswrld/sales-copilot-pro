@@ -325,7 +325,7 @@ function LiveCallSimulator() {
         <div className="sim-dot" style={{ background: "#ff5f57" }} />
         <div className="sim-dot" style={{ background: "#febc2e" }} />
         <div className="sim-dot" style={{ background: "#28c840" }} />
-        <div className="sim-addr">app.fixsense.io/dashboard/live</div>
+        <div className="sim-addr">fixsense.com.ng/dashboard/live</div>
       </div>
       <div className="sim-app">
         <div className="sim-sidebar">
