@@ -680,12 +680,7 @@ export default function LandingPage() {
         <div className="hero-pattern" />
         <div className="hero-glow" />
 
-        <FadeIn>
-          <div className="hero-badge">
-            <div className="hero-badge-dot" />
-            AI-Powered Sales Intelligence
-          </div>
-        </FadeIn>
+        
 
         <FadeIn delay={60}>
           <h1 className="hero-title">
@@ -747,7 +742,7 @@ export default function LandingPage() {
               <div className="m-dot" style={{ background: "#ff5f57" }} />
               <div className="m-dot" style={{ background: "#febc2e" }} />
               <div className="m-dot" style={{ background: "#28c840" }} />
-              <div className="mockup-addr">app.fixsense.io/dashboard/live</div>
+              <div className="mockup-addr">fixsense.com.ng/dashboard/live</div>
             </div>
             <div className="mockup-body">
               <div className="mockup-sidebar">
