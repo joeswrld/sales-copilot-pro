@@ -1240,9 +1240,9 @@ export default function LandingPage() {
           <div className="footer-bottom">
             <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
             <div className="footer-legal-links">
-              <a href="#" className="footer-legal-link">Privacy</a>
-              <a href="#" className="footer-legal-link">Terms</a>
-              <a href="#" className="footer-legal-link">Security</a>
+              <a href="/privacy" className="footer-legal-link">Privacy</a>
+              <a href="/terms" className="footer-legal-link">Terms</a>
+              <a href="/security" className="footer-legal-link">Security</a>
             </div>
           </div>
         </div>
