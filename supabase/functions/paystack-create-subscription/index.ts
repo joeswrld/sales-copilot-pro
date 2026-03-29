@@ -9,7 +9,7 @@ const corsHeaders = {
 // Fixed conversion rate: 1 USD = 1,500 NGN
 const USD_TO_NGN_RATE = 1500;
 
-// Plan configurations (prices in USD cents)
+// Plan configurations (prices in USD)
 const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number; team_members_limit: number }> = {
   starter: { name: "Starter", price_usd: 19, calls_limit: 50, team_members_limit: 3 },
   growth: { name: "Growth", price_usd: 49, calls_limit: 300, team_members_limit: 10 },
@@ -60,8 +60,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Calculate NGN amount from USD price
-    // Formula: USD * 1500 (NGN rate) * 100 (to kobo)
+    // Calculate NGN amount
     const amount_ngn_kobo = planConfig.price_usd * USD_TO_NGN_RATE * 100;
 
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
@@ -79,8 +78,7 @@ Deno.serve(async (req) => {
     const customerCode =
       customerData.data?.customer_code || customerData.data?.id;
 
-    // 2. Create a new Paystack plan dynamically for each subscription
-    // This ensures each plan has the correct pricing
+    // 2. Create a Paystack plan
     const planRes = await fetch("https://api.paystack.co/plan", {
       method: "POST",
       headers: {
@@ -90,12 +88,12 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         name: `Fixsense ${planConfig.name} - ${Date.now()}`,
         interval: "monthly",
-        amount: amount_ngn_kobo, // Amount in kobo (NGN)
+        amount: amount_ngn_kobo,
         currency: "NGN",
       }),
     });
     const planData = await planRes.json();
-    
+
     if (!planData.status || !planData.data?.plan_code) {
       console.error("Failed to create Paystack plan:", planData);
       return new Response(
@@ -103,11 +101,10 @@ Deno.serve(async (req) => {
         { status: 400, headers: corsHeaders }
       );
     }
-    
-    const planCode = planData.data.plan_code;
-    console.log(`Created Paystack plan: ${planCode} for ${planConfig.name}`);
 
-    // 3. Initialize transaction with plan (charged in NGN)
+    const planCode = planData.data.plan_code;
+
+    // 3. Initialize transaction
     const initRes = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -118,7 +115,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           email: userEmail,
-          amount: amount_ngn_kobo, // Amount in kobo (NGN)
+          amount: amount_ngn_kobo,
           currency: "NGN",
           plan: planCode,
           callback_url:
@@ -156,12 +153,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Upsert subscription record with both USD and NGN amounts
+    const reference = initData.data.reference;
+
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // 4. Record subscription row as PENDING (not yet active)
+    // — do NOT update plan_type or calls_limit here. That only happens after webhook success.
     await adminClient.from("subscriptions").upsert(
       {
         user_id: userId,
@@ -175,19 +175,23 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    // Also update the profile's plan_type and calls_limit
-    await adminClient
-      .from("profiles")
-      .update({
-        plan_type: plan_key,
-        calls_limit: planConfig.calls_limit === -1 ? 999999 : planConfig.calls_limit,
-      })
-      .eq("id", userId);
+    // 5. Create a payments tracking row (initialized → not yet paid)
+    await adminClient.from("payments").insert({
+      user_id: userId,
+      plan_selected: plan_key,
+      status: "initialized",
+      paystack_reference: reference,
+      amount_kobo: amount_ngn_kobo,
+      currency: "NGN",
+    });
+
+    // CRITICAL: Do NOT update profiles.plan_type here.
+    // Plan is only activated after webhook charge.success confirmation.
 
     return new Response(
       JSON.stringify({
         authorization_url: initData.data.authorization_url,
-        reference: initData.data.reference,
+        reference,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
