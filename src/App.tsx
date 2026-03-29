@@ -23,6 +23,7 @@ import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
 import { PrivacyPage, TermsPage, SecurityPage, ContactPage } from "./pages/LegalPages";
+import { IntegrationsPage, ChangelogPage, AboutPage, BlogPage, CareersPage, PressPage } from "./pages/MarketingPages";
 
 
 const queryClient = new QueryClient();
@@ -35,6 +36,12 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            <Route path="/integrations" element={<IntegrationsPage />} />
+   <Route path="/changelog"    element={<ChangelogPage />} />
+   <Route path="/about"        element={<AboutPage />} />
+   <Route path="/blog"         element={<BlogPage />} />
+   <Route path="/careers"      element={<CareersPage />} />
+  <Route path="/press"        element={<PressPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
 <Route path="/terms" element={<TermsPage />} />
 <Route path="/security" element={<SecurityPage />} />
