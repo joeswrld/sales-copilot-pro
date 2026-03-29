@@ -257,12 +257,7 @@ export default function PricingPage() {
     subscribe.mutate(plan.key);
   };
 
-  const NAV = [
-    { label: "Product", href: "/#features" },
-    { label: "How It Works", href: "/#how-it-works" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Testimonials", href: "/#testimonials" },
-  ];
+  
 
   return (
     <div className="pp">
