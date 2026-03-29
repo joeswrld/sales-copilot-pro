@@ -10,11 +10,20 @@ const USD_TO_NGN_RATE = 1500;
 
 const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number }> = {
   starter: { name: "Starter", price_usd: 19, calls_limit: 50 },
-  growth: { name: "Growth", price_usd: 49, calls_limit: 300 },
-  scale: { name: "Scale", price_usd: 99, calls_limit: -1 },
+  growth:  { name: "Growth",  price_usd: 49, calls_limit: 300 },
+  scale:   { name: "Scale",   price_usd: 99, calls_limit: -1 },
 };
 
-const PLAN_ORDER = ["starter", "growth", "scale"];
+const PLAN_ORDER = ["free", "starter", "growth", "scale"];
+
+function planNameToKey(planName: string | null | undefined): string {
+  if (!planName) return "starter";
+  const lower = planName.toLowerCase();
+  if (lower.includes("scale"))   return "scale";
+  if (lower.includes("growth"))  return "growth";
+  if (lower.includes("starter")) return "starter";
+  return "starter";
+}
 
 function calculateProration(
   currentPlanPriceNgn: number,
@@ -90,50 +99,60 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // ── Fetch current subscription (needed for both preview and actual upgrade) ──
     const { data: currentSub } = await adminClient
       .from("subscriptions")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
-    const currentPlanName = currentSub?.plan_name?.toLowerCase() || "";
-    let currentPlanKey = "starter";
-    if (currentPlanName.includes("scale")) currentPlanKey = "scale";
-    else if (currentPlanName.includes("growth")) currentPlanKey = "growth";
+    // Resolve current plan key from subscription plan_name
+    const currentPlanKey = planNameToKey(currentSub?.plan_name);
+    const currentPlanConfig = PLANS[currentPlanKey] ?? PLANS.starter;
 
-    const currentPlanConfig = PLANS[currentPlanKey] || PLANS.starter;
     const currentPriceNgn = currentPlanConfig.price_usd * USD_TO_NGN_RATE;
     const newPriceNgn = newPlanConfig.price_usd * USD_TO_NGN_RATE;
 
     const proration = calculateProration(
       currentPriceNgn,
       newPriceNgn,
-      currentSub?.next_payment_date
+      currentSub?.next_payment_date ?? null
     );
 
-    const isUpgrade = PLAN_ORDER.indexOf(new_plan_key) > PLAN_ORDER.indexOf(currentPlanKey);
+    const isUpgrade  = PLAN_ORDER.indexOf(new_plan_key) > PLAN_ORDER.indexOf(currentPlanKey);
     const isDowngrade = PLAN_ORDER.indexOf(new_plan_key) < PLAN_ORDER.indexOf(currentPlanKey);
 
+    // ── PREVIEW — return early, NO Paystack calls needed ────────────────────────
+    // This is what was failing: the old code fell through to Paystack even for
+    // preview_only=true, causing the "Edge Function returned a non-2xx status code"
+    // error whenever Paystack credentials were missing or the request was invalid.
     if (preview_only) {
       return new Response(
         JSON.stringify({
-          current_plan: currentPlanKey,
-          new_plan: new_plan_key,
-          is_upgrade: isUpgrade,
-          is_downgrade: isDowngrade,
-          current_price_ngn: currentPriceNgn,
-          new_price_ngn: newPriceNgn,
-          prorated_amount_ngn: proration.proratedAmountNgn,
-          credit_ngn: proration.creditNgn,
-          days_remaining: proration.daysRemaining,
+          current_plan:          currentPlanKey,
+          new_plan:              new_plan_key,
+          is_upgrade:            isUpgrade,
+          is_downgrade:          isDowngrade,
+          current_price_ngn:     currentPriceNgn,
+          new_price_ngn:         newPriceNgn,
+          prorated_amount_ngn:   proration.proratedAmountNgn,
+          credit_ngn:            proration.creditNgn,
+          days_remaining:        proration.daysRemaining,
           new_monthly_price_ngn: newPriceNgn,
           new_monthly_price_usd: newPlanConfig.price_usd,
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
+    // ── ACTUAL UPGRADE — hit Paystack ────────────────────────────────────────────
+    const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY");
+    if (!PAYSTACK_SECRET) {
+      return new Response(
+        JSON.stringify({ error: "Payment provider not configured. Please contact support." }),
+        { status: 500, headers: corsHeaders }
+      );
+    }
 
     // Cancel existing subscription on Paystack
     if (
@@ -149,7 +168,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            code: currentSub.paystack_subscription_code,
+            code:  currentSub.paystack_subscription_code,
             token: currentSub.paystack_email_token,
           }),
         });
@@ -159,7 +178,9 @@ Deno.serve(async (req) => {
     }
 
     const fullMonthlyAmountKobo = newPlanConfig.price_usd * USD_TO_NGN_RATE * 100;
-    const chargeAmountKobo = isDowngrade ? fullMonthlyAmountKobo : proration.proratedAmountNgn * 100 || fullMonthlyAmountKobo;
+    const chargeAmountKobo = isDowngrade
+      ? fullMonthlyAmountKobo
+      : (proration.proratedAmountNgn * 100 || fullMonthlyAmountKobo);
 
     // Create or get customer
     const customerRes = await fetch("https://api.paystack.co/customer", {
@@ -171,6 +192,13 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ email: userEmail }),
     });
     const customerData = await customerRes.json();
+    if (!customerRes.ok) {
+      console.error("Paystack customer error:", customerData);
+      return new Response(
+        JSON.stringify({ error: customerData.message || "Failed to create customer" }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
     const customerCode = customerData.data?.customer_code || customerData.data?.id;
 
     // Create Paystack plan
@@ -181,15 +209,16 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        name: `Fixsense ${newPlanConfig.name} - ${Date.now()}`,
+        name:     `Fixsense ${newPlanConfig.name} - ${Date.now()}`,
         interval: "monthly",
-        amount: fullMonthlyAmountKobo,
+        amount:   fullMonthlyAmountKobo,
         currency: "NGN",
       }),
     });
     const planData = await planRes.json();
 
     if (!planData.status || !planData.data?.plan_code) {
+      console.error("Paystack plan creation error:", planData);
       return new Response(
         JSON.stringify({ error: planData.message || "Failed to create plan" }),
         { status: 400, headers: corsHeaders }
@@ -206,25 +235,25 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email: userEmail,
-        amount: chargeAmountKobo,
-        currency: "NGN",
-        plan: planCode,
+        email:        userEmail,
+        amount:       chargeAmountKobo,
+        currency:     "NGN",
+        plan:         planCode,
         callback_url: callback_url || `${Deno.env.get("SUPABASE_URL")}/functions/v1/paystack-verify`,
         metadata: {
-          user_id: userId,
-          plan_key: new_plan_key,
-          plan_name: newPlanConfig.name,
-          plan_price_usd: newPlanConfig.price_usd,
-          calls_limit: newPlanConfig.calls_limit,
-          is_upgrade: isUpgrade,
-          is_downgrade: isDowngrade,
+          user_id:             userId,
+          plan_key:            new_plan_key,
+          plan_name:           newPlanConfig.name,
+          plan_price_usd:      newPlanConfig.price_usd,
+          calls_limit:         newPlanConfig.calls_limit,
+          is_upgrade:          isUpgrade,
+          is_downgrade:        isDowngrade,
           prorated_amount_ngn: proration.proratedAmountNgn,
-          credit_ngn: proration.creditNgn,
+          credit_ngn:          proration.creditNgn,
           custom_fields: [
-            { display_name: "User ID", variable_name: "user_id", value: userId },
-            { display_name: "Plan", variable_name: "plan_key", value: new_plan_key },
-            { display_name: "Change Type", variable_name: "change_type", value: isUpgrade ? "upgrade" : "downgrade" },
+            { display_name: "User ID",      variable_name: "user_id",      value: userId },
+            { display_name: "Plan",         variable_name: "plan_key",     value: new_plan_key },
+            { display_name: "Change Type",  variable_name: "change_type",  value: isUpgrade ? "upgrade" : "downgrade" },
           ],
         },
       }),
@@ -234,7 +263,7 @@ Deno.serve(async (req) => {
 
     if (!initData.status) {
       return new Response(
-        JSON.stringify({ error: initData.message || "Failed to initialize" }),
+        JSON.stringify({ error: initData.message || "Failed to initialize payment" }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -242,48 +271,44 @@ Deno.serve(async (req) => {
     const reference = initData.data.reference;
 
     // Mark subscription as pending — do NOT update plan_type
-    // Plan is only changed by webhook after successful charge.success
     await adminClient.from("subscriptions").upsert(
       {
-        user_id: userId,
+        user_id:                userId,
         paystack_customer_code: customerCode,
-        status: "pending",
-        plan_name: `Fixsense ${newPlanConfig.name}`,
-        plan_price_usd: newPlanConfig.price_usd,
-        amount_kobo: fullMonthlyAmountKobo,
-        currency: "NGN",
+        status:                 "pending",
+        plan_name:              `Fixsense ${newPlanConfig.name}`,
+        plan_price_usd:         newPlanConfig.price_usd,
+        amount_kobo:            fullMonthlyAmountKobo,
+        currency:               "NGN",
       },
       { onConflict: "user_id" }
     );
 
     // Create payment tracking row
     await adminClient.from("payments").insert({
-      user_id: userId,
-      plan_selected: new_plan_key,
-      status: "initialized",
-      paystack_reference: reference,
-      amount_kobo: chargeAmountKobo,
-      currency: "NGN",
+      user_id:             userId,
+      plan_selected:       new_plan_key,
+      status:              "initialized",
+      paystack_reference:  reference,
+      amount_kobo:         chargeAmountKobo,
+      currency:            "NGN",
     });
-
-    // CRITICAL: Do NOT update profiles.plan_type here.
-    // Upgrade is only applied after webhook charge.success.
 
     return new Response(
       JSON.stringify({
-        authorization_url: initData.data.authorization_url,
+        authorization_url:   initData.data.authorization_url,
         reference,
         prorated_amount_ngn: proration.proratedAmountNgn,
-        credit_ngn: proration.creditNgn,
-        is_upgrade: isUpgrade,
-        is_downgrade: isDowngrade,
+        credit_ngn:          proration.creditNgn,
+        is_upgrade:          isUpgrade,
+        is_downgrade:        isDowngrade,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("Error:", err);
+    console.error("paystack-upgrade-subscription error:", err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Internal server error" }),
       { status: 500, headers: corsHeaders }
     );
   }
