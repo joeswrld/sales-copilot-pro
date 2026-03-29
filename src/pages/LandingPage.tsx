@@ -1236,16 +1236,7 @@ export default function LandingPage() {
      ))}
    </div>
    <div>
-      <div className="footer-col-title">Company</div>
-      {[
-       { label: "About",    href: "/About" },
-        { label: "Blog",     href: "/Blog" },
-        { label: "Careers",  href: "/Careers" },
-        { label: "Press",    href: "/Press" },
-      ].map(l => (
-        <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
-      ))}
-    </div>
+   
    <div>
      <div className="footer-col-title">Legal</div>
      <Link to="/privacy"  className="footer-link">Privacy Policy</Link>
