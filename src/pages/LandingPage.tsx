@@ -1225,17 +1225,34 @@ export default function LandingPage() {
               <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. Capture, analyze, and act on every conversation.</p>
             </div>
             <div>
-              <div className="footer-col-title">Product</div>
-              {["Features", "Pricing", "Integrations", "Changelog"].map(l => <a key={l} href="#" className="footer-link">{l}</a>)}
-            </div>
-            <div>
-              <div className="footer-col-title">Company</div>
-              {["About", "Blog", "Careers", "Press"].map(l => <a key={l} href="#" className="footer-link">{l}</a>)}
-            </div>
-            <div>
-              <div className="footer-col-title">Legal</div>
-              {["Privacy Policy", "Terms of Service", "Security", "Contact"].map(l => <a key={l} href="#" className="footer-link">{l}</a>)}
-            </div>
+      <div className="footer-col-title">Product</div>
+      {[
+        { label: "Features",     href: "#features"       },
+      { label: "Pricing",      href: "#pricing"        },
+      { label: "Integrations", href: "#"               },
+      { label: "Changelog",    href: "#"               },
+      ].map(l => (
+      <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
+     ))}
+   </div>
+   <div>
+      <div className="footer-col-title">Company</div>
+      {[
+       { label: "About",    href: "#" },
+        { label: "Blog",     href: "#" },
+        { label: "Careers",  href: "#" },
+        { label: "Press",    href: "#" },
+      ].map(l => (
+        <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
+      ))}
+    </div>
+   <div>
+     <div className="footer-col-title">Legal</div>
+     <Link to="/privacy"  className="footer-link">Privacy Policy</Link>
+      <Link to="/terms"    className="footer-link">Terms of Service</Link>
+     <Link to="/security" className="footer-link">Security</Link>
+     <Link to="/contact"  className="footer-link">Contact</Link>
+   </div>
           </div>
           <div className="footer-bottom">
             <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
