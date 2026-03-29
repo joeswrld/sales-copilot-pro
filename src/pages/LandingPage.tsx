@@ -1229,8 +1229,8 @@ export default function LandingPage() {
       {[
         { label: "Features",     href: "#features"       },
       { label: "Pricing",      href: "#pricing"        },
-      { label: "Integrations", href: "#"               },
-      { label: "Changelog",    href: "#"               },
+      { label: "Integrations", href: "/Integrations"               },
+      { label: "Changelog",    href: "/Changelog"               },
       ].map(l => (
       <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
      ))}
@@ -1238,10 +1238,10 @@ export default function LandingPage() {
    <div>
       <div className="footer-col-title">Company</div>
       {[
-       { label: "About",    href: "#" },
-        { label: "Blog",     href: "#" },
-        { label: "Careers",  href: "#" },
-        { label: "Press",    href: "#" },
+       { label: "About",    href: "/About" },
+        { label: "Blog",     href: "/Blog" },
+        { label: "Careers",  href: "/Careers" },
+        { label: "Press",    href: "/Press" },
       ].map(l => (
         <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
       ))}
