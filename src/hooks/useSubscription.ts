@@ -1,3 +1,4 @@
+// src/hooks/useSubscription.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,10 +48,6 @@ export interface PlanChangePreview {
   new_monthly_price_usd: number;
 }
 
-/**
- * Payment record from the payments table.
- * This is the source of truth for whether a checkout was completed.
- */
 export interface PaymentRecord {
   id: string;
   user_id: string;
@@ -63,21 +60,33 @@ export interface PaymentRecord {
   updated_at: string;
 }
 
-/**
- * Billing state derived from profile + subscription + latest payment.
- * This drives ALL UI decisions — never use raw subscription.status alone.
- */
 export interface BillingState {
-  /** Only "active" when a successful payment has been confirmed by webhook */
   billingStatus: "active" | "inactive" | "past_due";
-  /** Current confirmed plan — only changes after webhook confirmation */
   planType: string;
-  /** Latest payment attempt (if any) */
   latestPayment: PaymentRecord | null;
-  /** True if there's an incomplete / abandoned checkout the user should retry */
   hasIncompleteCheckout: boolean;
-  /** Plan the user was trying to subscribe to */
   pendingPlanKey: string | null;
+}
+
+// ── Helper: get the current session token, throw if missing ──────────────────
+async function getSessionToken(): Promise<string> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session?.access_token) {
+    throw new Error("No active session — please sign in again.");
+  }
+  return session.access_token;
+}
+
+// ── Helper: invoke an edge function with an explicit Authorization header ─────
+async function invokeWithAuth(
+  fnName: string,
+  body: Record<string, unknown>
+): Promise<{ data: any; error: any }> {
+  const token = await getSessionToken();
+  return supabase.functions.invoke(fnName, {
+    body,
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export function useSubscription() {
@@ -104,7 +113,7 @@ export function useSubscription() {
     },
   });
 
-  // ── Profile billing status (source of truth for plan) ─────────────────
+  // ── Profile billing status ─────────────────────────────────────────────
   const profileQuery = useQuery({
     queryKey: ["billing-profile", user?.id],
     queryFn: async () => {
@@ -170,17 +179,15 @@ export function useSubscription() {
   // ── Subscribe (new checkout) ───────────────────────────────────────────
   const subscribe = useMutation({
     mutationFn: async (planKey: string = "starter") => {
-      const callbackUrl = `${window.location.origin}/dashboard/billing?reference={PAYSTACK_REFERENCE}`;
-      const { data, error } = await supabase.functions.invoke(
-        "paystack-create-subscription",
-        { body: { callback_url: `${window.location.origin}/dashboard/billing`, plan_key: planKey } }
-      );
+      const { data, error } = await invokeWithAuth("paystack-create-subscription", {
+        callback_url: `${window.location.origin}/dashboard/billing`,
+        plan_key: planKey,
+      });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
-      // Store reference in sessionStorage so we can mark as abandoned if user returns without paying
       sessionStorage.setItem("fixsense_pending_payment_ref", data.reference);
       window.location.href = data.authorization_url;
     },
@@ -195,15 +202,10 @@ export function useSubscription() {
       if (!query.data?.paystack_subscription_code || !query.data?.paystack_email_token) {
         throw new Error("No active subscription to cancel");
       }
-      const { data, error } = await supabase.functions.invoke(
-        "paystack-cancel-subscription",
-        {
-          body: {
-            subscription_code: query.data.paystack_subscription_code,
-            email_token: query.data.paystack_email_token,
-          },
-        }
-      );
+      const { data, error } = await invokeWithAuth("paystack-cancel-subscription", {
+        subscription_code: query.data.paystack_subscription_code,
+        email_token: query.data.paystack_email_token,
+      });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
     },
@@ -220,10 +222,10 @@ export function useSubscription() {
   // ── Preview plan change ────────────────────────────────────────────────
   const previewPlanChange = useMutation({
     mutationFn: async (newPlanKey: string): Promise<PlanChangePreview> => {
-      const { data, error } = await supabase.functions.invoke(
-        "paystack-upgrade-subscription",
-        { body: { new_plan_key: newPlanKey, preview_only: true } }
-      );
+      const { data, error } = await invokeWithAuth("paystack-upgrade-subscription", {
+        new_plan_key: newPlanKey,
+        preview_only: true,
+      });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as PlanChangePreview;
@@ -233,10 +235,10 @@ export function useSubscription() {
   // ── Change plan ────────────────────────────────────────────────────────
   const changePlan = useMutation({
     mutationFn: async (newPlanKey: string) => {
-      const { data, error } = await supabase.functions.invoke(
-        "paystack-upgrade-subscription",
-        { body: { new_plan_key: newPlanKey, callback_url: `${window.location.origin}/dashboard/billing` } }
-      );
+      const { data, error } = await invokeWithAuth("paystack-upgrade-subscription", {
+        new_plan_key: newPlanKey,
+        callback_url: `${window.location.origin}/dashboard/billing`,
+      });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
@@ -250,11 +252,12 @@ export function useSubscription() {
     },
   });
 
-  // ── Mark abandoned (called when user returns without paying) ───────────
+  // ── Mark abandoned ─────────────────────────────────────────────────────
   const markAbandoned = useMutation({
     mutationFn: async (reference: string) => {
-      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: { mark_abandoned: true, reference },
+      const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
+        mark_abandoned: true,
+        reference,
       });
       if (error) throw error;
       return data;
@@ -267,11 +270,9 @@ export function useSubscription() {
   // ── Verify payment after redirect ──────────────────────────────────────
   const verifyPayment = useMutation({
     mutationFn: async (options?: { reference?: string | null; includeTransactions?: boolean }) => {
-      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: {
-          reference: options?.reference ?? null,
-          include_transactions: options?.includeTransactions ?? false,
-        },
+      const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
+        reference: options?.reference ?? null,
+        include_transactions: options?.includeTransactions ?? false,
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -294,8 +295,8 @@ export function useSubscription() {
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
-      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: { include_transactions: true },
+      const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
+        include_transactions: true,
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -310,8 +311,8 @@ export function useSubscription() {
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
       if (!user || query.data?.status !== "pending") return null;
-      const { data, error } = await supabase.functions.invoke("paystack-sync-subscription", {
-        body: { include_transactions: false },
+      const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
+        include_transactions: false,
       });
       if (error) throw error;
       if ((data as any)?.updated) {
@@ -326,7 +327,6 @@ export function useSubscription() {
   });
 
   const getCurrentPlanKey = () => {
-    // Use profile billing_status + plan_type as source of truth
     if (billingState.billingStatus !== "active") return "free";
     return billingState.planType ?? "free";
   };
