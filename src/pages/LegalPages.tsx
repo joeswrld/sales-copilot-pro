@@ -1,256 +1,417 @@
 /**
  * Fixsense Legal & Contact Pages
- * 
- * Four pages: PrivacyPage, TermsPage, SecurityPage, ContactPage
- * 
+ * Redesigned to match LandingPage.tsx aesthetic exactly.
+ *
  * Add to App.tsx:
  *   import { PrivacyPage, TermsPage, SecurityPage, ContactPage } from "./pages/LegalPages";
- *   <Route path="/privacy" element={<PrivacyPage />} />
- *   <Route path="/terms" element={<TermsPage />} />
+ *   <Route path="/privacy"  element={<PrivacyPage />} />
+ *   <Route path="/terms"    element={<TermsPage />} />
  *   <Route path="/security" element={<SecurityPage />} />
- *   <Route path="/contact" element={<ContactPage />} />
+ *   <Route path="/contact"  element={<ContactPage />} />
  */
 
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
+// ─── Shared CSS (mirrors LandingPage tokens exactly) ──────────────────────────
 const sharedStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Bricolage+Grotesque:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   .lp-page {
-    --bg: #080b13;
-    --bg2: #0c1020;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --t1: rgba(255,255,255,0.95);
-    --t2: rgba(255,255,255,0.55);
-    --t3: rgba(255,255,255,0.28);
-    --ac: #1af0c4;
-    --ac2: rgba(26,240,196,0.12);
-    --ac3: rgba(26,240,196,0.06);
-    --blue: #60a5fa;
-    --font: 'DM Sans', system-ui, sans-serif;
+    /* ── exact same tokens as LandingPage ── */
+    --bg:        #ffffff;
+    --bg-2:      #f8fafc;
+    --bg-3:      #f1f5f9;
+    --ink:       #0f172a;
+    --ink-2:     #1e293b;
+    --muted:     #64748b;
+    --muted-2:   #94a3b8;
+    --border:    #e2e8f0;
+    --blue:      #2563eb;
+    --blue-2:    #1d4ed8;
+    --blue-light: rgba(37,99,235,0.08);
+    --blue-glow:  rgba(37,99,235,0.18);
+    --green:     #10b981;
+    --font:         'Plus Jakarta Sans', sans-serif;
     --font-display: 'Bricolage Grotesque', sans-serif;
-    --font-mono: 'DM Mono', monospace;
+
     background: var(--bg);
-    color: var(--t1);
+    color: var(--ink);
     font-family: var(--font);
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
-    line-height: 1.7;
+    line-height: 1.6;
     overflow-x: hidden;
   }
 
-  .lp-page * { box-sizing: border-box; }
-
-  /* ── Nav ── */
+  /* ── Nav (identical to landing) ── */
   .lp-nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    height: 60px;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 32px;
-    background: rgba(8,11,19,0.92);
+    height: 64px;
+    display: flex; align-items: center;
+    padding: 0 24px;
+    background: rgba(255,255,255,0.95);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 16px rgba(15,23,42,0.06);
+  }
+  .lp-nav-inner {
+    max-width: 1160px; width: 100%; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
   }
   .lp-nav-brand {
-    display: flex; align-items: center; gap: 10px;
-    text-decoration: none;
+    display: flex; align-items: center; gap: 10px; text-decoration: none;
   }
   .lp-nav-logo {
-    width: 28px; height: 28px; border-radius: 8px; object-fit: cover;
+    width: 28px; height: 28px; border-radius: 7px; object-fit: cover; display: block;
   }
   .lp-nav-name {
-    font-family: var(--font-display);
-    font-size: 16px; font-weight: 700;
-    color: var(--t1); letter-spacing: -0.03em;
+    font-family: var(--font-display); font-size: 17px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.03em;
   }
   .lp-nav-links {
-    display: flex; align-items: center; gap: 24px;
+    display: flex; align-items: center; gap: 28px;
   }
   .lp-nav-link {
-    font-size: 13px; font-weight: 500; color: var(--t2);
-    text-decoration: none; transition: color 0.15s;
+    font-size: 14px; font-weight: 500; color: var(--muted);
+    text-decoration: none; transition: color 0.2s;
   }
-  .lp-nav-link:hover { color: var(--t1); }
-  .lp-nav-link--active { color: var(--ac); }
+  .lp-nav-link:hover { color: var(--ink); }
+  .lp-nav-link--active { color: var(--blue); font-weight: 600; }
   .lp-nav-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(26,240,196,0.12);
-    border: 1px solid rgba(26,240,196,0.25);
-    border-radius: 8px; padding: 7px 16px;
-    font-size: 13px; font-weight: 600; color: var(--ac);
-    text-decoration: none; transition: all 0.15s; cursor: pointer;
+    font-size: 13.5px; font-weight: 600; color: #fff;
+    background: var(--blue); border: none; cursor: pointer;
+    padding: 8px 20px; border-radius: 8px;
+    font-family: var(--font); text-decoration: none;
+    transition: background 0.15s, transform 0.15s;
   }
-  .lp-nav-btn:hover { background: rgba(26,240,196,0.18); }
+  .lp-nav-btn:hover { background: var(--blue-2); transform: translateY(-1px); }
+  @media(max-width:768px){
+    .lp-nav-links { display: none; }
+    .lp-nav { padding: 0 16px; }
+  }
 
   /* ── Hero band ── */
   .lp-hero {
-    padding: 120px 32px 60px;
-    max-width: 840px; margin: 0 auto; position: relative;
+    padding: 112px 24px 64px;
+    background: linear-gradient(180deg, #f0f6ff 0%, #ffffff 70%);
+    position: relative; overflow: hidden;
   }
-  .lp-hero::before {
-    content: '';
-    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-    width: 600px; height: 300px;
-    background: radial-gradient(ellipse, rgba(26,240,196,0.06) 0%, transparent 70%);
-    pointer-events: none;
+  .lp-hero-pattern {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, #d1defe 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 100%);
+    opacity: 0.45;
   }
-  .lp-tag {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-    color: var(--ac); letter-spacing: 0.1em; text-transform: uppercase;
-    background: var(--ac3); border: 1px solid rgba(26,240,196,0.2);
-    border-radius: 20px; padding: 5px 14px;
-    margin-bottom: 20px;
+  .lp-hero-inner {
+    position: relative; z-index: 1;
+    max-width: 1160px; margin: 0 auto;
   }
-  .lp-tag-dot {
-    width: 6px; height: 6px; border-radius: 50%; background: var(--ac);
+  .lp-kicker {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; color: var(--blue);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 18px;
+  }
+  .lp-kicker-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
   }
   .lp-h1 {
     font-family: var(--font-display);
-    font-size: clamp(32px, 5vw, 52px);
-    font-weight: 800; letter-spacing: -0.04em; line-height: 1.1;
-    color: var(--t1); margin-bottom: 16px;
+    font-size: clamp(30px, 4.5vw, 52px);
+    font-weight: 800; letter-spacing: -0.04em; line-height: 1.08;
+    color: var(--ink); margin-bottom: 16px;
   }
-  .lp-h1 span { color: var(--ac); }
+  .lp-h1 .blue { color: var(--blue); }
   .lp-sub {
-    font-size: 16px; color: var(--t2); line-height: 1.65;
-    max-width: 540px; margin-bottom: 32px;
+    font-size: 16px; color: var(--muted); line-height: 1.7;
+    max-width: 560px; margin-bottom: 28px;
   }
   .lp-meta {
-    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
   }
   .lp-meta-item {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12px; color: var(--t3); font-family: var(--font-mono);
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: 20px;
+    padding: 5px 14px; font-size: 12px; font-weight: 500; color: var(--muted);
   }
-  .lp-meta-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--t3); }
+  .lp-meta-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
 
-  /* ── Page body ── */
-  .lp-body {
-    max-width: 840px; margin: 0 auto; padding: 0 32px 80px;
-    display: grid; grid-template-columns: 200px 1fr; gap: 48px;
+  /* ── Breadcrumb ── */
+  .lp-breadcrumb {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 28px;
+  }
+  .lp-breadcrumb a, .lp-breadcrumb span {
+    font-size: 13px; color: var(--muted); text-decoration: none;
+    transition: color 0.15s;
+  }
+  .lp-breadcrumb a:hover { color: var(--ink); }
+  .lp-breadcrumb .sep { color: var(--muted-2); }
+  .lp-breadcrumb .current { color: var(--ink); font-weight: 600; }
+
+  /* ── Layout ── */
+  .lp-layout {
+    max-width: 1160px; margin: 0 auto; padding: 64px 24px 96px;
+    display: grid; grid-template-columns: 220px 1fr; gap: 56px;
     align-items: start;
   }
-  @media(max-width:768px){
-    .lp-body { grid-template-columns: 1fr; gap: 24px; }
-    .lp-toc { display: none; }
-    .lp-hero { padding: 100px 20px 40px; }
-    .lp-body { padding: 0 20px 60px; }
-    .lp-nav { padding: 0 16px; }
-    .lp-nav-links { display: none; }
+  @media(max-width:900px){
+    .lp-layout { grid-template-columns: 1fr; gap: 32px; padding: 40px 20px 72px; }
+    .lp-toc    { display: none; }
   }
 
   /* ── TOC ── */
   .lp-toc {
-    position: sticky; top: 80px;
-    padding: 16px; border: 1px solid var(--border); border-radius: 12px;
-    background: var(--bg2);
+    position: sticky; top: 84px;
+    background: var(--bg-2); border: 1.5px solid var(--border);
+    border-radius: 14px; padding: 20px 16px;
   }
   .lp-toc-title {
-    font-size: 10px; font-weight: 700; color: var(--t3);
-    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
-    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; color: var(--muted-2);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 14px; padding-left: 8px;
   }
   .lp-toc-link {
-    display: block; padding: 5px 8px; border-radius: 6px;
-    font-size: 12px; font-weight: 500; color: var(--t2);
-    text-decoration: none; transition: all 0.12s; margin-bottom: 2px;
-    border-left: 2px solid transparent;
+    display: block; padding: 7px 10px; border-radius: 8px;
+    font-size: 12.5px; font-weight: 500; color: var(--muted);
+    text-decoration: none; transition: all 0.15s; margin-bottom: 2px;
+    border-left: 2.5px solid transparent;
   }
-  .lp-toc-link:hover { color: var(--t1); background: rgba(255,255,255,0.04); }
-  .lp-toc-link--active { color: var(--ac); border-left-color: var(--ac); }
+  .lp-toc-link:hover { color: var(--ink); background: var(--bg-3); }
+  .lp-toc-link--active {
+    color: var(--blue); background: var(--blue-light);
+    border-left-color: var(--blue); font-weight: 600;
+  }
 
   /* ── Content ── */
   .lp-content { min-width: 0; }
+
   .lp-section {
-    margin-bottom: 48px; scroll-margin-top: 80px;
+    margin-bottom: 52px; scroll-margin-top: 88px;
   }
   .lp-section h2 {
     font-family: var(--font-display);
-    font-size: 22px; font-weight: 700; letter-spacing: -0.03em;
-    color: var(--t1); margin-bottom: 16px;
-    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    font-size: 22px; font-weight: 800; letter-spacing: -0.03em;
+    color: var(--ink); margin-bottom: 18px;
+    padding-bottom: 14px; border-bottom: 1.5px solid var(--border);
   }
   .lp-section h3 {
     font-family: var(--font-display);
-    font-size: 16px; font-weight: 600; color: var(--t1);
-    margin: 24px 0 10px;
+    font-size: 15px; font-weight: 700; color: var(--ink-2);
+    margin: 22px 0 8px; letter-spacing: -0.02em;
   }
   .lp-section p {
-    font-size: 14px; color: var(--t2); line-height: 1.75;
+    font-size: 14.5px; color: var(--muted); line-height: 1.78;
     margin-bottom: 14px;
   }
+  .lp-section strong { color: var(--ink-2); font-weight: 600; }
   .lp-section ul, .lp-section ol {
-    margin: 0 0 14px 0; padding-left: 0;
-    list-style: none;
+    margin: 0 0 16px; padding-left: 0; list-style: none;
+    display: flex; flex-direction: column; gap: 8px;
   }
-  .lp-section ul li, .lp-section ol li {
-    font-size: 14px; color: var(--t2); line-height: 1.65;
+  .lp-section li {
     display: flex; align-items: flex-start; gap: 10px;
-    margin-bottom: 8px;
+    font-size: 14px; color: var(--muted); line-height: 1.65;
   }
   .lp-section ul li::before {
-    content: '—'; color: var(--ac); font-size: 12px;
-    font-family: var(--font-mono); flex-shrink: 0; margin-top: 2px;
+    content: '';
+    display: block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--blue); flex-shrink: 0; margin-top: 7px;
   }
-  .lp-section ol { counter-reset: item; }
+  .lp-section ol { counter-reset: li; }
   .lp-section ol li::before {
-    counter-increment: item; content: counter(item) '.';
-    color: var(--ac); font-size: 12px; font-family: var(--font-mono);
-    flex-shrink: 0; margin-top: 2px; font-weight: 600; min-width: 18px;
+    counter-increment: li; content: counter(li);
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--blue-light); color: var(--blue);
+    font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
   }
-  .lp-section a {
-    color: var(--ac); text-decoration: none;
-  }
+  .lp-section a { color: var(--blue); text-decoration: none; }
   .lp-section a:hover { text-decoration: underline; }
+
+  /* highlight box — matches solution-box style from landing */
   .lp-highlight {
-    background: var(--ac3); border: 1px solid rgba(26,240,196,0.15);
-    border-radius: 10px; padding: 16px 18px; margin: 20px 0;
+    background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 12px; padding: 18px 20px; margin: 20px 0;
   }
-  .lp-highlight p { color: rgba(255,255,255,0.75); margin: 0; font-size: 14px; }
-  .lp-highlight strong { color: var(--ac); font-weight: 600; }
-  .lp-badge-row {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0;
-  }
+  .lp-highlight p { color: var(--ink-2); margin: 0; font-size: 14px; }
+  .lp-highlight strong { color: var(--blue); }
+
+  /* badge row */
+  .lp-badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
   .lp-badge {
-    display: flex; align-items: center; gap: 6px;
-    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-    border-radius: 20px; padding: 5px 12px;
-    font-size: 12px; color: var(--t2); font-family: var(--font-mono);
-  }
-  .lp-badge-icon { font-size: 14px; }
-  code {
-    font-family: var(--font-mono);
-    font-size: 12px; color: var(--ac);
-    background: var(--ac3); border-radius: 4px; padding: 1px 6px;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 14px;
+    font-size: 12px; font-weight: 500; color: var(--ink-2);
   }
 
-  /* ── Footer ── */
-  .lp-footer {
-    border-top: 1px solid var(--border);
-    padding: 32px;
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  code {
+    font-size: 12.5px; color: var(--blue);
+    background: var(--blue-light); border-radius: 5px; padding: 1px 7px;
+    font-family: 'Courier New', monospace;
   }
-  .lp-footer-left { display: flex; align-items: center; gap: 10px; }
-  .lp-footer-text { font-size: 12px; color: var(--t3); }
+
+  /* ── Footer (matches landing footer style) ── */
+  .lp-footer {
+    background: var(--ink); padding: 48px 24px 28px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .lp-footer-inner {
+    max-width: 1160px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .lp-footer-brand {
+    display: flex; align-items: center; gap: 9px;
+  }
+  .lp-footer-logo {
+    width: 22px; height: 22px; border-radius: 6px; object-fit: cover;
+  }
+  .lp-footer-name {
+    font-family: var(--font-display); font-size: 14px; font-weight: 700;
+    color: rgba(255,255,255,0.8); letter-spacing: -0.02em;
+  }
+  .lp-footer-copy { font-size: 12px; color: rgba(255,255,255,0.22); }
   .lp-footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
-  .lp-footer-link { font-size: 12px; color: var(--t3); text-decoration: none; transition: color 0.15s; }
-  .lp-footer-link:hover { color: var(--t2); }
+  .lp-footer-link {
+    font-size: 12px; color: rgba(255,255,255,0.28); text-decoration: none; transition: color 0.2s;
+  }
+  .lp-footer-link:hover { color: rgba(255,255,255,0.55); }
+
+  /* ── Contact-specific ── */
+  .contact-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 48px;
+  }
+  @media(max-width:580px){ .contact-cards { grid-template-columns: 1fr; } }
+
+  .contact-card {
+    background: var(--bg-2); border: 1.5px solid var(--border);
+    border-radius: 14px; padding: 24px;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+  .contact-card:hover {
+    border-color: #bfdbfe; box-shadow: 0 8px 28px var(--blue-glow);
+    transform: translateY(-2px);
+  }
+  .contact-card-icon { font-size: 26px; margin-bottom: 12px; display: block; }
+  .contact-card-title {
+    font-family: var(--font-display); font-size: 16px; font-weight: 700;
+    color: var(--ink); margin-bottom: 6px; letter-spacing: -0.02em;
+  }
+  .contact-card-desc { font-size: 13px; color: var(--muted); line-height: 1.65; margin-bottom: 14px; }
+  .contact-card-link {
+    font-size: 13px; font-weight: 600; color: var(--blue);
+    text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .contact-card-link:hover { text-decoration: underline; }
+
+  .contact-form-wrap {
+    background: var(--bg-2); border: 1.5px solid var(--border);
+    border-radius: 16px; padding: 36px; margin-bottom: 48px;
+  }
+  .contact-form-title {
+    font-family: var(--font-display); font-size: 22px; font-weight: 800;
+    color: var(--ink); letter-spacing: -0.03em; margin-bottom: 6px;
+  }
+  .contact-form-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+  .contact-form { display: flex; flex-direction: column; gap: 16px; }
+  .contact-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media(max-width:580px){ .contact-row { grid-template-columns: 1fr; } }
+
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-label {
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .form-input, .form-select, .form-textarea {
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 11px 14px;
+    color: var(--ink); font-size: 14px; font-family: var(--font);
+    outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+  .form-input::placeholder, .form-textarea::placeholder { color: var(--muted-2); }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light);
+  }
+  .form-select { cursor: pointer; }
+  .form-textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+  .form-submit {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--blue); color: #fff; border: none;
+    border-radius: 10px; padding: 13px 28px;
+    font-size: 14px; font-weight: 600; font-family: var(--font);
+    cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 4px 14px var(--blue-glow); align-self: flex-start;
+  }
+  .form-submit:hover:not(:disabled) { background: var(--blue-2); transform: translateY(-1px); }
+  .form-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .form-success {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 48px 24px; text-align: center; gap: 14px;
+  }
+  .form-success-icon {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }
+  .form-success-title {
+    font-family: var(--font-display); font-size: 22px; font-weight: 800;
+    color: var(--ink); letter-spacing: -0.03em;
+  }
+  .form-success-sub { font-size: 14px; color: var(--muted); max-width: 340px; line-height: 1.65; }
+
+  /* FAQ */
+  .faq-section-title {
+    font-family: var(--font-display); font-size: 22px; font-weight: 800;
+    color: var(--ink); letter-spacing: -0.03em; margin-bottom: 8px;
+  }
+  .faq-section-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+
+  .faq-item {
+    border: 1.5px solid var(--border); border-radius: 12px; margin-bottom: 10px;
+    background: #fff; overflow: hidden; transition: border-color 0.15s;
+  }
+  .faq-item:hover { border-color: #bfdbfe; }
+  .faq-q {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; background: transparent; border: none; cursor: pointer;
+    text-align: left; font-size: 14px; font-weight: 600; color: var(--ink);
+    font-family: var(--font); gap: 12px;
+  }
+  .faq-chevron {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--bg-3);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: transform 0.2s, background 0.15s;
+    font-size: 10px; color: var(--muted);
+  }
+  .faq-chevron--open { transform: rotate(180deg); background: var(--blue-light); color: var(--blue); }
+  .faq-a {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.28s ease, padding 0.28s ease;
+    padding: 0 20px;
+  }
+  .faq-a--open { max-height: 240px; padding: 0 20px 18px; }
+  .faq-a p { font-size: 13.5px; color: var(--muted); line-height: 1.7; margin: 0; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
 `;
 
 // ─── Shared Layout ─────────────────────────────────────────────────────────────
 
 function LegalLayout({
   page,
-  tag,
+  kicker,
   title,
-  titleHighlight,
+  titleBlue,
   subtitle,
   updated,
   version,
@@ -258,9 +419,9 @@ function LegalLayout({
   children,
 }: {
   page: string;
-  tag: string;
+  kicker: string;
   title: string;
-  titleHighlight?: string;
+  titleBlue?: string;
   subtitle: string;
   updated: string;
   version: string;
@@ -268,14 +429,11 @@ function LegalLayout({
   children: React.ReactNode;
 }) {
   const [activeSection, setActiveSection] = useState(sections[0]?.id);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
+        entries.forEach((e) => { if (e.isIntersecting) setActiveSection(e.target.id); });
       },
       { rootMargin: "-20% 0px -70% 0px" }
     );
@@ -286,11 +444,11 @@ function LegalLayout({
     return () => observer.disconnect();
   }, [sections]);
 
-  const navLinks = [
-    { href: "/privacy", label: "Privacy" },
-    { href: "/terms", label: "Terms" },
+  const NAV = [
+    { href: "/privacy",  label: "Privacy"  },
+    { href: "/terms",    label: "Terms"    },
     { href: "/security", label: "Security" },
-    { href: "/contact", label: "Contact" },
+    { href: "/contact",  label: "Contact"  },
   ];
 
   return (
@@ -299,44 +457,61 @@ function LegalLayout({
 
       {/* Nav */}
       <nav className="lp-nav">
-        <a href="/" className="lp-nav-brand">
-          <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-nav-logo" />
-          <span className="lp-nav-name">Fixsense</span>
-        </a>
-        <div className="lp-nav-links">
-          {navLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className={`lp-nav-link ${page === l.label.toLowerCase() ? "lp-nav-link--active" : ""}`}
-            >
-              {l.label}
-            </a>
-          ))}
+        <div className="lp-nav-inner">
+          <Link to="/" className="lp-nav-brand">
+            <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-nav-logo" />
+            <span className="lp-nav-name">Fixsense</span>
+          </Link>
+          <div className="lp-nav-links">
+            {NAV.map((l) => (
+              <Link
+                key={l.href}
+                to={l.href}
+                className={`lp-nav-link ${page === l.label.toLowerCase() ? "lp-nav-link--active" : ""}`}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </div>
+          <Link to="/dashboard" className="lp-nav-btn">Dashboard →</Link>
         </div>
-        <a href="/dashboard" className="lp-nav-btn">Dashboard →</a>
       </nav>
 
       {/* Hero */}
       <div className="lp-hero">
-        <div className="lp-tag"><span className="lp-tag-dot" />{tag}</div>
-        <h1 className="lp-h1">
-          {title}
-          {titleHighlight && <><br /><span>{titleHighlight}</span></>}
-        </h1>
-        <p className="lp-sub">{subtitle}</p>
-        <div className="lp-meta">
-          <div className="lp-meta-item">Last updated: {updated}</div>
-          <div className="lp-meta-dot" />
-          <div className="lp-meta-item">Version {version}</div>
-          <div className="lp-meta-dot" />
-          <div className="lp-meta-item">Effective immediately</div>
+        <div className="lp-hero-pattern" />
+        <div className="lp-hero-inner">
+          {/* Breadcrumb */}
+          <div className="lp-breadcrumb">
+            <Link to="/">Home</Link>
+            <span className="sep">/</span>
+            <span className="current">{kicker}</span>
+          </div>
+
+          <div className="lp-kicker">
+            <div className="lp-kicker-dot" />
+            {kicker}
+          </div>
+
+          <h1 className="lp-h1">
+            {title}
+            {titleBlue && <> <span className="blue">{titleBlue}</span></>}
+          </h1>
+          <p className="lp-sub">{subtitle}</p>
+
+          <div className="lp-meta">
+            <div className="lp-meta-item">
+              <div className="lp-meta-dot" />
+              Last updated: {updated}
+            </div>
+            <div className="lp-meta-item">Version {version}</div>
+            <div className="lp-meta-item">Effective immediately</div>
+          </div>
         </div>
       </div>
 
       {/* Body */}
-      <div className="lp-body">
-        {/* TOC */}
+      <div className="lp-layout">
         <aside className="lp-toc">
           <div className="lp-toc-title">On this page</div>
           {sections.map((s) => (
@@ -349,27 +524,29 @@ function LegalLayout({
             </a>
           ))}
         </aside>
-
-        {/* Content */}
-        <div className="lp-content" ref={contentRef}>
-          {children}
-        </div>
+        <div className="lp-content">{children}</div>
       </div>
 
       {/* Footer */}
       <footer className="lp-footer">
-        <div className="lp-footer-left">
-          <span className="lp-footer-text">© {new Date().getFullYear()} Fixsense, Inc.</span>
-        </div>
-        <div className="lp-footer-links">
-          {[
-            { href: "/privacy", label: "Privacy Policy" },
-            { href: "/terms", label: "Terms of Service" },
-            { href: "/security", label: "Security" },
-            { href: "/contact", label: "Contact" },
-          ].map((l) => (
-            <a key={l.href} href={l.href} className="lp-footer-link">{l.label}</a>
-          ))}
+        <div className="lp-footer-inner">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="lp-footer-brand">
+              <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-footer-logo" />
+              <span className="lp-footer-name">Fixsense</span>
+            </div>
+            <span className="lp-footer-copy">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
+          </div>
+          <div className="lp-footer-links">
+            {[
+              { href: "/privacy",  label: "Privacy Policy" },
+              { href: "/terms",    label: "Terms of Service" },
+              { href: "/security", label: "Security" },
+              { href: "/contact",  label: "Contact" },
+            ].map((l) => (
+              <Link key={l.href} to={l.href} className="lp-footer-link">{l.label}</Link>
+            ))}
+          </div>
         </div>
       </footer>
     </div>
@@ -382,25 +559,25 @@ function LegalLayout({
 
 export function PrivacyPage() {
   const sections = [
-    { id: "overview", label: "Overview" },
-    { id: "data-collected", label: "Data We Collect" },
-    { id: "how-we-use", label: "How We Use Data" },
-    { id: "sharing", label: "Data Sharing" },
-    { id: "storage", label: "Storage & Retention" },
-    { id: "rights", label: "Your Rights" },
-    { id: "cookies", label: "Cookies" },
-    { id: "children", label: "Children's Privacy" },
-    { id: "changes", label: "Changes to Policy" },
-    { id: "contact", label: "Contact Us" },
+    { id: "overview",       label: "Overview"          },
+    { id: "data-collected", label: "Data We Collect"   },
+    { id: "how-we-use",     label: "How We Use Data"   },
+    { id: "sharing",        label: "Data Sharing"      },
+    { id: "storage",        label: "Storage & Retention" },
+    { id: "rights",         label: "Your Rights"       },
+    { id: "cookies",        label: "Cookies"           },
+    { id: "children",       label: "Children's Privacy" },
+    { id: "changes",        label: "Changes to Policy" },
+    { id: "contact",        label: "Contact Us"        },
   ];
 
   return (
     <LegalLayout
       page="privacy"
-      tag="Legal · Privacy Policy"
+      kicker="Privacy Policy"
       title="Your data."
-      titleHighlight="Our responsibility."
-      subtitle="We're committed to protecting your personal information and being transparent about what we collect and why."
+      titleBlue="Our responsibility."
+      subtitle="We're committed to protecting your personal information and being fully transparent about what we collect, why, and how we protect it."
       updated="March 29, 2026"
       version="2.1"
       sections={sections}
@@ -428,7 +605,7 @@ export function PrivacyPage() {
           <li>Name, email address, and password (hashed)</li>
           <li>Organization name, team name, and role</li>
           <li>Profile photo (optional)</li>
-          <li>Billing name and payment method information (processed by Paystack)</li>
+          <li>Billing name and payment method (processed by Paystack)</li>
         </ul>
         <h3>Call & Meeting Data</h3>
         <p>When you record a meeting through Fixsense, we collect:</p>
@@ -472,13 +649,10 @@ export function PrivacyPage() {
       <section className="lp-section" id="sharing">
         <h2>Data Sharing</h2>
         <div className="lp-highlight">
-          <p><strong>We do not sell your data.</strong> We do not share your personal information with advertisers or data brokers.</p>
+          <p><strong>We do not sell your data.</strong> We do not share your personal information with advertisers or data brokers, ever.</p>
         </div>
-        <p>We may share data in limited circumstances:</p>
         <h3>Service Providers</h3>
-        <p>
-          We work with trusted third-party vendors to operate our service. These providers process data only on our behalf under strict confidentiality agreements:
-        </p>
+        <p>We work with trusted third-party vendors who process data only on our behalf under strict confidentiality agreements:</p>
         <ul>
           <li><strong>Supabase</strong> — Database and authentication infrastructure</li>
           <li><strong>Paystack</strong> — Payment processing (never stores full card data on our servers)</li>
@@ -498,7 +672,7 @@ export function PrivacyPage() {
       <section className="lp-section" id="storage">
         <h2>Storage & Retention</h2>
         <p>
-          Your data is stored on servers operated by Supabase in their contracted cloud infrastructure. All data is encrypted at rest (AES-256) and in transit (TLS 1.3).
+          Your data is stored on servers operated by Supabase. All data is encrypted at rest (AES-256) and in transit (TLS 1.3).
         </p>
         <h3>Retention Periods</h3>
         <ul>
@@ -509,7 +683,7 @@ export function PrivacyPage() {
           <li>Access logs: Retained for 90 days for security purposes.</li>
         </ul>
         <p>
-          You may request early deletion of recordings or transcripts at any time through your account settings or by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.
+          You may request early deletion of recordings or transcripts through your account settings or by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.
         </p>
       </section>
 
@@ -526,15 +700,15 @@ export function PrivacyPage() {
           <li><strong>Withdraw Consent:</strong> Revoke consent for data processing where applicable</li>
         </ul>
         <p>
-          To exercise any of these rights, contact us at <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>. We will respond within 30 days. You can also export and delete your account data directly from your Profile Settings page.
+          To exercise any of these rights, contact us at <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>. We will respond within 30 days. You can also export and delete your account data directly from your Profile Settings.
         </p>
         <h3>GDPR (European Users)</h3>
         <p>
-          If you are located in the European Economic Area, you have additional rights under the General Data Protection Regulation. Our lawful basis for processing includes contract performance (providing the service), legitimate interests, and consent where applicable.
+          If you are located in the European Economic Area, you have additional rights under GDPR. Our lawful basis for processing includes contract performance, legitimate interests, and consent where applicable.
         </p>
         <h3>NDPR (Nigerian Users)</h3>
         <p>
-          We comply with the Nigeria Data Protection Regulation (NDPR). Users in Nigeria have full data subject rights. Our Data Protection Officer can be reached at <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a>.
+          We comply with the Nigeria Data Protection Regulation (NDPR). Our Data Protection Officer can be reached at <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a>.
         </p>
       </section>
 
@@ -572,7 +746,7 @@ export function PrivacyPage() {
         <h2>Contact Us</h2>
         <p>For privacy-related inquiries:</p>
         <ul>
-          <li>Email: <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a></li>
+          <li>Privacy team: <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a></li>
           <li>Data Protection Officer: <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a></li>
           <li>Address: Fixsense, Inc., Benin City, Edo State, Nigeria</li>
         </ul>
@@ -587,27 +761,27 @@ export function PrivacyPage() {
 
 export function TermsPage() {
   const sections = [
-    { id: "agreement", label: "Agreement to Terms" },
-    { id: "services", label: "Use of Services" },
-    { id: "accounts", label: "Accounts" },
-    { id: "plans", label: "Plans & Billing" },
-    { id: "content", label: "Your Content" },
-    { id: "acceptable-use", label: "Acceptable Use" },
-    { id: "intellectual-property", label: "Intellectual Property" },
-    { id: "third-party", label: "Third-Party Services" },
-    { id: "warranty", label: "Disclaimers" },
-    { id: "liability", label: "Limitation of Liability" },
-    { id: "termination", label: "Termination" },
-    { id: "governing-law", label: "Governing Law" },
-    { id: "contact", label: "Contact" },
+    { id: "agreement",            label: "Agreement to Terms"    },
+    { id: "services",             label: "Use of Services"       },
+    { id: "accounts",             label: "Accounts"              },
+    { id: "plans",                label: "Plans & Billing"       },
+    { id: "content",              label: "Your Content"          },
+    { id: "acceptable-use",       label: "Acceptable Use"        },
+    { id: "intellectual-property",label: "Intellectual Property" },
+    { id: "third-party",          label: "Third-Party Services"  },
+    { id: "warranty",             label: "Disclaimers"           },
+    { id: "liability",            label: "Limitation of Liability"},
+    { id: "termination",          label: "Termination"           },
+    { id: "governing-law",        label: "Governing Law"         },
+    { id: "contact",              label: "Contact"               },
   ];
 
   return (
     <LegalLayout
       page="terms"
-      tag="Legal · Terms of Service"
+      kicker="Terms of Service"
       title="The rules of"
-      titleHighlight="the road."
+      titleBlue="the road."
       subtitle="By using Fixsense, you agree to these terms. Please read them carefully — they govern your use of our platform and services."
       updated="March 29, 2026"
       version="3.0"
@@ -631,7 +805,7 @@ export function TermsPage() {
           Fixsense provides AI-powered sales intelligence tools including call recording, transcription, analysis, coaching insights, and team collaboration features. Our Services are designed for professional sales use.
         </p>
         <p>
-          We reserve the right to modify, suspend, or discontinue any part of the Services at any time. We will provide reasonable notice for material changes.
+          We reserve the right to modify, suspend, or discontinue any part of the Services at any time with reasonable notice for material changes.
         </p>
         <p>
           You acknowledge that Fixsense uses AI models (including Anthropic's Claude) to process your meeting content. AI outputs are intended to assist — not replace — human judgment.
@@ -664,8 +838,8 @@ export function TermsPage() {
         </p>
         <h3>Payment</h3>
         <ul>
-          <li>All paid plans are billed monthly in Nigerian Naira (NGN) via Paystack</li>
-          <li>Prices are displayed in USD and converted at a fixed rate (1 USD = ₦1,500)</li>
+          <li>All paid plans are billed monthly via Paystack</li>
+          <li>Prices are displayed in USD and converted at the published rate</li>
           <li>Subscriptions renew automatically unless cancelled</li>
           <li>We do not store full payment card details on our servers</li>
         </ul>
@@ -692,10 +866,6 @@ export function TermsPage() {
         <p>
           By using our Services, you grant Fixsense a limited, non-exclusive, royalty-free license to process, store, and display Your Content solely to provide and improve the Services to you. This license terminates when you delete content or close your account.
         </p>
-        <h3>AI Processing</h3>
-        <p>
-          You explicitly authorize Fixsense to use AI models to analyze Your Content for the purpose of generating transcripts, summaries, coaching insights, and other features. We do not use Your Content to train general AI models.
-        </p>
         <h3>Recording Consent</h3>
         <p>
           You are solely responsible for obtaining necessary consent from all meeting participants before recording. Recording consent laws vary by jurisdiction. Fixsense is not liable for your failure to obtain proper consent.
@@ -712,22 +882,15 @@ export function TermsPage() {
           <li>Reverse engineer, decompile, or attempt to extract our source code or AI models</li>
           <li>Use automated tools to scrape, crawl, or extract data from our platform</li>
           <li>Resell, sublicense, or provide access to our Services without authorization</li>
-          <li>Use our Services for any purpose that violates applicable laws or regulations</li>
           <li>Transmit malware, viruses, or any malicious code</li>
-          <li>Harass, threaten, or intimidate other users or our team</li>
         </ul>
-        <p>
-          Violations may result in immediate account suspension without refund and reporting to appropriate authorities where required.
-        </p>
+        <p>Violations may result in immediate account suspension without refund.</p>
       </section>
 
       <section className="lp-section" id="intellectual-property">
         <h2>Intellectual Property</h2>
         <p>
           The Fixsense platform, brand, website, and all associated technology, software, algorithms, and AI models are owned by Fixsense, Inc. and protected by copyright, trademark, and other intellectual property laws.
-        </p>
-        <p>
-          Nothing in these Terms grants you rights to use the Fixsense name, logo, or trademarks without our prior written consent.
         </p>
         <p>
           If you submit feedback or suggestions about our Services, you grant us an unlimited, royalty-free right to use them without any obligation to you.
@@ -740,7 +903,7 @@ export function TermsPage() {
           Fixsense integrates with third-party services including Zoom, Google Meet, Microsoft Teams, Salesforce, HubSpot, Slack, and others. Your use of these integrations is subject to their respective terms of service and privacy policies.
         </p>
         <p>
-          We are not responsible for the availability, accuracy, or practices of third-party services. Revoking third-party access may limit certain Fixsense features.
+          We are not responsible for the availability, accuracy, or practices of third-party services.
         </p>
       </section>
 
@@ -748,9 +911,6 @@ export function TermsPage() {
         <h2>Disclaimers</h2>
         <p>
           THE SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
-        </p>
-        <p>
-          We do not warrant that: (a) the Services will be uninterrupted or error-free; (b) defects will be corrected; (c) AI-generated insights are accurate, complete, or suitable for any specific purpose.
         </p>
         <p>
           AI transcriptions, summaries, and coaching recommendations may contain errors. Always apply professional judgment before acting on AI-generated content.
@@ -763,7 +923,7 @@ export function TermsPage() {
           TO THE MAXIMUM EXTENT PERMITTED BY LAW, FIXSENSE SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR BUSINESS OPPORTUNITIES.
         </p>
         <p>
-          OUR TOTAL LIABILITY TO YOU FOR ANY CLAIMS ARISING FROM OR RELATED TO THE SERVICES SHALL NOT EXCEED THE AMOUNT YOU PAID FIXSENSE IN THE 12 MONTHS PRECEDING THE CLAIM.
+          OUR TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FIXSENSE IN THE 12 MONTHS PRECEDING THE CLAIM.
         </p>
       </section>
 
@@ -775,21 +935,15 @@ export function TermsPage() {
         <p>
           Upon termination: access to Services ends immediately; you may export your data within 30 days; data will be permanently deleted within 60 days per our retention policy.
         </p>
-        <p>
-          Sections on Intellectual Property, Disclaimers, Limitation of Liability, and Governing Law survive termination.
-        </p>
       </section>
 
       <section className="lp-section" id="governing-law">
         <h2>Governing Law</h2>
         <p>
-          These Terms are governed by the laws of the Federal Republic of Nigeria, without regard to conflict of law principles. Any disputes shall be resolved in the courts of Edo State, Nigeria.
+          These Terms are governed by the laws of the Federal Republic of Nigeria. Any disputes shall be resolved in the courts of Edo State, Nigeria.
         </p>
         <p>
-          If any provision of these Terms is found unenforceable, the remaining provisions continue in full force.
-        </p>
-        <p>
-          We may update these Terms with 30 days' notice. Continued use constitutes acceptance. If you disagree with changes, you may terminate your account before the effective date.
+          We may update these Terms with 30 days' notice. Continued use constitutes acceptance.
         </p>
       </section>
 
@@ -811,23 +965,23 @@ export function TermsPage() {
 
 export function SecurityPage() {
   const sections = [
-    { id: "commitment", label: "Our Commitment" },
-    { id: "infrastructure", label: "Infrastructure" },
-    { id: "encryption", label: "Encryption" },
-    { id: "access", label: "Access Control" },
-    { id: "ai-security", label: "AI & Data Security" },
-    { id: "compliance", label: "Compliance" },
-    { id: "incident", label: "Incident Response" },
-    { id: "disclosure", label: "Vulnerability Disclosure" },
-    { id: "contact", label: "Contact Security" },
+    { id: "commitment",     label: "Our Commitment"         },
+    { id: "infrastructure", label: "Infrastructure"         },
+    { id: "encryption",     label: "Encryption"             },
+    { id: "access",         label: "Access Control"         },
+    { id: "ai-security",    label: "AI & Data Security"     },
+    { id: "compliance",     label: "Compliance"             },
+    { id: "incident",       label: "Incident Response"      },
+    { id: "disclosure",     label: "Vulnerability Disclosure"},
+    { id: "contact",        label: "Contact Security"       },
   ];
 
   return (
     <LegalLayout
       page="security"
-      tag="Trust & Safety · Security"
+      kicker="Security"
       title="Built for"
-      titleHighlight="enterprise trust."
+      titleBlue="enterprise trust."
       subtitle="Security isn't a feature — it's the foundation. Here's exactly how we protect your calls, transcripts, and data."
       updated="March 29, 2026"
       version="1.4"
@@ -841,14 +995,14 @@ export function SecurityPage() {
           </p>
         </div>
         <p>
-          Fixsense is built on security-first infrastructure. Every design decision — from how we store recordings to how our AI models process transcripts — prioritizes the confidentiality and integrity of your data.
+          Fixsense is built on security-first infrastructure. Every design decision prioritizes the confidentiality and integrity of your data.
         </p>
         <div className="lp-badge-row">
-          <div className="lp-badge"><span className="lp-badge-icon">🔒</span> AES-256 Encryption</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🛡️</span> TLS 1.3</div>
-          <div className="lp-badge"><span className="lp-badge-icon">✅</span> SOC 2 Type II</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🇳🇬</span> NDPR Compliant</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🇪🇺</span> GDPR Ready</div>
+          <div className="lp-badge">🔒 AES-256 Encryption</div>
+          <div className="lp-badge">🛡️ TLS 1.3</div>
+          <div className="lp-badge">✅ SOC 2 Type II</div>
+          <div className="lp-badge">🇳🇬 NDPR Compliant</div>
+          <div className="lp-badge">🇪🇺 GDPR Ready</div>
         </div>
       </section>
 
@@ -862,13 +1016,13 @@ export function SecurityPage() {
         <ul>
           <li>All traffic routed through Supabase's hardened network perimeter</li>
           <li>DDoS protection and rate limiting on all public endpoints</li>
-          <li>Database is not publicly accessible — only accessible through authenticated API layer</li>
+          <li>Database is not publicly accessible — only through authenticated API layer</li>
           <li>Edge functions run in isolated, ephemeral environments</li>
           <li>Web Application Firewall (WAF) on all inbound traffic</li>
         </ul>
         <h3>Availability</h3>
         <p>
-          We target 99.9% uptime. Real-time status is available at our status page. Planned maintenance windows are announced at least 24 hours in advance.
+          We target 99.9% uptime. Planned maintenance windows are announced at least 24 hours in advance.
         </p>
       </section>
 
@@ -879,31 +1033,26 @@ export function SecurityPage() {
           <li>All database data encrypted with <code>AES-256</code></li>
           <li>Call recordings and audio files encrypted in object storage</li>
           <li>Encryption keys managed by the cloud provider's KMS with regular rotation</li>
-          <li>OAuth tokens and API keys stored encrypted using column-level encryption</li>
+          <li>OAuth tokens stored encrypted using column-level encryption</li>
         </ul>
         <h3>Data in Transit</h3>
         <ul>
           <li>All connections enforced over <code>TLS 1.3</code> minimum</li>
           <li>HTTPS enforced with HSTS headers; HTTP automatically redirected</li>
-          <li>Internal service-to-service communication also encrypted</li>
           <li>WebSocket connections for real-time features use WSS (TLS)</li>
         </ul>
-        <h3>Key Management</h3>
-        <p>
-          Encryption keys are managed through the hosting provider's KMS. Keys are never stored alongside the data they encrypt. Automatic key rotation occurs on a scheduled basis.
-        </p>
       </section>
 
       <section className="lp-section" id="access">
         <h2>Access Control</h2>
         <h3>Authentication</h3>
         <ul>
-          <li>Passwords are hashed using <code>bcrypt</code> with a strong salt factor</li>
+          <li>Passwords hashed using <code>bcrypt</code> with a strong salt factor</li>
           <li>Google OAuth available as a secure authentication alternative</li>
           <li>Session tokens are short-lived with automatic renewal</li>
           <li>Brute-force protection and account lockout on repeated failures</li>
         </ul>
-        <h3>Authorization (Row-Level Security)</h3>
+        <h3>Row-Level Security</h3>
         <p>
           We use Supabase's Row-Level Security (RLS) to enforce that users can only access their own data. Every database query is automatically scoped to the authenticated user. Team data is further scoped by team membership and role.
         </p>
@@ -920,44 +1069,39 @@ export function SecurityPage() {
         <h2>AI & Data Security</h2>
         <h3>How We Process Your Recordings</h3>
         <p>
-          When you record a call, audio is securely transmitted to our edge functions, processed for transcription, then stored encrypted. AI analysis (summaries, objection detection, coaching insights) is performed using Anthropic's Claude API with your content submitted under an enterprise data agreement.
+          When you record a call, audio is securely transmitted to our edge functions, processed for transcription, then stored encrypted. AI analysis is performed using Anthropic's Claude API under an enterprise data agreement.
         </p>
         <h3>What We Guarantee</h3>
         <ul>
           <li>Your recordings are never used to train Anthropic's or Fixsense's general AI models</li>
           <li>Anthropic processes your data under a zero data retention agreement for API calls</li>
           <li>AI processing occurs in isolated, stateless execution environments</li>
-          <li>No human reviews your call content unless you explicitly contact support about a specific issue and authorize it</li>
+          <li>No human reviews your call content without your explicit authorization</li>
         </ul>
-        <h3>Data Minimization</h3>
-        <p>
-          We only collect the data necessary to provide our services. Temporary processing artifacts (intermediate transcription buffers) are deleted immediately after processing.
-        </p>
       </section>
 
       <section className="lp-section" id="compliance">
         <h2>Compliance</h2>
-        <h3>Certifications & Standards</h3>
         <div className="lp-badge-row">
-          <div className="lp-badge"><span className="lp-badge-icon">✅</span> SOC 2 Type II</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🔒</span> ISO 27001 (via Supabase)</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🇪🇺</span> GDPR</div>
-          <div className="lp-badge"><span className="lp-badge-icon">🇳🇬</span> NDPR 2019</div>
-          <div className="lp-badge"><span className="lp-badge-icon">💳</span> PCI DSS (via Paystack)</div>
+          <div className="lp-badge">✅ SOC 2 Type II</div>
+          <div className="lp-badge">🔒 ISO 27001 (via Supabase)</div>
+          <div className="lp-badge">🇪🇺 GDPR</div>
+          <div className="lp-badge">🇳🇬 NDPR 2019</div>
+          <div className="lp-badge">💳 PCI DSS (via Paystack)</div>
         </div>
-        <h3>Recording Consent Compliance</h3>
+        <h3>Recording Consent</h3>
         <p>
-          Fixsense's meeting bot joins calls visibly as "Fixsense AI Recorder" — conspicuous to all participants. We support recording consent frameworks but users are responsible for compliance with their jurisdiction's recording consent laws (one-party vs. two-party consent).
+          Fixsense's meeting bot joins calls visibly as "Fixsense AI Recorder" — conspicuous to all participants. Users are responsible for compliance with their jurisdiction's recording consent laws.
         </p>
         <h3>Data Residency</h3>
         <p>
-          Data is currently stored in Supabase's designated cloud regions. Enterprise customers with specific data residency requirements should contact us at <a href="mailto:enterprise@fixsense.com.ng">enterprise@fixsense.com.ng</a>.
+          Enterprise customers with specific data residency requirements should contact us at <a href="mailto:enterprise@fixsense.com.ng">enterprise@fixsense.com.ng</a>.
         </p>
       </section>
 
       <section className="lp-section" id="incident">
         <h2>Incident Response</h2>
-        <p>We maintain a documented incident response plan with clear roles and escalation paths. In the event of a security breach:</p>
+        <p>In the event of a security breach:</p>
         <ol>
           <li>Immediate containment and impact assessment within 1 hour</li>
           <li>Affected customers notified within 72 hours of confirmation</li>
@@ -973,12 +1117,12 @@ export function SecurityPage() {
       <section className="lp-section" id="disclosure">
         <h2>Vulnerability Disclosure</h2>
         <p>
-          We welcome responsible disclosure of security vulnerabilities. If you discover a potential security issue, please report it to us before making it public.
+          We welcome responsible disclosure of security vulnerabilities. Please report them before making public.
         </p>
         <div className="lp-highlight">
           <p>
             <strong>Report to:</strong> <a href="mailto:security@fixsense.com.ng">security@fixsense.com.ng</a><br />
-            Please include: steps to reproduce, potential impact, and any relevant evidence.
+            Include: steps to reproduce, potential impact, and any relevant evidence.
           </p>
         </div>
         <p>We commit to:</p>
@@ -988,9 +1132,6 @@ export function SecurityPage() {
           <li>Not pursue legal action for good-faith security research</li>
           <li>Credit researchers in our security acknowledgments (if desired)</li>
         </ul>
-        <p>
-          Please do not access or modify other users' data during your research. Scope is limited to fixsense.com.ng and its subdomains.
-        </p>
       </section>
 
       <section className="lp-section" id="contact">
@@ -998,13 +1139,10 @@ export function SecurityPage() {
         <p>For security-related matters:</p>
         <ul>
           <li>Security vulnerabilities: <a href="mailto:security@fixsense.com.ng">security@fixsense.com.ng</a></li>
-          <li>Data breach reports: <a href="mailto:security@fixsense.com.ng">security@fixsense.com.ng</a></li>
           <li>Enterprise security inquiries: <a href="mailto:enterprise@fixsense.com.ng">enterprise@fixsense.com.ng</a></li>
           <li>GDPR/NDPR inquiries: <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a></li>
         </ul>
-        <p>
-          For urgent security matters, please mark your email subject with <code>[URGENT SECURITY]</code>.
-        </p>
+        <p>For urgent matters, mark your subject with <code>[URGENT SECURITY]</code>.</p>
       </section>
     </LegalLayout>
   );
@@ -1014,122 +1152,8 @@ export function SecurityPage() {
 //  CONTACT PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
-const contactStyles = `
-  ${sharedStyles}
-
-  .contact-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 16px; margin-bottom: 48px;
-  }
-  @media(max-width:640px){ .contact-grid { grid-template-columns: 1fr; } }
-
-  .contact-card {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 14px; padding: 24px;
-    transition: border-color 0.2s;
-  }
-  .contact-card:hover { border-color: rgba(26,240,196,0.25); }
-  .contact-card-icon {
-    font-size: 28px; margin-bottom: 12px; display: block;
-  }
-  .contact-card-title {
-    font-family: var(--font-display); font-size: 16px; font-weight: 700;
-    color: var(--t1); margin-bottom: 6px; letter-spacing: -0.02em;
-  }
-  .contact-card-desc {
-    font-size: 13px; color: var(--t2); line-height: 1.6; margin-bottom: 14px;
-  }
-  .contact-card-link {
-    font-size: 13px; font-weight: 600; color: var(--ac);
-    text-decoration: none; font-family: var(--font-mono);
-    display: flex; align-items: center; gap: 5px;
-  }
-  .contact-card-link:hover { text-decoration: underline; }
-
-  .contact-form-wrap {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 16px; padding: 36px; margin-bottom: 48px;
-  }
-  .contact-form-title {
-    font-family: var(--font-display); font-size: 22px; font-weight: 700;
-    color: var(--t1); letter-spacing: -0.03em; margin-bottom: 6px;
-  }
-  .contact-form-sub {
-    font-size: 14px; color: var(--t2); margin-bottom: 28px;
-  }
-  .contact-form { display: flex; flex-direction: column; gap: 16px; }
-  .contact-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  @media(max-width:580px){ .contact-row { grid-template-columns: 1fr; } }
-  .form-field { display: flex; flex-direction: column; gap: 6px; }
-  .form-label {
-    font-size: 11px; font-weight: 600; color: var(--t3);
-    text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono);
-  }
-  .form-input, .form-select, .form-textarea {
-    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-    border-radius: 10px; padding: 11px 14px;
-    color: var(--t1); font-size: 14px; font-family: var(--font);
-    outline: none; transition: border-color 0.15s;
-    width: 100%;
-  }
-  .form-input::placeholder, .form-textarea::placeholder { color: var(--t3); }
-  .form-input:focus, .form-select:focus, .form-textarea:focus {
-    border-color: rgba(26,240,196,0.4);
-  }
-  .form-select { color-scheme: dark; cursor: pointer; }
-  .form-select option { background: #0c1020; color: var(--t1); }
-  .form-textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
-  .form-submit {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: rgba(26,240,196,0.15); border: 1px solid rgba(26,240,196,0.35);
-    border-radius: 10px; padding: 13px 28px;
-    font-size: 14px; font-weight: 600; color: var(--ac);
-    font-family: var(--font); cursor: pointer; transition: all 0.15s;
-    align-self: flex-start;
-  }
-  .form-submit:hover { background: rgba(26,240,196,0.22); transform: translateY(-1px); }
-  .form-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-  .form-success {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; padding: 40px; text-align: center; gap: 12px;
-  }
-  .form-success-icon { font-size: 48px; }
-  .form-success-title {
-    font-family: var(--font-display); font-size: 20px; font-weight: 700;
-    color: var(--t1); letter-spacing: -0.03em;
-  }
-  .form-success-sub { font-size: 14px; color: var(--t2); max-width: 320px; }
-
-  .faq-item {
-    border: 1px solid var(--border); border-radius: 12px;
-    margin-bottom: 10px; overflow: hidden;
-  }
-  .faq-q {
-    width: 100%; display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; background: transparent; border: none; cursor: pointer;
-    text-align: left; font-size: 14px; font-weight: 600; color: var(--t1);
-    font-family: var(--font); transition: background 0.12s;
-  }
-  .faq-q:hover { background: rgba(255,255,255,0.03); }
-  .faq-chevron { font-size: 16px; color: var(--t3); transition: transform 0.2s; flex-shrink: 0; }
-  .faq-chevron--open { transform: rotate(180deg); color: var(--ac); }
-  .faq-a {
-    padding: 0 20px; max-height: 0; overflow: hidden;
-    transition: max-height 0.25s ease, padding 0.25s ease;
-  }
-  .faq-a--open { max-height: 200px; padding: 0 20px 16px; }
-  .faq-a p { font-size: 13px; color: var(--t2); line-height: 1.65; margin: 0; }
-
-  .lp-body-single {
-    max-width: 840px; margin: 0 auto; padding: 0 32px 80px;
-  }
-  @media(max-width:768px){ .lp-body-single { padding: 0 20px 60px; } }
-`;
-
 export function ContactPage() {
-  const [form, setForm] = useState({
-    name: "", email: "", company: "", category: "", message: "",
-  });
+  const [form, setForm] = useState({ name: "", email: "", company: "", category: "", message: "" });
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -1137,125 +1161,95 @@ export function ContactPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSending(true);
-    // Simulate form submission
     await new Promise(res => setTimeout(res, 1400));
     setSending(false);
     setSent(true);
   };
 
   const contactCards = [
-    {
-      icon: "💬",
-      title: "General Support",
-      desc: "Questions about your account, billing, or how to use a feature.",
-      link: "mailto:support@fixsense.com.ng",
-      label: "support@fixsense.com.ng",
-    },
-    {
-      icon: "🔒",
-      title: "Security & Privacy",
-      desc: "Report vulnerabilities, data concerns, or privacy inquiries.",
-      link: "mailto:security@fixsense.com.ng",
-      label: "security@fixsense.com.ng",
-    },
-    {
-      icon: "🏢",
-      title: "Enterprise Sales",
-      desc: "Custom pricing, data residency, SSO, or volume licensing.",
-      link: "mailto:enterprise@fixsense.com.ng",
-      label: "enterprise@fixsense.com.ng",
-    },
-    {
-      icon: "⚖️",
-      title: "Legal & Compliance",
-      desc: "DPAs, legal notices, GDPR/NDPR inquiries, subpoenas.",
-      link: "mailto:legal@fixsense.com.ng",
-      label: "legal@fixsense.com.ng",
-    },
+    { icon: "💬", title: "General Support",    desc: "Questions about your account, billing, or features.",          link: "mailto:support@fixsense.com.ng",    label: "support@fixsense.com.ng"    },
+    { icon: "🔒", title: "Security & Privacy", desc: "Report vulnerabilities, data concerns, or privacy inquiries.", link: "mailto:security@fixsense.com.ng",   label: "security@fixsense.com.ng"   },
+    { icon: "🏢", title: "Enterprise Sales",   desc: "Custom pricing, data residency, SSO, or volume licensing.",   link: "mailto:enterprise@fixsense.com.ng", label: "enterprise@fixsense.com.ng" },
+    { icon: "⚖️", title: "Legal & Compliance", desc: "DPAs, legal notices, GDPR/NDPR inquiries, subpoenas.",        link: "mailto:legal@fixsense.com.ng",      label: "legal@fixsense.com.ng"      },
   ];
 
   const faqs = [
-    {
-      q: "What's the typical response time for support?",
-      a: "We aim to respond to all support inquiries within 24 hours on business days. Enterprise customers receive priority response within 4 hours. Urgent security issues are addressed within 1 hour.",
-    },
-    {
-      q: "I can't access my account. What should I do?",
-      a: "Try the 'Forgot Password' link on the login page first. If that doesn't work, email support@fixsense.com.ng with your account email and we'll manually verify your identity and restore access.",
-    },
-    {
-      q: "How do I cancel my subscription?",
-      a: "You can cancel directly from your Billing dashboard at any time. Your access continues until the end of the billing period. If you need help, email billing@fixsense.com.ng.",
-    },
-    {
-      q: "Can I get a demo before subscribing?",
-      a: "Absolutely. You can try Fixsense on the Free plan with up to 5 meetings per month — no credit card required. For a personalized demo with a team member, email enterprise@fixsense.com.ng.",
-    },
-    {
-      q: "Do you offer refunds?",
-      a: "We offer a 7-day money-back guarantee on new paid subscriptions. After 7 days, refunds are considered on a case-by-case basis. Email billing@fixsense.com.ng.",
-    },
+    { q: "What's the typical response time for support?",      a: "We aim to respond within 24 hours on business days. Enterprise customers get priority response within 4 hours. Urgent security issues are addressed within 1 hour." },
+    { q: "I can't access my account. What should I do?",       a: "Try the 'Forgot Password' link on the login page. If that doesn't work, email support@fixsense.com.ng with your account email and we'll manually verify and restore access." },
+    { q: "How do I cancel my subscription?",                   a: "Cancel directly from your Billing dashboard at any time. Your access continues until the end of the billing period. Email billing@fixsense.com.ng if you need help." },
+    { q: "Can I get a demo before subscribing?",               a: "Yes — the Free plan includes up to 5 meetings per month, no credit card required. For a personalized demo with our team, email enterprise@fixsense.com.ng." },
+    { q: "Do you offer refunds?",                              a: "We offer a 7-day money-back guarantee on new paid subscriptions. After 7 days, refunds are considered case-by-case. Email billing@fixsense.com.ng." },
   ];
 
-  const navLinks = [
-    { href: "/privacy", label: "Privacy" },
-    { href: "/terms", label: "Terms" },
+  const NAV = [
+    { href: "/privacy",  label: "Privacy"  },
+    { href: "/terms",    label: "Terms"    },
     { href: "/security", label: "Security" },
-    { href: "/contact", label: "Contact" },
+    { href: "/contact",  label: "Contact"  },
   ];
 
   return (
     <div className="lp-page">
-      <style>{contactStyles}</style>
+      <style>{sharedStyles}</style>
 
+      {/* Nav */}
       <nav className="lp-nav">
-        <a href="/" className="lp-nav-brand">
-          <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-nav-logo" />
-          <span className="lp-nav-name">Fixsense</span>
-        </a>
-        <div className="lp-nav-links">
-          {navLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className={`lp-nav-link ${l.label === "Contact" ? "lp-nav-link--active" : ""}`}
-            >
-              {l.label}
-            </a>
-          ))}
+        <div className="lp-nav-inner">
+          <Link to="/" className="lp-nav-brand">
+            <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-nav-logo" />
+            <span className="lp-nav-name">Fixsense</span>
+          </Link>
+          <div className="lp-nav-links">
+            {NAV.map((l) => (
+              <Link key={l.href} to={l.href} className={`lp-nav-link ${l.label === "Contact" ? "lp-nav-link--active" : ""}`}>
+                {l.label}
+              </Link>
+            ))}
+          </div>
+          <Link to="/dashboard" className="lp-nav-btn">Dashboard →</Link>
         </div>
-        <a href="/dashboard" className="lp-nav-btn">Dashboard →</a>
       </nav>
 
       {/* Hero */}
-      <div className="lp-hero" style={{ maxWidth: 840, margin: "0 auto" }}>
-        <div className="lp-tag"><span className="lp-tag-dot" />Get in Touch</div>
-        <h1 className="lp-h1">We're here.<br /><span>Let's talk.</span></h1>
-        <p className="lp-sub">
-          Whether you have a question about your account, a security concern, or want to discuss enterprise needs — the right team is just an email away.
-        </p>
-        <div className="lp-meta">
-          <div className="lp-meta-item">⚡ Avg. response: &lt;24 hours</div>
-          <div className="lp-meta-dot" />
-          <div className="lp-meta-item">🕐 Mon–Fri, 9am–6pm WAT</div>
+      <div className="lp-hero">
+        <div className="lp-hero-pattern" />
+        <div className="lp-hero-inner">
+          <div className="lp-breadcrumb">
+            <Link to="/">Home</Link>
+            <span className="sep">/</span>
+            <span className="current">Contact</span>
+          </div>
+          <div className="lp-kicker">
+            <div className="lp-kicker-dot" />
+            Get in Touch
+          </div>
+          <h1 className="lp-h1">
+            We're here.<br /><span className="blue">Let's talk.</span>
+          </h1>
+          <p className="lp-sub">
+            Whether you have a question about your account, a security concern, or want to discuss enterprise needs — the right team is just an email away.
+          </p>
+          <div className="lp-meta">
+            <div className="lp-meta-item"><div className="lp-meta-dot" />Avg. response: &lt;24 hours</div>
+            <div className="lp-meta-item">Mon–Fri, 9am–6pm WAT</div>
+          </div>
         </div>
       </div>
 
-      <div className="lp-body-single">
+      {/* Body */}
+      <div style={{ maxWidth: 1160, margin: "0 auto", padding: "64px 24px 96px" }}>
+
         {/* Contact cards */}
-        <div className="contact-grid">
+        <div className="contact-cards">
           {contactCards.map((card) => (
             <div className="contact-card" key={card.title}>
               <span className="contact-card-icon">{card.icon}</span>
               <div className="contact-card-title">{card.title}</div>
               <div className="contact-card-desc">{card.desc}</div>
-              <a href={card.link} className="contact-card-link">
-                {card.label} →
-              </a>
+              <a href={card.link} className="contact-card-link">{card.label} →</a>
             </div>
           ))}
         </div>
@@ -1278,50 +1272,21 @@ export function ContactPage() {
                 <div className="contact-row">
                   <div className="form-field">
                     <label className="form-label">Your name *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      className="form-input"
-                      placeholder="Alex Johnson"
-                      value={form.name}
-                      onChange={handleChange}
-                      required
-                    />
+                    <input type="text" name="name" className="form-input" placeholder="Alex Johnson" value={form.name} onChange={handleChange} required />
                   </div>
                   <div className="form-field">
                     <label className="form-label">Work email *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      className="form-input"
-                      placeholder="alex@company.com"
-                      value={form.email}
-                      onChange={handleChange}
-                      required
-                    />
+                    <input type="email" name="email" className="form-input" placeholder="alex@company.com" value={form.email} onChange={handleChange} required />
                   </div>
                 </div>
                 <div className="contact-row">
                   <div className="form-field">
                     <label className="form-label">Company</label>
-                    <input
-                      type="text"
-                      name="company"
-                      className="form-input"
-                      placeholder="Acme Corp"
-                      value={form.company}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="company" className="form-input" placeholder="Acme Corp" value={form.company} onChange={handleChange} />
                   </div>
                   <div className="form-field">
                     <label className="form-label">Topic *</label>
-                    <select
-                      name="category"
-                      className="form-select"
-                      value={form.category}
-                      onChange={handleChange}
-                      required
-                    >
+                    <select name="category" className="form-select" value={form.category} onChange={handleChange} required>
                       <option value="">Select a topic…</option>
                       <option value="support">Account & billing support</option>
                       <option value="technical">Technical issue or bug</option>
@@ -1335,25 +1300,11 @@ export function ContactPage() {
                 </div>
                 <div className="form-field">
                   <label className="form-label">Message *</label>
-                  <textarea
-                    name="message"
-                    className="form-textarea"
-                    placeholder="Tell us what's on your mind. The more detail you provide, the faster we can help."
-                    value={form.message}
-                    onChange={handleChange}
-                    required
-                  />
+                  <textarea name="message" className="form-textarea" placeholder="Tell us what's on your mind. The more detail you provide, the faster we can help." value={form.message} onChange={handleChange} required />
                 </div>
-                <button
-                  type="submit"
-                  className="form-submit"
-                  disabled={sending}
-                >
+                <button type="submit" className="form-submit" disabled={sending}>
                   {sending ? (
-                    <>
-                      <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span>
-                      Sending…
-                    </>
+                    <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span> Sending…</>
                   ) : (
                     <>Send Message →</>
                   )}
@@ -1365,14 +1316,8 @@ export function ContactPage() {
 
         {/* FAQ */}
         <div>
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 22, fontWeight: 700, color: "rgba(255,255,255,0.95)", letterSpacing: "-0.03em", marginBottom: 8 }}>
-              Frequently asked questions
-            </div>
-            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.45)" }}>
-              Quick answers to the most common questions.
-            </div>
-          </div>
+          <div className="faq-section-title">Frequently asked questions</div>
+          <div className="faq-section-sub">Quick answers to the most common questions.</div>
           {faqs.map((faq, i) => (
             <div className="faq-item" key={i}>
               <button className="faq-q" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
@@ -1389,22 +1334,26 @@ export function ContactPage() {
 
       {/* Footer */}
       <footer className="lp-footer">
-        <div className="lp-footer-left">
-          <span className="lp-footer-text">© {new Date().getFullYear()} Fixsense, Inc.</span>
-        </div>
-        <div className="lp-footer-links">
-          {[
-            { href: "/privacy", label: "Privacy Policy" },
-            { href: "/terms", label: "Terms of Service" },
-            { href: "/security", label: "Security" },
-            { href: "/contact", label: "Contact" },
-          ].map((l) => (
-            <a key={l.href} href={l.href} className="lp-footer-link">{l.label}</a>
-          ))}
+        <div className="lp-footer-inner">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="lp-footer-brand">
+              <img src="/fixsense_icon_logo (2).png" alt="Fixsense" className="lp-footer-logo" />
+              <span className="lp-footer-name">Fixsense</span>
+            </div>
+            <span className="lp-footer-copy">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
+          </div>
+          <div className="lp-footer-links">
+            {[
+              { href: "/privacy",  label: "Privacy Policy" },
+              { href: "/terms",    label: "Terms of Service" },
+              { href: "/security", label: "Security" },
+              { href: "/contact",  label: "Contact" },
+            ].map((l) => (
+              <Link key={l.href} to={l.href} className="lp-footer-link">{l.label}</Link>
+            ))}
+          </div>
         </div>
       </footer>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
