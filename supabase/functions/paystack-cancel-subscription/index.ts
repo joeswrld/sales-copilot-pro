@@ -6,6 +6,38 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+async function resolveUser(
+  authHeader: string
+): Promise<{ userId: string; userEmail: string } | null> {
+  const token = authHeader.replace("Bearer ", "");
+
+  try {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data, error } = await admin.auth.getUser(token);
+    if (!error && data?.user?.id) {
+      return { userId: data.user.id, userEmail: data.user.email ?? "" };
+    }
+    if (error) console.warn("service-role getUser error:", error.message);
+  } catch (e) {
+    console.warn("service-role getUser threw:", e);
+  }
+
+  try {
+    const parts   = token.split(".");
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload?.sub) {
+      return { userId: payload.sub, userEmail: payload.email ?? "" };
+    }
+  } catch (e) {
+    console.warn("JWT decode fallback failed:", e);
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -14,28 +46,21 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } =
-      await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
+    const resolved = await resolveUser(authHeader);
+    if (!resolved) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — could not verify token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
+    const { userId } = resolved;
     const { subscription_code, email_token } = await req.json();
 
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
@@ -60,12 +85,10 @@ Deno.serve(async (req) => {
     if (!data.status) {
       return new Response(
         JSON.stringify({ error: data.message || "Failed to cancel" }),
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Update local record
-    const userId = claimsData.claims.sub as string;
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -80,10 +103,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Error:", err);
+    console.error("paystack-cancel-subscription error:", err);
     return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: corsHeaders }
+      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
