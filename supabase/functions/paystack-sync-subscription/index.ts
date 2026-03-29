@@ -19,6 +19,7 @@ type PaystackTx = {
   authorization?: { last4?: string | null; brand?: string | null };
   metadata?: {
     user_id?: string;
+    plan_key?: string;
     custom_fields?: Array<{ variable_name?: string; value?: string }>;
   } | null;
 };
@@ -55,13 +56,28 @@ Deno.serve(async (req) => {
     const userId = claimsData.claims.sub as string;
     const userEmail = (claimsData.claims.email as string | undefined)?.toLowerCase();
 
-    const { reference, include_transactions } = await req.json().catch(() => ({}));
+    const { reference, include_transactions, mark_abandoned } = await req.json().catch(() => ({}));
     const includeTransactions = include_transactions !== false;
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // ── If called with mark_abandoned, handle abandoned checkout ──────────
+    if (mark_abandoned && reference) {
+      await adminClient
+        .from("payments")
+        .update({ status: "abandoned", updated_at: new Date().toISOString() })
+        .eq("paystack_reference", reference)
+        .eq("user_id", userId)
+        .in("status", ["initialized", "pending"]);
+
+      return new Response(
+        JSON.stringify({ ok: true, marked_abandoned: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { data: subscription } = await adminClient
       .from("subscriptions")
@@ -85,13 +101,22 @@ Deno.serve(async (req) => {
       gateway_response: string | null;
     }> = [];
 
+    // Verify a specific reference if provided
     if (reference) {
-      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-        headers: { Authorization: `Bearer ${paystackSecret}` },
-      });
+      const verifyRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: { Authorization: `Bearer ${paystackSecret}` } }
+      );
       const verifyData = await verifyRes.json();
       if (verifyData?.status && verifyData?.data?.status === "success") {
         verifiedTransaction = verifyData.data as PaystackTx;
+      } else if (verifyData?.data?.status === "abandoned") {
+        // Mark payment as abandoned in our DB
+        await adminClient
+          .from("payments")
+          .update({ status: "abandoned", updated_at: new Date().toISOString() })
+          .eq("paystack_reference", reference)
+          .eq("user_id", userId);
       }
     }
 
@@ -114,26 +139,22 @@ Deno.serve(async (req) => {
       matchedTransactions = allTransactions.filter((tx) => {
         const txEmail = tx.customer?.email?.toLowerCase();
         const emailMatch = !!userEmail && txEmail === userEmail;
-        const codeMatch = !!subscription?.paystack_customer_code && tx.customer?.customer_code === subscription.paystack_customer_code;
-        const metadataUserIdMatch = tx.metadata?.user_id === userId;
-        const metadataFieldMatch =
+        const codeMatch = !!subscription?.paystack_customer_code &&
+          tx.customer?.customer_code === subscription.paystack_customer_code;
+        const metaUserIdMatch = tx.metadata?.user_id === userId;
+        const metaFieldMatch =
           tx.metadata?.custom_fields?.some(
-            (field) => field?.variable_name === "user_id" && field?.value === userId
+            (f) => f?.variable_name === "user_id" && f?.value === userId
           ) ?? false;
-
-        return emailMatch || codeMatch || metadataUserIdMatch || metadataFieldMatch;
+        return emailMatch || codeMatch || metaUserIdMatch || metaFieldMatch;
       });
 
       if (matchedTransactions.length === 0 && subscription?.paystack_customer_code && allTransactions.length > 0) {
-        // Fallback: when Paystack already scoped by customer, trust this scoped list.
         matchedTransactions = allTransactions;
       }
-
       if (matchedTransactions.length === 0 && reference) {
-        const matchedByReference = allTransactions.find((tx) => tx.reference === reference);
-        if (matchedByReference) {
-          matchedTransactions = [matchedByReference];
-        }
+        const byRef = allTransactions.find((tx) => tx.reference === reference);
+        if (byRef) matchedTransactions = [byRef];
       }
 
       if (includeTransactions) {
@@ -149,7 +170,11 @@ Deno.serve(async (req) => {
             channel: tx.channel,
             gateway_response: tx.gateway_response,
           }))
-          .sort((a, b) => new Date(b.paid_at || b.created_at).getTime() - new Date(a.paid_at || a.created_at).getTime());
+          .sort(
+            (a, b) =>
+              new Date(b.paid_at || b.created_at).getTime() -
+              new Date(a.paid_at || a.created_at).getTime()
+          );
       }
 
       if (!verifiedTransaction) {
@@ -159,28 +184,47 @@ Deno.serve(async (req) => {
 
     let updated = false;
 
+    // CRITICAL: This sync function only confirms payment status.
+    // It does NOT upgrade plan_type — that is the webhook's exclusive job.
+    // We only update subscription.status to "active" here as a safety net
+    // for webhook delivery failures. profile.plan_type is NOT touched.
     if (verifiedTransaction && subscription?.status !== "active") {
       const nextDate = new Date();
       nextDate.setMonth(nextDate.getMonth() + 1);
 
-      const updateResult = await adminClient
+      const { error: updateErr } = await adminClient
         .from("subscriptions")
         .update({
           status: "active",
           updated_at: new Date().toISOString(),
           next_payment_date: verifiedTransaction.paid_at
-            ? new Date(new Date(verifiedTransaction.paid_at).setMonth(new Date(verifiedTransaction.paid_at).getMonth() + 1)).toISOString()
+            ? new Date(
+                new Date(verifiedTransaction.paid_at).setMonth(
+                  new Date(verifiedTransaction.paid_at).getMonth() + 1
+                )
+              ).toISOString()
             : nextDate.toISOString(),
           paystack_customer_code:
-            verifiedTransaction.customer?.customer_code || subscription?.paystack_customer_code || null,
+            verifiedTransaction.customer?.customer_code ||
+            subscription?.paystack_customer_code ||
+            null,
           card_last4: verifiedTransaction.authorization?.last4 || null,
           card_brand: verifiedTransaction.authorization?.brand || null,
         })
         .eq("user_id", userId)
         .eq("status", "pending");
 
-      if (!updateResult.error) {
+      if (!updateErr) {
         updated = true;
+
+        // Also update payment record
+        if (reference) {
+          await adminClient
+            .from("payments")
+            .update({ status: "success", updated_at: new Date().toISOString() })
+            .eq("paystack_reference", reference)
+            .eq("user_id", userId);
+        }
       }
     }
 
