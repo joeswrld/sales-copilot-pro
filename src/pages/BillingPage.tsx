@@ -86,6 +86,8 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  // NEW: track preview fetch errors separately so the dialog can show a retry UI
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const handledCallbackKeyRef = useRef<string | null>(null);
 
   // ── Handle return from Paystack checkout ──────────────────────────────
@@ -95,11 +97,8 @@ export default function BillingPage() {
     const isCallback = reference || trxref;
 
     if (!isCallback) {
-      // User returned WITHOUT a payment reference — check if we have a pending reference
-      // stored from when they opened the checkout
       const pendingRef = sessionStorage.getItem("fixsense_pending_payment_ref");
       if (pendingRef) {
-        // Mark that payment as abandoned since user is back without completing it
         sessionStorage.removeItem("fixsense_pending_payment_ref");
         markAbandoned.mutate(pendingRef);
       }
@@ -110,7 +109,6 @@ export default function BillingPage() {
     if (handledCallbackKeyRef.current === callbackKey) return;
     handledCallbackKeyRef.current = callbackKey;
 
-    // Clear the pending ref since we have a real callback
     sessionStorage.removeItem("fixsense_pending_payment_ref");
     setSearchParams({}, { replace: true });
 
@@ -121,7 +119,6 @@ export default function BillingPage() {
           if ((data as any)?.updated) {
             toast.success("🎉 Payment confirmed! Your plan has been upgraded.");
           } else {
-            // Webhook may not have fired yet — give it a moment
             toast.info("Payment received — confirming your plan upgrade...");
           }
         },
@@ -137,16 +134,21 @@ export default function BillingPage() {
     toast.info("Payment status checked");
   };
 
+  // FIXED: capture error into state instead of just toasting, so the dialog
+  // can show a meaningful error message and a retry button.
   const handleOpenChangePlan = async (planKey: string) => {
     setSelectedPlan(planKey);
     setChangeDialogOpen(true);
     setIsLoadingPreview(true);
     setPlanPreview(null);
+    setPreviewError(null);
     try {
       const preview = await previewPlanChange.mutateAsync(planKey);
       setPlanPreview(preview);
-    } catch {
-      toast.error("Failed to load plan preview");
+    } catch (err: any) {
+      setPreviewError(
+        err?.message || "Failed to load plan preview. Please try again."
+      );
     } finally {
       setIsLoadingPreview(false);
     }
@@ -156,10 +158,18 @@ export default function BillingPage() {
     if (selectedPlan) changePlan.mutate(selectedPlan);
   };
 
+  // FIXED: reset all dialog state when it closes
+  const handleDialogOpenChange = (open: boolean) => {
+    setChangeDialogOpen(open);
+    if (!open) {
+      setPlanPreview(null);
+      setPreviewError(null);
+      setIsLoadingPreview(false);
+    }
+  };
+
   const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
 
-  // ── Billing display state ─────────────────────────────────────────────
-  // We ONLY show the active plan UI when billing_status is truly "active"
   const showActivePlan = billingState.billingStatus === "active";
   const showIncompleteCheckout = billingState.hasIncompleteCheckout;
 
@@ -496,8 +506,8 @@ export default function BillingPage() {
                     </Card>
                   )}
 
-                  {/* Plan Change Dialog */}
-                  <Dialog open={changeDialogOpen} onOpenChange={setChangeDialogOpen}>
+                  {/* ── Plan Change Dialog (FIXED) ─────────────────────────── */}
+                  <Dialog open={changeDialogOpen} onOpenChange={handleDialogOpenChange}>
                     <DialogContent className="sm:max-w-md">
                       <DialogHeader>
                         <DialogTitle>
@@ -506,11 +516,49 @@ export default function BillingPage() {
                         </DialogTitle>
                         <DialogDescription>Review your plan change with prorated billing</DialogDescription>
                       </DialogHeader>
-                      {isLoadingPreview ? (
+
+                      {/* Loading state */}
+                      {isLoadingPreview && (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                         </div>
-                      ) : planPreview ? (
+                      )}
+
+                      {/* Error state — replaces the broken "Unable to load plan preview" text */}
+                      {!isLoadingPreview && previewError && (
+                        <div className="space-y-4 pt-2">
+                          <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-destructive">
+                                Could not load plan preview
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {previewError}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-3">
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => handleDialogOpenChange(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              className="flex-1"
+                              onClick={() => selectedPlan && handleOpenChangePlan(selectedPlan)}
+                            >
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Retry
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Success state — plan preview loaded */}
+                      {!isLoadingPreview && !previewError && planPreview && (
                         <div className="space-y-4 pt-2">
                           <div className="p-4 rounded-lg bg-muted/50 space-y-3">
                             <div className="flex justify-between text-sm">
@@ -560,17 +608,23 @@ export default function BillingPage() {
                             </div>
                           )}
                           <div className="flex gap-3 pt-2">
-                            <Button variant="outline" className="flex-1" onClick={() => setChangeDialogOpen(false)}>
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => handleDialogOpenChange(false)}
+                            >
                               Cancel
                             </Button>
-                            <Button className="flex-1" onClick={handleConfirmChangePlan} disabled={changePlan.isPending}>
+                            <Button
+                              className="flex-1"
+                              onClick={handleConfirmChangePlan}
+                              disabled={changePlan.isPending}
+                            >
                               {changePlan.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                               Confirm {planPreview.is_upgrade ? "Upgrade" : "Downgrade"}
                             </Button>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-4">Unable to load plan preview.</p>
                       )}
                     </DialogContent>
                   </Dialog>
