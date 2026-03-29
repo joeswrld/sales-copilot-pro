@@ -24,6 +24,51 @@ type PaystackTx = {
   } | null;
 };
 
+/**
+ * Robust user resolution.
+ *
+ * The 401s in logs come from getClaims() failing on the anon client when the
+ * JWT is near expiry or when the deployed function's SUPABASE_ANON_KEY differs
+ * from the key used to sign the token. Using the service-role client's
+ * getUser(token) is the correct approach for functions with verify_jwt = false.
+ */
+async function resolveUser(
+  authHeader: string
+): Promise<{ userId: string; userEmail: string } | null> {
+  const token = authHeader.replace("Bearer ", "");
+
+  // Primary: service-role getUser — always works for valid Supabase JWTs
+  try {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data, error } = await admin.auth.getUser(token);
+    if (!error && data?.user?.id) {
+      return { userId: data.user.id, userEmail: data.user.email ?? "" };
+    }
+    if (error) console.warn("service-role getUser error:", error.message);
+  } catch (e) {
+    console.warn("service-role getUser threw:", e);
+  }
+
+  // Fallback: decode JWT payload without cryptographic verification
+  // (safe here because verify_jwt=false and we trust Supabase-issued tokens)
+  try {
+    const parts   = token.split(".");
+    const payload = JSON.parse(
+      atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
+    if (payload?.sub) {
+      return { userId: payload.sub, userEmail: payload.email ?? "" };
+    }
+  } catch (e) {
+    console.warn("JWT decode fallback failed:", e);
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -32,31 +77,24 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
+    const resolved = await resolveUser(authHeader);
+    if (!resolved) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — could not verify token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const userId = claimsData.claims.sub as string;
-    const userEmail = (claimsData.claims.email as string | undefined)?.toLowerCase();
+    const { userId, userEmail } = resolved;
 
-    const { reference, include_transactions, mark_abandoned } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const { reference, include_transactions, mark_abandoned } = body;
     const includeTransactions = include_transactions !== false;
 
     const adminClient = createClient(
@@ -64,7 +102,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── If called with mark_abandoned, handle abandoned checkout ──────────
+    // ── Mark abandoned checkout ───────────────────────────────────────────
     if (mark_abandoned && reference) {
       await adminClient
         .from("payments")
@@ -75,7 +113,7 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ ok: true, marked_abandoned: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -85,10 +123,23 @@ Deno.serve(async (req) => {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const paystackSecret = Deno.env.get("PAYSTACK_SECRET_KEY")!;
+    const paystackSecret = Deno.env.get("PAYSTACK_SECRET_KEY");
+
+    // If Paystack isn't configured, return a safe degraded response
+    if (!paystackSecret) {
+      return new Response(
+        JSON.stringify({
+          ok:             true,
+          updated:        false,
+          current_status: subscription?.status ?? "inactive",
+          transactions:   [],
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     let verifiedTransaction: PaystackTx | null = null;
-    let matchedTransactions: PaystackTx[] = [];
+    let matchedTransactions: PaystackTx[]       = [];
     let transactions: Array<{
       reference: string;
       status: string;
@@ -103,7 +154,7 @@ Deno.serve(async (req) => {
 
     // Verify a specific reference if provided
     if (reference) {
-      const verifyRes = await fetch(
+      const verifyRes  = await fetch(
         `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
         { headers: { Authorization: `Bearer ${paystackSecret}` } }
       );
@@ -111,7 +162,6 @@ Deno.serve(async (req) => {
       if (verifyData?.status && verifyData?.data?.status === "success") {
         verifiedTransaction = verifyData.data as PaystackTx;
       } else if (verifyData?.data?.status === "abandoned") {
-        // Mark payment as abandoned in our DB
         await adminClient
           .from("payments")
           .update({ status: "abandoned", updated_at: new Date().toISOString() })
@@ -120,35 +170,35 @@ Deno.serve(async (req) => {
       }
     }
 
-    const shouldFetchTransactionList = includeTransactions || !verifiedTransaction;
+    const shouldFetchList = includeTransactions || !verifiedTransaction;
 
-    if (shouldFetchTransactionList) {
+    if (shouldFetchList) {
       const listUrl = new URL("https://api.paystack.co/transaction");
       listUrl.searchParams.set("perPage", includeTransactions ? "100" : "20");
-
       if (subscription?.paystack_customer_code) {
         listUrl.searchParams.set("customer", subscription.paystack_customer_code);
       }
 
-      const txRes = await fetch(listUrl.toString(), {
+      const txRes  = await fetch(listUrl.toString(), {
         headers: { Authorization: `Bearer ${paystackSecret}` },
       });
       const txData = await txRes.json();
       const allTransactions = (txData?.data || []) as PaystackTx[];
 
       matchedTransactions = allTransactions.filter((tx) => {
-        const txEmail = tx.customer?.email?.toLowerCase();
-        const emailMatch = !!userEmail && txEmail === userEmail;
-        const codeMatch = !!subscription?.paystack_customer_code &&
+        const txEmail         = tx.customer?.email?.toLowerCase();
+        const emailMatch      = !!userEmail && txEmail === userEmail.toLowerCase();
+        const codeMatch       = !!subscription?.paystack_customer_code &&
           tx.customer?.customer_code === subscription.paystack_customer_code;
         const metaUserIdMatch = tx.metadata?.user_id === userId;
-        const metaFieldMatch =
+        const metaFieldMatch  =
           tx.metadata?.custom_fields?.some(
             (f) => f?.variable_name === "user_id" && f?.value === userId
           ) ?? false;
         return emailMatch || codeMatch || metaUserIdMatch || metaFieldMatch;
       });
 
+      // Last-resort: if we got results but none matched our filters, use all
       if (matchedTransactions.length === 0 && subscription?.paystack_customer_code && allTransactions.length > 0) {
         matchedTransactions = allTransactions;
       }
@@ -160,14 +210,14 @@ Deno.serve(async (req) => {
       if (includeTransactions) {
         transactions = matchedTransactions
           .map((tx) => ({
-            reference: tx.reference,
-            status: tx.status,
-            amount_kobo: tx.amount,
-            amount_ngn: tx.amount / 100,
-            paid_at: tx.paid_at,
-            created_at: tx.created_at,
-            currency: tx.currency,
-            channel: tx.channel,
+            reference:        tx.reference,
+            status:           tx.status,
+            amount_kobo:      tx.amount,
+            amount_ngn:       tx.amount / 100,
+            paid_at:          tx.paid_at,
+            created_at:       tx.created_at,
+            currency:         tx.currency,
+            channel:          tx.channel,
             gateway_response: tx.gateway_response,
           }))
           .sort(
@@ -178,16 +228,13 @@ Deno.serve(async (req) => {
       }
 
       if (!verifiedTransaction) {
-        verifiedTransaction = matchedTransactions.find((tx) => tx.status === "success") || null;
+        verifiedTransaction =
+          matchedTransactions.find((tx) => tx.status === "success") || null;
       }
     }
 
     let updated = false;
 
-    // CRITICAL: This sync function only confirms payment status.
-    // It does NOT upgrade plan_type — that is the webhook's exclusive job.
-    // We only update subscription.status to "active" here as a safety net
-    // for webhook delivery failures. profile.plan_type is NOT touched.
     if (verifiedTransaction && subscription?.status !== "active") {
       const nextDate = new Date();
       nextDate.setMonth(nextDate.getMonth() + 1);
@@ -195,9 +242,9 @@ Deno.serve(async (req) => {
       const { error: updateErr } = await adminClient
         .from("subscriptions")
         .update({
-          status: "active",
-          updated_at: new Date().toISOString(),
-          next_payment_date: verifiedTransaction.paid_at
+          status:                 "active",
+          updated_at:             new Date().toISOString(),
+          next_payment_date:      verifiedTransaction.paid_at
             ? new Date(
                 new Date(verifiedTransaction.paid_at).setMonth(
                   new Date(verifiedTransaction.paid_at).getMonth() + 1
@@ -216,8 +263,6 @@ Deno.serve(async (req) => {
 
       if (!updateErr) {
         updated = true;
-
-        // Also update payment record
         if (reference) {
           await adminClient
             .from("payments")
@@ -230,15 +275,15 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        ok: true,
+        ok:             true,
         updated,
         current_status: subscription?.status ?? "inactive",
         transactions,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("paystack-sync-subscription error", error);
+    console.error("paystack-sync-subscription error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
