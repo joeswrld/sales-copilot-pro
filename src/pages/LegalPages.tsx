@@ -748,7 +748,6 @@ export function PrivacyPage() {
         <ul>
           <li>Privacy team: <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a></li>
           <li>Data Protection Officer: <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a></li>
-          <li>Address: Fixsense, Inc., Benin City, Edo State, Nigeria</li>
         </ul>
       </section>
     </LegalLayout>
@@ -952,7 +951,6 @@ export function TermsPage() {
         <p>Questions about these Terms? Reach us at:</p>
         <ul>
           <li>Email: <a href="mailto:legal@fixsense.com.ng">legal@fixsense.com.ng</a></li>
-          <li>Address: Fixsense, Inc., Benin City, Edo State, Nigeria</li>
         </ul>
       </section>
     </LegalLayout>
