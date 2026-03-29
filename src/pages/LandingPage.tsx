@@ -496,7 +496,7 @@ export default function LandingPage() {
   const NAV = [
     { label: "Product", href: "#features" },
     { label: "How It Works", href: "#how-it-works" },
-    { label: "Pricing", href: "#pricing" },
+    { label: "Pricing", href: "/pricing" },
     { label: "Testimonials", href: "#testimonials" },
   ];
 
@@ -1228,7 +1228,7 @@ export default function LandingPage() {
       <div className="footer-col-title">Product</div>
       {[
         { label: "Features",     href: "#features"       },
-      { label: "Pricing",      href: "#pricing"        },
+      { label: "Pricing",      href: "/pricing"        },
       { label: "Integrations", href: "/Integrations"               },
       { label: "Changelog",    href: "/Changelog"               },
       ].map(l => (
