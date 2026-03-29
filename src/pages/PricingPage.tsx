@@ -257,7 +257,9 @@ export default function PricingPage() {
     subscribe.mutate(plan.key);
   };
 
-  
+  const NAV = [
+    
+  ];
 
   return (
     <div className="pp">
