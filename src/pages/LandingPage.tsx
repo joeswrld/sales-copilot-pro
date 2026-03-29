@@ -1235,7 +1235,7 @@ export default function LandingPage() {
       <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
      ))}
    </div>
-   <div>
+   
    
    <div>
      <div className="footer-col-title">Legal</div>
