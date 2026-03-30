@@ -1,3 +1,4 @@
+// supabase/functions/paystack-upgrade-subscription/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -37,33 +38,33 @@ function calculateProration(
     return { proratedAmountNgn: newPlanPriceNgn, daysRemaining: 0, creditNgn: 0 };
   }
 
-  const msPerDay      = 24 * 60 * 60 * 1000;
-  const daysRemaining = Math.max(
-    0,
-    Math.ceil((nextPayment.getTime() - now.getTime()) / msPerDay)
-  );
+  const msPerDay           = 24 * 60 * 60 * 1000;
+  const daysRemaining      = Math.max(0, Math.ceil((nextPayment.getTime() - now.getTime()) / msPerDay));
   const daysInMonth        = 30;
   const creditNgn          = Math.round((currentPlanPriceNgn / daysInMonth) * daysRemaining);
-  const proratedChargeNgn  = Math.round((newPlanPriceNgn    / daysInMonth) * daysRemaining);
+  const proratedChargeNgn  = Math.round((newPlanPriceNgn / daysInMonth) * daysRemaining);
   const netAmountNgn       = Math.max(0, proratedChargeNgn - creditNgn);
 
   return { proratedAmountNgn: netAmountNgn, daysRemaining, creditNgn };
 }
 
 /**
- * Robust user resolution.
- *
- * getClaims() / anon-client auth can return 401 when the JWT is at the edge
- * of its expiry window or when the anon key differs from the signing key used
- * in production. Using the SERVICE ROLE client's getUser(token) is the
- * correct pattern for edge functions with verify_jwt = false.
+ * Robust user resolution — tries three methods in order:
+ *  1. Service-role getUser(token)  ← most reliable for valid Supabase JWTs
+ *  2. JWT payload decode           ← fallback when service-role call fails
+ *  3. Returns null                 ← caller returns 401
  */
 async function resolveUser(
   authHeader: string
 ): Promise<{ userId: string; userEmail: string } | null> {
-  const token = authHeader.replace("Bearer ", "");
+  const token = authHeader.replace("Bearer ", "").trim();
 
-  // Primary: service-role getUser — most reliable
+  if (!token) {
+    console.error("resolveUser: empty token");
+    return null;
+  }
+
+  // Method 1: service-role getUser — works for all valid Supabase JWTs
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -71,25 +72,28 @@ async function resolveUser(
     );
     const { data, error } = await admin.auth.getUser(token);
     if (!error && data?.user?.id) {
+      console.log("resolveUser: resolved via service-role getUser:", data.user.id);
       return { userId: data.user.id, userEmail: data.user.email ?? "" };
     }
-    if (error) console.warn("service-role getUser error:", error.message);
+    if (error) console.warn("resolveUser: service-role getUser error:", error.message);
   } catch (e) {
-    console.warn("service-role getUser threw:", e);
+    console.warn("resolveUser: service-role getUser threw:", e);
   }
 
-  // Fallback: decode JWT payload without verification
-  // (safe here because verify_jwt=false and we trust Supabase-issued tokens)
+  // Method 2: decode JWT payload without verification
+  // Safe here because verify_jwt=false and we trust Supabase-issued tokens
   try {
     const parts   = token.split(".");
     const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
     if (payload?.sub) {
+      console.log("resolveUser: resolved via JWT decode:", payload.sub);
       return { userId: payload.sub, userEmail: payload.email ?? "" };
     }
   } catch (e) {
-    console.warn("JWT decode fallback failed:", e);
+    console.warn("resolveUser: JWT decode fallback failed:", e);
   }
 
+  console.error("resolveUser: all methods failed");
   return null;
 }
 
@@ -99,10 +103,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    const authHeader = req.headers.get("Authorization") ?? "";
+
+    // Log auth header presence (not value) to help debug 401s
+    console.log("Auth header present:", authHeader.startsWith("Bearer ") && authHeader.length > 10);
+
+    if (!authHeader.startsWith("Bearer ")) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized — missing Authorization header" }),
+        JSON.stringify({ error: "Unauthorized — missing or malformed Authorization header" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -119,6 +127,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { new_plan_key, callback_url, preview_only } = body;
+
+    console.log("Request body:", { userId, new_plan_key, preview_only });
 
     const newPlanConfig = PLANS[new_plan_key];
     if (!newPlanConfig) {
@@ -156,6 +166,7 @@ Deno.serve(async (req) => {
 
     // ── PREVIEW — pure arithmetic, zero Paystack calls ────────────────────
     if (preview_only) {
+      console.log("Returning preview for:", { currentPlanKey, new_plan_key, isUpgrade });
       return new Response(
         JSON.stringify({
           current_plan:          currentPlanKey,
