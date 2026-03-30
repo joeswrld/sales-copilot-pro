@@ -3,10 +3,15 @@ import { useEffect, useState } from "react";
 type ErrorEntry = {
   type: string;
   category: string;
+  time: string;
   data: any;
 };
 
 const errors: ErrorEntry[] = [];
+
+function getTime() {
+  return new Date().toLocaleTimeString();
+}
 
 function classifyError(data: any): string {
   const text = JSON.stringify(data).toLowerCase();
@@ -36,6 +41,7 @@ console.error = (...args) => {
   errors.push({
     type: "console",
     category: "General",
+    time: getTime(),
     data: args,
   });
   originalError(...args);
@@ -46,6 +52,7 @@ window.onerror = (msg, url, line, col, err) => {
   errors.push({
     type: "runtime",
     category: "General",
+    time: getTime(),
     data: { msg, url, line, col, err },
   });
 };
@@ -57,6 +64,7 @@ window.onunhandledrejection = (event) => {
   errors.push({
     type: "promise",
     category,
+    time: getTime(),
     data: event.reason,
   });
 };
@@ -80,6 +88,7 @@ window.fetch = async (...args) => {
     errors.push({
       type: "http",
       category,
+      time: getTime(),
       data: {
         url: args[0],
         status: res.status,
@@ -215,7 +224,7 @@ export const DebugInspector = () => {
                 }}
               >
                 <div style={{ color: "#ff4d4f" }}>
-                  [{err.category}] {err.type}
+                  [{err.category}] {err.type} — {err.time}
                 </div>
 
                 <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
