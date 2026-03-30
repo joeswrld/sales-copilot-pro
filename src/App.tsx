@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -25,6 +26,21 @@ import NotFound from "./pages/NotFound";
 import { PrivacyPage, TermsPage, SecurityPage, ContactPage } from "./pages/LegalPages";
 import { IntegrationsPage, ChangelogPage, AboutPage, BlogPage, CareersPage, PressPage } from "./pages/MarketingPages";
 
+
+const App = () => {
+  useEffect(() => {
+    console.log("App mounted");
+
+    // Catch runtime errors
+    window.onerror = function (msg, url, line, col, err) {
+      console.log("Global error:", { msg, url, line, col, err });
+    };
+
+    // Catch async errors
+    window.onunhandledrejection = function (event) {
+      console.log("Unhandled rejection:", event.reason);
+    };
+  }, []);
 
 const queryClient = new QueryClient();
 
