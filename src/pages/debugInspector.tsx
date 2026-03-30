@@ -23,6 +23,35 @@ window.onunhandledrejection = (event) => {
   });
 };
 
+const originalFetch = window.fetch;
+
+window.fetch = async (...args) => {
+  const res = await originalFetch(...args);
+
+  if (!res.ok) {
+    const clone = res.clone();
+    const body = await clone.text();
+
+    errors.push({
+      type: "error",
+      data: {
+        url: args[0],
+        status: res.status,
+        statusText: res.statusText,
+        body,
+      },
+    });
+
+    console.error("HTTP Error:", {
+      url: args[0],
+      status: res.status,
+      body,
+    });
+  }
+
+  return res;
+};
+
 export const DebugInspector = () => {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<any[]>([]);
