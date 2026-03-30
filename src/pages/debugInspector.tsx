@@ -1,77 +1,26 @@
 import { useEffect, useState } from "react";
 
-const logs: any[] = [];
+const errors: any[] = [];
 
-const originalLog = console.log;
 const originalError = console.error;
-const originalWarn = console.warn;
-
-console.log = (...args) => {
-  logs.push({ type: "log", data: args });
-  originalLog(...args);
-};
 
 console.error = (...args) => {
-  logs.push({ type: "error", data: args });
+  errors.push({ type: "error", data: args });
   originalError(...args);
 };
 
-console.warn = (...args) => {
-  logs.push({ type: "warn", data: args });
-  originalWarn(...args);
-};
-
 window.onerror = (msg, url, line, col, err) => {
-  logs.push({
+  errors.push({
     type: "error",
     data: [{ msg, url, line, col, err }],
   });
 };
 
 window.onunhandledrejection = (event) => {
-  logs.push({
+  errors.push({
     type: "error",
     data: [event.reason],
   });
-};
-
-const originalFetch = window.fetch;
-
-window.fetch = async (...args) => {
-  const start = performance.now();
-
-  try {
-    const response = await originalFetch(...args);
-    const clone = response.clone();
-    const duration = performance.now() - start;
-
-    clone.text().then((body) => {
-      logs.push({
-        type: "network",
-        data: {
-          url: args[0],
-          status: response.status,
-          duration: `${duration.toFixed(2)}ms`,
-          body,
-        },
-      });
-    });
-
-    return response;
-  } catch (err) {
-    logs.push({
-      type: "network_error",
-      data: { url: args[0], err },
-    });
-    throw err;
-  }
-};
-
-const getColor = (type: string) => {
-  if (type === "error") return "#ff4d4f";
-  if (type === "warn") return "#faad14";
-  if (type === "network") return "#40a9ff";
-  return "#d9d9d9";
 };
 
 export const DebugInspector = () => {
@@ -80,7 +29,7 @@ export const DebugInspector = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setEntries([...logs]);
+      setEntries([...errors]);
     }, 800);
 
     return () => clearInterval(interval);
@@ -105,13 +54,13 @@ export const DebugInspector = () => {
           zIndex: 99999,
           padding: "10px 14px",
           background: "#111",
-          color: "#00ff9f",
-          border: "1px solid #00ff9f",
+          color: "#ff4d4f",
+          border: "1px solid #ff4d4f",
           borderRadius: "6px",
           fontSize: "12px",
         }}
       >
-        DevTools
+        Errors
       </button>
 
       {open && (
@@ -121,9 +70,9 @@ export const DebugInspector = () => {
             bottom: 0,
             left: 0,
             width: "100%",
-            height: "45%",
-            background: "#0d0d0d",
-            color: "#eaeaea",
+            height: "40%",
+            background: "#0a0a0a",
+            color: "#ff4d4f",
             overflow: "auto",
             zIndex: 99998,
             padding: "10px",
@@ -133,15 +82,15 @@ export const DebugInspector = () => {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <strong style={{ color: "#00ff9f" }}>Console</strong>
+            <strong>Console Errors</strong>
             <div>
               <button
                 onClick={copyAll}
                 style={{
                   marginRight: "10px",
-                  color: "#00ff9f",
+                  color: "#ff4d4f",
                   background: "transparent",
-                  border: "1px solid #00ff9f",
+                  border: "1px solid #ff4d4f",
                   padding: "4px 8px",
                   cursor: "pointer",
                 }}
@@ -150,7 +99,7 @@ export const DebugInspector = () => {
               </button>
               <button
                 onClick={() => {
-                  logs.splice(0, logs.length);
+                  errors.splice(0, errors.length);
                   setEntries([]);
                 }}
                 style={{
@@ -166,7 +115,7 @@ export const DebugInspector = () => {
             </div>
           </div>
 
-          {entries.map((log, i) => (
+          {entries.map((err, i) => (
             <div
               key={i}
               style={{
@@ -179,13 +128,13 @@ export const DebugInspector = () => {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  color: getColor(log.type),
+                  color: "#ff4d4f",
                 }}
               >
-                <strong>[{log.type}]</strong>
+                <strong>[ERROR]</strong>
                 <button
                   onClick={() =>
-                    copyToClipboard(JSON.stringify(log.data, null, 2))
+                    copyToClipboard(JSON.stringify(err.data, null, 2))
                   }
                   style={{
                     fontSize: "10px",
@@ -203,11 +152,11 @@ export const DebugInspector = () => {
               <pre
                 style={{
                   whiteSpace: "pre-wrap",
-                  color: getColor(log.type),
+                  color: "#ff4d4f",
                   marginTop: "4px",
                 }}
               >
-                {JSON.stringify(log.data, null, 2)}
+                {JSON.stringify(err.data, null, 2)}
               </pre>
             </div>
           ))}
