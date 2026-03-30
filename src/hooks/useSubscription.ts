@@ -68,25 +68,86 @@ export interface BillingState {
   pendingPlanKey: string | null;
 }
 
-// ── Helper: get the current session token, throw if missing ──────────────────
+// ── Helper: get a valid session token, refreshing automatically if needed ─────
 async function getSessionToken(): Promise<string> {
+  // First: try the current session
   const { data: { session }, error } = await supabase.auth.getSession();
-  if (error || !session?.access_token) {
+
+  if (!error && session?.access_token) {
+    // Refresh proactively if the token expires within the next 60 seconds
+    const expiresAt = session.expires_at ?? 0;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const isExpiringSoon = expiresAt - nowSeconds < 60;
+
+    if (!isExpiringSoon) {
+      return session.access_token;
+    }
+  }
+
+  // Token is missing, expired, or expiring soon — force a refresh
+  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+  if (refreshError) {
+    console.error("Session refresh failed:", refreshError.message);
+    throw new Error("Session expired — please sign in again.");
+  }
+
+  if (!refreshData.session?.access_token) {
     throw new Error("No active session — please sign in again.");
   }
-  return session.access_token;
+
+  return refreshData.session.access_token;
 }
 
-// ── Helper: invoke an edge function with an explicit Authorization header ─────
+// ── Helper: invoke an edge function with a guaranteed fresh auth token ────────
+// Automatically retries once with a forced refresh if the function returns 401.
 async function invokeWithAuth(
   fnName: string,
   body: Record<string, unknown>
 ): Promise<{ data: any; error: any }> {
-  const token = await getSessionToken();
-  return supabase.functions.invoke(fnName, {
+  let token: string;
+
+  try {
+    token = await getSessionToken();
+  } catch (err: any) {
+    // Return in supabase.functions.invoke shape so callers handle uniformly
+    return {
+      data: null,
+      error: { message: err.message ?? "Authentication error" },
+    };
+  }
+
+  const result = await supabase.functions.invoke(fnName, {
     body,
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  // If the function returned 401, force-refresh the session and retry once
+  const is401 =
+    result.error &&
+    (String(result.error.message).includes("401") ||
+      String(result.error.message).toLowerCase().includes("unauthorized"));
+
+  if (is401) {
+    console.warn(`${fnName} returned 401 — forcing session refresh and retrying once`);
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session?.access_token) {
+        throw new Error("Could not refresh session after 401");
+      }
+      return supabase.functions.invoke(fnName, {
+        body,
+        headers: { Authorization: `Bearer ${refreshData.session.access_token}` },
+      });
+    } catch (retryErr: any) {
+      return {
+        data: null,
+        error: { message: retryErr.message ?? "Authentication retry failed" },
+      };
+    }
+  }
+
+  return result;
 }
 
 export function useSubscription() {
@@ -183,7 +244,7 @@ export function useSubscription() {
         callback_url: `${window.location.origin}/dashboard/billing`,
         plan_key: planKey,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to start subscription");
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
     },
@@ -206,7 +267,7 @@ export function useSubscription() {
         subscription_code: query.data.paystack_subscription_code,
         email_token: query.data.paystack_email_token,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to cancel subscription");
       if ((data as any)?.error) throw new Error((data as any).error);
     },
     onSuccess: () => {
@@ -226,7 +287,7 @@ export function useSubscription() {
         new_plan_key: newPlanKey,
         preview_only: true,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to load plan preview");
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as PlanChangePreview;
     },
@@ -239,7 +300,7 @@ export function useSubscription() {
         new_plan_key: newPlanKey,
         callback_url: `${window.location.origin}/dashboard/billing`,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to change plan");
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as { authorization_url: string; reference: string };
     },
@@ -259,7 +320,7 @@ export function useSubscription() {
         mark_abandoned: true,
         reference,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to mark abandoned");
       return data;
     },
     onSuccess: () => {
@@ -274,7 +335,7 @@ export function useSubscription() {
         reference: options?.reference ?? null,
         include_transactions: options?.includeTransactions ?? false,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to verify payment");
       if ((data as any)?.error) throw new Error((data as any).error);
       return data as { updated: boolean };
     },
@@ -298,7 +359,7 @@ export function useSubscription() {
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Failed to load transactions");
       if ((data as any)?.error) throw new Error((data as any).error);
       return ((data as any)?.transactions ?? []) as SubscriptionTransaction[];
     },
@@ -314,7 +375,7 @@ export function useSubscription() {
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: false,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Sync failed");
       if ((data as any)?.updated) {
         await queryClient.invalidateQueries({ queryKey: ["subscription"] });
         await queryClient.invalidateQueries({ queryKey: ["billing-profile"] });
