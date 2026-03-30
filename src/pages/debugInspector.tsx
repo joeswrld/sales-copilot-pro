@@ -1,26 +1,12 @@
 import { useEffect, useState } from "react";
 
 /* =========================
-   Action Tracker (global)
-========================= */
-let currentAction = "none";
-
-export function setCurrentAction(action: string) {
-  currentAction = action;
-}
-
-export function getCurrentAction() {
-  return currentAction;
-}
-
-/* =========================
    Error Store
 ========================= */
+
 type ErrorEntry = {
   type: string;
-  category: string;
   page: string;
-  action: string;
   time: number;
   data: any;
 };
@@ -31,61 +17,31 @@ function getTime() {
   return Date.now();
 }
 
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString();
-}
-
 function getCurrentPage() {
   return window.location.pathname;
-}
-
-function classifyError(data: any): string {
-  const text = JSON.stringify(data).toLowerCase();
-
-  if (text.includes("billing") || text.includes("subscription") || text.includes("paystack")) {
-    return "Billing";
-  }
-
-  if (text.includes("auth") || text.includes("unauthorized") || text.includes("401")) {
-    return "Auth";
-  }
-
-  if (text.includes("network") || text.includes("failed to fetch")) {
-    return "Network";
-  }
-
-  if (text.includes("500") || text.includes("edge function")) {
-    return "Server";
-  }
-
-  return "General";
 }
 
 /* =========================
    Global Error Capture
 ========================= */
 
-// Console
+// Console errors
 const originalError = console.error;
 console.error = (...args) => {
   errors.push({
     type: "console",
-    category: "General",
     page: getCurrentPage(),
-    action: getCurrentAction(),
     time: getTime(),
     data: args,
   });
   originalError(...args);
 };
 
-// Runtime
+// Runtime errors
 window.onerror = (msg, url, line, col, err) => {
   errors.push({
     type: "runtime",
-    category: "General",
     page: getCurrentPage(),
-    action: getCurrentAction(),
     time: getTime(),
     data: { msg, url, line, col, err },
   });
@@ -93,19 +49,15 @@ window.onerror = (msg, url, line, col, err) => {
 
 // Promise rejections
 window.onunhandledrejection = (event) => {
-  const category = classifyError(event.reason);
-
   errors.push({
     type: "promise",
-    category,
     page: getCurrentPage(),
-    action: getCurrentAction(),
     time: getTime(),
     data: event.reason,
   });
 };
 
-// Fetch
+// Fetch interception
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {
@@ -115,40 +67,30 @@ window.fetch = async (...args) => {
     const clone = res.clone();
     const body = await clone.text();
 
-    const category = classifyError({
-      url: args[0],
-      status: res.status,
-      body,
-    });
-
     errors.push({
       type: "http",
-      category,
       page: getCurrentPage(),
-      action: getCurrentAction(),
       time: getTime(),
       data: {
         url: args[0],
         status: res.status,
-        statusText: res.statusText,
         body,
       },
     });
-
-    console.error("HTTP Error:", args[0], res.status);
   }
 
   return res;
 };
 
 /* =========================
-   UI Component
+   UI Inspector
 ========================= */
 
 export const DebugInspector = () => {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<ErrorEntry[]>([]);
-  const [filter, setFilter] = useState<string>("All");
+
+  const currentPage = window.location.pathname;
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -158,20 +100,13 @@ export const DebugInspector = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const currentPage = window.location.pathname;
-
-  const categories = ["All", ...Array.from(new Set(errors.map(e => e.category)))];
-
-  const filteredEntries = (
-    filter === "All"
-      ? entries
-      : entries.filter(e => e.category === filter)
-  )
-    .filter(e => e.page === currentPage) // page-scoped
-    .sort((a, b) => b.time - a.time); // latest first
+  // STRICT PAGE FILTER (core fix)
+  const pageErrors = entries
+    .filter((e) => e.page === currentPage)
+    .sort((a, b) => b.time - a.time);
 
   const copyAll = () => {
-    navigator.clipboard.writeText(JSON.stringify(filteredEntries, null, 2));
+    navigator.clipboard.writeText(JSON.stringify(pageErrors, null, 2));
   };
 
   const clearErrors = () => {
@@ -217,35 +152,23 @@ export const DebugInspector = () => {
             borderTop: "1px solid #222",
           }}
         >
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilter(cat)}
-                style={{
-                  padding: "4px 8px",
-                  border: "1px solid #444",
-                  background: filter === cat ? "#222" : "transparent",
-                  color: "#ff4d4f",
-                  cursor: "pointer",
-                }}
-              >
-                {cat}
-              </button>
-            ))}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ color: "#aaa" }}>
+              Page: {currentPage}
+            </div>
 
             <button
               onClick={copyAll}
               style={{
+                marginLeft: "auto",
                 padding: "4px 10px",
                 border: "1px solid #ff4d4f",
                 background: "transparent",
                 color: "#ff4d4f",
                 cursor: "pointer",
-                marginLeft: "auto",
               }}
             >
-              Copy All
+              Copy
             </button>
 
             <button
@@ -263,7 +186,13 @@ export const DebugInspector = () => {
           </div>
 
           <div style={{ marginTop: "10px" }}>
-            {filteredEntries.map((err, i) => (
+            {pageErrors.length === 0 && (
+              <div style={{ color: "#666" }}>
+                No errors on this page
+              </div>
+            )}
+
+            {pageErrors.map((err, i) => (
               <div
                 key={i}
                 style={{
@@ -273,7 +202,7 @@ export const DebugInspector = () => {
                 }}
               >
                 <div style={{ color: "#ff4d4f" }}>
-                  [{err.category}] {err.type} — {err.page} — {err.action} — {formatTime(err.time)}
+                  [{err.type}] — {new Date(err.time).toLocaleTimeString()}
                 </div>
 
                 <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
