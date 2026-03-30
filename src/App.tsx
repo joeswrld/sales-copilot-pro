@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardHome from "./pages/DashboardHome";
@@ -23,67 +24,167 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
-import { PrivacyPage, TermsPage, SecurityPage, ContactPage } from "./pages/LegalPages";
-import { IntegrationsPage, ChangelogPage, AboutPage, BlogPage, CareersPage, PressPage } from "./pages/MarketingPages";
 
+import {
+  PrivacyPage,
+  TermsPage,
+  SecurityPage,
+  ContactPage,
+} from "./pages/LegalPages";
+
+import {
+  IntegrationsPage,
+  ChangelogPage,
+  AboutPage,
+  BlogPage,
+  CareersPage,
+  PressPage,
+} from "./pages/MarketingPages";
+
+const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
     console.log("App mounted");
 
-    // Catch runtime errors
     window.onerror = function (msg, url, line, col, err) {
       console.log("Global error:", { msg, url, line, col, err });
     };
 
-    // Catch async errors
     window.onunhandledrejection = function (event) {
       console.log("Unhandled rejection:", event.reason);
     };
   }, []);
 
-const queryClient = new QueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/integrations" element={<IntegrationsPage />} />
+              <Route path="/changelog" element={<ChangelogPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/careers" element={<CareersPage />} />
+              <Route path="/press" element={<PressPage />} />
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/integrations" element={<IntegrationsPage />} />
-   <Route path="/changelog"    element={<ChangelogPage />} />
-   <Route path="/about"        element={<AboutPage />} />
-   <Route path="/blog"         element={<BlogPage />} />
-   <Route path="/careers"      element={<CareersPage />} />
-  <Route path="/press"        element={<PressPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
-<Route path="/terms" element={<TermsPage />} />
-<Route path="/security" element={<SecurityPage />} />
-<Route path="/contact" element={<ContactPage />} />
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
-            <Route path="/dashboard/calls" element={<ProtectedRoute><CallsList /></ProtectedRoute>} />
-            <Route path="/dashboard/calls/:id" element={<ProtectedRoute><CallDetail /></ProtectedRoute>} />
-            <Route path="/dashboard/live" element={<ProtectedRoute><LiveCall /></ProtectedRoute>} />
-            <Route path="/dashboard/live/:id" element={<ProtectedRoute><LiveMeeting /></ProtectedRoute>} />
-            <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-            <Route path="/dashboard/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
-            <Route path="/dashboard/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
-            <Route path="/dashboard/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/dashboard/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-            <Route path="/dashboard/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
-            <Route path="/dashboard/coach" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/security" element={<SecurityPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardHome />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/calls"
+                element={
+                  <ProtectedRoute>
+                    <CallsList />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/calls/:id"
+                element={
+                  <ProtectedRoute>
+                    <CallDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/live"
+                element={
+                  <ProtectedRoute>
+                    <LiveCall />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/live/:id"
+                element={
+                  <ProtectedRoute>
+                    <LiveMeeting />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/analytics"
+                element={
+                  <ProtectedRoute>
+                    <Analytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/team"
+                element={
+                  <ProtectedRoute>
+                    <TeamPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/messages"
+                element={
+                  <ProtectedRoute>
+                    <MessagesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/settings"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/profile"
+                element={
+                  <ProtectedRoute>
+                    <ProfilePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/billing"
+                element={
+                  <ProtectedRoute>
+                    <BillingPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/coach"
+                element={
+                  <ProtectedRoute>
+                    <AIChatPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
