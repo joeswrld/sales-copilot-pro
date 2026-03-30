@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -43,7 +42,6 @@ import {
   PressPage,
 } from "./pages/MarketingPages";
 
-// Create QueryClient once (outside component)
 const queryClient = new QueryClient();
 
 const App = () => {
@@ -53,10 +51,8 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-
           <BrowserRouter>
             <DebugInspector />
-
             <Routes>
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/changelog" element={<ChangelogPage />} />
@@ -64,17 +60,14 @@ const App = () => {
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/careers" element={<CareersPage />} />
               <Route path="/press" element={<PressPage />} />
-
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/contact" element={<ContactPage />} />
-
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
-
               <Route
                 path="/dashboard"
                 element={
@@ -171,7 +164,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
