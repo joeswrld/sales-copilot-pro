@@ -1,73 +1,117 @@
-# Welcome to your Lovable project
-
-## Project info
-
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Fixsense
+Fixsense is a sales intelligence platform that records, analyzes, and improves your team’s calls in real time.
+It helps sales teams capture conversations, extract insights, and turn every call into a measurable performance asset.
+Overview
+Fixsense acts as a control layer for sales meetings.
+Instead of manually taking notes or guessing performance, Fixsense:
+• Records calls (via meeting links or integrations)
+• Transcribes conversations in real time
+• Detects objections, sentiment, and engagement
+• Generates AI summaries and next steps
+• Enables team collaboration and coaching
+The goal is simple: help teams close more deals by improving how they run calls.
+Core Features
+Live Call Intelligence
+• Join meetings via pasted links or integrations
+• Real-time transcription
+• Talk ratio tracking (rep vs prospect)
+• Engagement scoring
+• Objection detection
+• Key topic extraction
+AI-Powered Insights
+• Automatic call summaries
+• Suggested next steps
+• Sentiment analysis
+• Coaching recommendations
+Meeting Recording
+• Bot-based recording (audio + video)
+• Works with meeting links (e.g. Google Meet, Zoom)
+• Secure storage of recordings and transcripts
+Team Collaboration
+• Comment on calls
+• Coaching feedback from managers
+• Internal messaging tied to meetings
+• Shared insights across team members
+Analytics Dashboard
+• Individual and team performance metrics
+• Meeting scores and trends
+• Talk ratio patterns
+• Follow-up tracking
+Messaging System
+• Team inbox for call-related discussions
+• Mentions and notifications
+• Deal-focused conversations
+Product Structure
+/dashboard
+Overview of performance and activity
+/dashboard/live
+Start or join meetings, run live analysis
+/dashboard/calls
+View recorded calls and insights
+/dashboard/ai-coach
+AI-driven coaching and recommendations
+/dashboard/analytics
+Performance tracking and trends
+/dashboard/team
+Manage team members, roles, and coaching
+/dashboard/messages
+Internal communication hub
+/dashboard/settings
+Manage integrations, preferences, and account
+/dashboard/billing
+Subscription plans and usage
+How It Works
+Create or paste a meeting link
+Fixsense joins or records the call
+Audio is transcribed and analyzed in real time
+Insights are generated automatically
+Team reviews, comments, and improves performance
+Pricing Model
+Fixsense uses a usage-based pricing model tied to meetings (calls).
+• Free — limited usage for individuals
+• Starter — small teams with basic features
+• Growth — full-featured plan for active teams
+• Scale — unlimited usage for high-performing teams
+Tech Stack
+Frontend: Lovable / React
+Backend: Supabase (Auth, Database, Realtime)
+AI: Gemini API
+Payments: Paystack
+Storage: Supabase Storage
+Architecture Highlights
+• Real-time data streaming using Supabase Realtime
+• Edge Functions for integrations and background processing
+• Bot-based meeting capture for reliable audio/video
+• Secure token storage for integrations
+Security & Compliance
+• AES-256 encryption at rest
+• TLS encryption in transit
+• Secure OAuth integrations
+• GDPR-ready architecture
+Target Users
+Fixsense is built for:
+• Sales reps running daily calls
+• Sales managers coaching teams
+• Startups scaling outbound or inbound sales
+• Teams that want structured, data-driven conversations
+Roadmap
+• Deeper CRM integrations
+• Advanced team analytics
+• Improved bot reliability for meeting capture
+• Mobile optimization
+• Automated deal tracking
+Vision
+Fixsense aims to become the operating system for sales conversations.
+Every call becomes:
+• Measurable
+• Searchable
+• Coachable
+Getting Started
+Sign up for an account
+Navigate to the Live Call page
+Paste a meeting link or create a meeting
+Start recording and analyzing calls
+Contribution
+This is a private product. Internal development follows structured feature rollout and testing.
+License
+Proprietary — All rights reserved.
