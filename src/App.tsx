@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,6 +23,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
+
 import { DebugInspector } from "@/debugInspector";
 
 import {
@@ -45,35 +45,17 @@ import {
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [errors, setErrors] = useState<string[]>([]);
-
-  useEffect(() => {
-    console.log("App mounted");
-
-    const handleError = (err: any) => {
-      const message = typeof err === "string" ? err : JSON.stringify(err);
-      setErrors((prev) => [...prev, message]);
-      console.log("Captured error:", err);
-    };
-
-    window.onerror = (msg, url, line, col, err) => {
-      handleError({ msg, url, line, col, err });
-    };
-
-    window.onunhandledrejection = (event) => {
-      handleError(event.reason);
-    };
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
-           <DebugInspector />
 
           <BrowserRouter>
+            {/* Debug tool lives inside router context */}
+            <DebugInspector />
+
             <Routes>
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/changelog" element={<ChangelogPage />} />
@@ -192,32 +174,6 @@ const App = () => {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
-
-          {/* In-app error console */}
-          {errors.length > 0 && (
-            <div
-              style={{
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                width: "100%",
-                maxHeight: "40%",
-                overflow: "auto",
-                background: "black",
-                color: "red",
-                fontSize: "12px",
-                zIndex: 9999,
-                padding: "10px",
-              }}
-            >
-              <strong>Debug Console</strong>
-              {errors.map((err, i) => (
-                <div key={i} style={{ marginTop: "6px" }}>
-                  {err}
-                </div>
-              ))}
-            </div>
-          )}
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
