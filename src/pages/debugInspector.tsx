@@ -3,14 +3,18 @@ import { useEffect, useState } from "react";
 type ErrorEntry = {
   type: string;
   category: string;
-  time: string;
+  time: number; // store as timestamp
   data: any;
 };
 
 const errors: ErrorEntry[] = [];
 
 function getTime() {
-  return new Date().toLocaleTimeString();
+  return Date.now();
+}
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString();
 }
 
 function classifyError(data: any): string {
@@ -119,7 +123,11 @@ export const DebugInspector = () => {
   const categories = ["All", ...Array.from(new Set(errors.map(e => e.category)))];
 
   const filteredEntries =
-    filter === "All" ? entries : entries.filter(e => e.category === filter);
+    filter === "All"
+      ? [...entries].sort((a, b) => b.time - a.time)
+      : [...entries]
+          .filter(e => e.category === filter)
+          .sort((a, b) => b.time - a.time);
 
   const copyAll = () => {
     navigator.clipboard.writeText(JSON.stringify(filteredEntries, null, 2));
@@ -224,7 +232,7 @@ export const DebugInspector = () => {
                 }}
               >
                 <div style={{ color: "#ff4d4f" }}>
-                  [{err.category}] {err.type} — {err.time}
+                  [{err.category}] {err.type} — {formatTime(err.time)}
                 </div>
 
                 <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
