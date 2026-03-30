@@ -22,7 +22,7 @@ function getCurrentPage() {
 }
 
 /* =========================
-   Capture Console Errors
+   Capture Errors
 ========================= */
 
 const originalConsoleError = console.error;
@@ -37,10 +37,6 @@ console.error = (...args) => {
 
   originalConsoleError(...args);
 };
-
-/* =========================
-   Capture Runtime Errors
-========================= */
 
 window.onerror = (message, source, lineno, colno, error) => {
   errors.push({
@@ -57,10 +53,6 @@ window.onerror = (message, source, lineno, colno, error) => {
   });
 };
 
-/* =========================
-   Capture Unhandled Promises
-========================= */
-
 window.onunhandledrejection = (event) => {
   errors.push({
     type: "unhandled.promise",
@@ -69,10 +61,6 @@ window.onunhandledrejection = (event) => {
     data: event.reason?.stack || event.reason,
   });
 };
-
-/* =========================
-   Capture Fetch / API Errors
-========================= */
 
 const originalFetch = window.fetch;
 
@@ -110,7 +98,7 @@ window.fetch = async (...args) => {
 };
 
 /* =========================
-   Inspector UI
+   UI Inspector
 ========================= */
 
 export const DebugInspector = () => {
@@ -127,10 +115,14 @@ export const DebugInspector = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Strict page isolation
   const pageErrors = entries
     .filter((e) => e.page === currentPage)
     .sort((a, b) => b.time - a.time);
+
+  const copyAll = () => {
+    const text = JSON.stringify(pageErrors, null, 2);
+    navigator.clipboard.writeText(text);
+  };
 
   return (
     <>
@@ -170,8 +162,31 @@ export const DebugInspector = () => {
             borderTop: "1px solid #222",
           }}
         >
-          <div style={{ marginBottom: "10px", color: "#aaa" }}>
-            Page: {currentPage}
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              alignItems: "center",
+              marginBottom: "10px",
+            }}
+          >
+            <div style={{ color: "#aaa" }}>
+              Page: {currentPage}
+            </div>
+
+            <button
+              onClick={copyAll}
+              style={{
+                marginLeft: "auto",
+                padding: "4px 10px",
+                border: "1px solid #ff4d4f",
+                background: "transparent",
+                color: "#ff4d4f",
+                cursor: "pointer",
+              }}
+            >
+              Copy All
+            </button>
           </div>
 
           {pageErrors.length === 0 && (
