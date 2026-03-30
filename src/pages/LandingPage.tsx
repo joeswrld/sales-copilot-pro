@@ -913,12 +913,7 @@ export default function LandingPage() {
       {/* HERO */}
       <section className="hero">
         <div className="hero-pattern" />
-        <FadeIn>
-          <div className="hero-badge">
-            <div className="hero-badge-dot" />
-            AI-Powered Sales Intelligence
-          </div>
-        </FadeIn>
+        
         <FadeIn delay={60}>
           <h1 className="hero-title">
             Close More Deals With <span className="blue">AI-Powered</span> Sales Call Intelligence
