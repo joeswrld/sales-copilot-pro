@@ -19,7 +19,7 @@ function classifyError(data: any): string {
     return "Auth";
   }
 
-  if (text.includes("network") || text.includes("fetch") || text.includes("failed to fetch")) {
+  if (text.includes("network") || text.includes("failed to fetch")) {
     return "Network";
   }
 
@@ -30,7 +30,7 @@ function classifyError(data: any): string {
   return "General";
 }
 
-// Capture console errors
+// Console errors
 const originalError = console.error;
 console.error = (...args) => {
   errors.push({
@@ -41,7 +41,7 @@ console.error = (...args) => {
   originalError(...args);
 };
 
-// Capture runtime errors
+// Runtime errors
 window.onerror = (msg, url, line, col, err) => {
   errors.push({
     type: "runtime",
@@ -50,7 +50,7 @@ window.onerror = (msg, url, line, col, err) => {
   });
 };
 
-// Capture unhandled promise rejections
+// Promise rejections
 window.onunhandledrejection = (event) => {
   const category = classifyError(event.reason);
 
@@ -61,7 +61,7 @@ window.onunhandledrejection = (event) => {
   });
 };
 
-// Intercept fetch
+// Fetch interception
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {
@@ -112,6 +112,15 @@ export const DebugInspector = () => {
   const filteredEntries =
     filter === "All" ? entries : entries.filter(e => e.category === filter);
 
+  const copyAll = () => {
+    navigator.clipboard.writeText(JSON.stringify(filteredEntries, null, 2));
+  };
+
+  const clearErrors = () => {
+    errors.splice(0, errors.length);
+    setEntries([]);
+  };
+
   return (
     <>
       <button
@@ -150,7 +159,7 @@ export const DebugInspector = () => {
             borderTop: "1px solid #222",
           }}
         >
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -166,6 +175,33 @@ export const DebugInspector = () => {
                 {cat}
               </button>
             ))}
+
+            <button
+              onClick={copyAll}
+              style={{
+                padding: "4px 10px",
+                border: "1px solid #ff4d4f",
+                background: "transparent",
+                color: "#ff4d4f",
+                cursor: "pointer",
+                marginLeft: "auto",
+              }}
+            >
+              Copy All
+            </button>
+
+            <button
+              onClick={clearErrors}
+              style={{
+                padding: "4px 10px",
+                border: "1px solid #555",
+                background: "transparent",
+                color: "#ccc",
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
           </div>
 
           <div style={{ marginTop: "10px" }}>
