@@ -24,7 +24,7 @@ import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
 
-import { DebugInspector } from "@/debugInspector";
+import { DebugInspector } from "./pages/debugInspector";
 
 import {
   PrivacyPage,
