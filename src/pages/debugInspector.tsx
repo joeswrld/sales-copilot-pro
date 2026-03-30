@@ -1,9 +1,26 @@
 import { useEffect, useState } from "react";
 
+/* =========================
+   Action Tracker (global)
+========================= */
+let currentAction = "none";
+
+export function setCurrentAction(action: string) {
+  currentAction = action;
+}
+
+export function getCurrentAction() {
+  return currentAction;
+}
+
+/* =========================
+   Error Store
+========================= */
 type ErrorEntry = {
   type: string;
   category: string;
   page: string;
+  action: string;
   time: number;
   data: any;
 };
@@ -44,25 +61,31 @@ function classifyError(data: any): string {
   return "General";
 }
 
-// Console errors
+/* =========================
+   Global Error Capture
+========================= */
+
+// Console
 const originalError = console.error;
 console.error = (...args) => {
   errors.push({
     type: "console",
     category: "General",
     page: getCurrentPage(),
+    action: getCurrentAction(),
     time: getTime(),
     data: args,
   });
   originalError(...args);
 };
 
-// Runtime errors
+// Runtime
 window.onerror = (msg, url, line, col, err) => {
   errors.push({
     type: "runtime",
     category: "General",
     page: getCurrentPage(),
+    action: getCurrentAction(),
     time: getTime(),
     data: { msg, url, line, col, err },
   });
@@ -76,12 +99,13 @@ window.onunhandledrejection = (event) => {
     type: "promise",
     category,
     page: getCurrentPage(),
+    action: getCurrentAction(),
     time: getTime(),
     data: event.reason,
   });
 };
 
-// Fetch interception
+// Fetch
 const originalFetch = window.fetch;
 
 window.fetch = async (...args) => {
@@ -101,6 +125,7 @@ window.fetch = async (...args) => {
       type: "http",
       category,
       page: getCurrentPage(),
+      action: getCurrentAction(),
       time: getTime(),
       data: {
         url: args[0],
@@ -116,6 +141,10 @@ window.fetch = async (...args) => {
   return res;
 };
 
+/* =========================
+   UI Component
+========================= */
+
 export const DebugInspector = () => {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<ErrorEntry[]>([]);
@@ -129,14 +158,17 @@ export const DebugInspector = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const currentPage = window.location.pathname;
+
   const categories = ["All", ...Array.from(new Set(errors.map(e => e.category)))];
 
-  const filteredEntries =
+  const filteredEntries = (
     filter === "All"
-      ? [...entries].sort((a, b) => b.time - a.time)
-      : [...entries]
-          .filter(e => e.category === filter)
-          .sort((a, b) => b.time - a.time);
+      ? entries
+      : entries.filter(e => e.category === filter)
+  )
+    .filter(e => e.page === currentPage) // page-scoped
+    .sort((a, b) => b.time - a.time); // latest first
 
   const copyAll = () => {
     navigator.clipboard.writeText(JSON.stringify(filteredEntries, null, 2));
@@ -241,7 +273,7 @@ export const DebugInspector = () => {
                 }}
               >
                 <div style={{ color: "#ff4d4f" }}>
-                  [{err.category}] {err.type} — {err.page} — {formatTime(err.time)}
+                  [{err.category}] {err.type} — {err.page} — {err.action} — {formatTime(err.time)}
                 </div>
 
                 <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
