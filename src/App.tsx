@@ -24,6 +24,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
+import { DebugInspector } from "@/debugInspector";
 
 import {
   PrivacyPage,
@@ -70,6 +71,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+           <DebugInspector />
 
           <BrowserRouter>
             <Routes>
