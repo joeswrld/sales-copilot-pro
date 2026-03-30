@@ -28,6 +28,25 @@
   </head>
   <body>
     <div id="root"></div>
+
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- ── Debug Console (Eruda) ───────────────────────────────────── -->
+    <script>
+      (function () {
+        const isDebug =
+          location.hostname === "localhost" ||
+          location.search.includes("debug=true");
+
+        if (!isDebug) return;
+
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/eruda";
+        script.onload = () => {
+          window.eruda.init();
+        };
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>
