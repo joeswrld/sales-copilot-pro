@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 type ErrorEntry = {
   type: string;
   category: string;
-  time: number; // store as timestamp
+  page: string;
+  time: number;
   data: any;
 };
 
@@ -15,6 +16,10 @@ function getTime() {
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString();
+}
+
+function getCurrentPage() {
+  return window.location.pathname;
 }
 
 function classifyError(data: any): string {
@@ -45,6 +50,7 @@ console.error = (...args) => {
   errors.push({
     type: "console",
     category: "General",
+    page: getCurrentPage(),
     time: getTime(),
     data: args,
   });
@@ -56,6 +62,7 @@ window.onerror = (msg, url, line, col, err) => {
   errors.push({
     type: "runtime",
     category: "General",
+    page: getCurrentPage(),
     time: getTime(),
     data: { msg, url, line, col, err },
   });
@@ -68,6 +75,7 @@ window.onunhandledrejection = (event) => {
   errors.push({
     type: "promise",
     category,
+    page: getCurrentPage(),
     time: getTime(),
     data: event.reason,
   });
@@ -92,6 +100,7 @@ window.fetch = async (...args) => {
     errors.push({
       type: "http",
       category,
+      page: getCurrentPage(),
       time: getTime(),
       data: {
         url: args[0],
@@ -232,7 +241,7 @@ export const DebugInspector = () => {
                 }}
               >
                 <div style={{ color: "#ff4d4f" }}>
-                  [{err.category}] {err.type} — {formatTime(err.time)}
+                  [{err.category}] {err.type} — {err.page} — {formatTime(err.time)}
                 </div>
 
                 <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
