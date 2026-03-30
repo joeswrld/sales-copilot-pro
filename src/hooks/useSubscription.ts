@@ -68,16 +68,18 @@ export interface BillingState {
   pendingPlanKey: string | null;
 }
 
-// ── Helper: get a valid session token, refreshing automatically if needed ─────
+// ── Helper: get a valid session token, refreshing aggressively if needed ──────
+// Increased proactive refresh window to 5 minutes (300s) to prevent edge
+// functions from receiving near-expired tokens that Supabase auth rejects
+// with "Invalid JWT".
 async function getSessionToken(): Promise<string> {
-  // First: try the current session
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (!error && session?.access_token) {
-    // Refresh proactively if the token expires within the next 60 seconds
     const expiresAt = session.expires_at ?? 0;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const isExpiringSoon = expiresAt - nowSeconds < 60;
+    // Refresh if token expires within 5 minutes
+    const isExpiringSoon = expiresAt - nowSeconds < 300;
 
     if (!isExpiringSoon) {
       return session.access_token;
@@ -110,7 +112,6 @@ async function invokeWithAuth(
   try {
     token = await getSessionToken();
   } catch (err: any) {
-    // Return in supabase.functions.invoke shape so callers handle uniformly
     return {
       data: null,
       error: { message: err.message ?? "Authentication error" },
@@ -126,7 +127,8 @@ async function invokeWithAuth(
   const is401 =
     result.error &&
     (String(result.error.message).includes("401") ||
-      String(result.error.message).toLowerCase().includes("unauthorized"));
+      String(result.error.message).toLowerCase().includes("unauthorized") ||
+      String(result.error.message).toLowerCase().includes("invalid jwt"));
 
   if (is401) {
     console.warn(`${fnName} returned 401 — forcing session refresh and retrying once`);
@@ -351,7 +353,7 @@ export function useSubscription() {
     },
   });
 
-  // ── Transaction history ────────────────────────────────────────────────
+  // ── Transaction history — uses invokeWithAuth (was missing auth header) ─
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
@@ -365,6 +367,8 @@ export function useSubscription() {
     },
     enabled: !!user,
     refetchInterval: 15000,
+    // Don't throw on error — transactions are non-critical, just show empty
+    retry: 1,
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
@@ -385,6 +389,7 @@ export function useSubscription() {
     },
     enabled: !!user && query.data?.status === "pending",
     refetchInterval: 8000,
+    retry: 1,
   });
 
   const getCurrentPlanKey = () => {
