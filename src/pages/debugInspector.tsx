@@ -22,68 +22,95 @@ function getCurrentPage() {
 }
 
 /* =========================
-   Global Error Capture
+   Capture Console Errors
 ========================= */
 
-// Console errors
-const originalError = console.error;
+const originalConsoleError = console.error;
+
 console.error = (...args) => {
   errors.push({
-    type: "console",
+    type: "console.error",
     page: getCurrentPage(),
     time: getTime(),
     data: args,
   });
-  originalError(...args);
-};
 
-// Runtime errors
-window.onerror = (msg, url, line, col, err) => {
-  errors.push({
-    type: "runtime",
-    page: getCurrentPage(),
-    time: getTime(),
-    data: { msg, url, line, col, err },
-  });
-};
-
-// Promise rejections
-window.onunhandledrejection = (event) => {
-  errors.push({
-    type: "promise",
-    page: getCurrentPage(),
-    time: getTime(),
-    data: event.reason,
-  });
-};
-
-// Fetch interception
-const originalFetch = window.fetch;
-
-window.fetch = async (...args) => {
-  const res = await originalFetch(...args);
-
-  if (!res.ok) {
-    const clone = res.clone();
-    const body = await clone.text();
-
-    errors.push({
-      type: "http",
-      page: getCurrentPage(),
-      time: getTime(),
-      data: {
-        url: args[0],
-        status: res.status,
-        body,
-      },
-    });
-  }
-
-  return res;
+  originalConsoleError(...args);
 };
 
 /* =========================
-   UI Inspector
+   Capture Runtime Errors
+========================= */
+
+window.onerror = (message, source, lineno, colno, error) => {
+  errors.push({
+    type: "runtime.error",
+    page: getCurrentPage(),
+    time: getTime(),
+    data: {
+      message,
+      source,
+      lineno,
+      colno,
+      stack: error?.stack,
+    },
+  });
+};
+
+/* =========================
+   Capture Unhandled Promises
+========================= */
+
+window.onunhandledrejection = (event) => {
+  errors.push({
+    type: "unhandled.promise",
+    page: getCurrentPage(),
+    time: getTime(),
+    data: event.reason?.stack || event.reason,
+  });
+};
+
+/* =========================
+   Capture Fetch / API Errors
+========================= */
+
+const originalFetch = window.fetch;
+
+window.fetch = async (...args) => {
+  try {
+    const res = await originalFetch(...args);
+
+    if (!res.ok) {
+      const clone = res.clone();
+      const body = await clone.text();
+
+      errors.push({
+        type: "http.error",
+        page: getCurrentPage(),
+        time: getTime(),
+        data: {
+          url: args[0],
+          status: res.status,
+          body,
+        },
+      });
+    }
+
+    return res;
+  } catch (err) {
+    errors.push({
+      type: "network.error",
+      page: getCurrentPage(),
+      time: getTime(),
+      data: err,
+    });
+
+    throw err;
+  }
+};
+
+/* =========================
+   Inspector UI
 ========================= */
 
 export const DebugInspector = () => {
@@ -100,19 +127,10 @@ export const DebugInspector = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // STRICT PAGE FILTER (core fix)
+  // Strict page isolation
   const pageErrors = entries
     .filter((e) => e.page === currentPage)
     .sort((a, b) => b.time - a.time);
-
-  const copyAll = () => {
-    navigator.clipboard.writeText(JSON.stringify(pageErrors, null, 2));
-  };
-
-  const clearErrors = () => {
-    errors.splice(0, errors.length);
-    setEntries([]);
-  };
 
   return (
     <>
@@ -152,65 +170,34 @@ export const DebugInspector = () => {
             borderTop: "1px solid #222",
           }}
         >
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <div style={{ color: "#aaa" }}>
-              Page: {currentPage}
+          <div style={{ marginBottom: "10px", color: "#aaa" }}>
+            Page: {currentPage}
+          </div>
+
+          {pageErrors.length === 0 && (
+            <div style={{ color: "#666" }}>
+              No errors on this page
             </div>
+          )}
 
-            <button
-              onClick={copyAll}
+          {pageErrors.map((err, i) => (
+            <div
+              key={i}
               style={{
-                marginLeft: "auto",
-                padding: "4px 10px",
-                border: "1px solid #ff4d4f",
-                background: "transparent",
-                color: "#ff4d4f",
-                cursor: "pointer",
+                marginBottom: "10px",
+                borderBottom: "1px solid #1f1f1f",
+                paddingBottom: "6px",
               }}
             >
-              Copy
-            </button>
-
-            <button
-              onClick={clearErrors}
-              style={{
-                padding: "4px 10px",
-                border: "1px solid #555",
-                background: "transparent",
-                color: "#ccc",
-                cursor: "pointer",
-              }}
-            >
-              Clear
-            </button>
-          </div>
-
-          <div style={{ marginTop: "10px" }}>
-            {pageErrors.length === 0 && (
-              <div style={{ color: "#666" }}>
-                No errors on this page
+              <div style={{ color: "#ff4d4f" }}>
+                [{err.type}] — {new Date(err.time).toLocaleTimeString()}
               </div>
-            )}
 
-            {pageErrors.map((err, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: "10px",
-                  borderBottom: "1px solid #1f1f1f",
-                  paddingBottom: "6px",
-                }}
-              >
-                <div style={{ color: "#ff4d4f" }}>
-                  [{err.type}] — {new Date(err.time).toLocaleTimeString()}
-                </div>
-
-                <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
-                  {JSON.stringify(err.data, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </div>
+              <pre style={{ whiteSpace: "pre-wrap", color: "#ccc" }}>
+                {JSON.stringify(err.data, null, 2)}
+              </pre>
+            </div>
+          ))}
         </div>
       )}
     </>
