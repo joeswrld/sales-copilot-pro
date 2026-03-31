@@ -89,13 +89,15 @@ export function useTeamMessaging(teamId: string | undefined) {
 
       const results: Conversation[] = [];
       for (const convo of convos) {
+        // FIX: Use .maybeSingle() instead of .single() to avoid 406 errors
+        // when a conversation has no messages yet (0 rows should return null, not throw)
         const { data: lastMsg } = await supabase
           .from("team_messages")
           .select("message_text, created_at, sender_id")
           .eq("conversation_id", convo.id)
           .order("created_at", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         const lastRead = lastReadMap.get(convo.id);
         const { count } = await supabase
