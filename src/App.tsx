@@ -23,6 +23,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
+import TestimonialsPage from "./pages/TestimonialsPage";
 
 import { DebugInspector } from "./pages/debugInspector";
 
@@ -67,6 +68,7 @@ const App = () => {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/pricing" element={<PricingPage />} />
+<Route path="/testimonials" element={<TestimonialsPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route
                 path="/dashboard"
