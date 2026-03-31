@@ -334,4 +334,4 @@ export default function TestimonialsPage() {
         .featured-av { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), #10b981); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0; }
         .featured-name { font-size: 15px; font-weight: 700; color: #fff; }
         .featured-role { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 2px; }
-        .featured-tags { display: flex; gap: 8px; margi
+        .featured-tags { display: flex; gap: 8px; margin-top: 10px; }
