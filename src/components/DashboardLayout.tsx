@@ -144,9 +144,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <span className="text-[15px] font-bold tracking-[-0.03em] text-white">
               Fixsense
             </span>
-            <span className="text-[9px] tracking-[0.12em] uppercase text-[rgba(255,255,255,0.28)] mt-0.5">
-              Enterprise
-            </span>
+            
           </div>
         </Link>
       </div>
