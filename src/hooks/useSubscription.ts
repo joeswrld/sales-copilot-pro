@@ -69,17 +69,17 @@ export interface BillingState {
 }
 
 // ── Helper: get a valid session token, refreshing aggressively if needed ──────
-// Increased proactive refresh window to 5 minutes (300s) to prevent edge
-// functions from receiving near-expired tokens that Supabase auth rejects
-// with "Invalid JWT".
+// FIX: Increased proactive refresh window to 10 minutes (600s) from 5 minutes
+// to prevent edge functions from receiving near-expired tokens that Supabase
+// auth rejects with "Invalid JWT".
 async function getSessionToken(): Promise<string> {
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (!error && session?.access_token) {
     const expiresAt = session.expires_at ?? 0;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    // Refresh if token expires within 5 minutes
-    const isExpiringSoon = expiresAt - nowSeconds < 300;
+    // FIX: Refresh if token expires within 10 minutes (was 5 minutes / 300s)
+    const isExpiringSoon = expiresAt - nowSeconds < 600;
 
     if (!isExpiringSoon) {
       return session.access_token;
@@ -353,11 +353,16 @@ export function useSubscription() {
     },
   });
 
-  // ── Transaction history — uses invokeWithAuth (was missing auth header) ─
+  // ── Transaction history ────────────────────────────────────────────────
+  // FIX: Added supabase.auth.refreshSession() before calling the edge function
+  // to ensure the token is always fresh on initial load, preventing 401 errors
+  // that occurred immediately after app bootstrap.
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
+      // Proactively refresh session before the edge function call
+      await supabase.auth.refreshSession();
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
       });
@@ -372,10 +377,15 @@ export function useSubscription() {
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
+  // FIX: Added supabase.auth.refreshSession() before calling the edge function
+  // to prevent 401 errors fired immediately on app bootstrap when the stored
+  // token is stale (this was the primary source of the "Invalid JWT" logs).
   const pendingSyncQuery = useQuery({
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
       if (!user || query.data?.status !== "pending") return null;
+      // Proactively refresh session before the edge function call
+      await supabase.auth.refreshSession();
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: false,
       });
