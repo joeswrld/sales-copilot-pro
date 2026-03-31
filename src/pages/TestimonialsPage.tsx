@@ -335,3 +335,398 @@ export default function TestimonialsPage() {
         .featured-name { font-size: 15px; font-weight: 700; color: #fff; }
         .featured-role { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 2px; }
         .featured-tags { display: flex; gap: 8px; margin-top: 10px; }
+        .featured-tag { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.45); }
+
+        /* FILTER BAR */
+        .filter-section { padding: 60px 24px 0; background: var(--bg); }
+        .filter-inner { max-width: 1100px; margin: 0 auto; }
+        .section-kicker { font-size: 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+        .section-title { font-family: var(--font-display); font-size: clamp(28px,4vw,44px); font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 16px; }
+        .section-sub { font-size: 16px; color: var(--muted); line-height: 1.7; max-width: 520px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 32px; }
+        .filter-btn { background: var(--bg-2); border: 1.5px solid var(--border); border-radius: 100px; padding: 8px 20px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; font-family: var(--font); transition: all 0.2s; }
+        .filter-btn:hover { border-color: var(--muted-2); color: var(--ink); }
+        .filter-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+        /* TESTIMONIALS GRID */
+        .testimonials-section { padding: 48px 24px 100px; background: var(--bg); }
+        .testimonials-inner { max-width: 1100px; margin: 0 auto; }
+        .testimonials-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+        .testimonial-card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s; }
+        .testimonial-card:hover { border-color: #bfdbfe; box-shadow: 0 12px 40px rgba(37,99,235,0.1); transform: translateY(-2px); }
+        .testimonial-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+        .testimonial-metric { display: inline-block; background: #eff6ff; color: var(--blue); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
+        .testimonial-stars { display: flex; gap: 2px; }
+        .testimonial-quote { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; flex: 1; margin-bottom: 24px; }
+        .testimonial-author { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding-top: 18px; }
+        .testimonial-av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--ink-2), var(--blue)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
+        .testimonial-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+        .testimonial-role { font-size: 12px; color: var(--muted); margin-top: 1px; }
+        .testimonial-meta { display: flex; gap: 8px; margin-top: 8px; }
+        .testimonial-tag { background: var(--bg-3); border-radius: 4px; padding: 2px 8px; font-size: 10.5px; color: var(--muted); font-weight: 500; }
+        .empty-state { text-align: center; padding: 80px 24px; color: var(--muted); font-size: 15px; }
+
+        /* TRUST STRIP */
+        .trust-strip { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 60px 24px; }
+        .trust-strip-inner { max-width: 960px; margin: 0 auto; text-align: center; }
+        .trust-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 8px; }
+        .trust-sub { font-size: 15px; color: var(--muted); margin-bottom: 36px; }
+        .trust-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+        .trust-badge { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 13px; font-weight: 600; color: var(--ink-2); box-shadow: 0 1px 4px rgba(15,23,42,0.04); }
+        .trust-badge-icon { font-size: 16px; }
+
+        /* FINAL CTA */
+        .final-cta { padding: 120px 24px; background: var(--ink); text-align: center; position: relative; overflow: hidden; }
+        .final-cta-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(37,99,235,0.12) 0%, transparent 65%); }
+        .final-cta-inner { position: relative; z-index: 1; max-width: 600px; margin: 0 auto; }
+        .final-cta-title { font-family: var(--font-display); font-size: clamp(34px,5.5vw,58px); font-weight: 800; color: #fff; letter-spacing: -0.04em; line-height: 1.06; margin-bottom: 18px; }
+        .final-cta-blue { color: #93c5fd; }
+        .final-cta-desc { font-size: 17px; color: rgba(255,255,255,0.45); line-height: 1.7; margin-bottom: 40px; }
+        .final-cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .btn-final-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 15px 30px; font-size: 15px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 16px rgba(37,99,235,0.4); }
+        .btn-final-primary:hover { background: var(--blue-2); transform: translateY(-2px); }
+        .btn-final-ghost { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 15px 30px; font-size: 15px; font-weight: 500; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
+        .btn-final-ghost:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+        /* FOOTER */
+        .footer { background: #0f172a; padding: 60px 24px 32px; border-top: 1px solid rgba(255,255,255,0.06); }
+        .footer-inner { max-width: 1100px; margin: 0 auto; }
+        .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .footer-brand-logo { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+        .footer-brand-name { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.03em; }
+        .footer-brand-desc { font-size: 13px; color: rgba(255,255,255,0.35); line-height: 1.65; max-width: 240px; }
+        .footer-col-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-link { display: block; font-size: 13px; color: rgba(255,255,255,0.35); text-decoration: none; margin-bottom: 10px; transition: color 0.2s; }
+        .footer-link:hover { color: rgba(255,255,255,0.7); }
+        .footer-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .footer-legal { font-size: 12px; color: rgba(255,255,255,0.22); }
+        .footer-legal-links { display: flex; gap: 20px; }
+        .footer-legal-link { font-size: 12px; color: rgba(255,255,255,0.25); text-decoration: none; transition: color 0.2s; }
+        .footer-legal-link:hover { color: rgba(255,255,255,0.5); }
+
+        @media (max-width: 1024px) {
+          .footer-top { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+          .hamburger { display: flex; }
+          .nav-links, .nav-actions { display: none; }
+          .hero { padding: 120px 20px 60px; }
+          .metrics-grid { grid-template-columns: repeat(2,1fr); }
+          .featured-card { padding: 36px 28px; }
+          .featured-text { font-size: 17px; }
+          .testimonials-grid { grid-template-columns: 1fr; }
+          .footer-top { grid-template-columns: 1fr 1fr; }
+          .footer-bottom { flex-direction: column; align-items: flex-start; }
+        }
+        @media (max-width: 640px) {
+          .testimonials-grid { grid-template-columns: 1fr; }
+          .hero-ctas { flex-direction: column; align-items: center; }
+          .btn-hero-primary, .btn-hero-secondary { width: 100%; max-width: 320px; justify-content: center; }
+          .final-cta-btns { flex-direction: column; align-items: center; }
+          .btn-final-primary, .btn-final-ghost { width: 100%; max-width: 320px; justify-content: center; }
+          .footer-top { grid-template-columns: 1fr; }
+          .featured-quote-mark { display: none; }
+        }
+      `}</style>
+
+      {/* NAV */}
+      <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
+        <div className="nav-inner">
+          <Link to="/" className="nav-logo">
+            <Logo size={28} />
+            <span className="nav-logo-text">Fixsense</span>
+          </Link>
+          <div className="nav-links">
+            {NAV.map(l => (
+              <a key={l.label} href={l.href} className={`nav-link ${l.href === "/testimonials" ? "active" : ""}`}>{l.label}</a>
+            ))}
+          </div>
+          <div className="nav-actions">
+            {user ? (
+              <>
+                <Link to="/dashboard/profile" className="nav-user">
+                  <div className="nav-user-av">{emailInitial}</div>
+                  <span className="nav-user-name">{displayName}</span>
+                </Link>
+                <Link to="/dashboard" className="btn-nav-primary">Dashboard →</Link>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost">Sign in</Link>
+                <Link to="/login" className="btn-nav-primary">Start Free Trial →</Link>
+              </>
+            )}
+          </div>
+          <button className="hamburger" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </nav>
+
+      {/* MOBILE DRAWER */}
+      <div className={`drawer-overlay ${mobileOpen ? "open" : ""}`} onClick={() => setMobileOpen(false)} />
+      <div className={`drawer ${mobileOpen ? "open" : ""}`}>
+        <div className="drawer-header">
+          <Link to="/" className="nav-logo" onClick={() => setMobileOpen(false)}>
+            <Logo size={26} />
+            <span className="nav-logo-text">Fixsense</span>
+          </Link>
+          <button className="drawer-close" onClick={() => setMobileOpen(false)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <nav className="drawer-nav">
+          {NAV.map(l => (
+            <a key={l.label} href={l.href} className="drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
+          ))}
+        </nav>
+        <div className="drawer-footer">
+          {user ? (
+            <Link to="/dashboard" className="btn-full btn-full-primary" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
+          ) : (
+            <>
+              <Link to="/login" className="btn-full btn-full-primary" onClick={() => setMobileOpen(false)}>Start Free Trial</Link>
+              <Link to="/login" className="btn-full btn-full-secondary" onClick={() => setMobileOpen(false)}>Sign in</Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* HERO */}
+      <section className="hero">
+        <div className="hero-pattern" />
+        <FadeIn delay={40}>
+          <div className="hero-badge">
+            <div className="hero-badge-dot" />
+            Real results from real sales teams
+          </div>
+        </FadeIn>
+        <FadeIn delay={80}>
+          <h1 className="hero-title">
+            Trusted by teams closing <span className="blue">more deals</span>
+          </h1>
+        </FadeIn>
+        <FadeIn delay={130}>
+          <p className="hero-sub">
+            From scrappy 6-person startups to enterprise revenue orgs — see how Fixsense is changing how teams sell, coach, and grow.
+          </p>
+        </FadeIn>
+        <FadeIn delay={180}>
+          <div className="hero-ctas">
+            <Link to="/login" className="btn-hero-primary">
+              Start Free Trial
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </Link>
+            <Link to="/pricing" className="btn-hero-secondary">View Pricing</Link>
+          </div>
+        </FadeIn>
+      </section>
+
+      {/* LOGO STRIP */}
+      <div className="logo-strip">
+        <div className="logo-strip-inner">
+          <span className="logo-strip-label">Integrates with</span>
+          <div className="logo-strip-logos">
+            {LOGOS.map(l => <span key={l} className="logo-name">{l}</span>)}
+          </div>
+        </div>
+      </div>
+
+      {/* METRICS */}
+      <section className="metrics">
+        <div className="metrics-inner">
+          <FadeIn>
+            <div className="metrics-grid">
+              {METRICS.map((m, i) => (
+                <div key={i} className="metric-card">
+                  <div className="metric-num"><Counter end={m.value} suffix={m.suffix} /></div>
+                  <div className="metric-label">{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* FEATURED TESTIMONIAL */}
+      <section className="featured">
+        <div className="featured-inner">
+          <FadeIn>
+            <div className="section-kicker" style={{ marginBottom: 24 }}>Featured story</div>
+            <div className="featured-card">
+              <div className="featured-blob" />
+              <div className="featured-blob-2" />
+              <div className="featured-quote-mark">"</div>
+              <div className="featured-content">
+                <div className="featured-metric">{FEATURED.metric}</div>
+                <div className="featured-stars">
+                  {[...Array(5)].map((_, i) => <StarIcon key={i} />)}
+                </div>
+                <p className="featured-text">"{FEATURED.quote}"</p>
+                <div className="featured-author">
+                  <div className="featured-av">{FEATURED.initials}</div>
+                  <div>
+                    <div className="featured-name">{FEATURED.name}</div>
+                    <div className="featured-role">{FEATURED.role}, {FEATURED.company}</div>
+                    <div className="featured-tags">
+                      <span className="featured-tag">{FEATURED.industry}</span>
+                      <span className="featured-tag">{FEATURED.teamSize}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* FILTER + GRID */}
+      <section className="filter-section">
+        <div className="filter-inner">
+          <FadeIn>
+            <div className="section-kicker">All Customer Stories</div>
+            <h2 className="section-title">Every team, every use case</h2>
+            <p className="section-sub">Filter by what matters most to you.</p>
+            <div className="filter-bar">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  className={`filter-btn ${activeCategory === cat.id ? "active" : ""}`}
+                  onClick={() => setActiveCategory(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      <section className="testimonials-section">
+        <div className="testimonials-inner">
+          <div className="testimonials-grid">
+            {filtered.length === 0 ? (
+              <div className="empty-state">No stories in this category yet.</div>
+            ) : (
+              filtered.map((t, i) => (
+                <FadeIn key={`${t.name}-${activeCategory}`} delay={i * 60}>
+                  <div className="testimonial-card">
+                    <div className="testimonial-top">
+                      <div className="testimonial-metric">{t.metric}</div>
+                      <div className="testimonial-stars">
+                        {[...Array(5)].map((_, si) => <StarIcon key={si} />)}
+                      </div>
+                    </div>
+                    <p className="testimonial-quote">"{t.quote}"</p>
+                    <div className="testimonial-author">
+                      <div className="testimonial-av">{t.initials}</div>
+                      <div>
+                        <div className="testimonial-name">{t.name}</div>
+                        <div className="testimonial-role">{t.role}, {t.company}</div>
+                        <div className="testimonial-meta">
+                          <span className="testimonial-tag">{t.industry}</span>
+                          <span className="testimonial-tag">{t.teamSize}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </FadeIn>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* TRUST STRIP */}
+      <section className="trust-strip">
+        <div className="trust-strip-inner">
+          <FadeIn>
+            <h3 className="trust-title">Built for security-conscious revenue teams</h3>
+            <p className="trust-sub">Enterprise-grade compliance, out of the box.</p>
+            <div className="trust-badges">
+              {[
+                { icon: "🔒", label: "SOC 2 Type II Certified" },
+                { icon: "🔐", label: "End-to-end Encryption" },
+                { icon: "🌍", label: "GDPR Compliant" },
+                { icon: "⚡", label: "99.9% Uptime SLA" },
+                { icon: "🚫", label: "Zero data selling" },
+              ].map((b, i) => (
+                <div key={i} className="trust-badge">
+                  <span className="trust-badge-icon">{b.icon}</span>
+                  {b.label}
+                </div>
+              ))}
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* FINAL CTA */}
+      <section className="final-cta">
+        <div className="final-cta-glow" />
+        <div className="final-cta-inner">
+          <FadeIn>
+            <h2 className="final-cta-title">
+              <span>Your team's story<br /><span className="final-cta-blue">starts here</span></span>
+            </h2>
+            <p className="final-cta-desc">
+              Join hundreds of sales teams who stopped guessing and started winning with Fixsense.
+            </p>
+            <div className="final-cta-btns">
+              <Link to="/login" className="btn-final-primary">
+                Start Free Trial
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </Link>
+              <Link to="/login" className="btn-final-ghost">Book a Demo</Link>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="footer">
+        <div className="footer-inner">
+          <div className="footer-top">
+            <div>
+              <div className="footer-brand-logo">
+                <Logo size={24} />
+                <span className="footer-brand-name">Fixsense</span>
+              </div>
+              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. Capture, analyze, and act on every conversation.</p>
+            </div>
+            <div>
+              <div className="footer-col-title">Product</div>
+              {[
+                { label: "Features", href: "/#features" },
+                { label: "Pricing", href: "/pricing" },
+                { label: "Integrations", href: "/integrations" },
+                { label: "Changelog", href: "/changelog" },
+              ].map(l => (
+                <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
+              ))}
+            </div>
+            <div>
+              <div className="footer-col-title">Legal</div>
+              <Link to="/privacy" className="footer-link">Privacy Policy</Link>
+              <Link to="/terms" className="footer-link">Terms of Service</Link>
+              <Link to="/security" className="footer-link">Security</Link>
+              <Link to="/contact" className="footer-link">Contact</Link>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
+            <div className="footer-legal-links">
+              <a href="/privacy" className="footer-legal-link">Privacy</a>
+              <a href="/terms" className="footer-legal-link">Terms</a>
+              <a href="/security" className="footer-legal-link">Security</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
