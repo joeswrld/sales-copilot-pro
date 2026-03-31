@@ -497,7 +497,7 @@ export default function LandingPage() {
     { label: "Product", href: "#features" },
     { label: "How It Works", href: "#how-it-works" },
     { label: "Pricing", href: "/pricing" },
-    { label: "Testimonials", href: "#testimonials" },
+    { label: "Testimonials", href: "/testimonials" },
   ];
 
   const PROBLEMS = [
