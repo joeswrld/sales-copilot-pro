@@ -68,41 +68,49 @@ export interface BillingState {
   pendingPlanKey: string | null;
 }
 
-// ── Helper: get a valid session token, refreshing aggressively if needed ──────
-// FIX: Increased proactive refresh window to 10 minutes (600s) from 5 minutes
-// to prevent edge functions from receiving near-expired tokens that Supabase
-// auth rejects with "Invalid JWT".
+// ── Serialized session refresh ────────────────────────────────────────────────
+// Prevents auth lock contention (React Strict Mode double-invokes effects,
+// causing multiple concurrent refreshSession() calls that fight over the same
+// IndexedDB lock and emit "Lock was not released within 5000ms" warnings).
+// All concurrent callers share a single in-flight promise instead.
+let _refreshPromise: Promise<string> | null = null;
+
 async function getSessionToken(): Promise<string> {
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (!error && session?.access_token) {
     const expiresAt = session.expires_at ?? 0;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    // FIX: Refresh if token expires within 10 minutes (was 5 minutes / 300s)
-    const isExpiringSoon = expiresAt - nowSeconds < 600;
-
-    if (!isExpiringSoon) {
+    // Refresh if token expires within 10 minutes
+    if (expiresAt - nowSeconds >= 600) {
       return session.access_token;
     }
   }
 
-  // Token is missing, expired, or expiring soon — force a refresh
-  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-
-  if (refreshError) {
-    console.error("Session refresh failed:", refreshError.message);
-    throw new Error("Session expired — please sign in again.");
+  // Deduplicate concurrent refresh calls — all waiters share the same promise
+  if (!_refreshPromise) {
+    _refreshPromise = supabase.auth
+      .refreshSession()
+      .then(({ data, error: refreshError }) => {
+        if (refreshError) {
+          console.error("Session refresh failed:", refreshError.message);
+          throw new Error("Session expired — please sign in again.");
+        }
+        if (!data.session?.access_token) {
+          throw new Error("No active session — please sign in again.");
+        }
+        return data.session.access_token;
+      })
+      .finally(() => {
+        _refreshPromise = null;
+      });
   }
 
-  if (!refreshData.session?.access_token) {
-    throw new Error("No active session — please sign in again.");
-  }
-
-  return refreshData.session.access_token;
+  return _refreshPromise;
 }
 
-// ── Helper: invoke an edge function with a guaranteed fresh auth token ────────
-// Automatically retries once with a forced refresh if the function returns 401.
+// ── Invoke edge function with guaranteed fresh auth token ─────────────────────
+// Retries once with a forced refresh on 401.
 async function invokeWithAuth(
   fnName: string,
   body: Record<string, unknown>
@@ -123,7 +131,7 @@ async function invokeWithAuth(
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  // If the function returned 401, force-refresh the session and retry once
+  // If 401, force-refresh and retry once
   const is401 =
     result.error &&
     (String(result.error.message).includes("401") ||
@@ -354,15 +362,15 @@ export function useSubscription() {
   });
 
   // ── Transaction history ────────────────────────────────────────────────
-  // FIX: Added supabase.auth.refreshSession() before calling the edge function
-  // to ensure the token is always fresh on initial load, preventing 401 errors
-  // that occurred immediately after app bootstrap.
+  // FIX: Delay initial fetch by 800ms so the auth lock settles after mount.
+  // React Strict Mode double-invokes effects, causing multiple concurrent
+  // refreshSession() calls that fight over the same lock and produce 401s.
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
-      // Proactively refresh session before the edge function call
-      await supabase.auth.refreshSession();
+      // Wait for auth lock to settle before hitting the edge function
+      await new Promise((r) => setTimeout(r, 800));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
       });
@@ -372,20 +380,17 @@ export function useSubscription() {
     },
     enabled: !!user,
     refetchInterval: 15000,
-    // Don't throw on error — transactions are non-critical, just show empty
     retry: 1,
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
-  // FIX: Added supabase.auth.refreshSession() before calling the edge function
-  // to prevent 401 errors fired immediately on app bootstrap when the stored
-  // token is stale (this was the primary source of the "Invalid JWT" logs).
+  // FIX: Delay initial fetch by 1200ms for the same auth lock reason above.
   const pendingSyncQuery = useQuery({
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
       if (!user || query.data?.status !== "pending") return null;
-      // Proactively refresh session before the edge function call
-      await supabase.auth.refreshSession();
+      // Wait for auth lock to settle before hitting the edge function
+      await new Promise((r) => setTimeout(r, 1200));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: false,
       });
