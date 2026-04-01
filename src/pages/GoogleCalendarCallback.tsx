@@ -6,9 +6,6 @@
  * Google redirects here after the user approves calendar access.
  * We exchange the ?code= param for tokens via the edge function,
  * then redirect back to the dashboard.
- *
- * Add this route in your router:
- *   <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
  */
 
 import { useEffect, useState } from "react";
@@ -18,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-export default function GoogleCalendarCallback() {
+export function GoogleCalendarCallback() {
   const navigate   = useNavigate();
   const { user }   = useAuth();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -27,11 +24,10 @@ export default function GoogleCalendarCallback() {
   useEffect(() => {
     const run = async () => {
       try {
-        // Extract ?code= and ?state= from URL
         const params = new URLSearchParams(window.location.search);
         const code   = params.get("code");
         const error  = params.get("error");
-        const state  = params.get("state"); // contains user_id
+        const state  = params.get("state");
 
         if (error) {
           setStatus("error");
@@ -57,7 +53,6 @@ export default function GoogleCalendarCallback() {
 
         setMessage("Exchanging tokens with Google…");
 
-        // Exchange code for tokens
         const { data, error: fnErr } = await supabase.functions.invoke(
           "sync-google-calendar",
           { body: { action: "oauth_callback", code, user_id: userId } },
@@ -121,3 +116,5 @@ export default function GoogleCalendarCallback() {
     </div>
   );
 }
+
+export default GoogleCalendarCallback;
