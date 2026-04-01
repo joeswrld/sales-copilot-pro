@@ -203,6 +203,8 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -215,6 +217,13 @@ export default function LoginPage() {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (mode === "signup" && !agreeToTerms) {
+      setTermsError(true);
+      return;
+    }
+    setTermsError(false);
+
     setLoading(true);
     try {
       if (mode === "forgot") {
@@ -239,8 +248,24 @@ export default function LoginPage() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (mode === "signup" && !agreeToTerms) {
+      setTermsError(true);
+      return;
+    }
+    setTermsError(false);
     const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/dashboard` } });
     if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
+  };
+
+  const switchToSignup = () => {
+    setMode("signup");
+    setTermsError(false);
+  };
+
+  const switchToLogin = () => {
+    setMode("login");
+    setAgreeToTerms(false);
+    setTermsError(false);
   };
 
   return (
@@ -291,7 +316,6 @@ export default function LoginPage() {
           width: 1px;
           background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.07) 20%, rgba(255,255,255,0.07) 80%, transparent 100%);
         }
-        /* subtle noise texture on left panel */
         .lp-left::before {
           content: '';
           position: absolute; inset: 0;
@@ -310,6 +334,7 @@ export default function LoginPage() {
           justify-content: center;
           padding: 48px 40px;
           position: relative;
+          overflow-y: auto;
         }
         .lp-right::before {
           content: '';
@@ -439,6 +464,78 @@ export default function LoginPage() {
         }
         .forgot-link:hover { color: var(--ink); }
 
+        /* ── Terms Checkbox ── */
+        .terms-wrap {
+          display: flex; align-items: flex-start; gap: 11px;
+          padding: 12px 14px;
+          background: #f8fafc;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 10px;
+          cursor: pointer;
+          transition: border-color 0.15s, background 0.15s;
+          user-select: none;
+          margin-bottom: 4px;
+        }
+        .terms-wrap:hover {
+          border-color: #cbd5e1;
+          background: #f1f5f9;
+        }
+        .terms-wrap--error {
+          border-color: #fca5a5 !important;
+          background: #fff5f5 !important;
+          animation: shake 0.35s ease;
+        }
+        .terms-wrap--checked {
+          border-color: #1d4ed8 !important;
+          background: #eff6ff !important;
+        }
+        @keyframes shake {
+          0%,100% { transform: translateX(0); }
+          20%      { transform: translateX(-4px); }
+          40%      { transform: translateX(4px); }
+          60%      { transform: translateX(-3px); }
+          80%      { transform: translateX(3px); }
+        }
+        .terms-checkbox {
+          width: 18px; height: 18px; min-width: 18px;
+          border-radius: 5px;
+          border: 1.5px solid #cbd5e1;
+          background: #fff;
+          display: flex; align-items: center; justify-content: center;
+          margin-top: 1px;
+          transition: all 0.15s;
+          flex-shrink: 0;
+        }
+        .terms-checkbox--checked {
+          background: #1d4ed8;
+          border-color: #1d4ed8;
+        }
+        .terms-checkbox--error {
+          border-color: #f87171;
+        }
+        .terms-text {
+          font-size: 12px;
+          color: #64748b;
+          line-height: 1.6;
+          font-family: var(--font-body);
+        }
+        .terms-text a {
+          color: #1d4ed8;
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .terms-text a:hover { text-decoration: underline; }
+        .terms-error-msg {
+          font-size: 11px;
+          color: #ef4444;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 10px;
+          font-family: var(--font-body);
+          padding-left: 2px;
+        }
+
         /* Submit button */
         .submit-btn {
           width: 100%; padding: 11px 20px;
@@ -449,6 +546,7 @@ export default function LoginPage() {
           transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
           letter-spacing: -0.01em;
           box-shadow: 0 1px 2px rgba(15,23,42,0.12);
+          margin-top: 6px;
         }
         .submit-btn:hover:not(:disabled) {
           background: #1e293b;
@@ -547,6 +645,7 @@ export default function LoginPage() {
         .mobile-form-area {
           flex: 1; padding: 28px 20px 32px;
           position: relative; z-index: 1;
+          overflow-y: auto;
         }
         .mobile-form-area::before {
           content: '';
@@ -611,8 +710,8 @@ export default function LoginPage() {
               </>
             ) : (
               <div className="auth-tabs">
-                <button className={`auth-tab ${mode === "login" ? "auth-tab--active" : ""}`} onClick={() => setMode("login")}>Sign in</button>
-                <button className={`auth-tab ${mode === "signup" ? "auth-tab--active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
+                <button className={`auth-tab ${mode === "login" ? "auth-tab--active" : ""}`} onClick={switchToLogin}>Sign in</button>
+                <button className={`auth-tab ${mode === "signup" ? "auth-tab--active" : ""}`} onClick={switchToSignup}>Create account</button>
               </div>
             )}
 
@@ -677,7 +776,54 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <button type="submit" className="submit-btn" disabled={loading} style={{ marginTop: "6px" }}>
+              {/* ── Terms & Conditions Checkbox (signup only) ── */}
+              {mode === "signup" && (
+                <div style={{ marginBottom: "6px" }}>
+                  <div
+                    className={`terms-wrap${termsError ? " terms-wrap--error" : ""}${agreeToTerms ? " terms-wrap--checked" : ""}`}
+                    onClick={() => { setAgreeToTerms(p => !p); setTermsError(false); }}
+                    role="checkbox"
+                    aria-checked={agreeToTerms}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === " " && (e.preventDefault(), setAgreeToTerms(p => !p), setTermsError(false))}
+                  >
+                    <div className={`terms-checkbox${agreeToTerms ? " terms-checkbox--checked" : ""}${termsError && !agreeToTerms ? " terms-checkbox--error" : ""}`}>
+                      {agreeToTerms && (
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                          <path d="M2 5.5l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="terms-text">
+                      I agree to Fixsense's{" "}
+                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Terms of Service
+                      </a>
+                      ,{" "}
+                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Privacy Policy
+                      </a>
+                      , and{" "}
+                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Cookie Policy
+                      </a>
+                      . I understand my data will be processed to deliver the Fixsense service.
+                    </span>
+                  </div>
+                  {termsError && (
+                    <p className="terms-error-msg">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <circle cx="6" cy="6" r="5" stroke="#ef4444" strokeWidth="1.2" />
+                        <path d="M6 3.5v3" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                        <circle cx="6" cy="8.5" r="0.6" fill="#ef4444" />
+                      </svg>
+                      Please agree to the terms before creating your account.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button type="submit" className="submit-btn" disabled={loading}>
                 {loading ? (
                   <>
                     <div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
@@ -696,11 +842,11 @@ export default function LoginPage() {
             {/* Footer nav */}
             <div className="auth-footer-text">
               {mode === "forgot" ? (
-                <><button className="mode-link" onClick={() => setMode("login")}>← Back to sign in</button></>
+                <><button className="mode-link" onClick={switchToLogin}>← Back to sign in</button></>
               ) : mode === "signup" ? (
-                <>Already have an account?{" "}<button className="mode-link" onClick={() => setMode("login")}>Sign in</button></>
+                <>Already have an account?{" "}<button className="mode-link" onClick={switchToLogin}>Sign in</button></>
               ) : (
-                <>No account yet?{" "}<button className="mode-link" onClick={() => setMode("signup")}>Start free trial</button></>
+                <>No account yet?{" "}<button className="mode-link" onClick={switchToSignup}>Start free trial</button></>
               )}
             </div>
 
@@ -762,8 +908,8 @@ export default function LoginPage() {
           <div style={{ position: "relative", zIndex: 1 }}>
             {mode !== "forgot" ? (
               <div className="mobile-mode-tabs">
-                <button className={`mobile-mode-tab ${mode === "login" ? "mobile-mode-tab--active" : ""}`} onClick={() => setMode("login")}>Sign in</button>
-                <button className={`mobile-mode-tab ${mode === "signup" ? "mobile-mode-tab--active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
+                <button className={`mobile-mode-tab ${mode === "login" ? "mobile-mode-tab--active" : ""}`} onClick={switchToLogin}>Sign in</button>
+                <button className={`mobile-mode-tab ${mode === "signup" ? "mobile-mode-tab--active" : ""}`} onClick={switchToSignup}>Create account</button>
               </div>
             ) : (
               <div style={{ marginBottom: "20px" }}>
@@ -814,7 +960,55 @@ export default function LoginPage() {
                   </div>
                 </div>
               )}
-              <button type="submit" className="submit-btn" disabled={loading} style={{ marginTop: "8px", borderRadius: "10px", padding: "13px 20px" }}>
+
+              {/* ── Terms & Conditions Checkbox (mobile signup) ── */}
+              {mode === "signup" && (
+                <div style={{ marginBottom: "12px" }}>
+                  <div
+                    className={`terms-wrap${termsError ? " terms-wrap--error" : ""}${agreeToTerms ? " terms-wrap--checked" : ""}`}
+                    onClick={() => { setAgreeToTerms(p => !p); setTermsError(false); }}
+                    role="checkbox"
+                    aria-checked={agreeToTerms}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === " " && (e.preventDefault(), setAgreeToTerms(p => !p), setTermsError(false))}
+                  >
+                    <div className={`terms-checkbox${agreeToTerms ? " terms-checkbox--checked" : ""}${termsError && !agreeToTerms ? " terms-checkbox--error" : ""}`}>
+                      {agreeToTerms && (
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                          <path d="M2 5.5l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="terms-text">
+                      I agree to Fixsense's{" "}
+                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Terms of Service
+                      </a>
+                      ,{" "}
+                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Privacy Policy
+                      </a>
+                      , and{" "}
+                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
+                        Cookie Policy
+                      </a>
+                      .
+                    </span>
+                  </div>
+                  {termsError && (
+                    <p className="terms-error-msg">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <circle cx="6" cy="6" r="5" stroke="#ef4444" strokeWidth="1.2" />
+                        <path d="M6 3.5v3" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                        <circle cx="6" cy="8.5" r="0.6" fill="#ef4444" />
+                      </svg>
+                      Please agree to the terms to continue.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button type="submit" className="submit-btn" disabled={loading} style={{ borderRadius: "10px", padding: "13px 20px" }}>
                 {loading ? (
                   <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Processing...</>
                 ) : mode === "forgot" ? "Send reset link"
@@ -825,11 +1019,11 @@ export default function LoginPage() {
 
             <div className="auth-footer-text" style={{ marginTop: "18px" }}>
               {mode === "forgot" ? (
-                <button className="mode-link" onClick={() => setMode("login")}>← Back to sign in</button>
+                <button className="mode-link" onClick={switchToLogin}>← Back to sign in</button>
               ) : mode === "signup" ? (
-                <>Already have an account? <button className="mode-link" onClick={() => setMode("login")}>Sign in</button></>
+                <>Already have an account? <button className="mode-link" onClick={switchToLogin}>Sign in</button></>
               ) : (
-                <>No account? <button className="mode-link" onClick={() => setMode("signup")}>Start free trial</button></>
+                <>No account? <button className="mode-link" onClick={switchToSignup}>Start free trial</button></>
               )}
             </div>
 
