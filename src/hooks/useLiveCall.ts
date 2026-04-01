@@ -142,11 +142,11 @@ export function useLiveCall() {
 
       if (workspaceId) {
         // Count across the whole workspace
-        const { data: usageRow } = await supabase
-          .from("workspace_meeting_usage")
+        const { data: usageRow } = await (supabase
+          .from("workspace_meeting_usage" as any)
           .select("meetings_used")
           .eq("workspace_id", workspaceId)
-          .maybeSingle();
+          .maybeSingle() as any);
         usedCount = usageRow?.meetings_used ?? 0;
       } else {
         // Personal count

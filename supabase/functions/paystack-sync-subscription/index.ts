@@ -43,17 +43,16 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user: authUser }, error: userError } = await userClient.auth.getUser();
+    if (userError || !authUser) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: corsHeaders,
       });
     }
 
-    const userId = claimsData.claims.sub as string;
-    const userEmail = (claimsData.claims.email as string | undefined)?.toLowerCase();
+    const userId = authUser.id;
+    const userEmail = authUser.email?.toLowerCase();
 
     const { reference, include_transactions } = await req.json().catch(() => ({}));
     const includeTransactions = include_transactions !== false;
