@@ -490,21 +490,10 @@ export default function BillingPage() {
                       Cancel Subscription
                     </Button>
                   )}
-                  {subscription.status === "pending" && (
-                    <div className="w-full space-y-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <RefreshCw className={cn("w-4 h-4", (isRefreshing || isSyncingPending) && "animate-spin")} />
-                        <span>Checking payment status...</span>
-                        <Button variant="ghost" size="sm" onClick={handleManualRefresh} disabled={isRefreshing || verifyPayment.isPending}>Refresh now</Button>
-                      </div>
-                    </div>
-                  )}
-                  {(subscription.status === "cancelled" || subscription.status === "inactive") && (
-                    <Button onClick={() => subscribe.mutate("starter")} disabled={subscribe.isPending}>
-                      {subscribe.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      Resubscribe
-                    </Button>
-                  )}
+                  <Button variant="outline" size="sm" onClick={handleManualRefresh} disabled={isRefreshing || verifyPayment.isPending}>
+                    <RefreshCw className={cn("w-4 h-4 mr-2", (isRefreshing || isSyncingPending) && "animate-spin")} />
+                    Refresh Status
+                  </Button>
                 </CardContent>
               </Card>
             </>
