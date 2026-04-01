@@ -19,6 +19,10 @@ type PaystackTx = {
   authorization?: { last4?: string | null; brand?: string | null };
   metadata?: {
     user_id?: string;
+    plan_key?: string;
+    plan_name?: string;
+    plan_price_usd?: number;
+    calls_limit?: number;
     custom_fields?: Array<{ variable_name?: string; value?: string }>;
   } | null;
 };
