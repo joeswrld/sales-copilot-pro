@@ -205,6 +205,8 @@ export function useSubscription() {
   });
 
   const getCurrentPlanKey = () => {
+    // Only treat subscription plan as active if billing is actually active
+    if (query.data?.status !== "active") return "free";
     const planName = query.data?.plan_name?.toLowerCase() || "";
     if (planName.includes("scale")) return "scale";
     if (planName.includes("growth")) return "growth";

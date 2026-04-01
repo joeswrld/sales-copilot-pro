@@ -296,28 +296,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update subscription record to pending
+    // Mark subscription as pending but do NOT change plan_name yet
+    // Plan updates happen only after successful payment (webhook/sync)
     await adminClient.from("subscriptions").upsert(
       {
         user_id: userId,
         paystack_customer_code: customerCode,
         status: "pending",
-        plan_name: `Fixsense ${newPlanConfig.name}`,
-        plan_price_usd: newPlanConfig.price_usd,
-        amount_kobo: fullMonthlyAmountKobo,
+        // Keep existing plan_name — don't overwrite with new plan until payment succeeds
+        plan_name: currentSub?.plan_name || `Fixsense ${currentPlanConfig.name}`,
+        plan_price_usd: currentSub?.plan_price_usd ?? currentPlanConfig.price_usd,
+        amount_kobo: currentSub?.amount_kobo ?? (currentPlanConfig.price_usd * USD_TO_NGN_RATE * 100),
         currency: "NGN",
       },
       { onConflict: "user_id" }
     );
 
-    // Update profile's plan_type and calls_limit
-    await adminClient
-      .from("profiles")
-      .update({
-        plan_type: new_plan_key,
-        calls_limit: newPlanConfig.calls_limit === -1 ? 999999 : newPlanConfig.calls_limit,
-      })
-      .eq("id", userId);
+    // DO NOT update profile plan_type here — only after successful payment
 
     return new Response(
       JSON.stringify({

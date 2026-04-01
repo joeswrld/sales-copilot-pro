@@ -19,6 +19,10 @@ type PaystackTx = {
   authorization?: { last4?: string | null; brand?: string | null };
   metadata?: {
     user_id?: string;
+    plan_key?: string;
+    plan_name?: string;
+    plan_price_usd?: number;
+    calls_limit?: number;
     custom_fields?: Array<{ variable_name?: string; value?: string }>;
   } | null;
 };
@@ -162,24 +166,52 @@ Deno.serve(async (req) => {
       const nextDate = new Date();
       nextDate.setMonth(nextDate.getMonth() + 1);
 
+      // Extract plan info from transaction metadata
+      const planKey = verifiedTransaction.metadata?.custom_fields?.find(
+        (f) => f?.variable_name === "plan_key"
+      )?.value;
+      const planName = (verifiedTransaction as any).metadata?.plan_name;
+      const planPriceUsd = (verifiedTransaction as any).metadata?.plan_price_usd;
+      const callsLimit = (verifiedTransaction as any).metadata?.calls_limit;
+
+      const subUpdates: Record<string, unknown> = {
+        status: "active",
+        updated_at: new Date().toISOString(),
+        next_payment_date: verifiedTransaction.paid_at
+          ? new Date(new Date(verifiedTransaction.paid_at).setMonth(new Date(verifiedTransaction.paid_at).getMonth() + 1)).toISOString()
+          : nextDate.toISOString(),
+        paystack_customer_code:
+          verifiedTransaction.customer?.customer_code || subscription?.paystack_customer_code || null,
+        card_last4: verifiedTransaction.authorization?.last4 || null,
+        card_brand: verifiedTransaction.authorization?.brand || null,
+      };
+
+      // Update subscription plan details from metadata
+      if (planName) subUpdates.plan_name = `Fixsense ${planName}`;
+      if (planPriceUsd) subUpdates.plan_price_usd = planPriceUsd;
+
       const updateResult = await adminClient
         .from("subscriptions")
-        .update({
-          status: "active",
-          updated_at: new Date().toISOString(),
-          next_payment_date: verifiedTransaction.paid_at
-            ? new Date(new Date(verifiedTransaction.paid_at).setMonth(new Date(verifiedTransaction.paid_at).getMonth() + 1)).toISOString()
-            : nextDate.toISOString(),
-          paystack_customer_code:
-            verifiedTransaction.customer?.customer_code || subscription?.paystack_customer_code || null,
-          card_last4: verifiedTransaction.authorization?.last4 || null,
-          card_brand: verifiedTransaction.authorization?.brand || null,
-        })
+        .update(subUpdates)
         .eq("user_id", userId)
         .eq("status", "pending");
 
       if (!updateResult.error) {
         updated = true;
+
+        // NOW update profile plan_type and calls_limit (only after verified payment)
+        if (planKey) {
+          const resolvedCallsLimit = callsLimit === -1 ? 999999 : (callsLimit || 5);
+          await adminClient
+            .from("profiles")
+            .update({
+              plan_type: planKey,
+              calls_limit: resolvedCallsLimit,
+              billing_status: "active",
+            })
+            .eq("id", userId);
+          console.log("Sync: Updated profile plan after verified payment:", { userId, planKey });
+        }
       }
     }
 

@@ -111,7 +111,7 @@ export default function BillingPage() {
   };
 
   const handleConfirmChangePlan = () => { if (selectedPlan) changePlan.mutate(selectedPlan); };
-  const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
+  const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== "free" && p.key !== currentPlanKey);
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;
@@ -142,7 +142,7 @@ export default function BillingPage() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : subscription && subscription.status !== "inactive" ? (
+          ) : isActive ? (
             <>
               {/* Subscription Card */}
               <Card className="border-primary/20 bg-primary/5">
@@ -353,8 +353,8 @@ export default function BillingPage() {
                 </Card>
               )}
 
-              {/* Change Plan */}
-              {isActive && availablePlans.length > 0 && (
+              {/* Change Plan — always show for active subscribers */}
+              {availablePlans.length > 0 && (
                 <Card className="border-primary/30">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -490,44 +490,61 @@ export default function BillingPage() {
                       Cancel Subscription
                     </Button>
                   )}
-                  {subscription.status === "pending" && (
-                    <div className="w-full space-y-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <RefreshCw className={cn("w-4 h-4", (isRefreshing || isSyncingPending) && "animate-spin")} />
-                        <span>Checking payment status...</span>
-                        <Button variant="ghost" size="sm" onClick={handleManualRefresh} disabled={isRefreshing || verifyPayment.isPending}>Refresh now</Button>
-                      </div>
-                    </div>
-                  )}
-                  {(subscription.status === "cancelled" || subscription.status === "inactive") && (
-                    <Button onClick={() => subscribe.mutate("starter")} disabled={subscribe.isPending}>
-                      {subscribe.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      Resubscribe
-                    </Button>
-                  )}
+                  <Button variant="outline" size="sm" onClick={handleManualRefresh} disabled={isRefreshing || verifyPayment.isPending}>
+                    <RefreshCw className={cn("w-4 h-4 mr-2", (isRefreshing || isSyncingPending) && "animate-spin")} />
+                    Refresh Status
+                  </Button>
                 </CardContent>
               </Card>
             </>
           ) : (
-            <Card className="border-primary shadow-lg shadow-primary/10 max-w-md mx-auto">
+            /* No active subscription — show all plans */
+            <Card className="border-border">
               <CardHeader className="text-center pb-2">
                 <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                   <Zap className="w-6 h-6 text-primary" />
                 </div>
-                <CardTitle className="text-xl">Fixsense Monthly</CardTitle>
-                <CardDescription>Everything you need to close more deals with AI-powered sales intelligence.</CardDescription>
+                <CardTitle className="text-xl">Choose a Plan</CardTitle>
+                <CardDescription>
+                  {subscription?.status === "pending"
+                    ? "Payment not completed. You can try again anytime."
+                    : subscription?.status === "cancelled"
+                    ? "Your subscription was cancelled. Resubscribe to continue."
+                    : "Subscribe to unlock AI-powered sales intelligence."}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="text-center">
-                  <span className="text-4xl font-bold text-foreground">$19</span>
-                  <span className="text-muted-foreground">/month</span>
+              <CardContent className="space-y-4">
+                {subscription?.status === "pending" && (
+                  <div className="p-3 rounded-lg bg-accent/10 border border-accent/20 flex items-center gap-2 text-sm text-accent-foreground">
+                    <AlertCircle className="w-4 h-4 text-accent shrink-0" />
+                    <span>Your last payment wasn't completed. Your plan remains unchanged — select a plan below to try again.</span>
+                  </div>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {PLANS_SIMPLE.filter(p => p.key !== "free").map((plan) => (
+                    <div key={plan.key} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                      <h3 className="font-semibold text-foreground mb-1">{plan.name}</h3>
+                      <p className="text-2xl font-bold text-foreground mb-1">
+                        ${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                        <Video className="w-3.5 h-3.5" />
+                        {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} meetings/month
+                      </p>
+                      <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5" />
+                        {plan.team_members_limit === -1 ? "Unlimited" : `Up to ${plan.team_members_limit}`} team members
+                      </p>
+                      <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly</p>
+                      <Button size="sm" className="w-full" onClick={() => subscribe.mutate(plan.key)} disabled={subscribe.isPending}>
+                        {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}
+                        Subscribe to {plan.name}
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-                <Button className="w-full" size="lg" onClick={() => subscribe.mutate("starter")} disabled={subscribe.isPending}>
-                  {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}
-                  Subscribe with Paystack
-                </Button>
                 <p className="text-xs text-center text-muted-foreground">
-                  Or <Link to="/pricing" className="text-primary hover:underline">view all plans</Link>
+                  Or <Link to="/pricing" className="text-primary hover:underline">view full plan details</Link>
                 </p>
               </CardContent>
             </Card>
