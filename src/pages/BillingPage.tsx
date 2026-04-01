@@ -142,7 +142,7 @@ export default function BillingPage() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : subscription && subscription.status !== "inactive" ? (
+          ) : isActive ? (
             <>
               {/* Subscription Card */}
               <Card className="border-primary/20 bg-primary/5">
