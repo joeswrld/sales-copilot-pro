@@ -109,10 +109,19 @@ Deno.serve(async (req) => {
 
       case "charge.success": {
         const authorization = data.authorization;
+        const planKey = data.metadata?.plan_key;
+        const planName = data.metadata?.plan_name;
+        const planPriceUsd = data.metadata?.plan_price_usd;
+        const callsLimit = data.metadata?.calls_limit;
+
         const updates: Record<string, unknown> = {
           status: "active",
           updated_at: new Date().toISOString(),
         };
+
+        // Update plan details from metadata (set during checkout)
+        if (planName) updates.plan_name = `Fixsense ${planName}`;
+        if (planPriceUsd) updates.plan_price_usd = planPriceUsd;
 
         if (authorization) {
           updates.card_last4 = authorization.last4;
@@ -129,6 +138,39 @@ Deno.serve(async (req) => {
         }
 
         await updateSubscription(updates);
+
+        // NOW update the user's profile plan_type and calls_limit (only after payment success)
+        if (planKey && userId) {
+          const resolvedCallsLimit = callsLimit === -1 ? 999999 : (callsLimit || 5);
+          await supabase
+            .from("profiles")
+            .update({
+              plan_type: planKey,
+              calls_limit: resolvedCallsLimit,
+              billing_status: "active",
+            })
+            .eq("id", userId);
+          console.log("Updated profile plan after payment:", { userId, planKey, resolvedCallsLimit });
+        } else if (customerEmail) {
+          // Fallback: find user by email
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", customerEmail)
+            .maybeSingle();
+          if (profile?.id && planKey) {
+            const resolvedCallsLimit = callsLimit === -1 ? 999999 : (callsLimit || 5);
+            await supabase
+              .from("profiles")
+              .update({
+                plan_type: planKey,
+                calls_limit: resolvedCallsLimit,
+                billing_status: "active",
+              })
+              .eq("id", profile.id);
+            console.log("Updated profile plan (via email) after payment:", { email: customerEmail, planKey });
+          }
+        }
         break;
       }
 

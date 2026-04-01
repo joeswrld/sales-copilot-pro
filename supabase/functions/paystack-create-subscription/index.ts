@@ -173,14 +173,8 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    // Also update the profile's plan_type and calls_limit
-    await adminClient
-      .from("profiles")
-      .update({
-        plan_type: plan_key,
-        calls_limit: planConfig.calls_limit === -1 ? 999999 : planConfig.calls_limit,
-      })
-      .eq("id", userId);
+    // DO NOT update profile plan_type here — only after successful payment
+    // Profile updates happen in the webhook (charge.success) or sync function
 
     return new Response(
       JSON.stringify({
