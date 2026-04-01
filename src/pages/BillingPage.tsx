@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
-import { useSubscription, PlanChangePreview } from "@/hooks/useSubscription";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
@@ -23,9 +23,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit } from "@/config/plans";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +43,7 @@ export default function BillingPage() {
   const {
     subscription, isLoading, billingState,
     subscribe, cancelSubscription, changePlan,
-    previewPlanChange, verifyPayment, markAbandoned,
+    verifyPayment, markAbandoned,
     isActive, refetch, currentPlanKey,
     transactions, isTransactionsLoading, isSyncingPending,
   } = useSubscription();
@@ -82,12 +79,6 @@ export default function BillingPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [changeDialogOpen, setChangeDialogOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  // NEW: track preview fetch errors separately so the dialog can show a retry UI
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const handledCallbackKeyRef = useRef<string | null>(null);
 
   // ── Handle return from Paystack checkout ──────────────────────────────
@@ -134,40 +125,6 @@ export default function BillingPage() {
     toast.info("Payment status checked");
   };
 
-  // FIXED: capture error into state instead of just toasting, so the dialog
-  // can show a meaningful error message and a retry button.
-  const handleOpenChangePlan = async (planKey: string) => {
-    setSelectedPlan(planKey);
-    setChangeDialogOpen(true);
-    setIsLoadingPreview(true);
-    setPlanPreview(null);
-    setPreviewError(null);
-    try {
-      const preview = await previewPlanChange.mutateAsync(planKey);
-      setPlanPreview(preview);
-    } catch (err: any) {
-      setPreviewError(
-        err?.message || "Failed to load plan preview. Please try again."
-      );
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  };
-
-  const handleConfirmChangePlan = () => {
-    if (selectedPlan) changePlan.mutate(selectedPlan);
-  };
-
-  // FIXED: reset all dialog state when it closes
-  const handleDialogOpenChange = (open: boolean) => {
-    setChangeDialogOpen(open);
-    if (!open) {
-      setPlanPreview(null);
-      setPreviewError(null);
-      setIsLoadingPreview(false);
-    }
-  };
-
   const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
 
   const showActivePlan = billingState.billingStatus === "active";
@@ -210,9 +167,7 @@ export default function BillingPage() {
                       <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
                       <div className="space-y-3 flex-1">
                         <div>
-                          <p className="font-semibold text-foreground">
-                            Payment not completed
-                          </p>
+                          <p className="font-semibold text-foreground">Payment not completed</p>
                           <p className="text-sm text-muted-foreground mt-1">
                             {billingState.latestPayment?.status === "abandoned"
                               ? "You closed the payment window before completing your subscription."
@@ -409,8 +364,16 @@ export default function BillingPage() {
                                     Upgrade to <strong>{nextPlan.name}</strong> for{" "}
                                     {nextPlan.calls_limit < 0 ? "unlimited" : nextPlan.calls_limit} meetings at ${nextPlan.price_usd}/mo.
                                   </p>
-                                  <Button size="sm" onClick={() => handleOpenChangePlan(nextPlan.key)}>
-                                    <ArrowUp className="w-3.5 h-3.5 mr-1.5" />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => changePlan.mutate(nextPlan.key)}
+                                    disabled={changePlan.isPending}
+                                  >
+                                    {changePlan.isPending ? (
+                                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                    ) : (
+                                      <ArrowUp className="w-3.5 h-3.5 mr-1.5" />
+                                    )}
                                     Upgrade to {nextPlan.name}
                                   </Button>
                                 </div>
@@ -444,7 +407,7 @@ export default function BillingPage() {
                     </Card>
                   )}
 
-                  {/* Change Plan */}
+                  {/* Change Plan — goes directly to Paystack, no preview dialog */}
                   {isActive && availablePlans.length > 0 && (
                     <Card className="border-primary/30">
                       <CardHeader>
@@ -452,7 +415,9 @@ export default function BillingPage() {
                           <ArrowUp className="w-5 h-5 text-primary" />
                           Change Your Plan
                         </CardTitle>
-                        <CardDescription>Upgrade or downgrade with prorated billing.</CardDescription>
+                        <CardDescription>
+                          Switch plans instantly — you'll be taken to Paystack to complete the change.
+                        </CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -460,6 +425,7 @@ export default function BillingPage() {
                             const isUpgrade =
                               PLANS_SIMPLE.findIndex(p => p.key === plan.key) >
                               PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
+                            const isThisPlanPending = changePlan.isPending;
                             return (
                               <div key={plan.key} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
                                 <div className="flex justify-between items-start mb-2">
@@ -494,8 +460,16 @@ export default function BillingPage() {
                                   size="sm"
                                   className="w-full"
                                   variant={isUpgrade ? "default" : "outline"}
-                                  onClick={() => handleOpenChangePlan(plan.key)}
+                                  onClick={() => changePlan.mutate(plan.key)}
+                                  disabled={isThisPlanPending}
                                 >
+                                  {isThisPlanPending ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : isUpgrade ? (
+                                    <ArrowUp className="w-4 h-4 mr-2" />
+                                  ) : (
+                                    <ArrowDown className="w-4 h-4 mr-2" />
+                                  )}
                                   {isUpgrade ? "Upgrade" : "Downgrade"} to {plan.name}
                                 </Button>
                               </div>
@@ -505,129 +479,6 @@ export default function BillingPage() {
                       </CardContent>
                     </Card>
                   )}
-
-                  {/* ── Plan Change Dialog (FIXED) ─────────────────────────── */}
-                  <Dialog open={changeDialogOpen} onOpenChange={handleDialogOpenChange}>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>
-                          {planPreview?.is_upgrade ? "Upgrade" : "Downgrade"} to{" "}
-                          {PLANS_SIMPLE.find(p => p.key === selectedPlan)?.name}
-                        </DialogTitle>
-                        <DialogDescription>Review your plan change with prorated billing</DialogDescription>
-                      </DialogHeader>
-
-                      {/* Loading state */}
-                      {isLoadingPreview && (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
-
-                      {/* Error state — replaces the broken "Unable to load plan preview" text */}
-                      {!isLoadingPreview && previewError && (
-                        <div className="space-y-4 pt-2">
-                          <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
-                            <div>
-                              <p className="text-sm font-medium text-destructive">
-                                Could not load plan preview
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {previewError}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <Button
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => handleDialogOpenChange(false)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              className="flex-1"
-                              onClick={() => selectedPlan && handleOpenChangePlan(selectedPlan)}
-                            >
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              Retry
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Success state — plan preview loaded */}
-                      {!isLoadingPreview && !previewError && planPreview && (
-                        <div className="space-y-4 pt-2">
-                          <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Current plan</span>
-                              <span className="font-medium capitalize">{planPreview.current_plan}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">New plan</span>
-                              <span className="font-medium capitalize">{planPreview.new_plan}</span>
-                            </div>
-                            {planPreview.days_remaining > 0 && (
-                              <div className="border-t border-border pt-3">
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">Days remaining</span>
-                                  <span>{planPreview.days_remaining} days</span>
-                                </div>
-                              </div>
-                            )}
-                            {planPreview.is_upgrade && planPreview.credit_ngn > 0 && (
-                              <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Credit from current plan</span>
-                                <span className="text-primary">-{formatNGN(planPreview.credit_ngn)}</span>
-                              </div>
-                            )}
-                            <div className="border-t border-border pt-3">
-                              <div className="flex justify-between">
-                                <span className="font-medium">Amount due today</span>
-                                <span className="font-bold text-lg">
-                                  {planPreview.is_upgrade
-                                    ? formatNGN(planPreview.prorated_amount_ngn)
-                                    : formatNGN(planPreview.new_price_ngn)}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex justify-between text-sm pt-2">
-                              <span className="text-muted-foreground">Then monthly</span>
-                              <span>
-                                {formatNGN(planPreview.new_monthly_price_ngn)} (${planPreview.new_monthly_price_usd})
-                              </span>
-                            </div>
-                          </div>
-                          {planPreview.is_downgrade && (
-                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                              <p className="text-sm text-destructive">
-                                <strong>Note:</strong> Downgrading will reduce your limits.
-                              </p>
-                            </div>
-                          )}
-                          <div className="flex gap-3 pt-2">
-                            <Button
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => handleDialogOpenChange(false)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              className="flex-1"
-                              onClick={handleConfirmChangePlan}
-                              disabled={changePlan.isPending}
-                            >
-                              {changePlan.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                              Confirm {planPreview.is_upgrade ? "Upgrade" : "Downgrade"}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
 
                   {/* Subscription Actions */}
                   <Card>
@@ -649,7 +500,7 @@ export default function BillingPage() {
                   </Card>
                 </>
               ) : !showIncompleteCheckout ? (
-                /* ── No active plan, no incomplete checkout — show pricing ── */
+                /* ── No active plan — show pricing ── */
                 <Card className="border-primary shadow-lg shadow-primary/10 max-w-md mx-auto">
                   <CardHeader className="text-center pb-2">
                     <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
