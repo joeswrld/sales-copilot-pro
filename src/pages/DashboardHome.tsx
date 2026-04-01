@@ -2,10 +2,11 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity } from "lucide-react";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
+import { useUserProfile } from "@/hooks/useSettings";
 
 const statusColors: Record<string, string> = {
   "Won": "bg-success/10 text-success",
@@ -23,17 +24,14 @@ function PipelineHealthCard({ calls }: { calls: any[] }) {
     const activeCalls = calls.filter(c => c.status !== "Won" && c.status !== "Lost");
     if (activeCalls.length === 0) return null;
 
-    // Factor 1: average sentiment of active deals (0–100, weight 40%)
     const sentimentCalls = activeCalls.filter(c => c.sentiment_score);
     const avgSentiment = sentimentCalls.length > 0
       ? sentimentCalls.reduce((s, c) => s + (c.sentiment_score || 0), 0) / sentimentCalls.length
       : 50;
 
-    // Factor 2: % of active deals NOT at-risk (weight 40%)
     const atRisk = activeCalls.filter(c => c.status === "At Risk").length;
     const safeRatio = activeCalls.length > 0 ? ((activeCalls.length - atRisk) / activeCalls.length) * 100 : 100;
 
-    // Factor 3: recent call frequency — calls in last 7 days vs total active deals (weight 20%)
     const recentCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const recentCalls = activeCalls.filter(c => new Date(c.date).getTime() > recentCutoff).length;
     const activityScore = Math.min((recentCalls / Math.max(activeCalls.length, 1)) * 100, 100);
@@ -45,7 +43,6 @@ function PipelineHealthCard({ calls }: { calls: any[] }) {
   if (score === null) return null;
 
   const color = score >= 70 ? "text-success" : score >= 40 ? "text-accent" : "text-destructive";
-  const bg = score >= 70 ? "bg-success/10" : score >= 40 ? "bg-accent/10" : "bg-destructive/10";
   const label = score >= 70 ? "Healthy" : score >= 40 ? "Needs attention" : "At risk";
   const strokeColor = score >= 70 ? "hsl(152, 60%, 48%)" : score >= 40 ? "hsl(38, 92%, 55%)" : "hsl(0, 72%, 50%)";
 
@@ -86,8 +83,19 @@ function PipelineHealthCard({ calls }: { calls: any[] }) {
 
 export default function DashboardHome() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: stats, isLoading: statsLoading } = useCallStats();
   const { data: calls, isLoading: callsLoading } = useCalls();
+  const { profile, isLoading: profileLoading } = useUserProfile();
+
+  // ── Redirect new users to onboarding ──────────────────────────────────────
+  useEffect(() => {
+    if (profileLoading || callsLoading) return;
+    // If onboarding_complete is false/null and they have no calls yet, send to onboarding
+    if (profile && !profile.onboarding_complete && (!calls || calls.length === 0)) {
+      navigate("/onboarding", { replace: true });
+    }
+  }, [profile, profileLoading, calls, callsLoading, navigate]);
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const recentCalls = (calls || []).slice(0, 5);
@@ -98,6 +106,17 @@ export default function DashboardHome() {
     { label: "Avg Sentiment", value: stats ? `${stats.avgSentiment}%` : "—", icon: CheckCircle, color: "text-accent" },
     { label: "At-Risk Deals", value: stats?.atRisk ?? "—", icon: AlertTriangle, color: "text-destructive" },
   ];
+
+  // Show loader while we check onboarding status
+  if (profileLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -130,7 +149,6 @@ export default function DashboardHome() {
                   <div className="text-2xl font-bold font-display">{s.value}</div>
                 </div>
               ))}
-              {/* Pipeline Health — spans remaining col on lg */}
               {calls && calls.length > 0 && (
                 <PipelineHealthCard calls={calls} />
               )}
