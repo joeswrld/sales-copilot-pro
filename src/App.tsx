@@ -26,8 +26,7 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 
-
-import { DebugInspector } from "./pages/debugInspector";
+import { DebugInspector } from "./pages/DebugInspector"; // FIXED casing
 
 import {
   PrivacyPage,
@@ -57,21 +56,37 @@ const App = () => {
           <BrowserRouter>
             <DebugInspector />
             <Routes>
+              {/* Public Marketing */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/testimonials" element={<TestimonialsPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+              {/* Marketing Pages */}
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/changelog" element={<ChangelogPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/careers" element={<CareersPage />} />
               <Route path="/press" element={<PressPage />} />
+
+              {/* Legal */}
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/contact" element={<ContactPage />} />
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-<Route path="/testimonials" element={<TestimonialsPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+              {/* Protected */}
+              <Route
+                path="/onboarding"
+                element={
+                  <ProtectedRoute>
+                    <OnboardingPage /> {/* FIXED */}
+                  </ProtectedRoute>
+                }
+              />
+
               <Route
                 path="/dashboard"
                 element={
@@ -80,14 +95,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="Onboarding"
-                element={
-                  <ProtectedRoute>
-                    <DOnboardingPage />
-                  </ProtectedRoute>
-                }
-              />
+
               <Route
                 path="/dashboard/calls"
                 element={
@@ -96,6 +104,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/calls/:id"
                 element={
@@ -104,6 +113,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/live"
                 element={
@@ -112,6 +122,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/live/:id"
                 element={
@@ -120,6 +131,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/analytics"
                 element={
@@ -128,6 +140,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/team"
                 element={
@@ -136,6 +149,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/messages"
                 element={
@@ -144,6 +158,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/settings"
                 element={
@@ -152,6 +167,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/profile"
                 element={
@@ -160,6 +176,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/billing"
                 element={
@@ -168,6 +185,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/coach"
                 element={
@@ -176,6 +194,8 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
