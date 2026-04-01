@@ -26,7 +26,7 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 
-import { DebugInspector } from "./pages/debugInspector";
+import { debugInspector } from "./pages/debugInspector";
 
 import {
   PrivacyPage,
