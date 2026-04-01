@@ -353,8 +353,8 @@ export default function BillingPage() {
                 </Card>
               )}
 
-              {/* Change Plan */}
-              {isActive && availablePlans.length > 0 && (
+              {/* Change Plan — always show for active subscribers */}
+              {availablePlans.length > 0 && (
                 <Card className="border-primary/30">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
