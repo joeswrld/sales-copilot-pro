@@ -25,7 +25,7 @@ import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
-
+import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import { DebugInspector } from "./pages/debugInspector";
 
 import {
@@ -43,8 +43,6 @@ import {
   CareersPage,
   PressPage,
 } from "./pages/MarketingPages";
-
-import { GoogleCalendarCallback } from "./pages/GoogleCalendarCallback";
 
 const queryClient = new QueryClient();
 
@@ -91,7 +89,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard"
                 element={
@@ -100,7 +97,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/calls"
                 element={
@@ -109,7 +105,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/calls/:id"
                 element={
@@ -118,7 +113,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/live"
                 element={
@@ -127,7 +121,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/live/:id"
                 element={
@@ -136,7 +129,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/analytics"
                 element={
@@ -145,7 +137,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/team"
                 element={
@@ -154,7 +145,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/messages"
                 element={
@@ -163,7 +153,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/settings"
                 element={
@@ -172,7 +161,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/profile"
                 element={
@@ -181,7 +169,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/billing"
                 element={
@@ -190,7 +177,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/dashboard/coach"
                 element={
