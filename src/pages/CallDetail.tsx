@@ -2,12 +2,13 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Clock, Users, TrendingUp, AlertCircle, CheckCircle,
-  Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare
+  Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare,
+  Bot, ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallDetail, useUpdateCall } from "@/hooks/useCalls";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -34,6 +35,241 @@ const MEETING_TYPE_LABELS: Record<string, string> = {
   negotiation: "Negotiation",
   other: "Other",
 };
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sales-coach-chat`;
+
+function ProactiveCoachPanel({
+  callName,
+  sentiment,
+  talkRatio,
+  objections,
+  buyingSignals,
+  meetingScore,
+  actionItems,
+}: {
+  callName: string;
+  sentiment: number;
+  talkRatio: { rep: number; prospect: number } | null;
+  objections: Objection[];
+  buyingSignals: string[];
+  meetingScore: number | null;
+  actionItems: string[];
+}) {
+  const [coaching, setCoaching] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [followUpInput, setFollowUpInput] = useState("");
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const prompt = `You are a sales coach. Analyze this just-completed sales call and give specific, actionable feedback.
+
+Call: "${callName}"
+Meeting Score: ${meetingScore ?? "N/A"}/10
+Sentiment Score: ${sentiment}%
+Talk Ratio: Rep ${talkRatio?.rep ?? "?"}% / Prospect ${talkRatio?.prospect ?? "?"}%
+Objections raised: ${objections.length} (${objections.filter(o => o.handled).length} handled)
+Buying signals detected: ${buyingSignals.length}
+${objections.length > 0 ? `Objections: ${objections.map(o => o.text || o.type).join(", ")}` : ""}
+${buyingSignals.length > 0 ? `Buying signals: ${buyingSignals.join(", ")}` : ""}
+${actionItems.length > 0 ? `Action items: ${actionItems.join(", ")}` : ""}
+
+Provide:
+1. The 2 most important things the rep did well
+2. The 1 most critical thing to improve before the next call with this prospect
+3. One specific next step to move this deal forward
+
+Keep it concise and direct. No fluff.`;
+
+  const loadCoaching = async () => {
+    if (coaching || isLoading) return;
+    setIsLoading(true);
+    setIsOpen(true);
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!resp.ok || !resp.body) throw new Error("Failed");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let result = "";
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (json === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(json);
+            const chunk = parsed.choices?.[0]?.delta?.content;
+            if (chunk) { result += chunk; setCoaching(result); }
+          } catch {}
+        }
+      }
+      setMessages([{ role: "assistant", content: result }]);
+    } catch {
+      setCoaching("Unable to load coaching insights right now. Try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendFollowUp = async () => {
+    if (!followUpInput.trim() || isLoading) return;
+    const userMsg = { role: "user" as const, content: followUpInput.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setFollowUpInput("");
+    setIsLoading(true);
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: "user", content: prompt },
+            ...newMessages,
+          ],
+        }),
+      });
+      if (!resp.ok || !resp.body) throw new Error("Failed");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let result = "";
+      let buffer = "";
+      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (json === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(json);
+            const chunk = parsed.choices?.[0]?.delta?.content;
+            if (chunk) {
+              result += chunk;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: result } : m);
+                }
+                return [...prev, { role: "assistant", content: result }];
+              });
+            }
+          } catch {}
+        }
+      }
+    } catch {
+      toast.error("Failed to get response");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  return (
+    <div className="glass rounded-xl overflow-hidden border border-primary/20">
+      <button
+        onClick={isOpen ? () => setIsOpen(false) : loadCoaching}
+        className="w-full p-5 flex items-center gap-3 text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+          ) : (
+            <Bot className="w-5 h-5 text-primary" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            AI Coaching Insights
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {isLoading ? "Analyzing this call…" : isOpen ? "Tap to collapse" : "Get personalized feedback on this call"}
+          </p>
+        </div>
+        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-border">
+          <div ref={scrollRef} className="max-h-72 overflow-y-auto p-5 space-y-4">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
+                {msg.role === "assistant" && (
+                  <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4 text-primary" />
+                  </div>
+                )}
+                <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
+                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary/60 text-foreground"
+                }`}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {isLoading && messages.length === 0 && (
+              <div className="flex gap-3">
+                <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+                  <Bot className="w-4 h-4 text-primary" />
+                </div>
+                <div className="bg-secondary/60 rounded-xl px-4 py-3">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0.2s" }} />
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0.4s" }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {coaching && (
+            <div className="border-t border-border p-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Ask a follow-up question…"
+                value={followUpInput}
+                onChange={e => setFollowUpInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && sendFollowUp()}
+                disabled={isLoading}
+                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <Button size="sm" onClick={sendFollowUp} disabled={!followUpInput.trim() || isLoading} className="shrink-0">
+                Ask
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CallDetail() {
   const { id } = useParams();
@@ -69,6 +305,8 @@ export default function CallDetail() {
       toast.success("Call updated");
     } catch { toast.error("Failed to update"); }
   };
+
+  const hasSummaryData = !!summaryData;
 
   return (
     <DashboardLayout>
@@ -154,6 +392,19 @@ export default function CallDetail() {
           </div>
         </div>
 
+        {/* Proactive AI Coaching — shown as soon as summary data is available */}
+        {hasSummaryData && (
+          <ProactiveCoachPanel
+            callName={callData.name}
+            sentiment={callData.sentiment_score || 0}
+            talkRatio={talkRatio}
+            objections={objections}
+            buyingSignals={buyingSignals}
+            meetingScore={meetingScore}
+            actionItems={actionItems}
+          />
+        )}
+
         {/* Talk Ratio */}
         {talkRatio && (
           <div className="glass rounded-xl p-5">
@@ -170,7 +421,7 @@ export default function CallDetail() {
                 <div className="h-full bg-accent" style={{ width: `${talkRatio.prospect}%` }} />
               </div>
               {talkRatio.rep > 65 && (
-                <p className="text-xs text-warning">⚠️ You spoke more than 65% of the time. Aim for 40-60% for better engagement.</p>
+                <p className="text-xs text-warning">⚠️ You spoke more than 65% of the time. Aim for 40–60% for better engagement.</p>
               )}
             </div>
           </div>
@@ -203,7 +454,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Key Decisions & Next Steps & Action Items */}
+        {/* Key Decisions & Action Items */}
         <div className="grid md:grid-cols-2 gap-4">
           {(summaryData?.key_decisions?.length || 0) > 0 && (
             <div className="glass rounded-xl p-5">
@@ -275,11 +526,11 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Empty state when no summary */}
+        {/* Loading state */}
         {!summaryData && !summary.isLoading && (
           <div className="glass rounded-xl p-10 text-center">
             <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-3" />
-            <p className="text-muted-foreground text-sm">AI summary is being generated...</p>
+            <p className="text-muted-foreground text-sm">AI summary is being generated…</p>
             <p className="text-xs text-muted-foreground mt-1">This usually takes a few seconds after the call ends.</p>
           </div>
         )}
