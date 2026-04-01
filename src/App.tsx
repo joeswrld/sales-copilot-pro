@@ -26,7 +26,7 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 
-import { debugInspector } from "./pages/debugInspector"; // FIXED casing
+import { DebugInspector } from "./pages/debugInspector";
 
 import {
   PrivacyPage,
@@ -43,6 +43,8 @@ import {
   CareersPage,
   PressPage,
 } from "./pages/MarketingPages";
+
+import { GoogleCalendarCallback } from "./pages/GoogleCalendarCallback";
 
 const queryClient = new QueryClient();
 
@@ -77,12 +79,15 @@ const App = () => {
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/contact" element={<ContactPage />} />
 
+              {/* Google Calendar OAuth callback */}
+              <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+
               {/* Protected */}
               <Route
                 path="/onboarding"
                 element={
                   <ProtectedRoute>
-                    <OnboardingPage /> {/* FIXED */}
+                    <OnboardingPage />
                   </ProtectedRoute>
                 }
               />
