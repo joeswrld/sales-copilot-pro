@@ -54,11 +54,11 @@ export function useTeamUsage(): { teamUsage: TeamUsage | null; isLoading: boolea
       ]);
 
       // Workspace id from the workspaces table
-      const { data: wsRow } = await supabase
-        .from("workspaces")
+      const { data: wsRow } = await (supabase
+        .from("workspaces" as any)
         .select("id")
         .eq("team_id", membership.team_id)
-        .maybeSingle();
+        .maybeSingle() as any);
 
       // Use the already-resolved effective plan for limits
       const adminPlanKey   = effectivePlan?.planKey ?? "free";
