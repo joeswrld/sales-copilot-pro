@@ -250,13 +250,23 @@ export function useSubscription() {
   // ── Subscribe (new checkout) ───────────────────────────────────────────
   const subscribe = useMutation({
     mutationFn: async (planKey: string = "starter") => {
-      const { data, error } = await invokeWithAuth("paystack-create-subscription", {
-        callback_url: `${window.location.origin}/dashboard/billing`,
-        plan_key: planKey,
+      // Force fresh token to avoid 401 from edge function's server-side JWT validation
+      const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshData.session?.access_token) {
+        throw new Error("Session expired — please sign in again.");
+      }
+      const freshToken = refreshData.session.access_token;
+
+      const result = await supabase.functions.invoke("paystack-create-subscription", {
+        body: {
+          callback_url: `${window.location.origin}/dashboard/billing`,
+          plan_key: planKey,
+        },
+        headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (error) throw new Error(error.message ?? "Failed to start subscription");
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { authorization_url: string; reference: string };
+      if (result.error) throw new Error(result.error.message ?? "Failed to start subscription");
+      if ((result.data as any)?.error) throw new Error((result.data as any).error);
+      return result.data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
       sessionStorage.setItem("fixsense_pending_payment_ref", data.reference);
@@ -273,12 +283,21 @@ export function useSubscription() {
       if (!query.data?.paystack_subscription_code || !query.data?.paystack_email_token) {
         throw new Error("No active subscription to cancel");
       }
-      const { data, error } = await invokeWithAuth("paystack-cancel-subscription", {
-        subscription_code: query.data.paystack_subscription_code,
-        email_token: query.data.paystack_email_token,
+      const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshData.session?.access_token) {
+        throw new Error("Session expired — please sign in again.");
+      }
+      const freshToken = refreshData.session.access_token;
+
+      const result = await supabase.functions.invoke("paystack-cancel-subscription", {
+        body: {
+          subscription_code: query.data.paystack_subscription_code,
+          email_token: query.data.paystack_email_token,
+        },
+        headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (error) throw new Error(error.message ?? "Failed to cancel subscription");
-      if ((data as any)?.error) throw new Error((data as any).error);
+      if (result.error) throw new Error(result.error.message ?? "Failed to cancel subscription");
+      if ((result.data as any)?.error) throw new Error((result.data as any).error);
     },
     onSuccess: () => {
       toast.success("Subscription cancelled");
@@ -291,28 +310,49 @@ export function useSubscription() {
   });
 
   // ── Preview plan change ────────────────────────────────────────────────
+  // FIX: Force a fresh session refresh before calling the edge function.
+  // The edge function's resolveUser() calls admin.auth.getUser(token) which
+  // validates the token server-side. If the stored token is near-expiry or
+  // stale, this fails → 401. Forcing a refresh here guarantees a fresh JWT.
   const previewPlanChange = useMutation({
     mutationFn: async (newPlanKey: string): Promise<PlanChangePreview> => {
-      const { data, error } = await invokeWithAuth("paystack-upgrade-subscription", {
-        new_plan_key: newPlanKey,
-        preview_only: true,
+      // Force fresh token — do NOT use getSessionToken() cache here
+      const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshData.session?.access_token) {
+        throw new Error("Session expired — please sign in again.");
+      }
+      const freshToken = refreshData.session.access_token;
+
+      const result = await supabase.functions.invoke("paystack-upgrade-subscription", {
+        body: { new_plan_key: newPlanKey, preview_only: true },
+        headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (error) throw new Error(error.message ?? "Failed to load plan preview");
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as PlanChangePreview;
+      if (result.error) throw new Error(result.error.message ?? "Failed to load plan preview");
+      if ((result.data as any)?.error) throw new Error((result.data as any).error);
+      return result.data as PlanChangePreview;
     },
   });
 
   // ── Change plan ────────────────────────────────────────────────────────
   const changePlan = useMutation({
     mutationFn: async (newPlanKey: string) => {
-      const { data, error } = await invokeWithAuth("paystack-upgrade-subscription", {
-        new_plan_key: newPlanKey,
-        callback_url: `${window.location.origin}/dashboard/billing`,
+      // Force fresh token same as previewPlanChange
+      const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshData.session?.access_token) {
+        throw new Error("Session expired — please sign in again.");
+      }
+      const freshToken = refreshData.session.access_token;
+
+      const result = await supabase.functions.invoke("paystack-upgrade-subscription", {
+        body: {
+          new_plan_key: newPlanKey,
+          callback_url: `${window.location.origin}/dashboard/billing`,
+        },
+        headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (error) throw new Error(error.message ?? "Failed to change plan");
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data as { authorization_url: string; reference: string };
+      if (result.error) throw new Error(result.error.message ?? "Failed to change plan");
+      if ((result.data as any)?.error) throw new Error((result.data as any).error);
+      return result.data as { authorization_url: string; reference: string };
     },
     onSuccess: (data) => {
       sessionStorage.setItem("fixsense_pending_payment_ref", data.reference);
