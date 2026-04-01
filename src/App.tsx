@@ -24,6 +24,8 @@ import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
+import OnboardingPage from "./pages/OnboardingPage";
+
 
 import { DebugInspector } from "./pages/debugInspector";
 
@@ -75,6 +77,14 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <DashboardHome />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="Onboarding"
+                element={
+                  <ProtectedRoute>
+                    <DOnboardingPage />
                   </ProtectedRoute>
                 }
               />
