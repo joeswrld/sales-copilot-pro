@@ -111,7 +111,7 @@ export default function BillingPage() {
   };
 
   const handleConfirmChangePlan = () => { if (selectedPlan) changePlan.mutate(selectedPlan); };
-  const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
+  const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== "free" && p.key !== currentPlanKey);
 
   const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
   const StatusIcon = status.icon;
