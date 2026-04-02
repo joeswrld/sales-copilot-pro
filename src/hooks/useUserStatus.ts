@@ -88,7 +88,7 @@ export function useUserStatus(teamId?: string | null) {
         .select("*")
         .in("user_id", userIds);
 
-      return (data || []) as UserStatusInfo[];
+      return (data || []) as unknown as UserStatusInfo[];
     },
     enabled: !!teamId,
     staleTime: 10_000,

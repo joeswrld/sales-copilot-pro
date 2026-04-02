@@ -41,6 +41,7 @@ export interface UserProfile {
   calls_used: number;
   calls_limit: number;
   gdpr_consent: boolean;
+  onboarding_complete?: boolean | null;
 }
 
 // ─── Helper: ensure all default integration rows exist for a user ─────────────

@@ -95,7 +95,7 @@ function useBotPhase(callId: string | null | undefined) {
       .select("recall_bot_status, status")
       .eq("id", callId)
       .single()
-      .then(({ data }) => {
+      .then(({ data }: any) => {
         if (!data) return;
         if (data.status === "completed" || data.status === "live") {
           mapRecallStatus(data.recall_bot_status || "none");

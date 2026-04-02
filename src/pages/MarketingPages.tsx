@@ -1029,7 +1029,7 @@ export function BlogPage() {
           {/* Grid */}
           <div className="blog-grid">
             {visible.map((post,i)=>(
-              <a key={post.id} href={`/blog/${post.id}`} style={{textDecoration:"none"}} className="mp-fade" style={{animationDelay:`${i*60}ms`}}>
+              <a key={post.id} href={`/blog/${post.id}`} className="mp-fade" style={{textDecoration:"none", animationDelay:`${i*60}ms`}}>
                 <div className="blog-card">
                   <div className="blog-card-thumb">{POST_ICONS[post.category] || "📝"}</div>
                   <div className="blog-card-body">
