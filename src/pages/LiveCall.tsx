@@ -16,13 +16,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Bot, Loader2, ExternalLink, RefreshCw, CheckCircle2,
-  Clock, ChevronRight, Link2, AlertTriangle, Mic,
+  Clock, ChevronRight, Link2, AlertTriangle,
   Radio, Shield, Eye, StopCircle, Clipboard,
   Info, X, Calendar, Sparkles, RotateCcw, Wifi,
-  Users, MonitorSpeaker,
+  Users, VideoIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useCalendar, type UpcomingMeeting } from "@/hooks/useCalendar";
 import { useLiveCall } from "@/hooks/useLiveCall";
