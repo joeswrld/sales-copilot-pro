@@ -16,13 +16,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Bot, Loader2, ExternalLink, RefreshCw, CheckCircle2,
-  Clock, ChevronRight, Link2, AlertTriangle, Mic,
+  Clock, ChevronRight, Link2, AlertTriangle,
   Radio, Shield, Eye, StopCircle, Clipboard,
   Info, X, Calendar, Sparkles, RotateCcw, Wifi,
-  Users, MonitorSpeaker,
+  Users, VideoIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useCalendar, type UpcomingMeeting } from "@/hooks/useCalendar";
 import { useLiveCall } from "@/hooks/useLiveCall";
@@ -278,14 +289,12 @@ function ActiveSessionCard({
   callId,
   meetingUrl,
   onEnd,
-  onFallback,
   isEnding,
 }: {
   phase: BotPhase;
   callId: string;
   meetingUrl: string;
   onEnd: () => void;
-  onFallback: () => void;
   isEnding: boolean;
 }) {
   const isLive = phase === "recording";
@@ -295,7 +304,7 @@ function ActiveSessionCard({
 
   // Colors per phase
   const cardStyle = isFailed
-    ? "border-orange-500/20 bg-orange-500/5"
+    ? "border-destructive/20 bg-destructive/5"
     : isLive
     ? "border-green-500/25 bg-green-500/5"
     : isWaiting
@@ -303,7 +312,7 @@ function ActiveSessionCard({
     : "border-primary/20 bg-primary/5";
 
   const dotColor = isFailed
-    ? "bg-orange-400"
+    ? "bg-destructive"
     : isLive
     ? "bg-green-400"
     : isWaiting
@@ -323,7 +332,7 @@ function ActiveSessionCard({
           {isJoining && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
           {isWaiting && <Clock className="w-4 h-4 text-yellow-400 animate-pulse" />}
           {isLive && <span className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />}
-          {isFailed && <AlertTriangle className="w-4 h-4 text-orange-400" />}
+          {isFailed && <AlertTriangle className="w-4 h-4 text-destructive" />}
           {phase === "ended" && <CheckCircle2 className="w-4 h-4 text-primary" />}
         </div>
 
@@ -332,7 +341,7 @@ function ActiveSessionCard({
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={cn(
               "font-semibold text-sm",
-              isFailed ? "text-orange-400"
+              isFailed ? "text-destructive"
                 : isLive ? "text-green-400"
                 : isWaiting ? "text-yellow-400"
                 : "text-primary"
@@ -356,7 +365,7 @@ function ActiveSessionCard({
             {isJoining && "Fixsense AI Recorder is connecting to your meeting room…"}
             {isWaiting && 'Bot is in the waiting room. Ask your host to admit "Fixsense AI Recorder".'}
             {isLive && "Both sides of the conversation are captured in real-time."}
-            {isFailed && "Use manual audio capture to record via your browser microphone."}
+            {isFailed && "Bot could not join. Ensure external participants are allowed and try again."}
             {phase === "ended" && "Generating AI summary, transcript, and action items…"}
           </p>
         </div>
@@ -406,23 +415,19 @@ function ActiveSessionCard({
         </div>
       )}
 
-      {/* Bot failed — manual capture option */}
+      {/* Bot failed — retry hint */}
       {isFailed && (
-        <button
-          onClick={onFallback}
-          className="w-full flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/8 p-3.5 text-left hover:bg-orange-500/12 transition-colors"
-        >
-          <div className="w-8 h-8 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
-            <Mic className="w-4 h-4 text-orange-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-orange-400">Use Manual Audio Capture</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Record via your browser mic — no bot needed
-            </p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-        </button>
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3.5 space-y-1.5">
+          <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Bot could not join the meeting
+          </p>
+          <ul className="text-xs text-muted-foreground space-y-0.5 ml-5 list-disc">
+            <li>Make sure the meeting is active</li>
+            <li>Ensure external participants are allowed</li>
+            <li>Ask the host to admit the bot from the waiting room</li>
+          </ul>
+        </div>
       )}
 
       {/* Action buttons */}
@@ -471,51 +476,86 @@ function ActiveSessionCard({
   );
 }
 
-// ─── Manual audio capture panel ──────────────────────────────────────────────
+// ─── Recording consent dialog ────────────────────────────────────────────────
 
-function ManualCapturePanel({ callId }: { callId: string | null }) {
-  const navigate = useNavigate();
+function RecordingConsentDialog({
+  open,
+  onConfirm,
+  onCancel,
+  meetingUrl,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  meetingUrl: string;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  const platform = meetingUrl ? detectPlatform(meetingUrl) : "unknown";
 
   return (
-    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
-          <MonitorSpeaker className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-sm text-primary">Manual Audio Capture</h3>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            Record your meeting directly from your browser. Share your tab audio
-            in Chrome or Edge to capture both sides of the conversation.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {[
-          { icon: <Mic className="w-3.5 h-3.5" />, text: "Mic only on mobile" },
-          { icon: <MonitorSpeaker className="w-3.5 h-3.5" />, text: "Tab audio on Chrome" },
-          { icon: <Radio className="w-3.5 h-3.5" />, text: "Both sides on desktop" },
-          { icon: <Sparkles className="w-3.5 h-3.5" />, text: "AI analysis still runs" },
-        ].map((item, i) => (
-          <div key={i} className="flex items-center gap-2 text-muted-foreground">
-            <span className="text-primary shrink-0">{item.icon}</span>
-            {item.text}
+    <AlertDialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <VideoIcon className="w-5 h-5 text-primary" />
+            </div>
+            <AlertDialogTitle className="text-lg">Recording Consent</AlertDialogTitle>
           </div>
-        ))}
-      </div>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                You're about to deploy the <strong className="text-foreground">Fixsense AI Recorder</strong> bot
+                to your {PLATFORM_LABELS[platform] || "video"} meeting.
+              </p>
 
-      <Button
-        className="w-full gap-2"
-        onClick={() => callId
-          ? navigate(`/dashboard/live/${callId}`)
-          : navigate("/dashboard/live")
-        }
-      >
-        <Mic className="w-4 h-4" />
-        Start Manual Capture
-      </Button>
-    </div>
+              <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2 text-xs">
+                <p className="font-semibold text-foreground">What will happen:</p>
+                <ul className="space-y-1.5 ml-4 list-disc">
+                  <li>A bot named <strong className="text-foreground">"Fixsense AI Recorder"</strong> will join the meeting</li>
+                  <li>All participants will see the bot as an attendee</li>
+                  <li>Audio and video will be captured for AI analysis</li>
+                  <li>The host may need to admit the bot from the waiting room</li>
+                </ul>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                <p className="font-semibold text-primary flex items-center gap-1.5 mb-1">
+                  <Shield className="w-3.5 h-3.5" />
+                  Your responsibility
+                </p>
+                <p>
+                  By proceeding, you confirm that all meeting participants are aware this session
+                  will be recorded. Recording without consent may violate local laws.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+                <Checkbox
+                  checked={agreed}
+                  onCheckedChange={(v) => setAgreed(v === true)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs leading-relaxed">
+                  I confirm that all participants have been informed this meeting will be recorded and analyzed by AI.
+                </span>
+              </label>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={!agreed}
+            className="gap-1.5"
+          >
+            <Bot className="w-4 h-4" />
+            Start Recording
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -622,7 +662,7 @@ export default function LiveCall() {
 
   const [meetingUrl, setMeetingUrl] = useState("");
   const [isStarting, setIsStarting] = useState(false);
-  const [showManual, setShowManual] = useState(false);
+  const [consentUrl, setConsentUrl] = useState<string | null>(null);
 
   // If already in a live call on mount, restore state
   useEffect(() => {
@@ -635,16 +675,23 @@ export default function LiveCall() {
 
   const hasActiveSession = isLive && !!callId;
 
-  // ── Start call: uses existing useLiveCall hook (already works) ──
-  const handleStartRecording = useCallback(async (url: string) => {
+  // ── Show consent dialog before starting ──
+  const handleRequestRecording = useCallback((url: string) => {
     if (usage?.isAtLimit) {
       toast.error("Monthly meeting limit reached. Upgrade to continue.");
       return;
     }
+    setConsentUrl(url);
+  }, [usage]);
+
+  // ── Start call after consent confirmed ──
+  const handleStartRecording = useCallback(async () => {
+    const url = consentUrl;
+    if (!url) return;
+    setConsentUrl(null);
 
     setIsStarting(true);
     setMeetingUrl(url);
-    setShowManual(false);
 
     try {
       const platform = detectPlatform(url);
@@ -657,7 +704,6 @@ export default function LiveCall() {
         participants: [],
       } as any);
 
-      // startCall handles bot dispatch internally — set joining phase
       setPhase("joining");
       toast.success("Recording started — bot is joining your meeting");
     } catch (err: any) {
@@ -673,7 +719,7 @@ export default function LiveCall() {
     } finally {
       setIsStarting(false);
     }
-  }, [startCall, setPhase, usage]);
+  }, [consentUrl, startCall, setPhase]);
 
   // ── End call ──
   const handleEndCall = useCallback(async () => {
@@ -681,21 +727,11 @@ export default function LiveCall() {
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
       setMeetingUrl("");
-      setShowManual(false);
       if (callId) navigate(`/dashboard/calls/${callId}`);
     } catch {
       toast.error("Failed to end call. Please try again.");
     }
   }, [endCall, callId, navigate]);
-
-  // ── Bot failed → show manual capture ──
-  const handleFallback = useCallback(() => {
-    if (callId) {
-      navigate(`/dashboard/live/${callId}`);
-    } else {
-      setShowManual(true);
-    }
-  }, [callId, navigate]);
 
   return (
     <DashboardLayout>
@@ -736,7 +772,7 @@ export default function LiveCall() {
               </p>
             </div>
             <MeetingUrlInput
-              onStart={handleStartRecording}
+              onStart={handleRequestRecording}
               isLoading={isStarting}
               disabled={usage?.isAtLimit ?? false}
             />
@@ -759,7 +795,6 @@ export default function LiveCall() {
             callId={callId}
             meetingUrl={meetingUrl}
             onEnd={handleEndCall}
-            onFallback={handleFallback}
             isEnding={endCall.isPending}
           />
         )}
@@ -779,8 +814,13 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* ── Manual capture panel ── */}
-        {showManual && <ManualCapturePanel callId={callId || null} />}
+        {/* ── Recording consent dialog ── */}
+        <RecordingConsentDialog
+          open={!!consentUrl}
+          meetingUrl={consentUrl || ""}
+          onConfirm={handleStartRecording}
+          onCancel={() => setConsentUrl(null)}
+        />
 
         {/* ── Google Calendar ── */}
         {!calendarConnected && !hasActiveSession && !isStarting && (
@@ -842,7 +882,7 @@ export default function LiveCall() {
                   <UpcomingMeetingRow
                     key={m.id}
                     meeting={m}
-                    onRecord={handleStartRecording}
+                    onRecord={handleRequestRecording}
                     isRecording={isStarting}
                   />
                 ))}
