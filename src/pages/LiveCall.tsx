@@ -795,7 +795,6 @@ export default function LiveCall() {
             callId={callId}
             meetingUrl={meetingUrl}
             onEnd={handleEndCall}
-            onFallback={handleFallback}
             isEnding={endCall.isPending}
           />
         )}
@@ -815,8 +814,13 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* ── Manual capture panel ── */}
-        {showManual && <ManualCapturePanel callId={callId || null} />}
+        {/* ── Recording consent dialog ── */}
+        <RecordingConsentDialog
+          open={!!consentUrl}
+          meetingUrl={consentUrl || ""}
+          onConfirm={handleStartRecording}
+          onCancel={() => setConsentUrl(null)}
+        />
 
         {/* ── Google Calendar ── */}
         {!calendarConnected && !hasActiveSession && !isStarting && (
