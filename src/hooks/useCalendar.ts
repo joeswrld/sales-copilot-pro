@@ -140,7 +140,7 @@ export function useCalendar() {
       if (!user?.id) return null;
       const { data } = await supabase
         .from("integrations")
-        .select("status, updated_at, scope")
+        .select("status, scope")
         .eq("user_id", user.id)
         .eq("provider", "google_calendar")
         .maybeSingle();
