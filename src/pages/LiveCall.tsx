@@ -662,7 +662,7 @@ export default function LiveCall() {
 
   const [meetingUrl, setMeetingUrl] = useState("");
   const [isStarting, setIsStarting] = useState(false);
-  const [showManual, setShowManual] = useState(false);
+  const [consentUrl, setConsentUrl] = useState<string | null>(null);
 
   // If already in a live call on mount, restore state
   useEffect(() => {
@@ -675,16 +675,23 @@ export default function LiveCall() {
 
   const hasActiveSession = isLive && !!callId;
 
-  // ── Start call: uses existing useLiveCall hook (already works) ──
-  const handleStartRecording = useCallback(async (url: string) => {
+  // ── Show consent dialog before starting ──
+  const handleRequestRecording = useCallback((url: string) => {
     if (usage?.isAtLimit) {
       toast.error("Monthly meeting limit reached. Upgrade to continue.");
       return;
     }
+    setConsentUrl(url);
+  }, [usage]);
+
+  // ── Start call after consent confirmed ──
+  const handleStartRecording = useCallback(async () => {
+    const url = consentUrl;
+    if (!url) return;
+    setConsentUrl(null);
 
     setIsStarting(true);
     setMeetingUrl(url);
-    setShowManual(false);
 
     try {
       const platform = detectPlatform(url);
@@ -697,7 +704,6 @@ export default function LiveCall() {
         participants: [],
       } as any);
 
-      // startCall handles bot dispatch internally — set joining phase
       setPhase("joining");
       toast.success("Recording started — bot is joining your meeting");
     } catch (err: any) {
@@ -713,7 +719,7 @@ export default function LiveCall() {
     } finally {
       setIsStarting(false);
     }
-  }, [startCall, setPhase, usage]);
+  }, [consentUrl, startCall, setPhase]);
 
   // ── End call ──
   const handleEndCall = useCallback(async () => {
@@ -721,21 +727,11 @@ export default function LiveCall() {
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
       setMeetingUrl("");
-      setShowManual(false);
       if (callId) navigate(`/dashboard/calls/${callId}`);
     } catch {
       toast.error("Failed to end call. Please try again.");
     }
   }, [endCall, callId, navigate]);
-
-  // ── Bot failed → show manual capture ──
-  const handleFallback = useCallback(() => {
-    if (callId) {
-      navigate(`/dashboard/live/${callId}`);
-    } else {
-      setShowManual(true);
-    }
-  }, [callId, navigate]);
 
   return (
     <DashboardLayout>
