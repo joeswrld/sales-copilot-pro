@@ -101,7 +101,7 @@ function useBotStatus(callId: string | undefined) {
 
     // Poll the call row for bot status updates
     const fetch = async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("calls")
         .select("recall_bot_status")
         .eq("id", callId)

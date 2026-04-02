@@ -54,7 +54,7 @@ export function useTeamUsage(): { teamUsage: TeamUsage | null; isLoading: boolea
       ]);
 
       // Workspace id from the workspaces table
-      const { data: wsRow } = await supabase
+      const { data: wsRow } = await (supabase as any)
         .from("workspaces")
         .select("id")
         .eq("team_id", membership.team_id)

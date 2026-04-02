@@ -194,7 +194,7 @@ export function useSubscription() {
         .select("plan_type, billing_status")
         .eq("id", user.id)
         .single();
-      return data as { plan_type: string; billing_status: string } | null;
+      return data as unknown as { plan_type: string; billing_status: string } | null;
     },
     enabled: !!user,
     refetchInterval: 10_000,

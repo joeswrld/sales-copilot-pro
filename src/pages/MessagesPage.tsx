@@ -689,7 +689,7 @@ function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; 
     const { data } = await supabase.from("scheduled_messages" as any)
       .select("*").eq("conversation_id", convId).eq("sender_id", myId)
       .eq("status", "pending").order("scheduled_for", { ascending: true });
-    setItems((data || []) as ScheduledMsg[]);
+    setItems((data || []) as unknown as ScheduledMsg[]);
     setLoading(false);
   }, [convId, myId]);
 
@@ -998,7 +998,7 @@ function PinsPanel({ convId, onClose }: { convId:string; onClose:()=>void }) {
   const load = useCallback(async () => {
     try {
       const { data } = await supabase.from("pinned_messages" as any).select("*").eq("conversation_id",convId).order("created_at",{ascending:false});
-      setPins((data||[]) as PinRow[]); setLoading(false);
+      setPins((data||[]) as unknown as PinRow[]); setLoading(false);
     } catch { setLoading(false); }
   },[convId]);
   useEffect(()=>{ load(); },[load]);

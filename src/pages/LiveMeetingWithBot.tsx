@@ -46,7 +46,7 @@ function useBotLiveStatus(callId: string | undefined) {
       .select("status")
       .eq("call_id", callId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data }: any) => {
         if (data?.status) setStatus(data.status as BotLiveStatus);
       });
 

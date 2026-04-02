@@ -140,7 +140,7 @@ export function useCalendar() {
       if (!user?.id) return null;
       const { data } = await supabase
         .from("integrations")
-        .select("status, updated_at, scope")
+        .select("status, scope")
         .eq("user_id", user.id)
         .eq("provider", "google_calendar")
         .maybeSingle();
@@ -166,7 +166,7 @@ export function useCalendar() {
         .order("scheduled_time", { ascending: true })
         .limit(20);
       if (error) throw error;
-      return (data ?? []) as UpcomingMeeting[];
+      return (data ?? []) as unknown as UpcomingMeeting[];
     },
     enabled:         !!user?.id && isConnected,
     refetchInterval: 60_000,
