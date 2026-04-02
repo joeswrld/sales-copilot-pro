@@ -289,14 +289,12 @@ function ActiveSessionCard({
   callId,
   meetingUrl,
   onEnd,
-  onFallback,
   isEnding,
 }: {
   phase: BotPhase;
   callId: string;
   meetingUrl: string;
   onEnd: () => void;
-  onFallback: () => void;
   isEnding: boolean;
 }) {
   const isLive = phase === "recording";
@@ -306,7 +304,7 @@ function ActiveSessionCard({
 
   // Colors per phase
   const cardStyle = isFailed
-    ? "border-orange-500/20 bg-orange-500/5"
+    ? "border-destructive/20 bg-destructive/5"
     : isLive
     ? "border-green-500/25 bg-green-500/5"
     : isWaiting
