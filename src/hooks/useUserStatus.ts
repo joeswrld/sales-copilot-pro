@@ -63,7 +63,7 @@ export function useUserStatus(teamId?: string | null) {
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
-      return data as UserStatusInfo | null;
+      return data as unknown as UserStatusInfo | null;
     },
     enabled: !!user,
     staleTime: 30_000,
