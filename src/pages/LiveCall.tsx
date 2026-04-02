@@ -415,23 +415,19 @@ function ActiveSessionCard({
         </div>
       )}
 
-      {/* Bot failed — manual capture option */}
+      {/* Bot failed — retry hint */}
       {isFailed && (
-        <button
-          onClick={onFallback}
-          className="w-full flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/8 p-3.5 text-left hover:bg-orange-500/12 transition-colors"
-        >
-          <div className="w-8 h-8 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
-            <Mic className="w-4 h-4 text-orange-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-orange-400">Use Manual Audio Capture</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Record via your browser mic — no bot needed
-            </p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-        </button>
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3.5 space-y-1.5">
+          <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Bot could not join the meeting
+          </p>
+          <ul className="text-xs text-muted-foreground space-y-0.5 ml-5 list-disc">
+            <li>Make sure the meeting is active</li>
+            <li>Ensure external participants are allowed</li>
+            <li>Ask the host to admit the bot from the waiting room</li>
+          </ul>
+        </div>
       )}
 
       {/* Action buttons */}
