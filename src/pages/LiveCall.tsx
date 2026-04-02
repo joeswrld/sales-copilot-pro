@@ -772,7 +772,7 @@ export default function LiveCall() {
               </p>
             </div>
             <MeetingUrlInput
-              onStart={handleStartRecording}
+              onStart={handleRequestRecording}
               isLoading={isStarting}
               disabled={usage?.isAtLimit ?? false}
             />
