@@ -332,7 +332,7 @@ function ActiveSessionCard({
           {isJoining && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
           {isWaiting && <Clock className="w-4 h-4 text-yellow-400 animate-pulse" />}
           {isLive && <span className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />}
-          {isFailed && <AlertTriangle className="w-4 h-4 text-orange-400" />}
+          {isFailed && <AlertTriangle className="w-4 h-4 text-destructive" />}
           {phase === "ended" && <CheckCircle2 className="w-4 h-4 text-primary" />}
         </div>
 
