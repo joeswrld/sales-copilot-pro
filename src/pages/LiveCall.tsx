@@ -882,7 +882,7 @@ export default function LiveCall() {
                   <UpcomingMeetingRow
                     key={m.id}
                     meeting={m}
-                    onRecord={handleStartRecording}
+                    onRecord={handleRequestRecording}
                     isRecording={isStarting}
                   />
                 ))}
