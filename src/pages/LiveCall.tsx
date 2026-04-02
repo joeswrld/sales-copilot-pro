@@ -9,6 +9,10 @@
  * - No bot_sessions table required
  * - Status tracked via calls.recall_bot_status via Realtime
  * - Page works 100% even with zero edge functions deployed
+ *
+ * FIX: isValidMeetingUrl now accepts any valid https:// URL instead of
+ * rejecting non-Meet/Zoom links. detectPlatform still identifies the platform
+ * for display purposes, but validation no longer blocks unknown platforms.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -69,11 +73,13 @@ const PLATFORM_COLORS: Record<string, string> = {
   teams: "text-purple-400 bg-purple-500/15 border-purple-500/25",
 };
 
+// ─── FIX: Accept any valid https:// URL ──────────────────────────────────────
 function isValidMeetingUrl(url: string): boolean {
   if (!url.trim()) return false;
   try {
-    new URL(url);
-    return detectPlatform(url) !== "unknown";
+    const parsed = new URL(url);
+    // Must be http or https
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
   } catch {
     return false;
   }
@@ -196,7 +202,7 @@ function MeetingUrlInput({
     const v = url.trim();
     if (!v) { setErr("Paste a meeting link to get started"); return; }
     if (!isValidMeetingUrl(v)) {
-      setErr("Please enter a valid Google Meet or Zoom link");
+      setErr("Please enter a valid meeting link starting with https://");
       return;
     }
     setErr("");
@@ -276,7 +282,11 @@ function MeetingUrlInput({
           <span className="w-2 h-2 rounded-full bg-indigo-400/60" />
           Zoom
         </span>
-        <span className="text-muted-foreground/40 text-[10px]">Teams coming soon</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-purple-400/60" />
+          Teams
+        </span>
+        <span className="text-muted-foreground/40 text-[10px]">+ any video link</span>
       </div>
     </div>
   );
@@ -311,20 +321,11 @@ function ActiveSessionCard({
     ? "border-yellow-500/20 bg-yellow-500/5"
     : "border-primary/20 bg-primary/5";
 
-  const dotColor = isFailed
-    ? "bg-destructive"
-    : isLive
-    ? "bg-green-400"
-    : isWaiting
-    ? "bg-yellow-400"
-    : "bg-primary";
-
   return (
     <div className={cn("rounded-2xl border p-5 space-y-4 transition-all duration-300", cardStyle)}>
 
       {/* Header */}
       <div className="flex items-start gap-3">
-        {/* Status dot / spinner */}
         <div className={cn(
           "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
           cardStyle
@@ -337,7 +338,6 @@ function ActiveSessionCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Title + LIVE badge */}
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={cn(
               "font-semibold text-sm",
@@ -360,7 +360,6 @@ function ActiveSessionCard({
             )}
           </div>
 
-          {/* Subtitle */}
           <p className="text-xs text-muted-foreground leading-relaxed">
             {isJoining && "Fixsense AI Recorder is connecting to your meeting room…"}
             {isWaiting && 'Bot is in the waiting room. Ask your host to admit "Fixsense AI Recorder".'}
@@ -768,7 +767,7 @@ export default function LiveCall() {
             <div>
               <h2 className="font-semibold text-sm">Start a New Recording</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Paste your Google Meet or Zoom link below
+                Paste your meeting link below (Google Meet, Zoom, Teams, or any video link)
               </p>
             </div>
             <MeetingUrlInput
