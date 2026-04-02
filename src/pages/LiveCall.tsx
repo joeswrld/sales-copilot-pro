@@ -312,7 +312,7 @@ function ActiveSessionCard({
     : "border-primary/20 bg-primary/5";
 
   const dotColor = isFailed
-    ? "bg-orange-400"
+    ? "bg-destructive"
     : isLive
     ? "bg-green-400"
     : isWaiting
