@@ -341,7 +341,7 @@ function ActiveSessionCard({
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className={cn(
               "font-semibold text-sm",
-              isFailed ? "text-orange-400"
+              isFailed ? "text-destructive"
                 : isLive ? "text-green-400"
                 : isWaiting ? "text-yellow-400"
                 : "text-primary"
