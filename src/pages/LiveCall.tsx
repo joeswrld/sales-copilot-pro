@@ -476,51 +476,86 @@ function ActiveSessionCard({
   );
 }
 
-// ─── Manual audio capture panel ──────────────────────────────────────────────
+// ─── Recording consent dialog ────────────────────────────────────────────────
 
-function ManualCapturePanel({ callId }: { callId: string | null }) {
-  const navigate = useNavigate();
+function RecordingConsentDialog({
+  open,
+  onConfirm,
+  onCancel,
+  meetingUrl,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  meetingUrl: string;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  const platform = meetingUrl ? detectPlatform(meetingUrl) : "unknown";
 
   return (
-    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
-          <MonitorSpeaker className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-sm text-primary">Manual Audio Capture</h3>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            Record your meeting directly from your browser. Share your tab audio
-            in Chrome or Edge to capture both sides of the conversation.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {[
-          { icon: <Mic className="w-3.5 h-3.5" />, text: "Mic only on mobile" },
-          { icon: <MonitorSpeaker className="w-3.5 h-3.5" />, text: "Tab audio on Chrome" },
-          { icon: <Radio className="w-3.5 h-3.5" />, text: "Both sides on desktop" },
-          { icon: <Sparkles className="w-3.5 h-3.5" />, text: "AI analysis still runs" },
-        ].map((item, i) => (
-          <div key={i} className="flex items-center gap-2 text-muted-foreground">
-            <span className="text-primary shrink-0">{item.icon}</span>
-            {item.text}
+    <AlertDialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <VideoIcon className="w-5 h-5 text-primary" />
+            </div>
+            <AlertDialogTitle className="text-lg">Recording Consent</AlertDialogTitle>
           </div>
-        ))}
-      </div>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                You're about to deploy the <strong className="text-foreground">Fixsense AI Recorder</strong> bot
+                to your {PLATFORM_LABELS[platform] || "video"} meeting.
+              </p>
 
-      <Button
-        className="w-full gap-2"
-        onClick={() => callId
-          ? navigate(`/dashboard/live/${callId}`)
-          : navigate("/dashboard/live")
-        }
-      >
-        <Mic className="w-4 h-4" />
-        Start Manual Capture
-      </Button>
-    </div>
+              <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2 text-xs">
+                <p className="font-semibold text-foreground">What will happen:</p>
+                <ul className="space-y-1.5 ml-4 list-disc">
+                  <li>A bot named <strong className="text-foreground">"Fixsense AI Recorder"</strong> will join the meeting</li>
+                  <li>All participants will see the bot as an attendee</li>
+                  <li>Audio and video will be captured for AI analysis</li>
+                  <li>The host may need to admit the bot from the waiting room</li>
+                </ul>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                <p className="font-semibold text-primary flex items-center gap-1.5 mb-1">
+                  <Shield className="w-3.5 h-3.5" />
+                  Your responsibility
+                </p>
+                <p>
+                  By proceeding, you confirm that all meeting participants are aware this session
+                  will be recorded. Recording without consent may violate local laws.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+                <Checkbox
+                  checked={agreed}
+                  onCheckedChange={(v) => setAgreed(v === true)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs leading-relaxed">
+                  I confirm that all participants have been informed this meeting will be recorded and analyzed by AI.
+                </span>
+              </label>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={!agreed}
+            className="gap-1.5"
+          >
+            <Bot className="w-4 h-4" />
+            Start Recording
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
