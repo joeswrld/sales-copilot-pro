@@ -689,7 +689,7 @@ function ScheduledList({ convId, myId, onClose }: { convId:string; myId:string; 
     const { data } = await supabase.from("scheduled_messages" as any)
       .select("*").eq("conversation_id", convId).eq("sender_id", myId)
       .eq("status", "pending").order("scheduled_for", { ascending: true });
-    setItems((data || []) as ScheduledMsg[]);
+    setItems((data || []) as unknown as ScheduledMsg[]);
     setLoading(false);
   }, [convId, myId]);
 
