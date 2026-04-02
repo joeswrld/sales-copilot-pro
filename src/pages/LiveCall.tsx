@@ -365,7 +365,7 @@ function ActiveSessionCard({
             {isJoining && "Fixsense AI Recorder is connecting to your meeting room…"}
             {isWaiting && 'Bot is in the waiting room. Ask your host to admit "Fixsense AI Recorder".'}
             {isLive && "Both sides of the conversation are captured in real-time."}
-            {isFailed && "Use manual audio capture to record via your browser microphone."}
+            {isFailed && "Bot could not join. Ensure external participants are allowed and try again."}
             {phase === "ended" && "Generating AI summary, transcript, and action items…"}
           </p>
         </div>
