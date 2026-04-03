@@ -73,12 +73,22 @@ const PLATFORM_COLORS: Record<string, string> = {
   teams: "text-purple-400 bg-purple-500/15 border-purple-500/25",
 };
 
-// ─── FIX: Accept any valid https:// URL ──────────────────────────────────────
+// ─── Accept meeting URLs with or without https:// prefix ─────────────────────
+function normalizeMeetingUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  // Auto-prepend https:// if missing
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
 function isValidMeetingUrl(url: string): boolean {
-  if (!url.trim()) return false;
+  const normalized = normalizeMeetingUrl(url);
+  if (!normalized) return false;
   try {
-    const parsed = new URL(url);
-    // Must be http or https
+    const parsed = new URL(normalized);
     return parsed.protocol === "https:" || parsed.protocol === "http:";
   } catch {
     return false;
