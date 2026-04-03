@@ -3,225 +3,100 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUserProfile } from "@/hooks/useSettings";
-import { PLANS, formatNGN } from "@/config/plans";
 
-// ─── Reusable FadeIn (mirrors LandingPage) ────────────────────────────────────
-function useInView(threshold = 0.1) {
+function useInView(threshold = 0.08) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { setInView(true); obs.disconnect(); }
-    }, { threshold });
-    obs.observe(el);
-    return () => obs.disconnect();
+    const el = ref.current; if (!el) return;
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setInView(true); obs.disconnect(); } }, { threshold });
+    obs.observe(el); return () => obs.disconnect();
   }, [threshold]);
   return { ref, inView };
 }
-
-function FadeIn({ children, delay = 0, className = "" }: {
-  children: React.ReactNode; delay?: number; className?: string;
-}) {
+function FadeIn({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
   const { ref, inView } = useInView();
   return (
-    <div ref={ref} className={className} style={{
-      opacity: inView ? 1 : 0,
-      transform: inView ? "translateY(0)" : "translateY(24px)",
-      transition: `opacity 0.65s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.65s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
-    }}>
+    <div ref={ref} className={className} style={{ opacity: inView ? 1 : 0, transform: inView ? "translateY(0)" : "translateY(20px)", transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms` }}>
       {children}
     </div>
   );
 }
-
-function Logo({ size = 30 }: { size?: number }) {
+function Logo({ size = 28 }: { size?: number }) {
+  return <img src="/fixsense_icon_logo (2).png" alt="Fixsense" width={size} height={size}
+    style={{ width: size, height: size, borderRadius: Math.round(size * 0.24), objectFit: "cover", display: "block", flexShrink: 0 }} />;
+}
+function Check({ on = true, accent = false }: { on?: boolean; accent?: boolean }) {
+  if (!on) return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+      <circle cx="7.5" cy="7.5" r="7" fill="rgba(100,116,139,0.1)" />
+      <path d="M5 5l5 5M10 5l-5 5" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
   return (
-    <img
-      src="/fixsense_icon_logo (2).png"
-      alt="Fixsense"
-      width={size}
-      height={size}
-      style={{ width: size, height: size, borderRadius: Math.round(size * 0.24), objectFit: "cover", display: "block", flexShrink: 0 }}
-    />
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+      <circle cx="7.5" cy="7.5" r="7" fill={accent ? "rgba(99,102,241,0.15)" : "rgba(16,185,129,0.12)"} />
+      <path d="M4.5 7.5l2 2 4-4" stroke={accent ? "#818cf8" : "#10b981"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
-const CheckIcon = ({ green = false }: { green?: boolean }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-    <circle cx="8" cy="8" r="8" fill={green ? "rgba(16,185,129,0.12)" : "rgba(37,99,235,0.1)"} />
-    <path d="M5 8l2 2 4-4" stroke={green ? "#10b981" : "#2563EB"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const XIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-    <circle cx="8" cy="8" r="8" fill="rgba(100,116,139,0.08)" />
-    <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-// ─── Plan data optimized for upsell ──────────────────────────────────────────
-const PRICING_PLANS = [
-  {
-    key: "free",
-    name: "Free",
-    tagline: "For individuals exploring Fixsense",
-    price: "$0",
-    period: "/month",
-    perMeeting: null,
-    meetings: "5 meetings/mo",
-    seats: "1 user only",
-    cta: "Get Started Free",
-    highlight: false,
-    badge: null,
-    de_emphasize: false,
-    features: [
-      { text: "5 meetings per month", included: true },
-      { text: "Basic transcription", included: true },
-      { text: "Basic AI summaries", included: true },
-      { text: "Zoom integration", included: true },
-      { text: "Team members", included: false },
-      { text: "Objection detection", included: false },
-      { text: "Coaching insights", included: false },
-      { text: "Internal messaging", included: false },
-      { text: "Team analytics", included: false },
-      { text: "Priority processing", included: false },
-    ],
-  },
-  {
-    key: "starter",
-    name: "Starter",
-    tagline: "Good for testing Fixsense",
-    price: "$19",
-    period: "/month",
-    perMeeting: "$0.38 per meeting",
-    meetings: "50 meetings/mo",
-    seats: "Up to 3 members",
-    cta: "Upgrade to Starter",
-    highlight: false,
-    badge: null,
-    de_emphasize: true,
-    features: [
-      { text: "50 meetings per month", included: true },
-      { text: "Full transcription", included: true },
-      { text: "Basic AI summaries", included: true },
-      { text: "Zoom + Google Meet", included: true },
-      { text: "Up to 3 team members", included: true },
-      { text: "Objection detection", included: false },
-      { text: "Coaching insights", included: false },
-      { text: "Internal messaging (limited)", included: false },
-      { text: "Team analytics", included: false },
-      { text: "Priority processing", included: false },
-    ],
-  },
-  {
-    key: "growth",
-    name: "Growth",
-    tagline: "The plan most sales teams choose",
-    price: "$49",
-    period: "/month",
-    perMeeting: "$0.16 per meeting",
-    meetings: "300 meetings/mo",
-    seats: "Up to 10 members",
-    cta: "Upgrade to Growth",
-    highlight: true,
-    badge: "Most Popular",
-    de_emphasize: false,
-    features: [
-      { text: "300 meetings per month", included: true },
-      { text: "Full transcription", included: true },
-      { text: "Full AI summaries + action items", included: true },
-      { text: "Zoom, Meet & Teams", included: true },
-      { text: "Up to 10 team members", included: true },
-      { text: "Objection detection", included: true },
-      { text: "Coaching insights on calls", included: true },
-      { text: "Full internal messaging", included: true },
-      { text: "Team performance analytics", included: true },
-      { text: "Priority support", included: true },
-    ],
-  },
-  {
-    key: "scale",
-    name: "Scale",
-    tagline: "For teams that rely on Fixsense daily",
-    price: "$99",
-    period: "/month",
-    perMeeting: "Best value at scale",
-    meetings: "Unlimited meetings",
-    seats: "Unlimited members",
-    cta: "Upgrade to Scale",
-    highlight: false,
-    badge: "Best Value",
-    de_emphasize: false,
-    features: [
-      { text: "Unlimited meetings (fair use)", included: true },
-      { text: "Full transcription", included: true },
-      { text: "Full AI summaries + action items", included: true },
-      { text: "Zoom, Meet & Teams", included: true },
-      { text: "Unlimited team members", included: true },
-      { text: "Objection detection", included: true },
-      { text: "Advanced coaching + leaderboards", included: true },
-      { text: "Full internal messaging", included: true },
-      { text: "Advanced analytics + trends", included: true },
-      { text: "Priority processing + early access", included: true },
-    ],
-  },
+const PLANS = [
+  { key:"free",    name:"Free",    tagline:"Try before you commit",                    price:"$0",  mh:"5h",    seats:"Solo only",      cta:"Start Free",    highlight:false, badge:null,          dim:false,
+    features:[{t:"5 hours of call minutes/mo",on:true},{t:"Basic AI transcription",on:true},{t:"Basic call summaries",on:true},{t:"Zoom integration",on:true},{t:"Team seats",on:false},{t:"Objection detection",on:false},{t:"Coaching insights",on:false},{t:"Team analytics",on:false}]},
+  { key:"starter", name:"Starter", tagline:"For individuals getting started",           price:"$19", mh:"25h",   seats:"Up to 3 members",cta:"Get Starter",   highlight:false, badge:null,          dim:true,
+    features:[{t:"25 hours of call minutes/mo",on:true},{t:"Full AI transcription",on:true},{t:"Basic call summaries",on:true},{t:"Zoom + Google Meet",on:true},{t:"Up to 3 team members",on:true},{t:"Objection detection",on:false},{t:"Coaching insights",on:false},{t:"Team analytics",on:false}]},
+  { key:"growth",  name:"Growth",  tagline:"The plan winning sales teams choose",       price:"$49", mh:"100h",  seats:"Up to 10 members",cta:"Get Growth",  highlight:true,  badge:"Most Popular", dim:false,
+    features:[{t:"100 hours of call minutes/mo",on:true},{t:"Full AI transcription",on:true},{t:"Full summaries + action items",on:true},{t:"Zoom, Meet & Teams",on:true},{t:"Up to 10 team members",on:true},{t:"Objection detection",on:true},{t:"Coaching insights on calls",on:true},{t:"Team performance analytics",on:true}]},
+  { key:"scale",   name:"Scale",   tagline:"For teams that live in calls",              price:"$99", mh:"333h+", seats:"Unlimited members",cta:"Get Scale",   highlight:false, badge:"Best Value",   dim:false,
+    features:[{t:"333h+ call minutes (fair use)",on:true},{t:"Full AI transcription",on:true},{t:"Full summaries + action items",on:true},{t:"Zoom, Meet & Teams",on:true},{t:"Unlimited team members",on:true},{t:"Objection detection",on:true},{t:"Advanced coaching + leaderboards",on:true},{t:"Advanced analytics + trends",on:true}]},
 ];
 
-const MATRIX_ROWS = [
-  { label: "Meetings / month", free: "5", starter: "50", growth: "300", scale: "Unlimited" },
-  { label: "Team members / seats", free: "1", starter: "3", growth: "10", scale: "Unlimited" },
-  { label: "AI meeting summaries", free: true, starter: "Basic", growth: true, scale: true },
-  { label: "Objection detection", free: false, starter: false, growth: true, scale: true },
-  { label: "Coaching insights", free: false, starter: false, growth: true, scale: true },
-  { label: "Internal messaging", free: false, starter: "Limited", growth: true, scale: true },
-  { label: "Team analytics", free: false, starter: false, growth: true, scale: true },
-  { label: "Advanced leaderboards", free: false, starter: false, growth: false, scale: true },
-  { label: "Priority processing", free: false, starter: false, growth: false, scale: true },
-  { label: "Early feature access", free: false, starter: false, growth: false, scale: true },
+const MATRIX = [
+  { label:"Call minutes / month", s:"25h",   g:"100h",  sc:"333h+" },
+  { label:"Team seats",           s:"3",     g:"10",    sc:"∞" },
+  { label:"Cost per hour",        s:"$0.76", g:"$0.49", sc:"flat" },
+  { label:"AI call summaries",    s:"Basic", g:true,    sc:true },
+  { label:"Objection detection",  s:false,   g:true,    sc:true },
+  { label:"Coaching insights",    s:false,   g:true,    sc:true },
+  { label:"Team analytics",       s:false,   g:true,    sc:true },
+  { label:"Leaderboards",         s:false,   g:false,   sc:true },
+  { label:"Priority processing",  s:false,   g:false,   sc:true },
 ];
 
-// ─── FAQ Accordion ────────────────────────────────────────────────────────────
-function FaqSection() {
-  const [open, setOpen] = useState<number | null>(null);
-  const FAQS = [
-    { q: "Why do most teams choose Growth?", a: "Growth unlocks the full collaboration suite — coaching comments, team analytics, internal messaging, and objection detection. These are the features that move the needle on deal conversion. Starter is intentionally limited to individual-style usage." },
-    { q: "What's the per-meeting cost difference?", a: "Starter costs $0.38 per meeting. Growth drops that to $0.16. If your team runs more than ~130 meetings per month, Growth already pays for itself in efficiency gains alone." },
-    { q: "When do my monthly meetings reset?", a: "Your meeting count resets at the start of each billing cycle based on your subscription renewal date. You'll always see your exact reset date on the billing page." },
-    { q: "What counts as a meeting?", a: "Any call started and completed through Fixsense counts as one meeting. Calls still in progress are not counted until they finish." },
-    { q: "Why am I billed in NGN?", a: "We use Paystack for payments, which processes in Nigerian Naira. Prices shown in USD are converted at a fixed rate of 1 USD = ₦1,500 for full transparency." },
-    { q: "Can I change plans anytime?", a: "Yes — upgrade or downgrade at any time. Changes take effect immediately with prorated billing. No locked contracts." },
-  ];
+const FAQS = [
+  { q:"What counts as a call minute?",        a:"Every minute of a completed meeting recorded through Fixsense counts against your monthly quota. A 45-minute call uses exactly 45 minutes. In-progress calls are not counted until they end." },
+  { q:"What happens when I hit my limit?",    a:"New calls are blocked until your cycle resets or you upgrade. Existing completed calls and their summaries remain fully accessible. You can upgrade at any time mid-cycle." },
+  { q:"When does my quota reset?",            a:"Your minute quota resets at the start of each billing cycle, anchored to your subscription renewal date. The exact reset date is always visible on your billing page." },
+  { q:"Why charge by minutes instead of calls?", a:"Per-call pricing punished short discovery calls while rewarding long rambling ones. Per-minute pricing is proportional to the compute cost of transcription and AI analysis — so you pay for what you actually use." },
+  { q:"Is the Scale plan really unlimited?",  a:"Scale includes 333+ hours (20,000 minutes) at the flat rate, which covers even the busiest teams. A fair-use policy applies above this threshold — in practice fewer than 1% of teams ever reach it." },
+  { q:"Can I change plans mid-cycle?",        a:"Yes. Upgrades take effect immediately with prorated billing. Downgrades take effect at the next cycle. No locked contracts — cancel anytime." },
+  { q:"Why am I billed in NGN?",             a:"We use Paystack for payments, which processes in Nigerian Naira. All prices in USD are converted at a fixed rate of ₦1,500 per $1 for full transparency." },
+];
+
+function FAQ() {
+  const [open, setOpen] = useState<number|null>(null);
   return (
-    <section className="pp-faq">
-      <div className="pp-faq-inner">
+    <section style={{ padding:"80px 24px", background:"var(--bg)" }}>
+      <div style={{ maxWidth:720, margin:"0 auto" }}>
         <FadeIn>
-          <div className="pp-faq-header">
-            <div className="pp-section-kicker">FAQ</div>
-            <h2 className="pp-section-title">Common questions</h2>
+          <div style={{ textAlign:"center", marginBottom:48 }}>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:"var(--ind)", marginBottom:12 }}>FAQ</div>
+            <h2 style={{ fontFamily:"var(--fd)", fontSize:"clamp(26px,4vw,38px)", fontWeight:800, letterSpacing:"-0.04em", color:"var(--ink)", lineHeight:1.1 }}>Common questions</h2>
           </div>
         </FadeIn>
         <FadeIn delay={60}>
-          <div className="pp-faq-list">
-            {FAQS.map((faq, i) => (
-              <div key={i} className="pp-faq-item">
-                <button
-                  className={`pp-faq-q ${open === i ? "open" : ""}`}
-                  onClick={() => setOpen(open === i ? null : i)}
-                >
-                  {faq.q}
-                  <svg
-                    className={`pp-faq-chevron ${open === i ? "open" : ""}`}
-                    width="16" height="16" viewBox="0 0 16 16" fill="none"
-                  >
-                    <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {FAQS.map((f,i) => (
+              <div key={i} style={{ border:"1px solid var(--br)", borderRadius:12, overflow:"hidden" }}>
+                <button onClick={() => setOpen(open===i?null:i)}
+                  style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"17px 20px", background:open===i?"var(--bg2)":"var(--bg)", border:"none", fontFamily:"var(--fb)", fontSize:14, fontWeight:600, color:"var(--ink)", cursor:"pointer", textAlign:"left", gap:16, transition:"background 0.15s" }}>
+                  {f.q}
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink:0, transform:open===i?"rotate(180deg)":"none", transition:"transform 0.25s", color:"var(--mu)" }}>
+                    <path d="M3.5 5.5l3.5 3.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-                {open === i && (
-                  <div className="pp-faq-a">{faq.a}</div>
-                )}
+                {open===i && <div style={{ padding:"0 20px 17px", background:"var(--bg2)", fontSize:13.5, color:"var(--mu)", lineHeight:1.7 }}>{f.a}</div>}
               </div>
             ))}
           </div>
@@ -231,14 +106,12 @@ function FaqSection() {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PricingPage() {
-  const { user } = useAuth();
+  const { user }    = useAuth();
   const { subscribe } = useSubscription();
   const { profile } = useUserProfile();
-  const navigate = useNavigate();
+  const navigate    = useNavigate();
   const [scrolled, setScrolled] = useState(false);
-
   const currentPlan = profile?.plan_type || "free";
 
   useEffect(() => {
@@ -247,521 +120,313 @@ export default function PricingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  const handleCta = (plan: typeof PRICING_PLANS[0]) => {
-    if (plan.key === "free") {
-      user ? navigate("/dashboard") : navigate("/login");
-      return;
-    }
+  const handleCta = (plan: typeof PLANS[0]) => {
+    if (plan.key === "free") { user ? navigate("/dashboard") : navigate("/login"); return; }
     if (!user) { navigate("/login"); return; }
     if (plan.key === currentPlan) { navigate("/dashboard"); return; }
     subscribe.mutate(plan.key);
   };
 
-  const NAV = [
-    
-  ];
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    .pp{
+      --bg:#fafaf9;--bg2:#f3f2ef;--bg3:#ebe9e4;
+      --ink:#1a1814;--ink2:#2d2b27;--mu:#7a7670;--mu2:#a09d98;--br:#e2dfd9;
+      --ind:#5b21b6;--ind2:#4c1d95;--ind-l:rgba(91,33,182,0.08);--ind-g:rgba(91,33,182,0.18);
+      --green:#059669;--amber:#d97706;
+      --fb:'DM Sans',sans-serif;--fd:'Instrument Serif',Georgia,serif;
+      background:var(--bg);color:var(--ink);font-family:var(--fb);-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.6
+    }
+    .pp-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:60px;display:flex;align-items:center;padding:0 24px;transition:all 0.3s;border-bottom:1px solid transparent}
+    .pp-nav.sc{background:rgba(250,250,249,0.95);backdrop-filter:blur(16px);border-bottom-color:var(--br);box-shadow:0 1px 12px rgba(26,24,20,0.05)}
+    .pp-nav-i{max-width:1140px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+    .pp-logo{display:flex;align-items:center;gap:9px;text-decoration:none}
+    .pp-logo-t{font-family:var(--fd);font-size:18px;font-style:italic;color:var(--ink)}
+    .pp-nav-cta{font-size:13px;font-weight:600;color:#fff;background:var(--ind);border:none;cursor:pointer;padding:8px 20px;border-radius:100px;font-family:var(--fb);text-decoration:none;transition:all 0.15s;display:inline-block;letter-spacing:-0.01em}
+    .pp-nav-cta:hover{background:var(--ind2);transform:translateY(-1px)}
+    .pp-nav-ghost{font-size:13px;font-weight:500;color:var(--mu);background:none;border:none;cursor:pointer;padding:8px 16px;border-radius:8px;font-family:var(--fb);text-decoration:none;transition:color 0.15s}
+    .pp-nav-ghost:hover{color:var(--ink)}
+    .pp-hero{padding:120px 24px 60px;text-align:center;position:relative;overflow:hidden}
+    .pp-hero::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(91,33,182,0.06) 0%,transparent 70%)}
+    .pp-hero-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ind);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:20px}
+    .pp-hero-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(5,150,105,0.2)}
+    .pp-hero-h{font-family:var(--fd);font-size:clamp(38px,6vw,66px);line-height:1.06;letter-spacing:-0.03em;color:var(--ink);margin-bottom:16px}
+    .pp-hero-h em{font-style:italic;color:var(--ind)}
+    .pp-hero-sub{font-size:clamp(15px,2vw,17px);color:var(--mu);line-height:1.7;max-width:500px;margin:0 auto 12px}
+    .pp-hero-note{font-size:12px;color:var(--mu2);display:flex;align-items:center;justify-content:center;gap:5px}
+    .pp-plans{padding:48px 24px 80px}
+    .pp-plans-i{max-width:1120px;margin:0 auto}
+    .pp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
+    .pp-card{border:1.5px solid var(--br);border-radius:18px;padding:26px 22px 22px;background:var(--bg);display:flex;flex-direction:column;transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;position:relative}
+    .pp-card:hover{box-shadow:0 10px 36px rgba(26,24,20,0.08)}
+    .pp-card-growth{border-color:var(--ind);border-width:2px;box-shadow:0 12px 48px var(--ind-g),0 0 0 1px rgba(91,33,182,0.06);transform:translateY(-8px)}
+    .pp-card-growth:hover{transform:translateY(-11px);box-shadow:0 20px 56px var(--ind-g)}
+    .pp-card-scale{border-color:var(--ink);background:var(--ink)}
+    .pp-card-scale:hover{box-shadow:0 14px 48px rgba(26,24,20,0.25)}
+    .pp-card-dim{opacity:0.78}
+    .pp-badge{display:inline-flex;align-items:center;font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;border-radius:5px;padding:3px 9px;margin-bottom:12px}
+    .pp-badge-growth{background:var(--ind);color:#fff}
+    .pp-badge-scale{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5)}
+    .pp-badge-plain{background:var(--bg3);color:var(--mu2)}
+    .pp-plan-name{font-family:var(--fd);font-size:22px;font-style:italic;color:var(--ink);letter-spacing:-0.02em;margin-bottom:3px}
+    .pp-plan-name-lt{color:#fff}
+    .pp-tagline{font-size:12px;color:var(--mu);margin-bottom:20px}
+    .pp-tagline-lt{color:rgba(255,255,255,0.38)}
+    .pp-price-row{display:flex;align-items:baseline;gap:2px;margin-bottom:5px}
+    .pp-price{font-family:var(--fd);font-size:48px;color:var(--ink);letter-spacing:-0.04em;line-height:1}
+    .pp-price-lt{color:#fff}
+    .pp-period{font-size:13px;color:var(--mu)}
+    .pp-period-lt{color:rgba(255,255,255,0.35)}
+    .pp-mh{font-size:12.5px;font-weight:600;color:var(--ind);margin-bottom:3px}
+    .pp-mh-scale{color:rgba(167,139,250,0.9)}
+    .pp-mh-dim{color:var(--mu2)}
+    .pp-seats{font-size:11px;color:var(--mu2);margin-bottom:18px}
+    .pp-seats-lt{color:rgba(255,255,255,0.3);margin-bottom:18px}
+    .pp-divider{height:1px;background:var(--br);margin-bottom:18px}
+    .pp-divider-dk{background:rgba(255,255,255,0.07)}
+    .pp-feats{list-style:none;display:flex;flex-direction:column;gap:9px;flex:1;margin-bottom:22px}
+    .pp-feat{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--ink2);line-height:1.45}
+    .pp-feat-off{color:var(--mu2)}
+    .pp-feat-dk{color:rgba(255,255,255,0.6)}
+    .pp-feat-dk-off{color:rgba(255,255,255,0.22)}
+    .pp-cta{display:block;width:100%;text-align:center;padding:12px;border-radius:10px;font-size:13.5px;font-weight:600;font-family:var(--fb);cursor:pointer;text-decoration:none;transition:all 0.18s;border:1.5px solid}
+    .pp-cta-ghost{background:var(--bg2);color:var(--mu);border-color:var(--br)}
+    .pp-cta-ghost:hover{background:var(--bg3);color:var(--ink)}
+    .pp-cta-out{background:transparent;color:var(--ind);border-color:var(--ind)}
+    .pp-cta-out:hover{background:var(--ind-l)}
+    .pp-cta-fill{background:var(--ind);color:#fff;border-color:var(--ind);box-shadow:0 3px 14px var(--ind-g)}
+    .pp-cta-fill:hover{background:var(--ind2);transform:translateY(-1px);box-shadow:0 6px 20px var(--ind-g)}
+    .pp-cta-inv{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);border-color:rgba(255,255,255,0.14)}
+    .pp-cta-inv:hover{background:rgba(255,255,255,0.14);color:#fff}
+    .pp-cta-cur{background:var(--bg3);color:var(--mu2);border-color:var(--br);cursor:default}
+    .pp-cta-note{text-align:center;margin-top:8px;font-size:11px;color:var(--mu2)}
+    .pp-eff{margin-top:28px;background:var(--bg2);border:1px solid var(--br);border-radius:10px;padding:13px 20px;display:flex;align-items:center;justify-content:center;gap:28px;flex-wrap:wrap}
+    .pp-eff-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mu)}
+    .pp-eff-sep{width:1px;height:16px;background:var(--br)}
+    .pp-why{padding:80px 24px;background:var(--bg2)}
+    .pp-why-i{max-width:960px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center}
+    .pp-kicker{font-size:11px;font-weight:700;color:var(--ind);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px}
+    .pp-why-h{font-family:var(--fd);font-size:clamp(26px,3.5vw,38px);font-style:italic;letter-spacing:-0.03em;line-height:1.12;color:var(--ink);margin-bottom:14px}
+    .pp-why-p{font-size:14.5px;color:var(--mu);line-height:1.75;margin-bottom:24px}
+    .pp-why-bullets{display:flex;flex-direction:column;gap:14px}
+    .pp-why-bullet{display:flex;align-items:flex-start;gap:10px}
+    .pp-why-icon{width:28px;height:28px;border-radius:8px;background:var(--ind-l);border:1px solid rgba(91,33,182,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+    .pp-why-text{font-size:13px;color:var(--mu);line-height:1.55;padding-top:4px}
+    .pp-vis{background:var(--bg);border:1px solid var(--br);border-radius:16px;padding:28px}
+    .pp-vis-num{font-family:var(--fd);font-size:52px;font-style:italic;color:var(--ink);letter-spacing:-0.04em;line-height:1}
+    .pp-vis-label{font-size:12px;color:var(--mu);margin-top:4px;margin-bottom:20px}
+    .pp-vis-div{height:1px;background:var(--br);margin-bottom:18px}
+    .pp-vis-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--br);margin-bottom:8px}
+    .pp-vis-row-ind{border-color:rgba(91,33,182,0.2);background:var(--ind-l)}
+    .pp-vis-plan{font-size:12px;font-weight:600;color:var(--ink)}
+    .pp-vis-hr{font-family:var(--fd);font-size:18px;font-style:italic}
+    .pp-vis-per{font-size:11px;color:var(--mu);margin-top:1px}
+    .pp-vis-saving{font-size:10.5px;font-weight:700;color:var(--green);letter-spacing:0.04em}
+    .pp-matrix{padding:80px 24px;background:var(--bg)}
+    .pp-matrix-i{max-width:960px;margin:0 auto}
+    .pp-matrix-hdr{text-align:center;margin-bottom:44px}
+    .pp-mtable{width:100%;border-collapse:collapse;border-radius:14px;overflow:hidden;border:1px solid var(--br);box-shadow:0 2px 16px rgba(26,24,20,0.05)}
+    .pp-thead{background:var(--ink)}
+    .pp-th{padding:15px 18px;text-align:center;position:relative}
+    .pp-th:first-child{text-align:left}
+    .pp-th-name{font-family:var(--fd);font-size:15px;font-style:italic;color:#fff}
+    .pp-th-name-g{color:#c4b5fd}
+    .pp-th-price{font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px}
+    .pp-th-label{font-size:11px;font-weight:500;color:rgba(255,255,255,0.35)}
+    .pp-g-top{position:absolute;top:0;left:0;right:0;height:2px;background:var(--ind)}
+    .pp-tr{border-bottom:1px solid var(--br)}
+    .pp-tr:last-child{border-bottom:none}
+    .pp-tr:nth-child(odd){background:#fff}
+    .pp-tr:nth-child(even){background:var(--bg)}
+    .pp-td{padding:11px 18px;text-align:center}
+    .pp-td:first-child{text-align:left;font-size:12.5px;color:var(--mu);font-weight:500}
+    .pp-td-v{font-size:12.5px;font-weight:600;color:var(--ink)}
+    .pp-td-v-ind{color:var(--ind)}
+    .pp-td-gbg{background:rgba(91,33,182,0.03)}
+    .pp-td-part{font-size:11px;font-weight:700;color:var(--amber);background:rgba(217,119,6,0.08);border-radius:4px;padding:2px 7px;display:inline-block}
+    .pp-final{padding:100px 24px;background:var(--ink);text-align:center;position:relative;overflow:hidden}
+    .pp-final::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 65% 65% at 50% 50%,rgba(91,33,182,0.15) 0%,transparent 65%)}
+    .pp-final-i{position:relative;z-index:1;max-width:540px;margin:0 auto}
+    .pp-final-kicker{font-size:11px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px}
+    .pp-final-h{font-family:var(--fd);font-size:clamp(32px,5.5vw,54px);font-style:italic;color:#fff;letter-spacing:-0.04em;line-height:1.07;margin-bottom:16px}
+    .pp-final-p{font-size:15px;color:rgba(255,255,255,0.4);line-height:1.75;margin-bottom:36px}
+    .pp-final-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+    .pp-btn-main{display:inline-flex;align-items:center;gap:8px;background:var(--ind);color:#fff;border:none;border-radius:100px;padding:14px 30px;font-size:14px;font-weight:600;font-family:var(--fb);cursor:pointer;text-decoration:none;transition:all 0.2s;box-shadow:0 4px 20px rgba(91,33,182,0.4)}
+    .pp-btn-main:hover{background:var(--ind2);transform:translateY(-2px)}
+    .pp-btn-ghost2{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:100px;padding:14px 28px;font-size:14px;font-weight:500;font-family:var(--fb);cursor:pointer;text-decoration:none;transition:all 0.2s}
+    .pp-btn-ghost2:hover{background:rgba(255,255,255,0.12);color:#fff}
+    .pp-footer{background:#111009;padding:36px 24px 24px;border-top:1px solid rgba(255,255,255,0.05)}
+    .pp-footer-i{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+    .pp-footer-logo{display:flex;align-items:center;gap:9px;text-decoration:none}
+    .pp-footer-name{font-family:var(--fd);font-size:16px;font-style:italic;color:#fff}
+    .pp-footer-copy{font-size:12px;color:rgba(255,255,255,0.2)}
+    .pp-footer-links{display:flex;gap:18px}
+    .pp-footer-link{font-size:12px;color:rgba(255,255,255,0.22);text-decoration:none;transition:color 0.2s}
+    .pp-footer-link:hover{color:rgba(255,255,255,0.55)}
+    @media(max-width:1024px){.pp-grid{grid-template-columns:repeat(2,1fr)}.pp-card-growth{transform:none}.pp-why-i{grid-template-columns:1fr;gap:40px}}
+    @media(max-width:680px){.pp-grid{grid-template-columns:1fr}.pp-card-dim{opacity:1}.pp-eff-sep{display:none}.pp-final-btns{flex-direction:column;align-items:center}.pp-btn-main,.pp-btn-ghost2{width:100%;max-width:300px;justify-content:center}}
+  `;
 
   return (
     <div className="pp">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        .pp {
-          --bg: #ffffff; --bg-2: #f8fafc; --bg-3: #f1f5f9;
-          --ink: #0f172a; --ink-2: #1e293b;
-          --muted: #64748b; --muted-2: #94a3b8;
-          --border: #e2e8f0;
-          --blue: #2563eb; --blue-2: #1d4ed8;
-          --blue-light: rgba(37,99,235,0.08); --blue-glow: rgba(37,99,235,0.2);
-          --green: #10b981; --amber: #f59e0b;
-          --font: 'Plus Jakarta Sans', sans-serif;
-          --font-display: 'Bricolage Grotesque', sans-serif;
-          background: var(--bg); color: var(--ink); font-family: var(--font);
-          -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6;
-        }
-
-        /* NAV */
-        .pp-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 64px; display: flex; align-items: center; padding: 0 24px; transition: all 0.3s ease; border-bottom: 1px solid transparent; }
-        .pp-nav.scrolled { background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); border-bottom-color: var(--border); box-shadow: 0 1px 16px rgba(15,23,42,0.06); }
-        .pp-nav-inner { max-width: 1160px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
-        .pp-nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-        .pp-nav-logo-text { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
-        .pp-nav-links { display: flex; align-items: center; gap: 28px; }
-        .pp-nav-link { font-size: 14px; font-weight: 500; color: var(--muted); text-decoration: none; transition: color 0.2s; }
-        .pp-nav-link:hover { color: var(--ink); }
-        .pp-nav-link-active { color: var(--ink) !important; font-weight: 600; }
-        .pp-nav-actions { display: flex; align-items: center; gap: 10px; }
-        .pp-btn-ghost { font-size: 13.5px; font-weight: 500; color: var(--ink); background: none; border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; font-family: var(--font); text-decoration: none; transition: background 0.15s; }
-        .pp-btn-ghost:hover { background: var(--bg-3); }
-        .pp-btn-primary-nav { font-size: 13.5px; font-weight: 600; color: #fff; background: var(--blue); border: none; cursor: pointer; padding: 8px 20px; border-radius: 8px; font-family: var(--font); text-decoration: none; transition: background 0.15s, transform 0.15s; display: inline-block; }
-        .pp-btn-primary-nav:hover { background: var(--blue-2); transform: translateY(-1px); }
-
-        /* HERO */
-        .pp-hero { padding: 128px 24px 72px; background: linear-gradient(180deg, #f0f6ff 0%, #ffffff 70%); position: relative; overflow: hidden; text-align: center; }
-        .pp-hero-pattern { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #d1defe 1px, transparent 1px); background-size: 32px 32px; mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 100%); opacity: 0.45; }
-        .pp-hero-inner { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; }
-        .pp-hero-badge { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 100px; padding: 6px 16px 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 24px; box-shadow: 0 1px 8px rgba(15,23,42,0.06); }
-        .pp-hero-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,0.2); }
-        .pp-hero-title { font-family: var(--font-display); font-size: clamp(32px,5vw,56px); font-weight: 800; line-height: 1.06; letter-spacing: -0.04em; color: var(--ink); margin-bottom: 16px; }
-        .pp-hero-blue { color: var(--blue); }
-        .pp-hero-sub { font-size: clamp(15px,2vw,17px); color: var(--muted); line-height: 1.7; max-width: 480px; margin: 0 auto 14px; }
-        .pp-hero-note { font-size: 12.5px; color: var(--muted-2); display: flex; align-items: center; justify-content: center; gap: 6px; }
-
-        /* PLANS */
-        .pp-plans { padding: 64px 24px 80px; background: var(--bg); }
-        .pp-plans-inner { max-width: 1140px; margin: 0 auto; }
-        .pp-plans-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: start; }
-
-        .pp-card { border-radius: 16px; border: 1.5px solid var(--border); padding: 28px 24px 24px; background: #fff; display: flex; flex-direction: column; transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s; position: relative; }
-        .pp-card:hover { box-shadow: 0 12px 40px rgba(15,23,42,0.09); }
-        .pp-card-growth { border-color: var(--blue); border-width: 2px; box-shadow: 0 16px 56px var(--blue-glow), 0 0 0 1px rgba(37,99,235,0.08); transform: translateY(-6px); }
-        .pp-card-growth:hover { transform: translateY(-9px); box-shadow: 0 24px 64px var(--blue-glow); }
-        .pp-card-scale { border-color: #1e293b; background: var(--ink); }
-        .pp-card-scale:hover { box-shadow: 0 16px 48px rgba(15,23,42,0.28); }
-        .pp-card-starter { opacity: 0.85; }
-
-        .pp-badge { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 6px; padding: 3px 10px; margin-bottom: 14px; }
-        .pp-badge-growth { background: var(--blue); color: #fff; }
-        .pp-badge-scale { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.65); }
-        .pp-badge-muted { background: var(--bg-3); color: var(--muted-2); }
-
-        .pp-plan-name { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 4px; }
-        .pp-plan-name-light { color: #fff; }
-        .pp-plan-tagline { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-bottom: 20px; }
-        .pp-plan-tagline-light { color: rgba(255,255,255,0.4); }
-
-        .pp-price-row { display: flex; align-items: baseline; gap: 2px; margin-bottom: 4px; }
-        .pp-price { font-family: var(--font-display); font-size: 42px; font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1; }
-        .pp-price-light { color: #fff; }
-        .pp-period { font-size: 13px; color: var(--muted); }
-        .pp-period-light { color: rgba(255,255,255,0.4); }
-        .pp-per-meeting { font-size: 11.5px; font-weight: 600; color: var(--blue); margin-bottom: 20px; }
-        .pp-per-meeting-scale { color: rgba(147,197,253,0.85); }
-        .pp-per-meeting-muted { color: var(--muted-2); margin-bottom: 20px; font-size: 11.5px; }
-        .pp-no-meeting { margin-bottom: 20px; }
-
-        .pp-chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
-        .pp-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 100px; padding: 4px 12px; font-size: 11.5px; font-weight: 600; }
-        .pp-chip-blue { background: var(--blue-light); border: 1px solid rgba(37,99,235,0.12); color: var(--blue); }
-        .pp-chip-dark { background: rgba(37,99,235,0.15); border: 1px solid rgba(37,99,235,0.25); color: #93c5fd; }
-        .pp-chip-muted { background: var(--bg-3); border: 1px solid var(--border); color: var(--muted); }
-
-        .pp-divider { height: 1px; background: var(--border); margin-bottom: 20px; }
-        .pp-divider-dark { background: rgba(255,255,255,0.08); }
-
-        .pp-features { list-style: none; display: flex; flex-direction: column; gap: 10px; flex: 1; margin-bottom: 24px; }
-        .pp-feat { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
-        .pp-feat-dim { color: var(--muted-2); }
-        .pp-feat-dark { color: rgba(255,255,255,0.65); }
-        .pp-feat-dark-dim { color: rgba(255,255,255,0.25); }
-
-        .pp-cta-btn { display: block; width: 100%; text-align: center; padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; border: 1.5px solid; }
-        .pp-cta-ghost { background: var(--bg-2); color: var(--muted); border-color: var(--border); }
-        .pp-cta-ghost:hover { background: var(--bg-3); color: var(--ink); }
-        .pp-cta-outline { background: transparent; color: var(--blue); border-color: var(--blue); }
-        .pp-cta-outline:hover { background: var(--blue-light); }
-        .pp-cta-fill { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 4px 16px var(--blue-glow); }
-        .pp-cta-fill:hover { background: var(--blue-2); transform: translateY(-1px); box-shadow: 0 8px 24px var(--blue-glow); }
-        .pp-cta-inv { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.15); }
-        .pp-cta-inv:hover { background: rgba(255,255,255,0.17); color: #fff; }
-        .pp-cta-disabled { background: var(--bg-3); color: var(--muted-2); border-color: var(--border); cursor: default; }
-
-        .pp-sub-note { text-align: center; margin-top: 10px; font-size: 11px; color: var(--muted-2); }
-
-        /* EFFICIENCY BAR */
-        .pp-eff-bar { margin-top: 32px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 24px; display: flex; align-items: center; justify-content: center; gap: 32px; flex-wrap: wrap; }
-        .pp-eff-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
-        .pp-eff-sep { width: 1px; height: 18px; background: var(--border); }
-
-        /* TEAM SECTION */
-        .pp-team { padding: 80px 24px; background: var(--ink); }
-        .pp-team-inner { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
-        .pp-section-kicker { font-size: 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
-        .pp-team-kicker { color: #60a5fa; }
-        .pp-section-title { font-family: var(--font-display); font-size: clamp(26px,4vw,40px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 14px; }
-        .pp-team-title { color: #fff; }
-        .pp-team-desc { font-size: 15px; color: rgba(255,255,255,0.45); line-height: 1.75; margin-bottom: 28px; }
-        .pp-team-bullets { display: flex; flex-direction: column; gap: 12px; }
-        .pp-team-bullet { display: flex; align-items: flex-start; gap: 10px; }
-        .pp-team-bullet-icon { width: 28px; height: 28px; border-radius: 8px; background: rgba(37,99,235,0.18); border: 1px solid rgba(37,99,235,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; }
-        .pp-team-bullet-text { font-size: 13.5px; color: rgba(255,255,255,0.6); line-height: 1.5; padding-top: 4px; }
-        .pp-team-visual { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; }
-        .pp-team-visual-glow { position: absolute; top: -40px; right: -40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(37,99,235,0.2) 0%, transparent 70%); pointer-events: none; }
-        .pp-team-stat-num { font-family: var(--font-display); font-size: 52px; font-weight: 800; color: #fff; letter-spacing: -0.04em; line-height: 1; }
-        .pp-team-stat-label { font-size: 13px; color: rgba(255,255,255,0.4); margin-top: 4px; margin-bottom: 24px; }
-        .pp-team-divider { height: 1px; background: rgba(255,255,255,0.07); margin-bottom: 20px; }
-        .pp-team-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-        .pp-team-tag { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; padding: 5px 14px; font-size: 11.5px; color: rgba(255,255,255,0.5); }
-
-        /* MATRIX */
-        .pp-matrix { padding: 80px 24px; background: var(--bg-2); }
-        .pp-matrix-inner { max-width: 1000px; margin: 0 auto; }
-        .pp-matrix-header { text-align: center; margin-bottom: 48px; }
-        .pp-section-title-dark { color: var(--ink); }
-        .pp-section-sub { font-size: 15px; color: var(--muted); line-height: 1.7; }
-        .pp-table-wrap { border-radius: 14px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 4px 20px rgba(15,23,42,0.06); }
-        .pp-table { width: 100%; border-collapse: collapse; }
-        .pp-thead-row { background: var(--ink); }
-        .pp-th-cell { padding: 16px 20px; text-align: center; position: relative; }
-        .pp-th-cell:first-child { text-align: left; }
-        .pp-th-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: #fff; }
-        .pp-th-name-growth { color: #93c5fd; }
-        .pp-th-price { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
-        .pp-th-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); }
-        .pp-growth-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--blue); }
-        .pp-tbody-row { border-bottom: 1px solid var(--border); }
-        .pp-tbody-row:last-child { border-bottom: none; }
-        .pp-tbody-row:nth-child(odd) { background: #fff; }
-        .pp-tbody-row:nth-child(even) { background: var(--bg-2); }
-        .pp-td-cell { padding: 12px 20px; text-align: center; }
-        .pp-td-cell:first-child { text-align: left; font-size: 13px; color: var(--muted); font-weight: 500; }
-        .pp-td-val { font-size: 13px; font-weight: 600; color: var(--ink); }
-        .pp-td-val-growth { color: var(--blue); }
-        .pp-td-growth-bg { background: rgba(37,99,235,0.03); }
-        .pp-td-partial { font-size: 11.5px; color: var(--amber); font-weight: 600; background: rgba(245,158,11,0.08); border-radius: 4px; padding: 2px 6px; display: inline-block; }
-
-        /* FAQ */
-        .pp-faq { padding: 80px 24px; background: var(--bg); }
-        .pp-faq-inner { max-width: 720px; margin: 0 auto; }
-        .pp-faq-header { text-align: center; margin-bottom: 48px; }
-        .pp-faq-list { display: flex; flex-direction: column; gap: 12px; }
-        .pp-faq-item { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-        .pp-faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; background: #fff; border: none; font-family: var(--font); font-size: 14.5px; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; gap: 16px; transition: background 0.15s; }
-        .pp-faq-q:hover, .pp-faq-q.open { background: var(--bg-2); }
-        .pp-faq-chevron { flex-shrink: 0; transition: transform 0.25s; color: var(--muted); }
-        .pp-faq-chevron.open { transform: rotate(180deg); }
-        .pp-faq-a { font-size: 13.5px; color: var(--muted); line-height: 1.7; padding: 0 20px 18px; background: var(--bg-2); }
-
-        /* FINAL CTA */
-        .pp-final { padding: 100px 24px; background: var(--ink); text-align: center; position: relative; overflow: hidden; }
-        .pp-final-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(37,99,235,0.12) 0%, transparent 65%); }
-        .pp-final-inner { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; }
-        .pp-final-title { font-family: var(--font-display); font-size: clamp(30px,5vw,50px); font-weight: 800; color: #fff; letter-spacing: -0.04em; line-height: 1.07; margin-bottom: 16px; }
-        .pp-final-blue { color: #93c5fd; }
-        .pp-final-desc { font-size: 16px; color: rgba(255,255,255,0.45); line-height: 1.7; margin-bottom: 36px; }
-        .pp-final-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-        .pp-btn-final-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 14px 28px; font-size: 14.5px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 16px rgba(37,99,235,0.4); }
-        .pp-btn-final-primary:hover { background: var(--blue-2); transform: translateY(-2px); }
-        .pp-btn-final-ghost { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 14px 28px; font-size: 14.5px; font-weight: 500; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
-        .pp-btn-final-ghost:hover { background: rgba(255,255,255,0.12); color: #fff; }
-
-        /* FOOTER */
-        .pp-footer { background: #0f172a; padding: 40px 24px 28px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .pp-footer-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .pp-footer-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
-        .pp-footer-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.03em; }
-        .pp-footer-legal { font-size: 12px; color: rgba(255,255,255,0.22); }
-        .pp-footer-links { display: flex; gap: 20px; }
-        .pp-footer-link { font-size: 12px; color: rgba(255,255,255,0.25); text-decoration: none; transition: color 0.2s; }
-        .pp-footer-link:hover { color: rgba(255,255,255,0.55); }
-
-        /* RESPONSIVE */
-        @media (max-width: 1024px) {
-          .pp-plans-grid { grid-template-columns: repeat(2, 1fr); }
-          .pp-card-growth { transform: none; }
-          .pp-team-inner { grid-template-columns: 1fr; gap: 40px; }
-        }
-        @media (max-width: 768px) {
-          .pp-plans-grid { grid-template-columns: 1fr; }
-          .pp-card-starter { opacity: 1; }
-          .pp-eff-bar { gap: 16px; }
-          .pp-eff-sep { display: none; }
-        }
-        @media (max-width: 480px) {
-          .pp-final-btns { flex-direction: column; align-items: center; }
-          .pp-btn-final-primary, .pp-btn-final-ghost { width: 100%; max-width: 300px; justify-content: center; }
-        }
-      `}</style>
-
-      {/* NAV */}
-      <nav className={`pp-nav ${scrolled ? "scrolled" : ""}`}>
-        <div className="pp-nav-inner">
-          <Link to="/" className="pp-nav-logo">
-            <Logo size={28} />
-            <span className="pp-nav-logo-text">Fixsense</span>
-          </Link>
-          <div className="pp-nav-links">
-            {NAV.map(l => (
-              <a key={l.label} href={l.href} className={`pp-nav-link ${l.href === "/pricing" ? "pp-nav-link-active" : ""}`}>
-                {l.label}
-              </a>
-            ))}
-          </div>
-          <div className="pp-nav-actions">
-            {user ? (
-              <Link to="/dashboard" className="pp-btn-primary-nav">Dashboard →</Link>
-            ) : (
-              <>
-                <Link to="/login" className="pp-btn-ghost">Sign in</Link>
-                <Link to="/login" className="pp-btn-primary-nav">Start Free Trial →</Link>
-              </>
-            )}
+      <style>{css}</style>
+      <nav className={`pp-nav ${scrolled ? "sc" : ""}`}>
+        <div className="pp-nav-i">
+          <Link to="/" className="pp-logo"><Logo size={26} /><span className="pp-logo-t">Fixsense</span></Link>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            {user ? <Link to="/dashboard" className="pp-nav-cta">Dashboard →</Link> : <>
+              <Link to="/login" className="pp-nav-ghost">Sign in</Link>
+              <Link to="/login" className="pp-nav-cta">Start Free →</Link>
+            </>}
           </div>
         </div>
       </nav>
 
       {/* HERO */}
       <section className="pp-hero">
-        <div className="pp-hero-pattern" />
-        <div className="pp-hero-inner">
-          <FadeIn>
-            <div className="pp-hero-badge">
-              <div className="pp-hero-badge-dot" />
-              Transparent pricing · No surprises
-            </div>
-          </FadeIn>
-          <FadeIn delay={60}>
-            <h1 className="pp-hero-title">
-              Simple pricing for <span className="pp-hero-blue">winning sales teams</span>
-            </h1>
-          </FadeIn>
-          <FadeIn delay={120}>
-            <p className="pp-hero-sub">
-              Start free. Upgrade when your team is ready. Most teams land on Growth — and never look back.
-            </p>
-          </FadeIn>
-          <FadeIn delay={160}>
-            <p className="pp-hero-note">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                <circle cx="7" cy="7" r="6" stroke="#94a3b8" strokeWidth="1.2" />
-                <path d="M7 4.5v3" stroke="#94a3b8" strokeWidth="1.2" strokeLinecap="round" />
-                <circle cx="7" cy="9.5" r="0.6" fill="#94a3b8" />
-              </svg>
-              Prices shown in USD · Billed in NGN at 1 USD = ₦1,500 via Paystack
-            </p>
-          </FadeIn>
-        </div>
+        <FadeIn><div className="pp-hero-kicker"><div className="pp-hero-dot" />Minute-based · Transparent pricing</div></FadeIn>
+        <FadeIn delay={50}><h1 className="pp-hero-h">Pay for the minutes<br /><em>you actually use</em></h1></FadeIn>
+        <FadeIn delay={100}><p className="pp-hero-sub">No per-seat tricks. No call caps. One number — hours of call time per month — scaling fairly as your team grows.</p></FadeIn>
+        <FadeIn delay={140}>
+          <p className="pp-hero-note">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="#a09d98" strokeWidth="1.1"/><path d="M6.5 4v3" stroke="#a09d98" strokeWidth="1.1" strokeLinecap="round"/><circle cx="6.5" cy="9" r="0.55" fill="#a09d98"/></svg>
+            Prices in USD · Billed in NGN at ₦1,500/$1 via Paystack
+          </p>
+        </FadeIn>
       </section>
 
       {/* PLAN CARDS */}
       <section className="pp-plans">
-        <div className="pp-plans-inner">
-          <div className="pp-plans-grid">
-            {PRICING_PLANS.map((plan, i) => {
-              const isGrowth = plan.key === "growth";
-              const isScale = plan.key === "scale";
-              const isStarter = plan.key === "starter";
-              const dark = isScale;
-              const isCurrent = user && currentPlan === plan.key;
-
+        <div className="pp-plans-i">
+          <div className="pp-grid">
+            {PLANS.map((plan, i) => {
+              const isG = plan.key==="growth", isS = plan.key==="scale", dark=isS;
+              const isCur = !!user && currentPlan===plan.key;
               let cardClass = "pp-card";
-              if (isGrowth) cardClass += " pp-card-growth";
-              if (isScale) cardClass += " pp-card-scale";
-              if (isStarter) cardClass += " pp-card-starter";
-
-              let ctaClass = "pp-cta-btn ";
-              if (isCurrent) ctaClass += "pp-cta-disabled";
-              else if (isGrowth) ctaClass += "pp-cta-fill";
-              else if (isScale) ctaClass += "pp-cta-inv";
-              else if (plan.key === "free") ctaClass += "pp-cta-ghost";
-              else ctaClass += "pp-cta-outline";
-
-              const chipClass = dark ? "pp-chip pp-chip-dark" : (plan.key === "free" || isStarter) ? "pp-chip pp-chip-muted" : "pp-chip pp-chip-blue";
-
+              if (isG) cardClass+=" pp-card-growth"; if (isS) cardClass+=" pp-card-scale"; if (plan.dim) cardClass+=" pp-card-dim";
+              let ctaClass = "pp-cta ";
+              if (isCur) ctaClass+="pp-cta-cur"; else if (isG) ctaClass+="pp-cta-fill"; else if (isS) ctaClass+="pp-cta-inv"; else if (plan.key==="free") ctaClass+="pp-cta-ghost"; else ctaClass+="pp-cta-out";
               return (
-                <FadeIn key={plan.key} delay={i * 70}>
+                <FadeIn key={plan.key} delay={i*65}>
                   <div className={cardClass}>
-                    {/* Badge */}
-                    {plan.badge ? (
-                      <div className={`pp-badge ${isGrowth ? "pp-badge-growth" : "pp-badge-scale"}`}>{plan.badge}</div>
-                    ) : (
-                      <div className="pp-badge pp-badge-muted">{plan.name}</div>
-                    )}
-
-                    <div className={`pp-plan-name ${dark ? "pp-plan-name-light" : ""}`}>{plan.name}</div>
-                    <div className={`pp-plan-tagline ${dark ? "pp-plan-tagline-light" : ""}`}>{plan.tagline}</div>
-
+                    <div className={`pp-badge ${isG?"pp-badge-growth":isS?"pp-badge-scale":"pp-badge-plain"}`}>{plan.badge||plan.name}</div>
+                    <div className={`pp-plan-name ${dark?"pp-plan-name-lt":""}`}>{plan.name}</div>
+                    <div className={`pp-tagline ${dark?"pp-tagline-lt":""}`}>{plan.tagline}</div>
                     <div className="pp-price-row">
-                      <div className={`pp-price ${dark ? "pp-price-light" : ""}`}>{plan.price}</div>
-                      <div className={`pp-period ${dark ? "pp-period-light" : ""}`}>{plan.period}</div>
+                      <div className={`pp-price ${dark?"pp-price-lt":""}`}>{plan.price}</div>
+                      <div className={`pp-period ${dark?"pp-period-lt":""}`}>/mo</div>
                     </div>
-
-                    {plan.perMeeting ? (
-                      <div className={`pp-per-meeting ${isScale ? "pp-per-meeting-scale" : isStarter ? "pp-per-meeting-muted" : ""}`}>
-                        {plan.perMeeting}
-                      </div>
-                    ) : (
-                      <div className="pp-no-meeting" />
-                    )}
-
-                    <div className="pp-chip-row">
-                      <span className={chipClass}>
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <rect x="0.5" y="0.5" width="9" height="9" rx="2" stroke="currentColor" strokeWidth="1.1" />
-                          <path d="M2.5 5l1.5 1.5 3-3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        {plan.meetings}
-                      </span>
-                      <span className={chipClass}>
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <circle cx="5" cy="3.2" r="1.8" stroke="currentColor" strokeWidth="1.1" />
-                          <path d="M1 9c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                        </svg>
-                        {plan.seats}
-                      </span>
-                    </div>
-
-                    <div className={`pp-divider ${dark ? "pp-divider-dark" : ""}`} />
-
-                    <ul className="pp-features">
-                      {plan.features.map((f) => (
-                        <li key={f.text} className={`pp-feat ${!f.included ? (dark ? "pp-feat-dark-dim" : "pp-feat-dim") : dark ? "pp-feat-dark" : ""}`}>
-                          {f.included ? <CheckIcon green={isGrowth || isScale} /> : <XIcon />}
-                          {f.text}
+                    <div className={`pp-mh ${isS?"pp-mh-scale":plan.dim?"pp-mh-dim":""}`}>{plan.mh} call minutes/month</div>
+                    <div className={`${dark?"pp-seats-lt":"pp-seats"}`}>{plan.seats}</div>
+                    <div className={`pp-divider ${dark?"pp-divider-dk":""}`} />
+                    <ul className="pp-feats">
+                      {plan.features.map(f => (
+                        <li key={f.t} className={`pp-feat ${!f.on?(dark?"pp-feat-dk-off":"pp-feat-off"):dark?"pp-feat-dk":""}`}>
+                          <Check on={f.on} accent={isG||isS} />{f.t}
                         </li>
                       ))}
                     </ul>
-
-                    <button className={ctaClass} disabled={!!isCurrent} onClick={() => handleCta(plan)}>
-                      {isCurrent ? "Current Plan" : plan.cta}
+                    <button className={ctaClass} disabled={isCur} onClick={() => handleCta(plan)}>
+                      {isCur ? "Current Plan" : plan.cta}
                     </button>
-
-                    {isGrowth && (
-                      <div className="pp-sub-note">No credit card required · Cancel anytime</div>
-                    )}
+                    {isG && <div className="pp-cta-note">No credit card required · Cancel anytime</div>}
                   </div>
                 </FadeIn>
               );
             })}
           </div>
 
-          {/* Cost efficiency bar */}
-          <FadeIn delay={320}>
-            <div className="pp-eff-bar">
-              <div className="pp-eff-item">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="7" r="6" stroke="#f59e0b" strokeWidth="1.2" />
-                  <path d="M7 4v3h2" stroke="#f59e0b" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-                Starter: <strong style={{ color: "#f59e0b", marginLeft: 4 }}>$0.38 per meeting</strong>
-              </div>
-              <div className="pp-eff-sep" />
-              <div className="pp-eff-item">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="7" r="6" stroke="#2563eb" strokeWidth="1.2" />
-                  <path d="M5 7l1.5 1.5 2.5-3" stroke="#2563eb" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Growth: <strong style={{ color: "#2563eb", marginLeft: 4 }}>$0.16 per meeting</strong>
-                <span style={{ color: "#64748b", fontSize: 11, marginLeft: 6 }}>— 58% more efficient</span>
-              </div>
-              <div className="pp-eff-sep" />
-              <div className="pp-eff-item">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle cx="7" cy="7" r="6" stroke="#10b981" strokeWidth="1.2" />
-                  <path d="M4.5 7l1.5 2 3-4" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Scale: <strong style={{ color: "#10b981", marginLeft: 4 }}>best value for unlimited teams</strong>
-              </div>
+          {/* Efficiency bar */}
+          <FadeIn delay={300}>
+            <div className="pp-eff">
+              {[{l:"Starter",v:"$0.76/hr",c:"#d97706"},{l:"Growth",v:"$0.49/hr",c:"#5b21b6",n:"36% cheaper"},{l:"Scale",v:"flat rate",c:"#059669",n:"best value"}].map((item,i) => (
+                <>
+                  {i>0 && <div key={`s${i}`} className="pp-eff-sep" />}
+                  <div key={item.l} className="pp-eff-item">
+                    <span style={{width:8,height:8,borderRadius:"50%",background:item.c,flexShrink:0,display:"inline-block"}}/>
+                    <span><strong style={{color:item.c}}>{item.l}</strong> — {item.v}</span>
+                    {item.n && <span style={{color:"#059669",fontSize:11,fontWeight:700}}>✓ {item.n}</span>}
+                  </div>
+                </>
+              ))}
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* TEAM PITCH */}
-      <section className="pp-team">
-        <div className="pp-team-inner">
+      {/* WHY MINUTES */}
+      <section className="pp-why">
+        <div className="pp-why-i">
           <FadeIn>
             <div>
-              <div className="pp-section-kicker pp-team-kicker">Built for Teams</div>
-              <h2 className="pp-section-title pp-team-title">Built for teams that want to win more deals</h2>
-              <p className="pp-team-desc">
-                Fixsense isn't just a call recorder. It's a performance layer for your entire sales org — so every rep improves, every manager has visibility, and every deal gets better coaching.
-              </p>
-              <div className="pp-team-bullets">
-                {[
-                  { icon: "👥", text: "Review calls together as a team — not in silos" },
-                  { icon: "💬", text: "Share coaching feedback on specific call moments" },
-                  { icon: "📈", text: "Track and improve individual rep performance over time" },
-                  { icon: "🎯", text: "See exactly where deals are won and lost across your pipeline" },
-                ].map((b, idx) => (
-                  <div key={idx} className="pp-team-bullet">
-                    <div className="pp-team-bullet-icon">{b.icon}</div>
-                    <div className="pp-team-bullet-text">{b.text}</div>
-                  </div>
+              <div className="pp-kicker">Why minutes?</div>
+              <h2 className="pp-why-h">Billing that actually<br />matches how you work</h2>
+              <p className="pp-why-p">Per-call pricing punished short discovery calls and rewarded long rambling ones. Minutes are proportional to compute — transcription, AI analysis, storage. You pay exactly for what you use.</p>
+              <div className="pp-why-bullets">
+                {[{i:"⏱",t:"A 10-minute check-in costs a fraction of a 90-minute demo — as it should"},{i:"📊",t:"Your quota reflects real usage, not arbitrary call counts"},{i:"♻️",t:"Unused minutes don't roll over, but your quota resets cleanly every cycle"},{i:"🔍",t:"Every completed meeting shows duration on your billing page"}].map((b,idx)=>(
+                  <div key={idx} className="pp-why-bullet"><div className="pp-why-icon">{b.i}</div><div className="pp-why-text">{b.t}</div></div>
                 ))}
               </div>
             </div>
           </FadeIn>
-          <FadeIn delay={120}>
-            <div className="pp-team-visual">
-              <div className="pp-team-visual-glow" />
-              <div className="pp-team-stat-num">30%</div>
-              <div className="pp-team-stat-label">Average increase in close rate within 90 days</div>
-              <div className="pp-team-divider" />
-              <div className="pp-team-stat-num">2×</div>
-              <div className="pp-team-stat-label">Faster rep onboarding with coaching built in</div>
-              <div className="pp-team-divider" />
-              <div className="pp-team-tags">
-                {["Zoom", "Google Meet", "Microsoft Teams", "HubSpot", "Salesforce", "Slack"].map(t => (
-                  <span key={t} className="pp-team-tag">{t}</span>
-                ))}
-              </div>
+          <FadeIn delay={100}>
+            <div className="pp-vis">
+              <div className="pp-vis-num">100h</div>
+              <div className="pp-vis-label">call minutes on Growth — enough for ~2 full-time sales reps</div>
+              <div className="pp-vis-div" />
+              {[{p:"Starter",h:"25h",per:"$0.76/hr",ind:false},{p:"Growth",h:"100h",per:"$0.49/hr",ind:true,s:"36% cheaper"},{p:"Scale",h:"333h+",per:"flat",ind:false,s:"best value"}].map(r=>(
+                <div key={r.p} className={`pp-vis-row ${r.ind?"pp-vis-row-ind":""}`}>
+                  <div><div className="pp-vis-plan">{r.p}</div><div className="pp-vis-per">{r.per}</div></div>
+                  <div style={{textAlign:"right"}}>
+                    <div className="pp-vis-hr" style={{color:r.ind?"var(--ind)":"var(--ink)"}}>{r.h}</div>
+                    {r.s && <div className="pp-vis-saving">{r.s}</div>}
+                  </div>
+                </div>
+              ))}
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* FEATURE MATRIX */}
+      {/* MATRIX */}
       <section className="pp-matrix">
-        <div className="pp-matrix-inner">
+        <div className="pp-matrix-i">
           <FadeIn>
-            <div className="pp-matrix-header">
-              <div className="pp-section-kicker">Compare Plans</div>
-              <h2 className="pp-section-title pp-section-title-dark">Everything in one view</h2>
-              <p className="pp-section-sub">See exactly what you get — and what unlocks when you upgrade.</p>
+            <div className="pp-matrix-hdr">
+              <div className="pp-kicker">Compare Plans</div>
+              <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(26px,3.5vw,38px)",fontStyle:"italic",letterSpacing:"-0.03em",color:"var(--ink)",marginTop:8}}>Everything in one view</h2>
             </div>
           </FadeIn>
-          <FadeIn delay={80}>
-            <div className="pp-table-wrap">
-              <table className="pp-table">
+          <FadeIn delay={60}>
+            <div style={{overflowX:"auto"}}>
+              <table className="pp-mtable">
                 <thead>
-                  <tr className="pp-thead-row">
-                    <th className="pp-th-cell">
-                      <div className="pp-th-label">Feature</div>
-                    </th>
-                    {[
-                      { name: "Starter", price: "$19/mo", growth: false },
-                      { name: "Growth", price: "$49/mo", growth: true },
-                      { name: "Scale", price: "$99/mo", growth: false },
-                    ].map(col => (
-                      <th key={col.name} className="pp-th-cell">
-                        {col.growth && <div className="pp-growth-bar" />}
-                        <div className={`pp-th-name ${col.growth ? "pp-th-name-growth" : ""}`}>{col.name}</div>
-                        <div className="pp-th-price">{col.price}</div>
+                  <tr className="pp-thead">
+                    <th className="pp-th"><div className="pp-th-label">Feature</div></th>
+                    {[{n:"Starter",p:"$19/mo",g:false},{n:"Growth",p:"$49/mo",g:true},{n:"Scale",p:"$99/mo",g:false}].map(col=>(
+                      <th key={col.n} className="pp-th">
+                        {col.g && <div className="pp-g-top"/>}
+                        <div className={`pp-th-name ${col.g?"pp-th-name-g":""}`}>{col.n}</div>
+                        <div className="pp-th-price">{col.p}</div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {MATRIX_ROWS.map((row) => (
-                    <tr key={row.label} className="pp-tbody-row">
-                      <td className="pp-td-cell">{row.label}</td>
-                      {/* Starter */}
-                      <td className="pp-td-cell">
-                        {typeof row.starter === "boolean" ? (
-                          row.starter ? <CheckIcon /> : <XIcon />
-                        ) : row.starter === "Limited" ? (
-                          <span className="pp-td-partial">Limited</span>
-                        ) : (
-                          <span className="pp-td-val">{row.starter}</span>
-                        )}
-                      </td>
-                      {/* Growth */}
-                      <td className="pp-td-cell pp-td-growth-bg">
-                        {typeof row.growth === "boolean" ? (
-                          row.growth ? <CheckIcon green /> : <XIcon />
-                        ) : (
-                          <span className="pp-td-val pp-td-val-growth">{row.growth}</span>
-                        )}
-                      </td>
-                      {/* Scale */}
-                      <td className="pp-td-cell">
-                        {typeof row.scale === "boolean" ? (
-                          row.scale ? <CheckIcon green /> : <XIcon />
-                        ) : (
-                          <span className="pp-td-val">{row.scale}</span>
-                        )}
-                      </td>
+                  {MATRIX.map(row=>(
+                    <tr key={row.label} className="pp-tr">
+                      <td className="pp-td">{row.label}</td>
+                      {(["s","g","sc"] as const).map(k=>{
+                        const v = row[k]; const isG=k==="g";
+                        return (
+                          <td key={k} className={`pp-td ${isG?"pp-td-gbg":""}`}>
+                            {typeof v==="boolean" ? <Check on={v} accent={isG||k==="sc"} />
+                             : v==="Basic" ? <span className="pp-td-part">Basic</span>
+                             : <span className={`pp-td-v ${isG?"pp-td-v-ind":""}`}>{v}</span>}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -771,44 +436,29 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* FAQ */}
-      <FaqSection />
+      <FAQ />
 
-      {/* FINAL CTA */}
       <section className="pp-final">
-        <div className="pp-final-glow" />
-        <div className="pp-final-inner">
+        <div className="pp-final-i">
           <FadeIn>
-            <h2 className="pp-final-title">
-              Start with your team.<br />
-              <span className="pp-final-blue">Scale when you're ready.</span>
-            </h2>
-            <p className="pp-final-desc">
-              No complex setup. No IT tickets. Most teams are running live calls within 5 minutes — and choosing Growth before the week is out.
-            </p>
+            <div className="pp-final-kicker">Ready to start?</div>
+            <h2 className="pp-final-h">Start free.<br />Scale when you're ready.</h2>
+            <p className="pp-final-p">No long setup. No IT tickets. Most teams are running live calls in minutes — and move to Growth before the week is out.</p>
             <div className="pp-final-btns">
-              <Link to={user ? "/dashboard" : "/login"} className="pp-btn-final-primary">
+              <Link to={user?"/dashboard":"/login"} className="pp-btn-main">
                 Start Free Trial
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 6.5h9M6.5 2l4.5 4.5-4.5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </Link>
-              <Link to={user ? "/dashboard/billing" : "/login"} className="pp-btn-final-ghost">
-                Upgrade to Growth →
-              </Link>
+              <Link to={user?"/dashboard/billing":"/login"} className="pp-btn-ghost2">Upgrade to Growth →</Link>
             </div>
           </FadeIn>
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer className="pp-footer">
-        <div className="pp-footer-inner">
-          <Link to="/" className="pp-footer-logo">
-            <Logo size={22} />
-            <span className="pp-footer-name">Fixsense</span>
-          </Link>
-          <span className="pp-footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
+        <div className="pp-footer-i">
+          <Link to="/" className="pp-footer-logo"><Logo size={20} /><span className="pp-footer-name">Fixsense</span></Link>
+          <span className="pp-footer-copy">© {new Date().getFullYear()} Fixsense, Inc.</span>
           <div className="pp-footer-links">
             <Link to="/privacy" className="pp-footer-link">Privacy</Link>
             <Link to="/terms" className="pp-footer-link">Terms</Link>
