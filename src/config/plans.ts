@@ -1,143 +1,110 @@
-// Fixed conversion rate: 1 USD = 1,500 NGN
+// ─── Fixsense Plan Configuration ─────────────────────────────────────────────
+// Single source of truth for all plan entitlements.
+// Minute quotas are the canonical usage unit; "hours" is the UI presentation layer.
+
 export const USD_TO_NGN = 1500;
 
 export interface PlanConfig {
-  key: string;
+  id: string;
   name: string;
   price_usd: number;
-  price_ngn: number;
-  period: string;
-  description: string;
-  calls_limit: number;
+  price_ngn_kobo: number;
+  minute_quota: number;       // -1 = unlimited
+  overage_rate_kobo: number;  // per overage minute, 0 = block
   team_members_limit: number; // -1 = unlimited
-  paystack_plan: string | null;
-  popular: boolean;
-  features: { text: string; included: boolean }[];
-  cta: string;
+  calls_limit: number;        // legacy compat — derived from minute_quota / avg 60 min
+  badge?: string;
 }
 
-export const PLANS: PlanConfig[] = [
-  {
-    key: "free",
+export const PLANS: Record<string, PlanConfig> = {
+  free: {
+    id: "free",
     name: "Free",
     price_usd: 0,
-    price_ngn: 0,
-    period: "/month",
-    description: "Get started with AI-powered meeting intelligence",
-    calls_limit: 5,
+    price_ngn_kobo: 0,
+    minute_quota: 300,        // 5 hours
+    overage_rate_kobo: 0,
     team_members_limit: 1,
-    paystack_plan: null,
-    popular: false,
-    features: [
-      { text: "1 user only", included: true },
-      { text: "Up to 5 meetings/month", included: true },
-      { text: "Zoom integration", included: true },
-      { text: "Google Meet integration", included: true },
-      { text: "AI meeting summaries", included: true },
-      { text: "Basic analytics", included: true },
-      { text: "Email support (limited)", included: true },
-      { text: "Team dashboard", included: false },
-      { text: "Action items", included: false },
-    ],
-    cta: "Get Started Free",
+    calls_limit: 5,
   },
-  {
-    key: "starter",
+  starter: {
+    id: "starter",
     name: "Starter",
     price_usd: 19,
-    price_ngn: 19 * USD_TO_NGN,
-    period: "/month",
-    description: "For individual reps who want more meetings",
-    calls_limit: 50,
+    price_ngn_kobo: 28_500_000,
+    minute_quota: 1500,       // 75 hours
+    overage_rate_kobo: 600,   // ₦6/min
     team_members_limit: 3,
-    paystack_plan: "starter",
-    popular: false,
-    features: [
-      { text: "Up to 3 team members", included: true },
-      { text: "Up to 50 meetings/month", included: true },
-      { text: "Zoom integration", included: true },
-      { text: "Google Meet integration", included: true },
-      { text: "AI meeting summaries", included: true },
-      { text: "Basic analytics", included: true },
-      { text: "Email support", included: true },
-      { text: "Team dashboard", included: false },
-      { text: "Priority support", included: false },
-    ],
-    cta: "Subscribe",
   },
-  {
-    key: "growth",
+  growth: {
+    id: "growth",
     name: "Growth",
     price_usd: 49,
-    price_ngn: 49 * USD_TO_NGN,
-    period: "/month",
-    description: "For growing teams with advanced needs",
-    calls_limit: 300,
-    team_members_limit: 10,
-    paystack_plan: "growth",
-    popular: true,
-    features: [
-      { text: "Up to 10 team members", included: true },
-      { text: "Up to 300 meetings/month", included: true },
-      { text: "Zoom + Google Meet + Slack", included: true },
-      { text: "AI summaries + action items", included: true },
-      { text: "Team analytics dashboard", included: true },
-      { text: "Coaching insights", included: true },
-      { text: "Priority email support", included: true },
-      { text: "Admin controls", included: false },
-      { text: "API access", included: false },
-    ],
-    cta: "Subscribe",
+    price_ngn_kobo: 73_500_000,
+    minute_quota: 6000,      // 300 hours
+    overage_rate_kobo: 400,   // ₦4/min
+    team_members_limit: 10
+    badge: "Most Popular",
   },
-  {
-    key: "scale",
+  scale: {
+    id: "scale",
     name: "Scale",
     price_usd: 99,
-    price_ngn: 99 * USD_TO_NGN,
-    period: "/month",
-    description: "For large teams that need everything",
-    calls_limit: -1,
+    price_ngn_kobo: 148_500_000,
+    minute_quota: 20000,         // unlimited
+    overage_rate_kobo: 250,
     team_members_limit: -1,
-    paystack_plan: "scale",
-    popular: false,
-    features: [
-      { text: "Unlimited team members", included: true },
-      { text: "Unlimited meetings", included: true },
-      { text: "All integrations", included: true },
-      { text: "AI insights + summaries", included: true },
-      { text: "Advanced team analytics", included: true },
-      { text: "Admin controls + API access", included: true },
-      { text: "Priority support", included: true },
-      { text: "Custom onboarding", included: true },
-      { text: "Dedicated account manager", included: true },
-    ],
-    cta: "Subscribe",
   },
-];
+};
 
-export const PLANS_SIMPLE = PLANS.map(({ key, name, price_usd, calls_limit, team_members_limit }) => ({
-  key,
-  name,
-  price_usd,
-  calls_limit,
-  team_members_limit,
-}));
+export const PLAN_ORDER = ["free", "starter", "growth", "scale"] as const;
+export type PlanId = typeof PLAN_ORDER[number];
 
-export function getPlanByKey(key: string): PlanConfig | undefined {
-  return PLANS.find((p) => p.key === key);
+// Flat array for iteration
+export const PLANS_SIMPLE = PLAN_ORDER.map((k) => PLANS[k]);
+
+// ── Utility helpers ───────────────────────────────────────────────────────────
+
+export function getMinuteQuota(planId: string): number {
+  return PLANS[planId]?.minute_quota ?? 300;
 }
 
-export function getTeamMembersLimit(planKey: string): number {
-  const plan = getPlanByKey(planKey);
-  if (!plan) return 1;
-  return plan.team_members_limit;
+export function getTeamMembersLimit(planId: string): number {
+  return PLANS[planId]?.team_members_limit ?? 1;
 }
 
-export function formatNGN(amount: number): string {
+export function minutesToHours(minutes: number): string {
+  if (minutes <= 0) return "0h";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+export function formatNGN(koboOrNaira: number, isKobo = false): string {
+  const naira = isKobo ? koboOrNaira / 100 : koboOrNaira;
   return new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(naira);
+}
+
+export function planNameToId(planName: string | null | undefined): PlanId {
+  if (!planName) return "free";
+  const lower = planName.toLowerCase();
+  if (lower.includes("scale"))   return "scale";
+  if (lower.includes("growth"))  return "growth";
+  if (lower.includes("starter")) return "starter";
+  return "free";
+}
+
+export function comparePlans(a: string, b: string): number {
+  return PLAN_ORDER.indexOf(a as PlanId) - PLAN_ORDER.indexOf(b as PlanId);
+}
+
+export function isUpgrade(from: string, to: string): boolean {
+  return comparePlans(to, from) > 0;
 }
