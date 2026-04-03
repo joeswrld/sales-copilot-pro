@@ -212,11 +212,11 @@ function MeetingUrlInput({
     const v = url.trim();
     if (!v) { setErr("Paste a meeting link to get started"); return; }
     if (!isValidMeetingUrl(v)) {
-      setErr("Please enter a valid meeting link starting with https://");
+      setErr("Please enter a valid meeting link (e.g. meet.google.com/abc-defg-hij)");
       return;
     }
     setErr("");
-    onStart(v);
+    onStart(normalizeMeetingUrl(v));
   };
 
   return (
