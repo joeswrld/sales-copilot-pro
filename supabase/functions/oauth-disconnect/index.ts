@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ token }),
         });
-      } catch (e) {
-        console.warn("Token revocation failed (non-critical):", e.message);
+      } catch (e: unknown) {
+        console.warn("Token revocation failed (non-critical):", (e as Error).message);
       }
     }
 
