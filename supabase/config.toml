@@ -45,8 +45,7 @@ verify_jwt = false
 [functions.get-user-active-plan]
 verify_jwt = false
 
-# ── New calendar functions ──────────────────────────────────────────────────
-# verify_jwt = false because Google redirects here directly (no JWT in request)
+# ── Calendar functions ──────────────────────────────────────────────────────
 
 [functions.google-oauth]
 verify_jwt = false
@@ -63,5 +62,9 @@ verify_jwt = false
 [functions.meetingbaas-webhook]
 verify_jwt = false
 
-[functions.meetingbaas-webhook]
+# ── Native Meetings (Daily.co) ──────────────────────────────────────────────
+# verify_jwt = false because we do our own auth inside the function
+# (service-role getUser + JWT decode fallback for resilience)
+
+[functions.create-daily-room]
 verify_jwt = false
