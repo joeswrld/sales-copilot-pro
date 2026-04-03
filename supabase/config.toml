@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.meetingbaas-webhook]
 verify_jwt = false
+
+[functions.meetingbaas-webhook]
+verify_jwt = false
