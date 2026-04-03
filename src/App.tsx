@@ -27,6 +27,8 @@ import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import { DebugInspector } from "./pages/debugInspector";
+import MeetingJoin from "@/pages/MeetingJoin";
+
 
 import {
   PrivacyPage,
@@ -187,6 +189,7 @@ const App = () => {
               />
 
               {/* Catch-all */}
+<Route path="/meet/:roomName" element={<MeetingJoin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
