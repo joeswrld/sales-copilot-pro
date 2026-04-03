@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useMeetingUsage } from "@/hooks/useMeetingUsage";
+import { useMinuteUsage } from "@/hooks/useMinuteUsage";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,26 +11,19 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2,
-  Info, RefreshCw, ArrowUp, ArrowDown, Receipt,
-  BarChart3, TrendingUp, Users, Calendar, Video, Sparkles,
-  AlertTriangle, RotateCcw,
+  Info, RefreshCw, ArrowUp, ArrowDown, Receipt, BarChart3,
+  TrendingUp, Users, Calendar, Timer, Sparkles, AlertTriangle, RotateCcw, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit } from "@/config/plans";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit, formatMinutes } from "@/config/plans";
 import { cn } from "@/lib/utils";
 
-const statusConfig: Record<string, {
-  label: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
-  icon: typeof CheckCircle2;
-}> = {
+const STATUS_CFG: Record<string, { label: string; variant: "default"|"secondary"|"destructive"|"outline"; icon: typeof CheckCircle2 }> = {
   active:    { label: "Active",    variant: "default",     icon: CheckCircle2 },
   cancelled: { label: "Cancelled", variant: "secondary",   icon: XCircle },
   past_due:  { label: "Past Due",  variant: "destructive", icon: AlertCircle },
@@ -40,107 +33,76 @@ const statusConfig: Record<string, {
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const {
-    subscription, isLoading, billingState,
-    subscribe, cancelSubscription, changePlan,
-    verifyPayment, markAbandoned,
-    isActive, refetch, currentPlanKey,
-    transactions, isTransactionsLoading, isSyncingPending,
-  } = useSubscription();
-  const { usage: meetingUsage } = useMeetingUsage();
+  const { subscription, isLoading, billingState, subscribe, cancelSubscription, changePlan,
+    verifyPayment, markAbandoned, isActive, refetch, currentPlanKey,
+    transactions, isTransactionsLoading, isSyncingPending } = useSubscription();
+  const { usage } = useMinuteUsage();
   const { effectivePlan } = useEffectivePlan();
 
-  const teamMembersQuery = useQuery({
+  const teamQuery = useQuery({
     queryKey: ["team-member-count", user?.id],
     queryFn: async () => {
-      if (!user) return { count: 0, teamId: null, adminPlanKey: "free" };
-      const { data: membership } = await supabase
-        .from("team_members").select("team_id")
-        .eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle();
-      if (!membership) return { count: 1, teamId: null, adminPlanKey: "free" };
-      const { count } = await supabase
-        .from("team_members").select("*", { count: "exact", head: true })
-        .eq("team_id", membership.team_id).eq("status", "active");
-      const { data: adminMember } = await supabase
-        .from("team_members").select("user_id")
-        .eq("team_id", membership.team_id).eq("role", "admin")
-        .eq("status", "active").limit(1).single();
+      if (!user) return { count: 0, adminPlanKey: "free" };
+      const { data: m } = await supabase.from("team_members").select("team_id").eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle();
+      if (!m) return { count: 1, adminPlanKey: "free" };
+      const { count } = await supabase.from("team_members").select("*", { count: "exact", head: true }).eq("team_id", m.team_id).eq("status", "active");
+      const { data: admin } = await supabase.from("team_members").select("user_id").eq("team_id", m.team_id).eq("role", "admin").eq("status", "active").limit(1).single();
       let adminPlanKey = "free";
-      if (adminMember) {
-        const { data: adminProfile } = await supabase
-          .from("profiles").select("plan_type").eq("id", adminMember.user_id).single();
-        adminPlanKey = adminProfile?.plan_type || "free";
+      if (admin) {
+        const { data: ap } = await supabase.from("profiles").select("plan_type").eq("id", admin.user_id).single();
+        adminPlanKey = ap?.plan_type || "free";
       }
-      return { count: count ?? 1, teamId: membership.team_id, adminPlanKey };
+      return { count: count ?? 1, adminPlanKey };
     },
-    enabled: !!user,
-    refetchInterval: 30000,
+    enabled: !!user, refetchInterval: 30_000,
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const handledCallbackKeyRef = useRef<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const handledRef = useRef<string | null>(null);
 
-  // ── Handle return from Paystack checkout ──────────────────────────────
   useEffect(() => {
-    const reference = searchParams.get("reference");
-    const trxref = searchParams.get("trxref");
-    const isCallback = reference || trxref;
-
-    if (!isCallback) {
-      const pendingRef = sessionStorage.getItem("fixsense_pending_payment_ref");
-      if (pendingRef) {
-        sessionStorage.removeItem("fixsense_pending_payment_ref");
-        markAbandoned.mutate(pendingRef);
-      }
+    const ref = searchParams.get("reference") || searchParams.get("trxref");
+    if (!ref) {
+      const p = sessionStorage.getItem("fixsense_pending_payment_ref");
+      if (p) { sessionStorage.removeItem("fixsense_pending_payment_ref"); markAbandoned.mutate(p); }
       return;
     }
-
-    const callbackKey = `${reference || trxref}`;
-    if (handledCallbackKeyRef.current === callbackKey) return;
-    handledCallbackKeyRef.current = callbackKey;
-
+    if (handledRef.current === ref) return;
+    handledRef.current = ref;
     sessionStorage.removeItem("fixsense_pending_payment_ref");
     setSearchParams({}, { replace: true });
-
-    verifyPayment.mutate(
-      { reference: reference || trxref, includeTransactions: false },
-      {
-        onSuccess: (data) => {
-          if ((data as any)?.updated) {
-            toast.success("🎉 Payment confirmed! Your plan has been upgraded.");
-          } else {
-            toast.info("Payment received — confirming your plan upgrade...");
-          }
-        },
-      }
-    );
+    verifyPayment.mutate({ reference: ref, includeTransactions: false }, {
+      onSuccess: (d) => {
+        if ((d as any)?.updated) toast.success("🎉 Payment confirmed! Your plan has been upgraded.");
+        else toast.info("Payment received — confirming your plan upgrade...");
+      },
+    });
   }, [searchParams]);
 
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
+  const doRefresh = async () => {
+    setRefreshing(true);
     await verifyPayment.mutateAsync({ reference: null, includeTransactions: false });
     await refetch();
-    setIsRefreshing(false);
+    setRefreshing(false);
     toast.info("Payment status checked");
   };
 
-  const getAvailablePlans = () => PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey);
-
-  const showActivePlan = billingState.billingStatus === "active";
-  const showIncompleteCheckout = billingState.hasIncompleteCheckout;
-
-  const status = statusConfig[subscription?.status || "inactive"] || statusConfig.inactive;
-  const StatusIcon = status.icon;
-  const priceUSD = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
-  const priceNGN = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
-  const availablePlans = getAvailablePlans();
-
-  const resolvedPlanKey = effectivePlan?.planKey ?? currentPlanKey;
-  const teamMembersLimit = getTeamMembersLimit(teamMembersQuery.data?.adminPlanKey ?? resolvedPlanKey);
-  const teamMembersUsed = teamMembersQuery.data?.count ?? 1;
-  const isTeamUnlimited = teamMembersLimit === -1;
-  const teamPct = isTeamUnlimited ? 0 : Math.min((teamMembersUsed / teamMembersLimit) * 100, 100);
+  const available   = PLANS_SIMPLE.filter(p => p.key !== currentPlanKey);
+  const showActive  = billingState.billingStatus === "active";
+  const showPending = billingState.hasIncompleteCheckout;
+  const sc          = STATUS_CFG[subscription?.status || "inactive"] || STATUS_CFG.inactive;
+  const SI          = sc.icon;
+  const priceUSD    = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
+  const priceNGN    = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
+  const resolvedKey = effectivePlan?.planKey ?? currentPlanKey;
+  const tmLimit     = getTeamMembersLimit(teamQuery.data?.adminPlanKey ?? resolvedKey);
+  const tmUsed      = teamQuery.data?.count ?? 1;
+  const tmUnlim     = tmLimit === -1;
+  const tmPct       = tmUnlim ? 0 : Math.min((tmUsed / tmLimit) * 100, 100);
+  const hoursUsed   = usage ? (usage.minutesUsed / 60).toFixed(1) : "0.0";
+  const hoursLimit  = usage && !usage.isUnlimited ? (usage.minuteLimit / 60).toFixed(0) : null;
+  const hoursLeft   = usage && !usage.isUnlimited ? Math.max(0, (usage.minutesRemaining as number) / 60).toFixed(1) : null;
 
   return (
     <TooltipProvider>
@@ -148,19 +110,17 @@ export default function BillingPage() {
         <div className="max-w-3xl mx-auto space-y-8">
           <div>
             <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
-            <p className="text-muted-foreground mt-1">Manage your Fixsense subscription and payment details.</p>
+            <p className="text-muted-foreground mt-1">Manage your subscription and minute-based usage.</p>
           </div>
 
           <PlanInheritanceBanner />
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
           ) : (
             <>
-              {/* ── Incomplete / Abandoned Checkout Banner ─────────────────── */}
-              {showIncompleteCheckout && (
+              {/* Incomplete checkout */}
+              {showPending && (
                 <Card className="border-amber-500/40 bg-amber-500/5">
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
@@ -169,43 +129,18 @@ export default function BillingPage() {
                         <div>
                           <p className="font-semibold text-foreground">Payment not completed</p>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {billingState.latestPayment?.status === "abandoned"
-                              ? "You closed the payment window before completing your subscription."
-                              : "Your payment is still processing or was not completed."}{" "}
-                            {billingState.pendingPlanKey && (
-                              <span>
-                                You were trying to subscribe to the{" "}
-                                <strong className="text-foreground capitalize">
-                                  {billingState.pendingPlanKey}
-                                </strong>{" "}
-                                plan.
-                              </span>
-                            )}
+                            {billingState.latestPayment?.status === "abandoned" ? "You closed the payment window before completing." : "Your payment is still processing or was not completed."}{" "}
+                            {billingState.pendingPlanKey && <span>You were subscribing to the <strong className="text-foreground capitalize">{billingState.pendingPlanKey}</strong> plan.</span>}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
                           {billingState.pendingPlanKey && (
-                            <Button
-                              size="sm"
-                              onClick={() => subscribe.mutate(billingState.pendingPlanKey!)}
-                              disabled={subscribe.isPending}
-                            >
-                              {subscribe.isPending ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              ) : (
-                                <RotateCcw className="w-4 h-4 mr-2" />
-                              )}
-                              Retry Payment
+                            <Button size="sm" onClick={() => subscribe.mutate(billingState.pendingPlanKey!)} disabled={subscribe.isPending}>
+                              {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />} Retry Payment
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleManualRefresh}
-                            disabled={isRefreshing || verifyPayment.isPending}
-                          >
-                            <RefreshCw className={cn("w-4 h-4 mr-2", (isRefreshing || isSyncingPending) && "animate-spin")} />
-                            Check Status
+                          <Button size="sm" variant="outline" onClick={doRefresh} disabled={refreshing || verifyPayment.isPending}>
+                            <RefreshCw className={cn("w-4 h-4 mr-2", (refreshing || isSyncingPending) && "animate-spin")} /> Check Status
                           </Button>
                         </div>
                       </div>
@@ -214,263 +149,163 @@ export default function BillingPage() {
                 </Card>
               )}
 
-              {/* ── Active Subscription ────────────────────────────────────── */}
-              {showActivePlan && subscription ? (
+              {showActive && subscription ? (
                 <>
+                  {/* Active plan */}
                   <Card className="border-primary/20 bg-primary/5">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                       <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Zap className="w-5 h-5 text-primary" />
-                          {subscription.plan_name}
-                        </CardTitle>
-                        <CardDescription>Monthly subscription</CardDescription>
+                        <CardTitle className="text-lg flex items-center gap-2"><Zap className="w-5 h-5 text-primary" />{subscription.plan_name}</CardTitle>
+                        <CardDescription>Monthly subscription · billed in NGN</CardDescription>
                       </div>
-                      <Badge variant={status.variant} className="flex items-center gap-1.5 px-3 py-1">
-                        <StatusIcon className="w-3.5 h-3.5" />
-                        {status.label}
-                      </Badge>
+                      <Badge variant={sc.variant} className="flex items-center gap-1.5 px-3 py-1"><SI className="w-3.5 h-3.5" />{sc.label}</Badge>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <p className="text-sm text-muted-foreground">Price</p>
-                          <p className="text-2xl font-bold text-foreground">
-                            ${priceUSD}
-                            <span className="text-sm font-normal text-muted-foreground">/month</span>
-                          </p>
+                          <p className="text-2xl font-bold text-foreground">${priceUSD}<span className="text-sm font-normal text-muted-foreground">/month</span></p>
                           {priceNGN > 0 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <p className="text-xs text-muted-foreground mt-1 cursor-help inline-flex items-center gap-1">
-                                  {formatNGN(priceNGN)} billed monthly <Info className="w-3 h-3" />
-                                </p>
+                                <p className="text-xs text-muted-foreground mt-1 cursor-help inline-flex items-center gap-1">{formatNGN(priceNGN * 100)} billed monthly <Info className="w-3 h-3" /></p>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Billed in Nigerian Naira (NGN)</p>
-                                <p className="text-xs text-muted-foreground">Rate: 1 USD = ₦1,500</p>
-                              </TooltipContent>
+                              <TooltipContent><p>Billed in Nigerian Naira</p><p className="text-xs text-muted-foreground">Rate: 1 USD = ₦1,500</p></TooltipContent>
                             </Tooltip>
                           )}
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Next billing date</p>
                           <p className="text-lg font-semibold text-foreground">
-                            {subscription.next_payment_date
-                              ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
-                              : transactions.length > 0 && transactions[0].paid_at
-                              ? format(
-                                  new Date(new Date(transactions[0].paid_at).setMonth(new Date(transactions[0].paid_at).getMonth() + 1)),
-                                  "MMM d, yyyy"
-                                )
-                              : "—"}
+                            {subscription.next_payment_date ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
+                              : transactions[0]?.paid_at ? format(new Date(new Date(transactions[0].paid_at).setMonth(new Date(transactions[0].paid_at).getMonth()+1)), "MMM d, yyyy") : "—"}
                           </p>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Usage Analytics */}
+                  {/* Usage */}
                   <Card className="border-border">
                     <CardHeader>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <BarChart3 className="w-5 h-5 text-primary" />
-                        Usage Analytics
-                      </CardTitle>
+                      <CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary" />Usage This Billing Cycle</CardTitle>
                       <CardDescription>
-                        Your current usage vs plan limits this billing cycle.
-                        {effectivePlan?.isInherited && (
-                          <span className="ml-1 inline-flex items-center gap-1 text-primary">
-                            <Sparkles className="w-3 h-3" />
-                            Limits reflect your workspace's {effectivePlan.planName} plan.
-                          </span>
-                        )}
+                        Minutes are your billing unit — each completed call's duration is tracked automatically.
+                        {effectivePlan?.isInherited && <span className="ml-1 inline-flex items-center gap-1 text-primary"><Sparkles className="w-3 h-3" />Limits reflect your workspace's {effectivePlan.planName} plan.</span>}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      {meetingUsage && (
+                      {/* Minute bar */}
+                      {usage && (
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                              <Video className="w-4 h-4 text-primary" />
-                              Meetings This Month
-                            </span>
-                            <span className="text-sm font-semibold text-foreground">
-                              {meetingUsage.used} / {meetingUsage.isUnlimited ? "∞" : meetingUsage.limit}
+                            <span className="text-sm font-medium text-foreground flex items-center gap-2"><Timer className="w-4 h-4 text-primary" />Call Minutes This Month</span>
+                            <span className={cn("text-sm font-semibold tabular-nums", usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-amber-500" : "text-foreground")}>
+                              {usage.isUnlimited ? `${hoursUsed}h used · Unlimited` : `${hoursUsed}h / ${hoursLimit}h`}
                             </span>
                           </div>
-                          <Progress
-                            value={meetingUsage.isUnlimited ? 0 : meetingUsage.pct}
-                            className={cn(
-                              "h-3",
-                              meetingUsage.isAtLimit ? "[&>div]:bg-destructive" : meetingUsage.isNearLimit ? "[&>div]:bg-accent" : ""
-                            )}
-                          />
-                          <div className="flex justify-between mt-1.5">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
-                              {meetingUsage.isUnlimited ? (
-                                "Unlimited meetings on your plan"
-                              ) : (
-                                <>
-                                  <Calendar className="w-3 h-3" />
-                                  Resets {format(meetingUsage.resetDate, "MMM d, yyyy")}
-                                </>
-                              )}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {meetingUsage.isUnlimited ? "" : `${meetingUsage.remaining} remaining`}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                            <Users className="w-4 h-4 text-primary" />
-                            Team Members
-                          </span>
-                          <span className="text-sm font-semibold text-foreground">
-                            {teamMembersUsed} / {isTeamUnlimited ? "∞" : teamMembersLimit}
-                          </span>
-                        </div>
-                        <Progress value={isTeamUnlimited ? 0 : teamPct} className="h-3" />
-                        <div className="flex justify-between mt-1.5">
-                          <span className="text-xs text-muted-foreground">
-                            {isTeamUnlimited ? "Unlimited members on your plan" : `${Math.round(teamPct)}% of team limit`}
-                          </span>
-                          {!isTeamUnlimited && teamMembersUsed >= teamMembersLimit && (
-                            <span className="text-xs text-destructive font-medium">Limit reached</span>
+                          {!usage.isUnlimited ? (
+                            <>
+                              <Progress value={usage.pct} className={cn("h-3", usage.isAtLimit ? "[&>div]:bg-destructive" : usage.isNearLimit ? "[&>div]:bg-amber-500" : "")} />
+                              <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
+                                <span>{usage.isAtLimit ? <span className="text-destructive font-medium">Limit reached — upgrade to continue</span> : `${hoursLeft}h remaining · ${Math.round(usage.pct)}% used`}</span>
+                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Resets {format(usage.resetDate, "MMM d, yyyy")}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="h-3 rounded-full bg-primary/10 overflow-hidden">
+                                <div className="h-full rounded-full bg-gradient-to-r from-primary/50 to-primary" style={{ width: `${Math.min((usage.minutesUsed/20000)*100,100)}%` }} />
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1.5">{formatMinutes(usage.minutesUsed)} used · fair use applies above 333h</p>
+                            </>
                           )}
                         </div>
+                      )}
+                      {/* Meetings count */}
+                      {usage && (
+                        <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-secondary/30 border border-border">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="w-4 h-4" />Meetings completed this month</div>
+                          <span className="font-semibold text-sm text-foreground">{usage.meetingsUsed}{usage.meetingLimit > 0 && usage.meetingLimit !== -1 ? ` / ${usage.meetingLimit}` : ""}</span>
+                        </div>
+                      )}
+                      {/* Team members */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-foreground flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Team Members</span>
+                          <span className="text-sm font-semibold text-foreground">{tmUsed} / {tmUnlim ? "∞" : tmLimit}</span>
+                        </div>
+                        <Progress value={tmUnlim ? 0 : tmPct} className="h-3" />
+                        <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
+                          <span>{tmUnlim ? "Unlimited members" : `${Math.round(tmPct)}% of seat limit`}</span>
+                          {!tmUnlim && tmUsed >= tmLimit && <span className="text-destructive font-medium">Seat limit reached</span>}
+                        </div>
                       </div>
-
-                      {meetingUsage && !meetingUsage.isUnlimited && (meetingUsage.isNearLimit || meetingUsage.isAtLimit) && (
-                        (() => {
-                          const nextPlan = PLANS_SIMPLE.find((_, i) => {
-                            const ci = PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
-                            return i === ci + 1;
-                          });
-                          if (!nextPlan) return null;
-                          return (
-                            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                              <div className="flex items-start gap-3">
-                                <TrendingUp className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                                <div className="space-y-2">
-                                  <p className="text-sm font-medium text-foreground">
-                                    {meetingUsage.isAtLimit ? "You've hit your meeting limit!" : "Approaching your meeting limit"}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Upgrade to <strong>{nextPlan.name}</strong> for{" "}
-                                    {nextPlan.calls_limit < 0 ? "unlimited" : nextPlan.calls_limit} meetings at ${nextPlan.price_usd}/mo.
-                                  </p>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => changePlan.mutate(nextPlan.key)}
-                                    disabled={changePlan.isPending}
-                                  >
-                                    {changePlan.isPending ? (
-                                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                                    ) : (
-                                      <ArrowUp className="w-3.5 h-3.5 mr-1.5" />
-                                    )}
-                                    Upgrade to {nextPlan.name}
-                                  </Button>
-                                </div>
+                      {/* Upgrade nudge */}
+                      {usage && !usage.isUnlimited && (usage.isNearLimit || usage.isAtLimit) && (() => {
+                        const ci = PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
+                        const next = PLANS_SIMPLE[ci + 1];
+                        if (!next) return null;
+                        const nh = next.minute_quota === -1 ? "unlimited" : `${(next.minute_quota/60).toFixed(0)}h`;
+                        return (
+                          <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                            <div className="flex items-start gap-3">
+                              <TrendingUp className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-foreground">{usage.isAtLimit ? "You've used all your call minutes this month" : `${hoursLeft}h of call minutes remaining`}</p>
+                                <p className="text-xs text-muted-foreground">Upgrade to <strong>{next.name}</strong> for {nh} of call minutes at ${next.price_usd}/mo.</p>
+                                <Button size="sm" onClick={() => changePlan.mutate(next.key)} disabled={changePlan.isPending}>
+                                  {changePlan.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <ArrowUp className="w-3.5 h-3.5 mr-1.5" />}Upgrade to {next.name}
+                                </Button>
                               </div>
                             </div>
-                          );
-                        })()
-                      )}
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
 
-                  {/* Payment Method */}
+                  {/* Payment method */}
                   {subscription.card_last4 && (
                     <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <CreditCard className="w-5 h-5 text-muted-foreground" />
-                          Payment Method
-                        </CardTitle>
-                      </CardHeader>
+                      <CardHeader><CardTitle className="text-lg flex items-center gap-2"><CreditCard className="w-5 h-5 text-muted-foreground" />Payment Method</CardTitle></CardHeader>
                       <CardContent>
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-8 rounded bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase">
-                            {subscription.card_brand || "Card"}
-                          </div>
-                          <span className="text-foreground font-mono">
-                            •••• •••• •••• {subscription.card_last4}
-                          </span>
+                          <div className="w-12 h-8 rounded bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase">{subscription.card_brand || "Card"}</div>
+                          <span className="text-foreground font-mono">•••• •••• •••• {subscription.card_last4}</span>
                         </div>
                       </CardContent>
                     </Card>
                   )}
 
-                  {/* Change Plan — goes directly to Paystack, no preview dialog */}
-                  {isActive && availablePlans.length > 0 && (
+                  {/* Change plan */}
+                  {isActive && available.length > 0 && (
                     <Card className="border-primary/30">
                       <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <ArrowUp className="w-5 h-5 text-primary" />
-                          Change Your Plan
-                        </CardTitle>
-                        <CardDescription>
-                          Switch plans instantly — you'll be taken to Paystack to complete the change.
-                        </CardDescription>
+                        <CardTitle className="text-lg flex items-center gap-2"><ArrowUp className="w-5 h-5 text-primary" />Change Your Plan</CardTitle>
+                        <CardDescription>Switch plans via Paystack — changes take effect immediately.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="grid gap-4 sm:grid-cols-2">
-                          {availablePlans.map((plan) => {
-                            const isUpgrade =
-                              PLANS_SIMPLE.findIndex(p => p.key === plan.key) >
-                              PLANS_SIMPLE.findIndex(p => p.key === currentPlanKey);
-                            const isThisPlanPending = changePlan.isPending;
+                          {available.map(plan => {
+                            const up = PLANS_SIMPLE.findIndex(p=>p.key===plan.key) > PLANS_SIMPLE.findIndex(p=>p.key===currentPlanKey);
+                            const mh = plan.minute_quota === -1 ? "Unlimited" : `${(plan.minute_quota/60).toFixed(0)}h`;
                             return (
                               <div key={plan.key} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
                                 <div className="flex justify-between items-start mb-2">
                                   <div className="flex items-center gap-2">
                                     <h3 className="font-semibold text-foreground">{plan.name}</h3>
-                                    {isUpgrade ? (
-                                      <Badge variant="default" className="text-xs">
-                                        <ArrowUp className="w-3 h-3 mr-1" />Upgrade
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="secondary" className="text-xs">
-                                        <ArrowDown className="w-3 h-3 mr-1" />Downgrade
-                                      </Badge>
-                                    )}
+                                    {up ? <Badge variant="default" className="text-xs"><ArrowUp className="w-3 h-3 mr-1" />Upgrade</Badge>
+                                       : <Badge variant="secondary" className="text-xs"><ArrowDown className="w-3 h-3 mr-1" />Downgrade</Badge>}
                                   </div>
                                 </div>
-                                <p className="text-2xl font-bold text-foreground mb-1">
-                                  ${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span>
-                                </p>
-                                <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
-                                  <Video className="w-3.5 h-3.5" />
-                                  {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} meetings/month
-                                </p>
-                                <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
-                                  <Users className="w-3.5 h-3.5" />
-                                  {plan.team_members_limit === -1 ? "Unlimited" : `Up to ${plan.team_members_limit}`} team members
-                                </p>
-                                <p className="text-xs text-muted-foreground mb-3">
-                                  {formatNGN(plan.price_usd * USD_TO_NGN)} billed monthly
-                                </p>
-                                <Button
-                                  size="sm"
-                                  className="w-full"
-                                  variant={isUpgrade ? "default" : "outline"}
-                                  onClick={() => changePlan.mutate(plan.key)}
-                                  disabled={isThisPlanPending}
-                                >
-                                  {isThisPlanPending ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  ) : isUpgrade ? (
-                                    <ArrowUp className="w-4 h-4 mr-2" />
-                                  ) : (
-                                    <ArrowDown className="w-4 h-4 mr-2" />
-                                  )}
-                                  {isUpgrade ? "Upgrade" : "Downgrade"} to {plan.name}
+                                <p className="text-2xl font-bold text-foreground mb-1">${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
+                                <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><Timer className="w-3.5 h-3.5" />{mh} call minutes/month</p>
+                                <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{plan.team_members_limit===-1?"Unlimited":`Up to ${plan.team_members_limit}`} team members</p>
+                                <p className="text-xs text-muted-foreground mb-3">{formatNGN(plan.price_usd * USD_TO_NGN * 100)} billed monthly</p>
+                                <Button size="sm" className="w-full" variant={up ? "default" : "outline"} onClick={() => changePlan.mutate(plan.key)} disabled={changePlan.isPending}>
+                                  {changePlan.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : up ? <ArrowUp className="w-4 h-4 mr-2" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                                  {up ? "Upgrade" : "Downgrade"} to {plan.name}
                                 </Button>
                               </div>
                             );
@@ -480,122 +315,71 @@ export default function BillingPage() {
                     </Card>
                   )}
 
-                  {/* Subscription Actions */}
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Subscription Actions</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle className="text-lg">Subscription Actions</CardTitle></CardHeader>
                     <CardContent className="flex flex-wrap gap-3">
                       {isActive && (
-                        <Button
-                          variant="destructive"
-                          onClick={() => cancelSubscription.mutate()}
-                          disabled={cancelSubscription.isPending}
-                        >
-                          {cancelSubscription.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                          Cancel Subscription
+                        <Button variant="destructive" onClick={() => cancelSubscription.mutate()} disabled={cancelSubscription.isPending}>
+                          {cancelSubscription.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Cancel Subscription
                         </Button>
                       )}
                     </CardContent>
                   </Card>
                 </>
-              ) : !showIncompleteCheckout ? (
-                /* ── No active plan — show pricing ── */
+              ) : !showPending ? (
                 <Card className="border-primary shadow-lg shadow-primary/10 max-w-md mx-auto">
                   <CardHeader className="text-center pb-2">
-                    <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                      <Zap className="w-6 h-6 text-primary" />
-                    </div>
+                    <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3"><Zap className="w-6 h-6 text-primary" /></div>
                     <CardTitle className="text-xl">Choose a Plan</CardTitle>
-                    <CardDescription>
-                      Unlock AI-powered sales intelligence. Only activated after successful payment.
-                    </CardDescription>
+                    <CardDescription>Minute-based billing — pay for how long you talk, nothing more.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {PLANS_SIMPLE.filter(p => p.key !== "free").map((plan) => (
-                      <div key={plan.key} className={cn(
-                        "p-4 rounded-lg border transition-colors",
-                        plan.key === "growth"
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      )}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-foreground">{plan.name}</h3>
-                            {plan.key === "growth" && (
-                              <Badge variant="default" className="text-xs">Most Popular</Badge>
-                            )}
+                    {PLANS_SIMPLE.filter(p => p.key !== "free").map(plan => {
+                      const mh = plan.minute_quota === -1 ? "Unlimited" : `${(plan.minute_quota/60).toFixed(0)}h`;
+                      return (
+                        <div key={plan.key} className={cn("p-4 rounded-lg border transition-colors", plan.key==="growth" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-foreground">{plan.name}</h3>
+                              {plan.key==="growth" && <Badge variant="default" className="text-xs">Most Popular</Badge>}
+                            </div>
+                            <span className="text-xl font-bold text-foreground">${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
                           </div>
-                          <span className="text-xl font-bold text-foreground">${plan.price_usd}<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
+                          <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1"><Timer className="w-3 h-3" />{mh} call minutes · {plan.team_members_limit===-1?"Unlimited":`Up to ${plan.team_members_limit}`} members</p>
+                          <Button className="w-full" variant={plan.key==="growth"?"default":"outline"} size="sm" onClick={() => subscribe.mutate(plan.key)} disabled={subscribe.isPending}>
+                            {subscribe.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}Subscribe with Paystack
+                          </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-3">
-                          {plan.calls_limit === -1 ? "Unlimited" : plan.calls_limit} meetings · {plan.team_members_limit === -1 ? "Unlimited" : `Up to ${plan.team_members_limit}`} members
-                        </p>
-                        <Button
-                          className="w-full"
-                          variant={plan.key === "growth" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => subscribe.mutate(plan.key)}
-                          disabled={subscribe.isPending}
-                        >
-                          {subscribe.isPending ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <CreditCard className="w-4 h-4 mr-2" />
-                          )}
-                          Subscribe with Paystack
-                        </Button>
-                      </div>
-                    ))}
-                    <p className="text-xs text-center text-muted-foreground">
-                      Or <Link to="/pricing" className="text-primary hover:underline">view full pricing details</Link>
-                    </p>
+                      );
+                    })}
+                    <p className="text-xs text-center text-muted-foreground">Or <Link to="/pricing" className="text-primary hover:underline">view full pricing details</Link></p>
                   </CardContent>
                 </Card>
               ) : null}
             </>
           )}
 
-          {/* ── Transaction History ──────────────────────────────────────── */}
+          {/* Transactions */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-muted-foreground" />
-                Transaction History
-              </CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><Receipt className="w-5 h-5 text-muted-foreground" />Transaction History</CardTitle>
               <CardDescription>Your recent Paystack transactions.</CardDescription>
             </CardHeader>
             <CardContent>
               {isTransactionsLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading transactions...
-                </div>
+                <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" />Loading transactions...</div>
               ) : transactions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No transactions yet.</p>
               ) : (
                 <div className="space-y-3">
-                  {transactions.slice(0, 10).map((tx) => (
+                  {transactions.slice(0,10).map(tx => (
                     <div key={tx.reference} className="p-3 rounded-lg border border-border flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-foreground">{formatNGN(tx.amount_ngn)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {tx.paid_at
-                            ? format(new Date(tx.paid_at), "MMM d, yyyy • h:mm a")
-                            : format(new Date(tx.created_at), "MMM d, yyyy • h:mm a")}
-                        </p>
+                        <p className="text-sm font-medium text-foreground">{formatNGN(tx.amount_ngn * 100)}</p>
+                        <p className="text-xs text-muted-foreground">{tx.paid_at ? format(new Date(tx.paid_at),"MMM d, yyyy • h:mm a") : format(new Date(tx.created_at),"MMM d, yyyy • h:mm a")}</p>
                         <p className="text-xs text-muted-foreground">Ref: {tx.reference}</p>
                       </div>
-                      <Badge
-                        variant={
-                          tx.status === "success"
-                            ? "default"
-                            : tx.status === "pending"
-                            ? "outline"
-                            : "secondary"
-                        }
-                      >
-                        {tx.status}
-                      </Badge>
+                      <Badge variant={tx.status==="success"?"default":tx.status==="pending"?"outline":"secondary"}>{tx.status}</Badge>
                     </div>
                   ))}
                 </div>
