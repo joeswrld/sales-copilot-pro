@@ -362,7 +362,7 @@ export function useLiveCall(options?: {
                 ? `${summary}\n\n${details.join(" · ")}`
                 : summary;
 
-              await postSystemMessage(dr.conversation_id, fullMsg);
+              await postSystemMessage(dr.conversation_id, fullMsg, user!.id);
             }
           }
         } catch (e) {
