@@ -36,10 +36,11 @@ export interface KeyTopic {
 }
 
 // ── Helper: post a system message into a deal room conversation ───────────────
-async function postSystemMessage(conversationId: string, text: string) {
+// Uses the current user's ID as sender so it passes RLS policies
+async function postSystemMessage(conversationId: string, text: string, userId: string) {
   await supabase.from("team_messages" as any).insert({
     conversation_id: conversationId,
-    sender_id:       "00000000-0000-0000-0000-000000000000",
+    sender_id:       userId,
     message_text:    text,
   });
 }
