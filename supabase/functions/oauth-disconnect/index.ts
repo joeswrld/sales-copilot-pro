@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ token }),
         });
-      } catch (e) {
-        console.warn("Token revocation failed (non-critical):", e.message);
+      } catch (e: unknown) {
+        console.warn("Token revocation failed (non-critical):", (e as Error).message);
       }
     }
 
@@ -114,9 +114,9 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e) {
+  } catch (e: unknown) {
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: (e as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

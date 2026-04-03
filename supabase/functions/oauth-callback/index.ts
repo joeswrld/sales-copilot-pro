@@ -221,10 +221,10 @@ Deno.serve(async (req) => {
       </body></html>`,
       { headers: { "Content-Type": "text/html" } }
     );
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("OAuth callback error:", e);
     return new Response(
-      `<html><body><script>window.close();</script><p>An error occurred: ${e.message}</p></body></html>`,
+      `<html><body><script>window.close();</script><p>An error occurred: ${(e as Error).message}</p></body></html>`,
       { headers: { "Content-Type": "text/html" } }
     );
   }

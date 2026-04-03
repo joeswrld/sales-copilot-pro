@@ -254,18 +254,26 @@ export function useLiveCall(options?: {
       );
 
       if (isRealUrl) {
-        supabase.functions.invoke("join-meeting-bot", {
-          body: {
-            call_id:     callRow.id,
-            meeting_url: meetingUrl,
-            call_name:   callRow.name,
-          },
-        }).then(({ error }) => {
-          if (error) {
-            console.warn("Bot dispatch failed (continuing without bot):", error);
-          } else {
-            console.log("Recall bot dispatched for call:", callRow.id);
+        // Get fresh session token for auth
+        supabase.auth.getSession().then(({ data: { session: s } }) => {
+          const headers: Record<string, string> = {};
+          if (s?.access_token) {
+            headers["Authorization"] = `Bearer ${s.access_token}`;
           }
+          supabase.functions.invoke("join-meeting-bot", {
+            headers,
+            body: {
+              call_id:     callRow.id,
+              meeting_url: meetingUrl,
+              call_name:   callRow.name,
+            },
+          }).then(({ error }) => {
+            if (error) {
+              console.warn("Bot dispatch failed (continuing without bot):", error);
+            } else {
+              console.log("Recall bot dispatched for call:", callRow.id);
+            }
+          });
         });
       }
     },
