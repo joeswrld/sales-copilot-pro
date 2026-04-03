@@ -16,32 +16,36 @@ Deno.serve(async (req) => {
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: corsHeaders,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    // Use service role for DB operations, anon client for auth verification
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? serviceRoleKey;
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } =
-      await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: userError } = await anonClient.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: corsHeaders,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
+
+    // Use service role client for all DB operations
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { call_id } = await req.json();
     if (!call_id) {
       return new Response(JSON.stringify({ error: "call_id required" }), {
         status: 400,
-        headers: corsHeaders,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -144,8 +148,7 @@ Respond in JSON format:
           }
         );
         const geminiData = await res.json();
-        const text =
-          geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
@@ -165,34 +168,51 @@ Respond in JSON format:
       nextSteps = ["Review call recording", "Follow up with prospect"];
     }
 
-    // Upsert call summary with enriched data
-    const { error: upsertError } = await supabase
+    // Check if summary already exists for this call
+    const { data: existingSummary } = await supabase
       .from("call_summaries")
-      .upsert(
-        {
-          call_id,
-          user_id: userId,
-          summary,
-          key_decisions: keyDecisions,
-          next_steps: nextSteps,
-          topics: topicList,
-          objections: objectionList,
-          transcript: (transcripts || []).map((t: any) => ({
-            speaker: t.speaker,
-            text: t.text,
-            timestamp: t.timestamp,
-          })),
-          meeting_score: meetingScore,
-          talk_ratio: talkRatio,
-          buying_signals: buyingSignals,
-          action_items: actionItems,
-        },
-        { onConflict: "call_id" }
-      );
+      .select("id")
+      .eq("call_id", call_id)
+      .maybeSingle();
 
-    if (upsertError) {
-      console.error("Failed to save summary:", upsertError);
-      throw upsertError;
+    const summaryPayload = {
+      call_id,
+      user_id: userId,
+      summary,
+      key_decisions: keyDecisions,
+      next_steps: nextSteps,
+      topics: topicList,
+      objections: objectionList,
+      transcript: (transcripts || []).map((t: any) => ({
+        speaker: t.speaker,
+        text: t.text,
+        timestamp: t.timestamp,
+      })),
+      meeting_score: meetingScore,
+      talk_ratio: talkRatio,
+      buying_signals: buyingSignals,
+      action_items: actionItems,
+    };
+
+    let saveError;
+    if (existingSummary?.id) {
+      // Update existing
+      const { error } = await supabase
+        .from("call_summaries")
+        .update(summaryPayload)
+        .eq("id", existingSummary.id);
+      saveError = error;
+    } else {
+      // Insert new
+      const { error } = await supabase
+        .from("call_summaries")
+        .insert(summaryPayload);
+      saveError = error;
+    }
+
+    if (saveError) {
+      console.error("Failed to save summary:", saveError);
+      throw saveError;
     }
 
     // Update call with computed fields

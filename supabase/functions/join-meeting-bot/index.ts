@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 Deno.serve(async (req) => {
@@ -16,17 +16,18 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const meetingbaasKey = Deno.env.get("MEETINGBAAS_API_KEY") ?? "";
 
-    // Authenticate user
+    // Authenticate user via getUser()
     const authHeader = req.headers.get("Authorization") ?? "";
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const anonClient = createClient(
-      supabaseUrl,
-      Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? serviceRoleKey,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? serviceRoleKey;
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
     const { data: { user }, error: authError } = await anonClient.auth.getUser();
     if (authError || !user) {
+      console.error("Auth failed:", authError?.message);
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -48,12 +49,12 @@ Deno.serve(async (req) => {
     else if (meeting_url.includes("zoom.us")) platform = "zoom";
     else if (meeting_url.includes("teams.microsoft.com")) platform = "teams";
 
-    // Update call with bot status
+    // Update call with bot status (use service role to bypass RLS)
     await supabase.from("calls").update({
       recall_bot_status: "joining",
     }).eq("id", call_id);
 
-    // Create bot_sessions record
+    // Create bot_sessions record (use service role)
     await supabase.from("bot_sessions").upsert({
       call_id,
       meeting_url,
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
       last_attempt_at: new Date().toISOString(),
     }, { onConflict: "call_id" });
 
-    // If MeetingBaas API key is configured, dispatch real bot
+    // If MeetingBaas API key is configured, dispatch real bot via v2 API
     if (meetingbaasKey) {
       try {
         const mbRes = await fetch("https://api.meetingbaas.com/bots", {
@@ -96,15 +97,23 @@ Deno.serve(async (req) => {
             bot_id: mbData.bot_id,
             status: "joining",
           }).eq("call_id", call_id);
+
+          console.log("Bot dispatched successfully:", mbData.bot_id);
         } else {
           console.error("MeetingBaas error:", mbData);
+          
+          // If it's a wrong API key version error, log helpful message
+          if (mbData?.error === "WrongPlatformApiKey") {
+            console.error("API key is for wrong MeetingBaas version. Please get a v1 key from https://auth.meetingbaas.com or update to v2 endpoints.");
+          }
+          
           await supabase.from("calls").update({
             recall_bot_status: "failed",
           }).eq("id", call_id);
 
           await supabase.from("bot_sessions").update({
             status: "failed",
-            error_message: mbData?.message || "Bot dispatch failed",
+            error_message: mbData?.message || mbData?.description || "Bot dispatch failed",
           }).eq("call_id", call_id);
         }
       } catch (e: unknown) {
@@ -119,9 +128,8 @@ Deno.serve(async (req) => {
         }).eq("call_id", call_id);
       }
     } else {
-      // No bot service configured — mark as simulated/joining for UI feedback
+      // No bot service configured — mark as simulated
       console.log("No MEETINGBAAS_API_KEY configured. Bot status set to joining (simulated).");
-      // Status stays as "joining" — frontend will show status accordingly
     }
 
     return new Response(
