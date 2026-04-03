@@ -29,7 +29,7 @@ export default function PlanInheritanceBanner() {
       <span>
         You're on the{" "}
         <strong className="font-semibold">{effectivePlan.planName}</strong> plan
-        via your workspace ({adminName}).{" "}
+        via your workspace ({team.name}).{" "}
         {effectivePlan.callsLimit === -1
           ? "You have unlimited meetings."
           : `Up to ${effectivePlan.callsLimit} meetings/month.`}
