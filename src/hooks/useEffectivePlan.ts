@@ -1,46 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-
 /**
- * Plan configuration — single source of truth.
- */
-export const PLAN_CONFIG: Record<
-  string,
-  { name: string; calls_limit: number; team_members_limit: number; price_usd: number }
-> = {
-  free:    { name: "Free",    calls_limit: 5,   team_members_limit: 1,  price_usd: 0  },
-  starter: { name: "Starter", calls_limit: 50,  team_members_limit: 3,  price_usd: 19 },
-  growth:  { name: "Growth",  calls_limit: 300, team_members_limit: 10, price_usd: 49 },
-  scale:   { name: "Scale",   calls_limit: -1,  team_members_limit: -1, price_usd: 99 },
-};
-
-const PLAN_ORDER = ["free", "starter", "growth", "scale"];
-
-export interface EffectivePlan {
-  planKey: string;
-  planName: string;
-  callsLimit: number;
-  teamMembersLimit: number;
-  isInherited: boolean;
-  adminUserId: string | null;
-  personalPlanKey: string;
-  workspaceId: string | null;
-}
-
-/** Normalise Paystack plan_name like "Fixsense Starter" → "starter" */
-function planNameToKey(planName: string | null | undefined): string | null {
-  if (!planName) return null;
-  const lower = planName.toLowerCase();
-  if (lower.includes("scale"))   return "scale";
-  if (lower.includes("growth"))  return "growth";
-  if (lower.includes("starter")) return "starter";
-  if (lower.includes("free"))    return "free";
-  return null;
-}
-
-/**
+ * useEffectivePlan.ts — v2
+ *
  * Resolves the effective plan for the authenticated user.
+ * Now exposes both callsLimit (legacy) and minuteQuota (new billing unit).
  *
  * Resolution order:
  *  1. Team admin's active subscription plan_name  ← most authoritative for team members
@@ -48,10 +10,34 @@ function planNameToKey(planName: string | null | undefined): string | null {
  *  3. User's own active subscription plan_name
  *  4. User's own profile.plan_type
  *  5. "free" default
- *
- * The admin plan is used when it is HIGHER than the user's own plan.
- * Usage is counted at workspace level so all members share the same pool.
  */
+
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  PLAN_CONFIG,
+  PLAN_ORDER,
+  getMinuteQuota,
+  normalizePlanKey,
+} from "@/config/plans";
+
+export { PLAN_CONFIG };
+
+export interface EffectivePlan {
+  planKey: string;
+  planName: string;
+  /** Legacy call count limit. -1 = unlimited. */
+  callsLimit: number;
+  /** Minute quota for new billing. -1 = unlimited. */
+  minuteQuota: number;
+  teamMembersLimit: number;
+  isInherited: boolean;
+  adminUserId: string | null;
+  personalPlanKey: string;
+  workspaceId: string | null;
+}
+
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
   const { user } = useAuth();
 
@@ -69,7 +55,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
 
       const ownSubPlanKey =
         (ownSub as any)?.status === "active"
-          ? (planNameToKey((ownSub as any)?.plan_name) ?? null)
+          ? normalizePlanKey((ownSub as any)?.plan_name)
           : null;
 
       // ── 2. User's own profile plan ────────────────────────────────
@@ -94,12 +80,12 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       const teamId = membership?.team_id ?? null;
 
       if (!teamId) {
-        // No team — use personal plan
         const config = PLAN_CONFIG[personalPlanKey] ?? PLAN_CONFIG.free;
         return {
           planKey:          personalPlanKey,
           planName:         config.name,
           callsLimit:       config.calls_limit,
+          minuteQuota:      getMinuteQuota(personalPlanKey),
           teamMembersLimit: config.team_members_limit,
           isInherited:      false,
           adminUserId:      null,
@@ -109,7 +95,6 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       }
 
       // ── 4. Resolve workspace + admin plan ─────────────────────────
-      // Get workspace (created by trigger when team is created)
       const { data: ws } = await supabase
         .from("workspaces" as any)
         .select("id, owner_id")
@@ -122,7 +107,6 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       let adminPlanKey = "free";
 
       if (adminUserId) {
-        // Admin's active subscription (most reliable post-payment)
         const { data: adminSub } = await supabase
           .from("subscriptions" as any)
           .select("status, plan_name")
@@ -131,20 +115,16 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
 
         const adminSubPlanKey =
           (adminSub as any)?.status === "active"
-            ? (planNameToKey((adminSub as any)?.plan_name) ?? null)
+            ? normalizePlanKey((adminSub as any)?.plan_name)
             : null;
 
-        // Admin's profile plan_type as fallback
         const { data: adminProfile } = await supabase
           .from("profiles")
           .select("plan_type")
           .eq("id", adminUserId)
           .single();
 
-        adminPlanKey =
-          adminSubPlanKey ??
-          adminProfile?.plan_type ??
-          "free";
+        adminPlanKey = adminSubPlanKey ?? adminProfile?.plan_type ?? "free";
       }
 
       // ── 5. Pick higher of admin plan vs personal plan ─────────────
@@ -160,6 +140,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
         planKey:          finalPlanKey,
         planName:         config.name,
         callsLimit:       config.calls_limit,
+        minuteQuota:      getMinuteQuota(finalPlanKey),
         teamMembersLimit: config.team_members_limit,
         isInherited,
         adminUserId,
