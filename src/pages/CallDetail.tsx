@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 import TranscriptClipSelector from "@/components/coaching/TranscriptClipSelector";
-import { useCallClips } from "@/hooks/useCoachingClips";
+import { useCoachingClips } from "@/hooks/useCoachingClips";
 
 interface Objection {
   text?: string;
@@ -54,7 +54,8 @@ export default function CallDetail() {
   const navigate = useNavigate();
 
   const { call, summary } = useCallDetail(id);
-  const { data: callClips = [] } = useCallClips(id);
+  const { useCallClips } = useCoachingClips();
+  const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
 
   const [editing, setEditing] = useState(false);
@@ -79,6 +80,7 @@ export default function CallDetail() {
 
       return {
         ...line,
+        timestamp: line.timestamp || line.time || "0:00",
         start,
         end,
       };
@@ -163,9 +165,8 @@ export default function CallDetail() {
               callId={callData.id}
               callTitle={callData.name}
               transcriptLines={normalizedTranscript}
-              recordingUrl={recordingUrl || ""}
+              recordingUrl={recordingUrl}
               existingClipCount={callClips.length}
-              disabled={!recordingUrl}
             />
           </div>
         )}
