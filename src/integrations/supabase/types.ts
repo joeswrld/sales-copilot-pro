@@ -218,10 +218,14 @@ export type Database = {
           auto_joined: boolean | null
           calendar_event_id: string | null
           created_at: string
+          daily_room_name: string | null
+          daily_room_url: string | null
           date: string
           deal_score: string | null
           duration_minutes: number | null
           end_time: string | null
+          hms_recording_url: string | null
+          hms_room_id: string | null
           id: string
           meeting_id: string | null
           meeting_provider: string | null
@@ -244,10 +248,14 @@ export type Database = {
           auto_joined?: boolean | null
           calendar_event_id?: string | null
           created_at?: string
+          daily_room_name?: string | null
+          daily_room_url?: string | null
           date?: string
           deal_score?: string | null
           duration_minutes?: number | null
           end_time?: string | null
+          hms_recording_url?: string | null
+          hms_room_id?: string | null
           id?: string
           meeting_id?: string | null
           meeting_provider?: string | null
@@ -270,10 +278,14 @@ export type Database = {
           auto_joined?: boolean | null
           calendar_event_id?: string | null
           created_at?: string
+          daily_room_name?: string | null
+          daily_room_url?: string | null
           date?: string
           deal_score?: string | null
           duration_minutes?: number | null
           end_time?: string | null
+          hms_recording_url?: string | null
+          hms_room_id?: string | null
           id?: string
           meeting_id?: string | null
           meeting_provider?: string | null
@@ -591,6 +603,81 @@ export type Database = {
         }
         Relationships: []
       }
+      hms_meeting_rooms: {
+        Row: {
+          call_id: string | null
+          created_at: string
+          ended_at: string | null
+          expires_at: string | null
+          guest_room_code: string | null
+          host_room_code: string | null
+          id: string
+          recording_id: string | null
+          recording_status: string | null
+          recording_url: string | null
+          room_code: string | null
+          room_id: string
+          share_link: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          expires_at?: string | null
+          guest_room_code?: string | null
+          host_room_code?: string | null
+          id?: string
+          recording_id?: string | null
+          recording_status?: string | null
+          recording_url?: string | null
+          room_code?: string | null
+          room_id: string
+          share_link?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          expires_at?: string | null
+          guest_room_code?: string | null
+          host_room_code?: string | null
+          id?: string
+          recording_id?: string | null
+          recording_status?: string | null
+          recording_url?: string | null
+          room_code?: string | null
+          room_id?: string
+          share_link?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hms_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hms_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           access_token: string | null
@@ -744,6 +831,69 @@ export type Database = {
             columns: ["message_id"]
             isOneToOne: false
             referencedRelation: "team_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      native_meeting_rooms: {
+        Row: {
+          call_id: string | null
+          created_at: string
+          ended_at: string | null
+          expires_at: string | null
+          host_id: string
+          id: string
+          meeting_type: string | null
+          recording_url: string | null
+          room_name: string
+          room_url: string
+          share_link: string
+          status: string
+          title: string
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          expires_at?: string | null
+          host_id: string
+          id?: string
+          meeting_type?: string | null
+          recording_url?: string | null
+          room_name: string
+          room_url: string
+          share_link: string
+          status?: string
+          title?: string
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          expires_at?: string | null
+          host_id?: string
+          id?: string
+          meeting_type?: string | null
+          recording_url?: string | null
+          room_name?: string
+          room_url?: string
+          share_link?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "native_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "native_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
             referencedColumns: ["id"]
           },
         ]
@@ -903,6 +1053,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      plans: {
+        Row: {
+          calls_limit: number
+          id: string
+          is_active: boolean
+          minute_quota: number
+          monthly_price_ngn_kobo: number
+          monthly_price_usd: number
+          name: string
+          overage_rate_kobo: number
+          team_members_limit: number
+        }
+        Insert: {
+          calls_limit?: number
+          id: string
+          is_active?: boolean
+          minute_quota?: number
+          monthly_price_ngn_kobo?: number
+          monthly_price_usd?: number
+          name: string
+          overage_rate_kobo?: number
+          team_members_limit?: number
+        }
+        Update: {
+          calls_limit?: number
+          id?: string
+          is_active?: boolean
+          minute_quota?: number
+          monthly_price_ngn_kobo?: number
+          monthly_price_usd?: number
+          name?: string
+          overage_rate_kobo?: number
+          team_members_limit?: number
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -1082,6 +1268,8 @@ export type Database = {
       subscriptions: {
         Row: {
           amount_kobo: number
+          billing_cycle_end: string | null
+          billing_cycle_start: string | null
           card_brand: string | null
           card_last4: string | null
           created_at: string
@@ -1091,6 +1279,7 @@ export type Database = {
           paystack_customer_code: string | null
           paystack_email_token: string | null
           paystack_subscription_code: string | null
+          plan_id: string | null
           plan_name: string
           plan_price_usd: number | null
           status: string
@@ -1099,6 +1288,8 @@ export type Database = {
         }
         Insert: {
           amount_kobo?: number
+          billing_cycle_end?: string | null
+          billing_cycle_start?: string | null
           card_brand?: string | null
           card_last4?: string | null
           created_at?: string
@@ -1108,6 +1299,7 @@ export type Database = {
           paystack_customer_code?: string | null
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
+          plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
           status?: string
@@ -1116,6 +1308,8 @@ export type Database = {
         }
         Update: {
           amount_kobo?: number
+          billing_cycle_end?: string | null
+          billing_cycle_start?: string | null
           card_brand?: string | null
           card_last4?: string | null
           created_at?: string
@@ -1125,13 +1319,22 @@ export type Database = {
           paystack_customer_code?: string | null
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
+          plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
           status?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_conversations: {
         Row: {
@@ -1355,6 +1558,119 @@ export type Database = {
           },
         ]
       }
+      usage_logs: {
+        Row: {
+          billing_month: string
+          call_id: string
+          duration_minutes: number
+          id: string
+          is_overage: boolean
+          overage_minutes: number
+          recorded_at: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          billing_month: string
+          call_id: string
+          duration_minutes?: number
+          id?: string
+          is_overage?: boolean
+          overage_minutes?: number
+          recorded_at?: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          billing_month?: string
+          call_id?: string
+          duration_minutes?: number
+          id?: string
+          is_overage?: boolean
+          overage_minutes?: number
+          recorded_at?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_logs_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_logs_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_meeting_usage"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "usage_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_summary: {
+        Row: {
+          billing_month: string
+          id: string
+          overage_minutes: number
+          reset_at: string | null
+          total_minutes_used: number
+          updated_at: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          billing_month: string
+          id?: string
+          overage_minutes?: number
+          reset_at?: string | null
+          total_minutes_used?: number
+          updated_at?: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          billing_month?: string
+          id?: string
+          overage_minutes?: number
+          reset_at?: string | null
+          total_minutes_used?: number
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_summary_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_meeting_usage"
+            referencedColumns: ["workspace_id"]
+          },
+          {
+            foreignKeyName: "usage_summary_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_preferences: {
         Row: {
           auto_join_meetings: boolean
@@ -1417,6 +1733,33 @@ export type Database = {
           },
         ]
       }
+      webhook_events: {
+        Row: {
+          event_type: string
+          id: string
+          payload: Json | null
+          processed_at: string
+          provider: string
+          reference: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          payload?: Json | null
+          processed_at?: string
+          provider?: string
+          reference: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          processed_at?: string
+          provider?: string
+          reference?: string
+        }
+        Relationships: []
+      }
       workspaces: {
         Row: {
           created_at: string
@@ -1468,6 +1811,7 @@ export type Database = {
       workspace_meeting_usage: {
         Row: {
           meetings_used: number | null
+          minutes_used: number | null
           owner_id: string | null
           team_id: string | null
           workspace_id: string | null
@@ -1495,6 +1839,17 @@ export type Database = {
       can_create_team_conversation: {
         Args: { _team_id: string }
         Returns: boolean
+      }
+      check_usage_quota: {
+        Args: { p_user_id: string }
+        Returns: {
+          is_over_quota: boolean
+          minute_quota: number
+          minutes_remaining: number
+          minutes_used: number
+          overage_minutes: number
+          plan_id: string
+        }[]
       }
       create_deal_room_for_call: {
         Args: {
@@ -1524,12 +1879,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      current_billing_month: { Args: never; Returns: string }
       decline_team_invitation: {
         Args: { p_team_id: string }
         Returns: undefined
       }
       get_effective_calls_limit: { Args: { _user_id: string }; Returns: number }
       get_effective_plan: { Args: { _user_id: string }; Returns: string }
+      get_effective_plan_id: { Args: { p_user_id: string }; Returns: string }
+      get_plan_minute_quota: { Args: { p_plan_id: string }; Returns: number }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
         Returns: string
@@ -1556,6 +1914,15 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
+      log_call_usage: {
+        Args: {
+          p_call_id: string
+          p_duration_minutes: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      plan_name_to_key: { Args: { plan_name: string }; Returns: string }
       upsert_user_status: {
         Args: { p_custom_text?: string; p_status: string; p_team_id?: string }
         Returns: undefined
