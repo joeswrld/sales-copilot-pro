@@ -332,6 +332,155 @@ export type Database = {
         }
         Relationships: []
       }
+      coaching_clip_reactions: {
+        Row: {
+          clip_id: string
+          created_at: string | null
+          emoji: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          clip_id: string
+          created_at?: string | null
+          emoji: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          clip_id?: string
+          created_at?: string | null
+          emoji?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_clip_reactions_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_clip_views: {
+        Row: {
+          clip_id: string
+          id: string
+          ip_hash: string | null
+          viewed_at: string | null
+          viewer_id: string | null
+        }
+        Insert: {
+          clip_id: string
+          id?: string
+          ip_hash?: string | null
+          viewed_at?: string | null
+          viewer_id?: string | null
+        }
+        Update: {
+          clip_id?: string
+          id?: string
+          ip_hash?: string | null
+          viewed_at?: string | null
+          viewer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_clip_views_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_clips: {
+        Row: {
+          call_id: string
+          call_recording_url: string | null
+          call_title: string | null
+          created_at: string | null
+          created_by: string
+          duration_seconds: number | null
+          end_seconds: number
+          id: string
+          is_public: boolean | null
+          manager_comment: string
+          share_token: string | null
+          start_seconds: number
+          tags: string[] | null
+          team_id: string | null
+          title: string | null
+          transcript_excerpt: Json
+          updated_at: string | null
+          view_count: number | null
+        }
+        Insert: {
+          call_id: string
+          call_recording_url?: string | null
+          call_title?: string | null
+          created_at?: string | null
+          created_by: string
+          duration_seconds?: number | null
+          end_seconds: number
+          id?: string
+          is_public?: boolean | null
+          manager_comment: string
+          share_token?: string | null
+          start_seconds?: number
+          tags?: string[] | null
+          team_id?: string | null
+          title?: string | null
+          transcript_excerpt?: Json
+          updated_at?: string | null
+          view_count?: number | null
+        }
+        Update: {
+          call_id?: string
+          call_recording_url?: string | null
+          call_title?: string | null
+          created_at?: string | null
+          created_by?: string
+          duration_seconds?: number | null
+          end_seconds?: number
+          id?: string
+          is_public?: boolean | null
+          manager_comment?: string
+          share_token?: string | null
+          start_seconds?: number
+          tags?: string[] | null
+          team_id?: string | null
+          title?: string | null
+          transcript_excerpt?: Json
+          updated_at?: string | null
+          view_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_clips_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_clips_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_clips_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
@@ -1888,6 +2037,49 @@ export type Database = {
       get_effective_plan: { Args: { _user_id: string }; Returns: string }
       get_effective_plan_id: { Args: { p_user_id: string }; Returns: string }
       get_plan_minute_quota: { Args: { p_plan_id: string }; Returns: number }
+      get_public_clip: {
+        Args: { p_share_token: string }
+        Returns: {
+          call_id: string
+          call_recording_url: string
+          call_title: string
+          created_at: string
+          creator_name: string
+          duration_seconds: number
+          end_seconds: number
+          id: string
+          is_public: boolean
+          manager_comment: string
+          start_seconds: number
+          tags: string[]
+          title: string
+          transcript_excerpt: Json
+          view_count: number
+        }[]
+      }
+      get_team_clips: {
+        Args: { p_team_id: string }
+        Returns: {
+          call_id: string
+          call_recording_url: string
+          call_title: string
+          created_at: string
+          creator_id: string
+          creator_name: string
+          duration_seconds: number
+          end_seconds: number
+          id: string
+          is_public: boolean
+          manager_comment: string
+          reactions: Json
+          share_token: string
+          start_seconds: number
+          tags: string[]
+          title: string
+          transcript_excerpt: Json
+          view_count: number
+        }[]
+      }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
         Returns: string

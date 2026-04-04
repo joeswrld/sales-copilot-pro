@@ -25,7 +25,7 @@ interface RoomInfo {
   host_name?:  string;
 }
 
-type JoinState = "loading" | "form" | "joining" | "live" | "ended" | "not_found" | "expired";
+type JoinState = "loading" | "form" | "joining" | "live" | "ended" | "not_found" | "expired" | string;
 
 // ─── Daily loader (dynamic script injection) ─────────────────────────────────
 
