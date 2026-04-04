@@ -1,0 +1,312 @@
+/**
+ * TranscriptClipSelector.tsx
+ *
+ * Interactive transcript viewer that lets managers select lines,
+ * see the duration, and launch the Create Clip modal.
+ *
+ * Drop this inside CallDetail to replace / augment the plain transcript block.
+ */
+
+import { useState, useMemo, useCallback } from "react";
+import { Scissors, Clock, Sparkles, CheckCircle2 } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import type { TranscriptLine } from "@/hooks/useCoachingClips";
+import CreateClipModal from "./CreateClipModal";
+
+// ─── Helper: parse "MM:SS" or ISO timestamp → seconds ───────────────────
+
+function parseSeconds(ts: string | undefined): number {
+  if (!ts) return 0;
+  if (ts.includes("T")) {
+    // ISO timestamp — relative to epoch; use 0 as fallback
+    return 0;
+  }
+  const parts = ts.split(":").map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return parseFloat(ts) || 0;
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────
+
+interface Props {
+  callId: string;
+  callTitle?: string;
+  transcriptLines: Array<{
+    id?: string;
+    speaker: string;
+    text: string;
+    timestamp: string;
+  }>;
+  recordingUrl?: string | null;
+  existingClipCount?: number;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────
+
+export default function TranscriptClipSelector({
+  callId,
+  callTitle,
+  transcriptLines,
+  recordingUrl,
+  existingClipCount = 0,
+}: Props) {
+  const [selectedStart, setSelectedStart] = useState<number | null>(null);
+  const [selectedEnd, setSelectedEnd] = useState<number | null>(null);
+  const [isShiftSelecting, setIsShiftSelecting] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [clipsJustCreated, setClipsJustCreated] = useState(0);
+
+  // ── Lines enriched with seconds ────────────────────────────────────────
+  const enrichedLines = useMemo(() =>
+    transcriptLines.map((l, i) => ({
+      ...l,
+      index: i,
+      seconds: parseSeconds(l.timestamp),
+    })),
+    [transcriptLines]
+  );
+
+  // ── Selection helpers ──────────────────────────────────────────────────
+  const isSelected = useCallback((idx: number): boolean => {
+    if (selectedStart === null) return false;
+    const end = selectedEnd ?? selectedStart;
+    const lo = Math.min(selectedStart, end);
+    const hi = Math.max(selectedStart, end);
+    return idx >= lo && idx <= hi;
+  }, [selectedStart, selectedEnd]);
+
+  const handleLineClick = (idx: number, evt: React.MouseEvent) => {
+    if (evt.shiftKey && selectedStart !== null) {
+      setSelectedEnd(idx);
+      return;
+    }
+    // Toggle: clicking same line deselects
+    if (selectedStart === idx && selectedEnd === null) {
+      setSelectedStart(null);
+      return;
+    }
+    setSelectedStart(idx);
+    setSelectedEnd(null);
+  };
+
+  const handleMouseOver = (idx: number, evt: React.MouseEvent) => {
+    if (evt.buttons === 1 && selectedStart !== null) {
+      setSelectedEnd(idx);
+    }
+  };
+
+  // ── Selected excerpt ───────────────────────────────────────────────────
+  const selectedExcerpt = useMemo((): TranscriptLine[] => {
+    if (selectedStart === null) return [];
+    const end = selectedEnd ?? selectedStart;
+    const lo = Math.min(selectedStart, end);
+    const hi = Math.max(selectedStart, end);
+    return enrichedLines.slice(lo, hi + 1).map(l => ({
+      speaker: l.speaker,
+      text: l.text,
+      timestamp: l.timestamp,
+      seconds: l.seconds,
+    }));
+  }, [selectedStart, selectedEnd, enrichedLines]);
+
+  const selectionDuration = useMemo(() => {
+    if (selectedExcerpt.length === 0) return 0;
+    const start = selectedExcerpt[0].seconds ?? 0;
+    const last = selectedExcerpt[selectedExcerpt.length - 1];
+    const end = (last.seconds ?? 0) + 10; // assume ~10s per line if no end ts
+    return end - start;
+  }, [selectedExcerpt]);
+
+  const startSecs = selectedExcerpt[0]?.seconds ?? 0;
+  const endSecs = (selectedExcerpt[selectedExcerpt.length - 1]?.seconds ?? 0) + 10;
+
+  const durationOk = selectionDuration >= 5 && selectionDuration <= 300;
+  const canClip = selectedExcerpt.length > 0;
+
+  const clearSelection = () => {
+    setSelectedStart(null);
+    setSelectedEnd(null);
+  };
+
+  const handleClipCreated = () => {
+    setClipsJustCreated(p => p + 1);
+    clearSelection();
+  };
+
+  if (!transcriptLines.length) return null;
+
+  return (
+    <>
+      {/* ── Header ────────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 12, flexWrap: "wrap", marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+            background: "rgba(124,58,237,.15)", border: "1px solid rgba(124,58,237,.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Scissors style={{ width: 15, height: 15, color: "#a78bfa" }} />
+          </div>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.9)", margin: 0 }}>
+              Clip Selector
+            </p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", margin: 0 }}>
+              Click lines to select · Shift+click to extend · Drag to select range
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {(existingClipCount + clipsJustCreated) > 0 && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 5,
+              background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.2)",
+              borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#4ade80",
+            }}>
+              <CheckCircle2 style={{ width: 11, height: 11 }} />
+              {existingClipCount + clipsJustCreated} clip{existingClipCount + clipsJustCreated !== 1 ? "s" : ""} created
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Floating action bar ────────────────────────────────────────── */}
+      {canClip && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "10px 14px", marginBottom: 12,
+          background: durationOk
+            ? "linear-gradient(135deg, rgba(124,58,237,.18), rgba(109,40,217,.12))"
+            : "rgba(239,68,68,.08)",
+          border: `1px solid ${durationOk ? "rgba(124,58,237,.4)" : "rgba(239,68,68,.3)"}`,
+          borderRadius: 12,
+          animation: "clipSelPop .18s ease",
+        }}>
+          <Clock style={{ width: 13, height: 13, color: durationOk ? "#a78bfa" : "#f87171" }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: durationOk ? "#a78bfa" : "#f87171" }}>
+            {selectedExcerpt.length} line{selectedExcerpt.length !== 1 ? "s" : ""} · {formatDuration(selectionDuration)} selected
+          </span>
+          {!durationOk && selectionDuration > 0 && (
+            <span style={{ fontSize: 11, color: "#f87171" }}>
+              {selectionDuration < 5 ? "Select more (min 5s)" : "Too long (max 5 min)"}
+            </span>
+          )}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 7 }}>
+            <button
+              onClick={clearSelection}
+              style={{
+                background: "transparent", border: "1px solid rgba(255,255,255,.15)",
+                borderRadius: 8, padding: "5px 12px", color: "rgba(255,255,255,.5)",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+              }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              disabled={!durationOk}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: durationOk
+                  ? "linear-gradient(135deg, #7c3aed, #6d28d9)"
+                  : "rgba(255,255,255,.08)",
+                border: "none", borderRadius: 8,
+                padding: "5px 14px", color: durationOk ? "#fff" : "rgba(255,255,255,.3)",
+                fontSize: 12, fontWeight: 700, cursor: durationOk ? "pointer" : "not-allowed",
+                fontFamily: "'DM Sans',sans-serif",
+                boxShadow: durationOk ? "0 3px 12px rgba(124,58,237,.4)" : "none",
+              }}
+            >
+              <Scissors style={{ width: 12, height: 12 }} />
+              Create Clip
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Transcript lines ───────────────────────────────────────────── */}
+      <style>{`
+        @keyframes clipSelPop { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+        .clip-line { user-select: none; transition: background .08s, border-color .08s; }
+        .clip-line:hover { background: rgba(255,255,255,.04) !important; }
+        .clip-line--selected { background: rgba(124,58,237,.12) !important; border-color: rgba(124,58,237,.3) !important; }
+        .clip-line--rep .cs-speaker { color: #818cf8; }
+        .clip-line--prospect .cs-speaker { color: #2dd4bf; }
+      `}</style>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {enrichedLines.map((line, i) => {
+          const sel = isSelected(i);
+          const isMe = line.speaker === "Rep" || line.speaker === "You";
+          return (
+            <div
+              key={i}
+              className={cn(
+                "clip-line",
+                sel && "clip-line--selected",
+                isMe ? "clip-line--rep" : "clip-line--prospect",
+              )}
+              onClick={(e) => handleLineClick(i, e)}
+              onMouseOver={(e) => handleMouseOver(i, e)}
+              style={{
+                display: "flex", gap: 10, padding: "9px 12px",
+                borderRadius: 9, border: "1px solid transparent",
+                cursor: "crosshair",
+                borderLeft: !isMe ? "2px solid rgba(45,212,191,.25)" : "2px solid transparent",
+              }}
+            >
+              {/* Speaker + time */}
+              <div style={{ minWidth: 90, flexShrink: 0 }}>
+                <span className="cs-speaker" style={{ fontSize: 11, fontWeight: 700 }}>
+                  {line.speaker}
+                </span>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,.25)", marginTop: 1 }}>
+                  {line.timestamp}
+                </div>
+              </div>
+              {/* Text */}
+              <p style={{
+                fontSize: 13, color: sel ? "rgba(255,255,255,.9)" : "rgba(255,255,255,.65)",
+                margin: 0, lineHeight: 1.55, flex: 1,
+              }}>
+                {line.text}
+              </p>
+              {/* Selection indicator */}
+              {sel && (
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                  background: "#a78bfa", margin: "auto 0",
+                }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Create Clip Modal ──────────────────────────────────────────── */}
+      {showCreateModal && (
+        <CreateClipModal
+          callId={callId}
+          callTitle={callTitle}
+          startSeconds={startSecs}
+          endSeconds={endSecs}
+          transcriptExcerpt={selectedExcerpt}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleClipCreated}
+        />
+      )}
+    </>
+  );
+}
