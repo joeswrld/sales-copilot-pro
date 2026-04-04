@@ -28,6 +28,7 @@ import OnboardingPage from "./pages/OnboardingPage";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import { DebugInspector } from "./pages/debugInspector";
 import MeetingJoin from "@/pages/MeetingJoin";
+import ClipSharePage from "@/pages/ClipSharePage";
 
 
 import {
@@ -189,6 +190,7 @@ const App = () => {
               />
 
               {/* Catch-all */}
+<Route path="/clip/:shareToken" element={<ClipSharePage />} />
 <Route path="/meet/:roomName" element={<MeetingJoin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
