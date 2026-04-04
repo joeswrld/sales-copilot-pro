@@ -35,6 +35,298 @@ function getInitials(name: string | null | undefined): string {
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
+function CallCard({ call, onClick }: { call: TeamCall; onClick: () => void }) {
+  const repName = call.profile?.full_name || call.profile?.email || "Unknown Rep";
+  const initials = getInitials(call.profile?.full_name);
+
+  return (
+    <Card
+      className="bg-card border-border hover:border-primary/30 transition-colors cursor-pointer group"
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <Avatar className="h-9 w-9 shrink-0">
+            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium truncate">{call.name}</p>
+              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{repName}</p>
+            <div className="flex items-center gap-3 mt-2">
+              {call.sentiment_score != null && <ScoreBadge score={call.sentiment_score} />}
+              {call.duration_minutes != null && (
+                <span className="text-[10px] text-muted-foreground">{call.duration_minutes}min</span>
+              )}
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {format(new Date(call.date), "MMM d, yyyy")}
+              </span>
+              {call.comment_count > 0 && (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" />
+                  {call.comment_count}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeetingCoachingView({
+  call,
+  onBack,
+}: {
+  call: TeamCall;
+  onBack: () => void;
+}) {
+  const { user } = useAuth();
+  const { comments, commentsLoading, addComment } = useCoaching(call.id);
+  const [commentText, setCommentText] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+
+  const repName = call.profile?.full_name || call.profile?.email || "Unknown Rep";
+  const initials = getInitials(call.profile?.full_name);
+
+  const handleSubmit = async () => {
+    if (!commentText.trim()) return;
+    await addComment.mutateAsync({
+      text: commentText.trim(),
+      parentId: replyTo ?? undefined,
+    });
+    setCommentText("");
+    setReplyTo(null);
+  };
+
+  const topLevel = comments.filter(c => !c.parent_id);
+  const replies = (parentId: string) => comments.filter(c => c.parent_id === parentId);
+
+  return (
+    <div className="space-y-6">
+      {/* Back + Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9 shrink-0">
+            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h2 className="text-base font-bold font-display">{call.name}</h2>
+            <p className="text-xs text-muted-foreground">
+              {repName} · {format(new Date(call.date), "MMM d, yyyy")}
+              {call.duration_minutes != null && ` · ${call.duration_minutes}min`}
+            </p>
+          </div>
+        </div>
+        {call.sentiment_score != null && (
+          <div className="ml-auto">
+            <ScoreBadge score={call.sentiment_score} />
+          </div>
+        )}
+      </div>
+
+      {/* Summary */}
+      {call.summary?.summary && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              AI Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {call.summary.summary}
+            </p>
+            {call.summary.next_steps && call.summary.next_steps.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-foreground mb-1">Next Steps</p>
+                <ul className="space-y-1">
+                  {call.summary.next_steps.map((step, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">•</span>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {call.summary.key_decisions && call.summary.key_decisions.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-foreground mb-1">Key Decisions</p>
+                <ul className="space-y-1">
+                  {call.summary.key_decisions.map((decision, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">•</span>
+                      {decision}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Coaching Comments */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-display flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            Coaching Feedback
+            {comments.length > 0 && (
+              <Badge variant="secondary" className="text-xs ml-auto">
+                {comments.length}
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Comment input */}
+          <div className="space-y-2">
+            {replyTo && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded px-2 py-1">
+                <span>Replying to comment</span>
+                <button
+                  className="ml-auto text-xs hover:text-foreground"
+                  onClick={() => setReplyTo(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            <Textarea
+              placeholder={replyTo ? "Write a reply…" : "Leave coaching feedback for this call…"}
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              className="min-h-[80px] text-sm resize-none"
+              onKeyDown={e => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+              }}
+            />
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!commentText.trim() || addComment.isPending}
+                className="gap-2"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {addComment.isPending ? "Sending…" : "Send Feedback"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Comments list */}
+          {commentsLoading ? (
+            <div className="flex justify-center py-6">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : topLevel.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No feedback yet. Be the first to leave a comment.</p>
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[400px]">
+              <div className="space-y-4 pr-2">
+                {topLevel.map(comment => {
+                  const commentReplies = replies(comment.id);
+                  const commenterName =
+                    comment.profile?.full_name ||
+                    comment.profile?.email ||
+                    "Unknown";
+                  const commenterInitials = getInitials(commenterName);
+                  const isMe = comment.user_id === user?.id;
+
+                  return (
+                    <div key={comment.id} className="space-y-2">
+                      <div className="flex gap-3">
+                        <Avatar className="h-7 w-7 shrink-0 mt-0.5">
+                          <AvatarFallback className="bg-secondary text-xs font-bold">
+                            {commenterInitials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="text-xs font-semibold">
+                              {isMe ? "You" : commenterName}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {format(new Date(comment.created_at), "MMM d, h:mm a")}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground/80 leading-relaxed">
+                            {comment.comment_text}
+                          </p>
+                          <button
+                            className="text-[10px] text-muted-foreground hover:text-primary mt-1 transition-colors"
+                            onClick={() => setReplyTo(comment.id)}
+                          >
+                            Reply
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Replies */}
+                      {commentReplies.length > 0 && (
+                        <div className="ml-10 space-y-2 border-l-2 border-border pl-3">
+                          {commentReplies.map(reply => {
+                            const replyName =
+                              reply.profile?.full_name ||
+                              reply.profile?.email ||
+                              "Unknown";
+                            const replyInitials = getInitials(replyName);
+                            const isMyReply = reply.user_id === user?.id;
+
+                            return (
+                              <div key={reply.id} className="flex gap-2">
+                                <Avatar className="h-6 w-6 shrink-0 mt-0.5">
+                                  <AvatarFallback className="bg-secondary text-[10px] font-bold">
+                                    {replyInitials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-baseline gap-2 mb-0.5">
+                                    <span className="text-xs font-semibold">
+                                      {isMyReply ? "You" : replyName}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {format(new Date(reply.created_at), "MMM d, h:mm a")}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-foreground/80 leading-relaxed">
+                                    {reply.comment_text}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function TeamCoachingTab() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [view, setView] = useState<"meetings" | "clips">("meetings");
@@ -76,7 +368,7 @@ export default function TeamCoachingTab() {
     );
   }
 
-  // Unique members
+  // Unique members from calls
   const callMembers = Array.from(
     new Map(
       teamCalls.map(c => [
@@ -161,7 +453,11 @@ export default function TeamCoachingTab() {
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("h-8 text-xs gap-1.5", !dateFrom && "text-muted-foreground")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("h-8 text-xs gap-1.5", !dateFrom && "text-muted-foreground")}
+                >
                   <CalendarIcon className="w-3.5 h-3.5" />
                   {dateFrom ? format(dateFrom, "MMM d") : "From"}
                 </Button>
@@ -173,7 +469,11 @@ export default function TeamCoachingTab() {
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("h-8 text-xs gap-1.5", !dateTo && "text-muted-foreground")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("h-8 text-xs gap-1.5", !dateTo && "text-muted-foreground")}
+                >
                   <CalendarIcon className="w-3.5 h-3.5" />
                   {dateTo ? format(dateTo, "MMM d") : "To"}
                 </Button>
@@ -242,49 +542,3 @@ export default function TeamCoachingTab() {
     </div>
   );
 }
-
-/* Keep CallCard + MeetingCoachingView unchanged from your original code */
-
-function CallCard({ call, onClick }: { call: TeamCall; onClick: () => void }) {
-  const repName = call.profile?.full_name || call.profile?.email || "Unknown Rep";
-  const initials = getInitials(call.profile?.full_name);
-
-  return (
-    <Card className="bg-card border-border hover:border-primary/30 transition-colors cursor-pointer group" onClick={onClick}>
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <Avatar className="h-9 w-9 shrink-0">
-            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium truncate">{call.name}</p>
-              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{repName}</p>
-            <div className="flex items-center gap-3 mt-2">
-              {call.sentiment_score != null && <ScoreBadge score={call.sentiment_score} />}
-              {call.duration_minutes != null && (
-                <span className="text-[10px] text-muted-foreground">{call.duration_minutes}min</span>
-              )}
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {format(new Date(call.date), "MMM d, yyyy")}
-              </span>
-              {call.comment_count > 0 && (
-                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  <MessageSquare className="w-3 h-3" />
-                  {call.comment_count}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* MeetingCoachingView remains unchanged */
