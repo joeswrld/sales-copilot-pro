@@ -5,7 +5,7 @@
  * Handles: create, fetch team clips, fetch call clips, delete, react, share.
  */
 
-import { useQuery, useMutation, useQueryClient, useEffect } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
@@ -67,9 +67,9 @@ export function useCoachingClips() {
     queryKey: ["coaching-clips-team", team?.id],
     queryFn: async (): Promise<CoachingClip[]> => {
       if (!team?.id) return [];
-      const { data, error } = await supabase.rpc("get_team_clips", { p_team_id: team.id });
+      const { data, error } = await supabase.rpc("get_team_clips" as any, { p_team_id: team.id });
       if (error) throw error;
-      return (data || []) as CoachingClip[];
+      return (data || []) as unknown as CoachingClip[];
     },
     enabled: !!team?.id && !!user,
     staleTime: 30_000,
@@ -87,7 +87,7 @@ export function useCoachingClips() {
           .eq("call_id", callId)
           .order("start_seconds", { ascending: true });
         if (error) throw error;
-        return (data || []) as CoachingClip[];
+        return (data || []) as unknown as CoachingClip[];
       },
       enabled: !!callId,
       staleTime: 30_000,

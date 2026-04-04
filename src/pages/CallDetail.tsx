@@ -65,7 +65,7 @@ export default function CallDetail() {
   const summaryData = summary.data;
 
   const objections = (summaryData?.objections as Objection[]) || [];
-  const rawTranscript = (summaryData?.transcript as TranscriptLine[]) || [];
+  const rawTranscript = (summaryData?.transcript as unknown as TranscriptLine[]) || [];
 
   const normalizedTranscript = useMemo(() => {
     if (!Array.isArray(rawTranscript)) return [];

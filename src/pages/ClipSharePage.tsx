@@ -43,10 +43,10 @@ export default function ClipSharePage() {
     if (!shareToken) return;
     (async () => {
       try {
-        const { data, error: err } = await supabase.rpc("get_public_clip", {
+        const { data, error: err } = await supabase.rpc("get_public_clip" as any, {
           p_share_token: shareToken,
         });
-        if (err || !data || data.length === 0) throw new Error("Clip not found or no longer available");
+        if (err || !data || (data as any).length === 0) throw new Error("Clip not found or no longer available");
         setClip(data[0]);
       } catch (e: any) {
         setError(e.message);
