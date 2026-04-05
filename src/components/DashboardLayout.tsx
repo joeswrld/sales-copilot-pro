@@ -107,6 +107,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
     { label: "Live Call",  icon: Radio,           href: "/dashboard/live" },
     { label: "Calls",      icon: Phone,            href: "/dashboard/calls" },
+{ href: "/dashboard/deals", label: "Deals", icon: Building2 }
     { label: "AI Coach",   icon: Bot,              href: "/dashboard/coach" },
   ];
   const workspaceNav: NavItem[] = [
