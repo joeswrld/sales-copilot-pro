@@ -146,6 +146,69 @@ export type Database = {
           },
         ]
       }
+      call_actions: {
+        Row: {
+          call_id: string
+          completed_at: string | null
+          created_at: string
+          crm_provider: string | null
+          crm_pushed: boolean
+          crm_task_id: string | null
+          draft_email_body: string | null
+          draft_email_subject: string | null
+          id: string
+          is_completed: boolean
+          priority_action: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          completed_at?: string | null
+          created_at?: string
+          crm_provider?: string | null
+          crm_pushed?: boolean
+          crm_task_id?: string | null
+          draft_email_body?: string | null
+          draft_email_subject?: string | null
+          id?: string
+          is_completed?: boolean
+          priority_action: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          completed_at?: string | null
+          created_at?: string
+          crm_provider?: string | null
+          crm_pushed?: boolean
+          crm_task_id?: string | null
+          draft_email_body?: string | null
+          draft_email_subject?: string | null
+          id?: string
+          is_completed?: boolean
+          priority_action?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_actions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_actions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_summaries: {
         Row: {
           action_items: string[] | null
