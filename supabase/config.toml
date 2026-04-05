@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.daily-recording-webhook]
 verify_jwt = false
+
+[functions.generate-call-action]
+verify_jwt = false
