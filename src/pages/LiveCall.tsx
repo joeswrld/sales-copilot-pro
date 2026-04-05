@@ -337,7 +337,16 @@ export default function LiveCall() {
       });
 
       dailyFrameRef.current = frame;
-      frame.on("joined-meeting", () => setHostJoined(true));
+      frame.on("joined-meeting", () => {
+        setHostJoined(true);
+        // Auto-start cloud recording
+        try {
+          frame.startRecording();
+          console.log("Cloud recording started automatically");
+        } catch (recErr: any) {
+          console.warn("Could not auto-start recording:", recErr);
+        }
+      });
       frame.on("left-meeting",   () => { setHostJoined(false); handleEndCall(); });
 
       await frame.join({ url: roomInfo.room_url });
@@ -351,6 +360,10 @@ export default function LiveCall() {
   const handleEndCall = useCallback(async () => {
     try {
       if (dailyFrameRef.current) {
+        // Stop recording before leaving
+        try {
+          dailyFrameRef.current.stopRecording();
+        } catch {}
         dailyFrameRef.current.destroy();
         dailyFrameRef.current = null;
       }

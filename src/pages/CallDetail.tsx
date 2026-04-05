@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Clock, Users, TrendingUp, AlertCircle, CheckCircle,
   Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare,
-  Bot, ChevronRight, Calendar, FileText, Lightbulb, ShieldAlert
+  Bot, ChevronRight, Calendar, FileText, Lightbulb, ShieldAlert, Video, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallDetail, useUpdateCall } from "@/hooks/useCalls";
@@ -166,6 +166,28 @@ export default function CallDetail() {
           <MetaCard icon={<Target className="w-4 h-4" />} label="Score"
             value={meetingScore != null ? `${meetingScore}/100` : "N/A"} />
         </div>
+
+        {/* Recording player */}
+        {recordingUrl && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Video className="w-4 h-4 text-primary" /> Meeting Recording
+              </h3>
+              <a href={recordingUrl} target="_blank" rel="noopener noreferrer" download>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7">
+                  <Download className="w-3 h-3" /> Download
+                </Button>
+              </a>
+            </div>
+            <video
+              src={recordingUrl}
+              controls
+              className="w-full rounded-lg bg-black max-h-[400px]"
+              preload="metadata"
+            />
+          </div>
+        )}
 
         {/* Talk ratio */}
         {talkRatio && Object.keys(talkRatio).length > 0 && (
