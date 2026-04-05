@@ -4,7 +4,8 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import { useCalls } from "@/hooks/useCalls";
-import { Loader2, TrendingUp, BarChart3, Award } from "lucide-react";
+import { Loader2, TrendingUp, BarChart3, Award, CheckCircle2 } from "lucide-react";
+import { useActionStats } from "@/hooks/useCallActions";
 import { format, subDays, startOfDay } from "date-fns";
 import { useMemo, useState } from "react";
 
@@ -18,6 +19,7 @@ const COLORS = [
 
 export default function Analytics() {
   const { data: calls, isLoading } = useCalls();
+  const { data: actionStats } = useActionStats();
   const [activeTab, setActiveTab] = useState<"overview" | "reps" | "trends">("overview");
 
   const { dailyData, sentimentTrend, statusBreakdown, repData, trendData } = useMemo(() => {
@@ -185,54 +187,80 @@ export default function Analytics() {
           <>
             {/* OVERVIEW TAB */}
             {activeTab === "overview" && (
-              <div className="grid lg:grid-cols-2 gap-6">
-                <div className="glass rounded-xl p-5">
-                  <h3 className="font-display font-semibold text-sm mb-4">Calls & Wins (Last 7 Days)</h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={dailyData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
-                      <XAxis dataKey="name" tick={axisProps} axisLine={false} />
-                      <YAxis tick={axisProps} axisLine={false} />
-                      <Tooltip {...tooltipStyle} />
-                      <Bar dataKey="calls" fill="hsl(222, 30%, 25%)" radius={[4, 4, 0, 0]} name="Calls" />
-                      <Bar dataKey="wins" fill="hsl(174, 72%, 50%)" radius={[4, 4, 0, 0]} name="Wins" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {sentimentTrend.length > 1 && (
+              <div className="space-y-6">
+                {/* Action Completion Rate card */}
+                {actionStats && actionStats.total > 0 && (
                   <div className="glass rounded-xl p-5">
-                    <h3 className="font-display font-semibold text-sm mb-4">Average Sentiment (Last 14 Days)</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={sentimentTrend}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
-                        <XAxis dataKey="day" tick={axisProps} axisLine={false} />
-                        <YAxis domain={[0, 100]} tick={axisProps} axisLine={false} />
-                        <Tooltip {...tooltipStyle} />
-                        <Line type="monotone" dataKey="score" stroke="hsl(174, 72%, 50%)" strokeWidth={2} dot={{ fill: "hsl(174, 72%, 50%)", r: 4 }} name="Sentiment %" />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <h3 className="font-display font-semibold text-sm mb-4 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-400" /> Action Completion Rate
+                    </h3>
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold font-display text-primary">{actionStats.rate}%</div>
+                        <div className="text-xs text-muted-foreground">Completion Rate</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="h-3 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${actionStats.rate}%` }} />
+                        </div>
+                        <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                          <span>{actionStats.completed} completed</span>
+                          <span>{actionStats.total} total actions</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                <div className="glass rounded-xl p-5">
-                  <h3 className="font-display font-semibold text-sm mb-4">Deal Status Breakdown</h3>
-                  <div className="flex items-center">
-                    <ResponsiveContainer width="50%" height={200}>
-                      <PieChart>
-                        <Pie data={statusBreakdown} cx="50%" cy="50%" outerRadius={80} dataKey="value" strokeWidth={0}>
-                          {statusBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                      </PieChart>
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <div className="glass rounded-xl p-5">
+                    <h3 className="font-display font-semibold text-sm mb-4">Calls & Wins (Last 7 Days)</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={dailyData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
+                        <XAxis dataKey="name" tick={axisProps} axisLine={false} />
+                        <YAxis tick={axisProps} axisLine={false} />
+                        <Tooltip {...tooltipStyle} />
+                        <Bar dataKey="calls" fill="hsl(222, 30%, 25%)" radius={[4, 4, 0, 0]} name="Calls" />
+                        <Bar dataKey="wins" fill="hsl(174, 72%, 50%)" radius={[4, 4, 0, 0]} name="Wins" />
+                      </BarChart>
                     </ResponsiveContainer>
-                    <div className="space-y-2">
-                      {statusBreakdown.map((item, i) => (
-                        <div key={item.name} className="flex items-center gap-2 text-xs">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                          <span className="text-muted-foreground">{item.name}</span>
-                          <span className="font-medium">{item.value}</span>
-                        </div>
-                      ))}
+                  </div>
+
+                  {sentimentTrend.length > 1 && (
+                    <div className="glass rounded-xl p-5">
+                      <h3 className="font-display font-semibold text-sm mb-4">Average Sentiment (Last 14 Days)</h3>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <LineChart data={sentimentTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 18%)" />
+                          <XAxis dataKey="day" tick={axisProps} axisLine={false} />
+                          <YAxis domain={[0, 100]} tick={axisProps} axisLine={false} />
+                          <Tooltip {...tooltipStyle} />
+                          <Line type="monotone" dataKey="score" stroke="hsl(174, 72%, 50%)" strokeWidth={2} dot={{ fill: "hsl(174, 72%, 50%)", r: 4 }} name="Sentiment %" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  <div className="glass rounded-xl p-5">
+                    <h3 className="font-display font-semibold text-sm mb-4">Deal Status Breakdown</h3>
+                    <div className="flex items-center">
+                      <ResponsiveContainer width="50%" height={200}>
+                        <PieChart>
+                          <Pie data={statusBreakdown} cx="50%" cy="50%" outerRadius={80} dataKey="value" strokeWidth={0}>
+                            {statusBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-2">
+                        {statusBreakdown.map((item, i) => (
+                          <div key={item.name} className="flex items-center gap-2 text-xs">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                            <span className="text-muted-foreground">{item.name}</span>
+                            <span className="font-medium">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
