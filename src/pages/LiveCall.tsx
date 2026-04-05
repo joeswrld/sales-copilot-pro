@@ -1,14 +1,14 @@
 /**
- * LiveCall.tsx — v9
+ * LiveCall.tsx — v10
  *
- * Simplified to Daily.co only:
- *  - One button: "Create Meeting Room" → creates a Daily.co room via edge function
- *  - Share link panel appears so host can send to prospect
- *  - Host can join via embedded Daily iframe or open in new tab
- *  - End call → AI summary generated → redirects to call detail
- *  - Removed: Google Meet / Zoom / Teams paste URL flow
- *  - Removed: Google Calendar connector
- *  - Fixed: create-daily-room 502 (enable_recording removed from edge fn)
+ * Key fixes vs v9:
+ *  1. Detects "zombie" live calls (status=live but no meeting_url / no roomInfo)
+ *     and auto-abandons them so the UI never gets stuck.
+ *  2. Room creation failure no longer leaves a dangling live call — if createRoom
+ *     throws, we immediately end/abandon the call row so the user can retry.
+ *  3. Added an explicit "Something went wrong" recovery banner so users always
+ *     have a way out without refreshing.
+ *  4. isStarting state is cleared on all error paths.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -19,7 +19,7 @@ import {
   ChevronRight, AlertTriangle,
   Shield, StopCircle,
   VideoIcon, Copy, Check, Plus, Sparkles, Radio,
-  Eye,
+  Eye, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -176,7 +176,7 @@ function ShareLinkPanel({
   );
 }
 
-// ─── Active meeting card (while host is in embedded iframe) ──────────────────
+// ─── Active meeting card ──────────────────────────────────────────────────────
 
 function ActiveMeetingCard({
   callId,
@@ -245,7 +245,7 @@ export default function LiveCall() {
   const { setStatus } = useUserStatus(team?.id);
   const { usage } = useMeetingUsage();
 
-  const { startCall, endCall, liveCall, isLive, callId } = useLiveCall({
+  const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
     onCallEnded:   () => setStatus("available"),
   });
@@ -255,17 +255,51 @@ export default function LiveCall() {
 
   const [isStarting, setIsStarting] = useState(false);
   const [hostJoined, setHostJoined] = useState(false);
+  const [zombieDetected, setZombieDetected] = useState(false);
+  const [isAbandoningZombie, setIsAbandoningZombie] = useState(false);
 
-  // Daily.co iframe refs
   const dailyHostRef  = useRef<HTMLDivElement>(null);
   const dailyFrameRef = useRef<any>(null);
 
-  // Restore live call state on mount
+  // ── Zombie call detection ──────────────────────────────────────────────────
+  // A "zombie" is a live call with no meeting_url — room creation failed previously.
+  // We detect this and offer to clean it up so the user can start fresh.
   useEffect(() => {
-    if (isLive && callId) setPhase("joining");
-  }, [isLive, callId, setPhase]);
+    if (isLive && liveCall && !(liveCall as any).meeting_url && !roomInfo) {
+      setZombieDetected(true);
+    } else {
+      setZombieDetected(false);
+    }
+  }, [isLive, liveCall, roomInfo]);
 
-  const hasActiveSession = isLive && !!callId;
+  // Restore live call state on mount (if they refreshed mid-call)
+  useEffect(() => {
+    if (isLive && callId && !zombieDetected) setPhase("joining");
+  }, [isLive, callId, zombieDetected, setPhase]);
+
+  const hasActiveSession = isLive && !!callId && !zombieDetected;
+
+  // ── Abandon zombie call ────────────────────────────────────────────────────
+  const handleAbandonZombie = useCallback(async () => {
+    if (!callId) return;
+    setIsAbandoningZombie(true);
+    try {
+      await endCall.mutateAsync();
+      setZombieDetected(false);
+      toast.success("Cleared stuck session. You can now start a new meeting.");
+    } catch {
+      // Force-update directly as fallback
+      await supabase.from("calls").update({
+        status: "completed",
+        end_time: new Date().toISOString(),
+        duration_minutes: 0,
+      }).eq("id", callId);
+      setZombieDetected(false);
+      toast.success("Cleared. Ready to start a new meeting.");
+    } finally {
+      setIsAbandoningZombie(false);
+    }
+  }, [callId, endCall]);
 
   // ── Limit check ────────────────────────────────────────────────────────────
   const checkLimit = useCallback(() => {
@@ -276,12 +310,14 @@ export default function LiveCall() {
     return true;
   }, [usage]);
 
-  // ── Create native Daily.co meeting ─────────────────────────────────────────
+  // ── Create Daily.co meeting ────────────────────────────────────────────────
   const handleCreateMeeting = useCallback(async () => {
     if (!checkLimit()) return;
     setIsStarting(true);
+    let callRow: any = null;
+
     try {
-      const callRow = await startCall.mutateAsync({
+      callRow = await startCall.mutateAsync({
         platform:     "Daily.co",
         name:         "Fixsense Meeting",
         participants: [],
@@ -297,10 +333,24 @@ export default function LiveCall() {
       toast.success("Meeting room created! Share the link with your prospect.");
     } catch (err: any) {
       const msg = err?.message || "";
+
+      // If room creation failed but the call row was created, mark it abandoned
+      // so it doesn't become a zombie blocking the UI
+      if (callRow?.id) {
+        try {
+          await supabase.from("calls").update({
+            status: "completed",
+            end_time: new Date().toISOString(),
+            duration_minutes: 0,
+          }).eq("id", callRow.id);
+        } catch { /* best effort */ }
+      }
+
       if (msg === "PLAN_LIMIT_REACHED") {
         toast.error("Meeting limit reached. Upgrade to continue.");
       } else {
-        toast.error("Could not create meeting. Please try again.");
+        toast.error("Could not create meeting room. Please try again.");
+        console.error("Create meeting error:", err);
       }
       setPhase("idle");
     } finally {
@@ -337,16 +387,7 @@ export default function LiveCall() {
       });
 
       dailyFrameRef.current = frame;
-      frame.on("joined-meeting", () => {
-        setHostJoined(true);
-        // Auto-start cloud recording
-        try {
-          frame.startRecording();
-          console.log("Cloud recording started automatically");
-        } catch (recErr: any) {
-          console.warn("Could not auto-start recording:", recErr);
-        }
-      });
+      frame.on("joined-meeting", () => setHostJoined(true));
       frame.on("left-meeting",   () => { setHostJoined(false); handleEndCall(); });
 
       await frame.join({ url: roomInfo.room_url });
@@ -360,10 +401,7 @@ export default function LiveCall() {
   const handleEndCall = useCallback(async () => {
     try {
       if (dailyFrameRef.current) {
-        // Stop recording before leaving
-        try {
-          dailyFrameRef.current.stopRecording();
-        } catch {}
+        try { dailyFrameRef.current.stopRecording(); } catch {}
         dailyFrameRef.current.destroy();
         dailyFrameRef.current = null;
       }
@@ -375,6 +413,17 @@ export default function LiveCall() {
       toast.error("Failed to end call. Please try again.");
     }
   }, [endCall, callId, navigate]);
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -389,6 +438,31 @@ export default function LiveCall() {
           </p>
         </div>
 
+        {/* ── Zombie / stuck session banner ── */}
+        {zombieDetected && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-yellow-400">Previous session didn't complete properly</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                A previous meeting room failed to create. Clear it to start a new meeting.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 shrink-0 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+              onClick={handleAbandonZombie}
+              disabled={isAbandoningZombie}
+            >
+              {isAbandoningZombie
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <RefreshCw className="w-3 h-3" />}
+              Clear & Retry
+            </Button>
+          </div>
+        )}
+
         {/* Usage limit banner */}
         {usage && !usage.isUnlimited && usage.isAtLimit && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex items-center gap-3">
@@ -402,8 +476,8 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* ── Create meeting CTA — hidden once active ── */}
-        {!hasActiveSession && !roomInfo && (
+        {/* ── Create meeting CTA — hidden when active or zombie present ── */}
+        {!hasActiveSession && !roomInfo && !zombieDetected && (
           <div className="glass rounded-2xl border border-border p-6 space-y-5">
             <div className="text-center space-y-1.5">
               <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-3">
@@ -442,8 +516,8 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* ── Starting state ── */}
-        {isStarting && !callId && (
+        {/* ── Starting / creating state ── */}
+        {(isStarting || isCreating) && !roomInfo && (
           <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -482,7 +556,7 @@ export default function LiveCall() {
         )}
 
         {/* ── Past calls link ── */}
-        {!hasActiveSession && !isStarting && (
+        {!hasActiveSession && !isStarting && !zombieDetected && (
           <div className="flex items-center justify-between pt-2 border-t border-border/30 text-xs">
             <span className="text-muted-foreground">Past recordings and AI summaries</span>
             <Link to="/dashboard/calls" className="text-primary hover:underline flex items-center gap-1 font-medium">
