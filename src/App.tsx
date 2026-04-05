@@ -58,8 +58,9 @@ const App = () => {
           <Sonner />
           <BrowserRouter>
             <DebugInspector />
+             <PWABanner />
             <Routes>
-              <PWABanner />
+              
               {/* Public Marketing */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/pricing" element={<PricingPage />} />
