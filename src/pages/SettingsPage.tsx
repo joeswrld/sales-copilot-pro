@@ -1,4 +1,4 @@
-import DashboardLayout from "@/components/DashboardLayout";
+ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { PushNotificationToggle } from '@/components/PWABanner';
+
 
 const providerMeta: Record<string, { name: string; desc: string; icon: string; color: string }> = {
   zoom:         { name: "Zoom",            desc: "Connect Zoom to auto-join meetings and transcribe calls",        icon: "Z",  color: "bg-blue-500/20 text-blue-400" },
@@ -252,6 +254,9 @@ export default function SettingsPage() {
               <Switch checked={profile?.gdpr_consent ?? false} onCheckedChange={v => updateProfile.mutate({ gdpr_consent: v })} />
             </div>
           </div>
+// Inside the Security section of SettingsPage:
+<PushNotificationToggle />
+
         </section>
       </div>
     </DashboardLayout>
