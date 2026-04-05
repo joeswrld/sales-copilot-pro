@@ -30,7 +30,7 @@ import { DebugInspector } from "./pages/debugInspector";
 import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from '@/components/PWABanner';
-
+import DealsPage from "@/pages/DealsPage";
 import {
   PrivacyPage,
   TermsPage,
