@@ -235,29 +235,50 @@ export default function SettingsPage() {
         </section>
 
         {/* ── Security ─────────────────────────────────────────────────────── */}
-        <section>
-          <h2 className="font-display font-semibold mb-4">Security & Compliance</h2>
-          <div className="glass rounded-xl p-5 space-y-4">
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div><p className="text-xs text-muted-foreground">Encryption</p><p className="text-sm font-medium text-primary">AES-256 at rest, TLS in transit</p></div>
-              <div><p className="text-xs text-muted-foreground">SOC2</p><p className="text-sm font-medium text-primary">Certified</p></div>
-              <div><p className="text-xs text-muted-foreground">GDPR</p><p className="text-sm font-medium text-primary">{profile?.gdpr_consent ? "Consent Given" : "Pending"}</p></div>
-            </div>
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">GDPR Data Consent</p>
-                  <p className="text-xs text-muted-foreground">Allow AI processing of your call data</p>
-                </div>
-              </div>
-              <Switch checked={profile?.gdpr_consent ?? false} onCheckedChange={v => updateProfile.mutate({ gdpr_consent: v })} />
-            </div>
-          </div>
-// Inside the Security section of SettingsPage:
-<PushNotificationToggle />
+<section>
+  <h2 className="font-display font-semibold mb-4">Security & Compliance</h2>
+  <div className="glass rounded-xl p-5 space-y-4">
+    
+    <div className="grid sm:grid-cols-3 gap-4">
+      <div>
+        <p className="text-xs text-muted-foreground">Encryption</p>
+        <p className="text-sm font-medium text-primary">AES-256 at rest, TLS in transit</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">SOC2</p>
+        <p className="text-sm font-medium text-primary">Certified</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">GDPR</p>
+        <p className="text-sm font-medium text-primary">
+          {profile?.gdpr_consent ? "Consent Given" : "Pending"}
+        </p>
+      </div>
+    </div>
 
-        </section>
+    <div className="flex items-center justify-between pt-3 border-t border-border">
+      <div className="flex items-center gap-2">
+        <Shield className="w-4 h-4 text-muted-foreground" />
+        <div>
+          <p className="text-sm font-medium">GDPR Data Consent</p>
+          <p className="text-xs text-muted-foreground">
+            Allow AI processing of your call data
+          </p>
+        </div>
+      </div>
+      <Switch
+        checked={profile?.gdpr_consent ?? false}
+        onCheckedChange={v => updateProfile.mutate({ gdpr_consent: v })}
+      />
+    </div>
+
+    {/* ✅ Push Notifications goes HERE */}
+    <div className="pt-3 border-t border-border">
+      <PushNotificationToggle />
+    </div>
+
+  </div>
+</section>
       </div>
     </DashboardLayout>
   );
