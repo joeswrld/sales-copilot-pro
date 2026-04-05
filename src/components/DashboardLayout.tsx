@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { Building2 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
@@ -104,12 +105,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const messagesUnread = totalUnread + unreadCount;
 
   const primaryNav: NavItem[] = [
-    { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-    { label: "Live Call",  icon: Radio,           href: "/dashboard/live" },
-    { label: "Calls",      icon: Phone,            href: "/dashboard/calls" },
-{ href: "/dashboard/deals", label: "Deals", icon: Building2 }
-    { label: "AI Coach",   icon: Bot,              href: "/dashboard/coach" },
-  ];
+  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { label: "Live Call", icon: Radio, href: "/dashboard/live" },
+  { label: "Calls", icon: Phone, href: "/dashboard/calls" },
+  { label: "Deals", icon: Building2, href: "/dashboard/deals" },
+  { label: "AI Coach", icon: Bot, href: "/dashboard/coach" },
+];
   const workspaceNav: NavItem[] = [
     { label: "Team",     icon: Users,         href: "/dashboard/team" },
     { label: "Messages", icon: MessageSquare, href: "/dashboard/messages", badge: messagesUnread > 0 ? messagesUnread : null },
