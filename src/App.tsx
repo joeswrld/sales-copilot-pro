@@ -29,7 +29,7 @@ import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import { DebugInspector } from "./pages/debugInspector";
 import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
-
+import PWABanner from '@/components/PWABanner';
 
 import {
   PrivacyPage,
@@ -59,6 +59,7 @@ const App = () => {
           <BrowserRouter>
             <DebugInspector />
             <Routes>
+              <PWABanner />
               {/* Public Marketing */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/pricing" element={<PricingPage />} />
