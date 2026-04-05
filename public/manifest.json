@@ -1,0 +1,54 @@
+{
+  "name": "Fixsense — Sales Intelligence",
+  "short_name": "Fixsense",
+  "description": "AI-powered sales call intelligence. Record, analyze, and improve every conversation.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#060912",
+  "theme_color": "#7c3aed",
+  "categories": ["business", "productivity"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/fixsense_icon_logo (2).png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/fixsense_icon_logo (2).png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-dashboard.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Fixsense Dashboard"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live Call",
+      "short_name": "Live",
+      "description": "Start or join a live sales call",
+      "url": "/dashboard/live",
+      "icons": [{ "src": "/fixsense_icon_logo (2).png", "sizes": "96x96" }]
+    },
+    {
+      "name": "My Calls",
+      "short_name": "Calls",
+      "description": "Review past calls and AI insights",
+      "url": "/dashboard/calls",
+      "icons": [{ "src": "/fixsense_icon_logo (2).png", "sizes": "96x96" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}
