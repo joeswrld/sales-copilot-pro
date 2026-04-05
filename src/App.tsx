@@ -134,6 +134,12 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route 
+path="/dashboard/deals" 
+element={
+    <ProtectedRoute>
+                    <DealsPage />
+                  </ProtectedRoute>} />
               <Route
                 path="/dashboard/analytics"
                 element={
