@@ -5,6 +5,7 @@
  * Prospect Thread: all calls tied to a deal, aggregated AI intelligence.
  *
  * Route: /dashboard/deals
+ * UPDATED: Full mobile responsiveness
  */
 
 import { useState, useMemo } from "react";
@@ -197,13 +198,29 @@ function CreateDealModal({
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
       background: "rgba(0,0,0,.75)", backdropFilter: "blur(12px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      display: "flex", alignItems: "flex-end",
+      justifyContent: "center", padding: 0,
     }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto",
+      <style>{`
+        @media (min-width: 600px) {
+          .create-deal-sheet {
+            align-self: center !important;
+            border-radius: 18px !important;
+            max-height: 88vh !important;
+            margin: 20px !important;
+          }
+        }
+      `}</style>
+      <div className="create-deal-sheet" style={{
+        width: "100%", maxWidth: 520, overflowY: "auto",
         background: "#0d1117", border: "1px solid rgba(255,255,255,.09)",
-        borderRadius: 18, padding: 26, boxShadow: "0 40px 100px rgba(0,0,0,.8)",
+        borderRadius: "18px 18px 0 0", padding: 22,
+        boxShadow: "0 -20px 60px rgba(0,0,0,.8)",
+        maxHeight: "92vh",
       }}>
+        {/* Drag handle */}
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.15)", margin: "0 auto 18px" }} />
+
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -330,13 +347,23 @@ function AttachCallModal({
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
       background: "rgba(0,0,0,.75)", backdropFilter: "blur(10px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
     }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
+      <style>{`
+        @media (min-width: 600px) {
+          .attach-call-sheet {
+            align-self: center !important;
+            border-radius: 18px !important;
+            margin: 20px !important;
+          }
+        }
+      `}</style>
+      <div className="attach-call-sheet" style={{
         width: "100%", maxWidth: 480, background: "#0d1117",
-        border: "1px solid rgba(255,255,255,.09)", borderRadius: 18, padding: 22,
-        boxShadow: "0 40px 100px rgba(0,0,0,.8)",
+        border: "1px solid rgba(255,255,255,.09)", borderRadius: "18px 18px 0 0", padding: 22,
+        boxShadow: "0 -20px 60px rgba(0,0,0,.8)", maxHeight: "80vh", display: "flex", flexDirection: "column",
       }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.15)", margin: "0 auto 16px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
             Link a Call
@@ -361,7 +388,7 @@ function AttachCallModal({
             }}
           />
         </div>
-        <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
           {isLoading ? (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
               <Loader2 style={{ width: 18, height: 18, color: "#3b82f6", animation: "spin 1s linear infinite" }} />
@@ -442,31 +469,31 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
       {/* Header */}
       <div style={{
-        padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,.07)",
+        padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.07)",
         background: "rgba(11,15,28,.9)", flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             onClick={onBack}
             style={{
               background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)",
-              borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center",
+              borderRadius: 8, width: 30, height: 30, minWidth: 30, display: "flex", alignItems: "center",
               justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,.5)",
               flexShrink: 0,
             }}
           >
-            <ArrowLeft style={{ width: 13, height: 13 }} />
+            <ArrowLeft style={{ width: 14, height: 14 }} />
           </button>
           <div style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+            width: 36, height: 36, borderRadius: 9, flexShrink: 0,
             background: cfg.bg, display: "flex", alignItems: "center",
-            justifyContent: "center", fontSize: 18,
+            justifyContent: "center", fontSize: 16,
           }}>
             {cfg.icon}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{
-              margin: 0, fontSize: 16, fontWeight: 800, color: "#f0f6fc",
+              margin: 0, fontSize: 15, fontWeight: 800, color: "#f0f6fc",
               fontFamily: "'Bricolage Grotesque',sans-serif",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
@@ -511,22 +538,26 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
           </div>
         </div>
 
-        {/* Stats row */}
-        <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+        {/* Stats row — scrollable on mobile */}
+        <div style={{
+          display: "flex", gap: 12, marginTop: 10, flexWrap: "nowrap",
+          overflowX: "auto", paddingBottom: 2,
+          msOverflowStyle: "none", scrollbarWidth: "none",
+        }}>
           {[
             { label: "Calls", value: String(calls.length), icon: Phone, color: "#60a5fa" },
-            { label: "Avg Sentiment", value: avgSentiment != null ? `${avgSentiment}%` : "—", icon: BarChart3, color: avgSentiment != null ? (avgSentiment >= 70 ? "#22c55e" : avgSentiment >= 40 ? "#f59e0b" : "#ef4444") : "#94a3b8" },
+            { label: "Sentiment", value: avgSentiment != null ? `${avgSentiment}%` : "—", icon: BarChart3, color: avgSentiment != null ? (avgSentiment >= 70 ? "#22c55e" : avgSentiment >= 40 ? "#f59e0b" : "#ef4444") : "#94a3b8" },
             { label: "Risk", value: deal.risk_score != null ? `${deal.risk_score}/100` : "—", icon: Shield, color: deal.risk_score != null ? (deal.risk_score >= 70 ? "#ef4444" : deal.risk_score >= 40 ? "#f59e0b" : "#22c55e") : "#94a3b8" },
             ...(deal.value ? [{ label: "Value", value: `$${deal.value.toLocaleString()}`, icon: DollarSign, color: "#34d399" }] : []),
           ].map(s => (
-            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <s.icon style={{ width: 12, height: 12, color: "rgba(255,255,255,.3)" }} />
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+              <s.icon style={{ width: 11, height: 11, color: "rgba(255,255,255,.3)" }} />
               <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>{s.label}:</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: s.color }}>{s.value}</span>
             </div>
           ))}
           {deal.sentiment_trend && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
               <TrendIcon trend={deal.sentiment_trend} />
               <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>
                 {deal.sentiment_trend === "improving" ? "Improving" : deal.sentiment_trend === "declining" ? "Declining" : "Stable"}
@@ -537,22 +568,22 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
       </div>
 
       {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px" }}>
 
         {/* AI Deal Intelligence */}
         <div style={{
           background: "linear-gradient(135deg, rgba(59,130,246,.08), rgba(147,51,234,.06))",
-          border: "1px solid rgba(59,130,246,.2)", borderRadius: 14, padding: 16, marginBottom: 18,
+          border: "1px solid rgba(59,130,246,.2)", borderRadius: 14, padding: 14, marginBottom: 16,
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: summary ? 10 : 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <Sparkles style={{ width: 14, height: 14, color: "#60a5fa" }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
-                AI Deal Intelligence
+                AI Intelligence
               </span>
               {summary && (
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)" }}>
-                  · Updated {format(new Date(summary.generated_at), "MMM d")}
+                  · {format(new Date(summary.generated_at), "MMM d")}
                 </span>
               )}
             </div>
@@ -560,7 +591,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
               onClick={() => generateSummary.mutate(deal.id)}
               disabled={generateSummary.isPending || calls.length === 0}
               style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+                display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
                 background: "rgba(59,130,246,.15)", border: "1px solid rgba(59,130,246,.3)",
                 borderRadius: 8, color: "#60a5fa", fontSize: 11, fontWeight: 600,
                 cursor: calls.length > 0 ? "pointer" : "not-allowed", fontFamily: "'DM Sans',sans-serif",
@@ -585,7 +616,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
             <p style={{ fontSize: 12, color: "rgba(255,255,255,.3)", margin: "8px 0 0", lineHeight: 1.6 }}>
               {calls.length === 0
                 ? "Link at least one call to generate AI intelligence on this deal."
-                : `Click Generate to analyze ${calls.length} call${calls.length !== 1 ? "s" : ""} and get a deal intelligence report.`}
+                : `Click Generate to analyze ${calls.length} call${calls.length !== 1 ? "s" : ""}.`}
             </p>
           )}
 
@@ -595,7 +626,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
                 {summary.summary}
               </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {summary.open_objections?.length > 0 && (
                   <IntelSection label="Open Objections" color="#ef4444" items={summary.open_objections} />
                 )}
@@ -637,7 +668,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
           <div style={{
             display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 13px",
             background: "rgba(96,165,250,.06)", border: "1px solid rgba(96,165,250,.15)",
-            borderRadius: 11, marginBottom: 18,
+            borderRadius: 11, marginBottom: 16,
           }}>
             <Target style={{ width: 14, height: 14, color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
             <div>
@@ -648,7 +679,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
         )}
 
         {/* Call timeline */}
-        <div style={{ marginBottom: 18 }}>
+        <div style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.8)", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
               Call History ({calls.length})
@@ -656,23 +687,23 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
             <button
               onClick={() => setShowAttach(true)}
               style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "5px 11px",
+                display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
                 background: "rgba(59,130,246,.12)", border: "1px solid rgba(59,130,246,.25)",
-                borderRadius: 8, color: "#60a5fa", fontSize: 11, fontWeight: 600,
+                borderRadius: 8, color: "#60a5fa", fontSize: 12, fontWeight: 600,
                 cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
               }}
             >
-              <Plus style={{ width: 11, height: 11 }} /> Link Call
+              <Plus style={{ width: 12, height: 12 }} /> Link Call
             </button>
           </div>
 
           {calls.length === 0 ? (
             <div style={{
-              padding: "32px 20px", textAlign: "center",
+              padding: "28px 16px", textAlign: "center",
               background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)",
               borderRadius: 13, color: "rgba(255,255,255,.25)",
             }}>
-              <Phone style={{ width: 28, height: 28, margin: "0 auto 8px", opacity: .3 }} />
+              <Phone style={{ width: 26, height: 26, margin: "0 auto 8px", opacity: .3 }} />
               <p style={{ margin: 0, fontSize: 12 }}>No calls linked yet</p>
               <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,.15)" }}>
                 Link existing calls or complete a new one
@@ -688,7 +719,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
                   ? call.sentiment_score >= 70 ? "#22c55e" : call.sentiment_score >= 40 ? "#f59e0b" : "#ef4444"
                   : "rgba(255,255,255,.3)";
                 return (
-                  <div key={call.id} style={{ display: "flex", gap: 14, paddingBottom: 14, position: "relative" }}>
+                  <div key={call.id} style={{ display: "flex", gap: 12, paddingBottom: 12, position: "relative" }}>
                     {/* Dot */}
                     <div style={{
                       width: 33, height: 33, borderRadius: "50%", flexShrink: 0,
@@ -702,7 +733,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
                     {/* Content */}
                     <div style={{
                       flex: 1, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)",
-                      borderRadius: 12, padding: "11px 13px",
+                      borderRadius: 12, padding: "10px 12px", minWidth: 0,
                     }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                         <Link
@@ -719,7 +750,7 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
                         </Link>
                       </div>
 
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: call.call_summary ? 8 : 0 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: call.call_summary ? 8 : 0 }}>
                         <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)", display: "flex", alignItems: "center", gap: 3 }}>
                           <Calendar style={{ width: 9, height: 9 }} />
                           {format(new Date(call.date), "MMM d, yyyy")}
@@ -852,6 +883,8 @@ export default function DealsPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<DealStageValue | "all">("all");
   const [showCreate, setShowCreate] = useState(false);
+  // Mobile view: "list" | "detail"
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
   const filtered = useMemo(() =>
     deals.filter(d => {
@@ -873,23 +906,128 @@ export default function DealsPage() {
     return groups;
   }, [filtered]);
 
+  const handleSelectDeal = (id: string) => {
+    setSelectedId(id);
+    setMobileView("detail");
+  };
+
+  const handleBack = () => {
+    setSelectedId(null);
+    setMobileView("list");
+  };
+
   return (
     <DashboardLayout>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-      <div style={{
-        display: "flex", height: "calc(100vh - 7rem)", overflow: "hidden",
-        margin: "-28px", background: "#060912", borderRadius: 0,
-        fontFamily: "'DM Sans',system-ui,sans-serif",
-      }}>
+        .deals-page {
+          display: flex;
+          height: calc(100vh - 7rem);
+          overflow: hidden;
+          margin: -28px;
+          background: #060912;
+          border-radius: 0;
+          font-family: 'DM Sans', system-ui, sans-serif;
+        }
+
+        /* Sidebar */
+        .deals-sidebar {
+          width: 300px;
+          flex-shrink: 0;
+          border-right: 1px solid rgba(255,255,255,.07);
+          background: #0b0f1c;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        /* Detail panel */
+        .deals-detail {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          background: rgba(6,9,18,.7);
+        }
+
+        /* ── Mobile: show only one panel at a time ── */
+        @media (max-width: 767px) {
+          .deals-page {
+            margin: -16px;
+            height: calc(100dvh - 4rem);
+          }
+
+          .deals-sidebar {
+            width: 100%;
+            border-right: none;
+          }
+
+          .deals-sidebar--hidden {
+            display: none;
+          }
+
+          .deals-detail--hidden {
+            display: none;
+          }
+
+          .deals-detail {
+            width: 100%;
+          }
+        }
+
+        /* Stage filter — horizontal scroll on mobile */
+        .stage-filters {
+          display: flex;
+          gap: 4px;
+          margin-top: 8px;
+          overflow-x: auto;
+          padding-bottom: 2px;
+          flex-wrap: nowrap;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .stage-filters::-webkit-scrollbar { display: none; }
+
+        /* Stats row — always 3 columns */
+        .pipeline-stats {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 6px;
+          margin-bottom: 10px;
+        }
+
+        /* Intel grid — responsive */
+        .intel-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+        @media (max-width: 400px) {
+          .intel-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* Create deal modal — responsive grid */
+        .create-deal-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 380px) {
+          .create-deal-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      <div className="deals-page">
         {/* ── Sidebar ── */}
-        <div style={{
-          width: 300, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,.07)",
-          background: "#0b0f1c", display: "flex", flexDirection: "column", overflow: "hidden",
-        }}>
+        <div className={cn("deals-sidebar", mobileView === "detail" && "deals-sidebar--hidden")}>
           {/* Sidebar header */}
-          <div style={{ padding: "16px 14px 10px", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ padding: "14px 12px 10px", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
                   width: 28, height: 28, borderRadius: 8,
@@ -905,18 +1043,18 @@ export default function DealsPage() {
               <button
                 onClick={() => setShowCreate(true)}
                 style={{
-                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
                   background: "rgba(59,130,246,.15)", border: "1px solid rgba(59,130,246,.3)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", color: "#60a5fa",
                 }}
               >
-                <Plus style={{ width: 13, height: 13 }} />
+                <Plus style={{ width: 14, height: 14 }} />
               </button>
             </div>
 
             {/* Pipeline stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
+            <div className="pipeline-stats">
               {[
                 { label: "Active", value: pipeline.active, color: "#60a5fa" },
                 { label: "Won", value: pipeline.won, color: "#22c55e" },
@@ -926,7 +1064,7 @@ export default function DealsPage() {
                   background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)",
                   borderRadius: 9, padding: "7px 8px", textAlign: "center",
                 }}>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: s.color, fontFamily: "'Bricolage Grotesque',sans-serif", lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: "'Bricolage Grotesque',sans-serif", lineHeight: 1 }}>{s.value}</div>
                   <div style={{ fontSize: 9, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 2 }}>{s.label}</div>
                 </div>
               ))}
@@ -939,24 +1077,24 @@ export default function DealsPage() {
                 value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Search deals…"
                 style={{
-                  width: "100%", paddingLeft: 28, paddingRight: 10, paddingTop: 7, paddingBottom: 7,
+                  width: "100%", paddingLeft: 28, paddingRight: 10, paddingTop: 8, paddingBottom: 8,
                   background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
-                  borderRadius: 9, color: "rgba(255,255,255,.8)", fontSize: 12,
+                  borderRadius: 9, color: "rgba(255,255,255,.8)", fontSize: 14,
                   fontFamily: "'DM Sans',sans-serif", outline: "none",
                 }}
               />
             </div>
 
-            {/* Stage filter tabs */}
-            <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+            {/* Stage filter tabs — horizontal scroll */}
+            <div className="stage-filters">
               <button
                 onClick={() => setStageFilter("all")}
                 style={{
-                  padding: "3px 9px", borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                  padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
                   background: stageFilter === "all" ? "rgba(255,255,255,.12)" : "transparent",
                   border: `1px solid ${stageFilter === "all" ? "rgba(255,255,255,.2)" : "transparent"}`,
                   color: stageFilter === "all" ? "#f0f6fc" : "rgba(255,255,255,.35)",
-                  fontFamily: "'DM Sans',sans-serif",
+                  fontFamily: "'DM Sans',sans-serif", whiteSpace: "nowrap", flexShrink: 0,
                 }}
               >
                 All
@@ -966,11 +1104,11 @@ export default function DealsPage() {
                 const on = stageFilter === s;
                 return (
                   <button key={s} onClick={() => setStageFilter(on ? "all" : s)} style={{
-                    padding: "3px 9px", borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                    padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
                     background: on ? cfg.bg : "transparent",
                     border: `1px solid ${on ? cfg.color + "40" : "transparent"}`,
                     color: on ? cfg.color : "rgba(255,255,255,.35)",
-                    fontFamily: "'DM Sans',sans-serif",
+                    fontFamily: "'DM Sans',sans-serif", whiteSpace: "nowrap", flexShrink: 0,
                   }}>
                     {cfg.icon} {cfg.label}
                   </button>
@@ -995,7 +1133,7 @@ export default function DealsPage() {
                   <button onClick={() => setShowCreate(true)} style={{
                     marginTop: 12, display: "inline-flex", alignItems: "center", gap: 5,
                     background: "rgba(59,130,246,.15)", border: "1px solid rgba(59,130,246,.3)",
-                    borderRadius: 8, padding: "7px 14px", color: "#60a5fa", fontSize: 12, fontWeight: 600,
+                    borderRadius: 8, padding: "8px 16px", color: "#60a5fa", fontSize: 13, fontWeight: 600,
                     cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
                   }}>
                     <Plus style={{ width: 12, height: 12 }} /> Create first deal
@@ -1004,7 +1142,7 @@ export default function DealsPage() {
               </div>
             ) : stageFilter !== "all" ? (
               filtered.map(d => (
-                <DealCard key={d.id} deal={d} isSelected={selectedId === d.id} onClick={() => setSelectedId(d.id)} />
+                <DealCard key={d.id} deal={d} isSelected={selectedId === d.id} onClick={() => handleSelectDeal(d.id)} />
               ))
             ) : (
               groupedByStage.map(({ stage, deals: stageDeal }) => {
@@ -1026,7 +1164,7 @@ export default function DealsPage() {
                       </span>
                     </div>
                     {stageDeal.map(d => (
-                      <DealCard key={d.id} deal={d} isSelected={selectedId === d.id} onClick={() => setSelectedId(d.id)} />
+                      <DealCard key={d.id} deal={d} isSelected={selectedId === d.id} onClick={() => handleSelectDeal(d.id)} />
                     ))}
                   </div>
                 );
@@ -1036,29 +1174,29 @@ export default function DealsPage() {
         </div>
 
         {/* ── Main content ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "rgba(6,9,18,.7)" }}>
+        <div className={cn("deals-detail", mobileView === "list" && !selectedId ? "deals-detail--hidden" : "", !selectedId && "deals-detail--hidden")}>
           {selectedId ? (
             <DealDetailPanel
               key={selectedId}
               dealId={selectedId}
-              onBack={() => setSelectedId(null)}
+              onBack={handleBack}
             />
           ) : (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 40 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 32 }}>
               <div style={{
-                width: 80, height: 80, borderRadius: 22, marginBottom: 22,
+                width: 72, height: 72, borderRadius: 20, marginBottom: 20,
                 background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.15)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Building2 style={{ width: 34, height: 34, color: "#60a5fa", opacity: .7 }} />
+                <Building2 style={{ width: 30, height: 30, color: "#60a5fa", opacity: .7 }} />
               </div>
-              <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800, color: "#64748b", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
+              <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#64748b", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
                 Deal Intelligence
               </h2>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.22)", maxWidth: 320, lineHeight: 1.65, margin: "0 0 28px" }}>
-                Select a deal to view its complete call history, AI analysis, and deal intelligence across all touchpoints.
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.22)", maxWidth: 300, lineHeight: 1.65, margin: "0 0 24px" }}>
+                Select a deal to view its complete call history, AI analysis, and deal intelligence.
               </p>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
                 {[
                   { icon: Phone, text: "All calls in one thread" },
                   { icon: Sparkles, text: "AI deal intelligence" },
@@ -1077,7 +1215,7 @@ export default function DealsPage() {
               </div>
               {deals.length === 0 && (
                 <button onClick={() => setShowCreate(true)} style={{
-                  marginTop: 24, display: "inline-flex", alignItems: "center", gap: 7,
+                  marginTop: 22, display: "inline-flex", alignItems: "center", gap: 7,
                   background: "linear-gradient(135deg,#3b82f6,#2563eb)",
                   border: "none", borderRadius: 11, padding: "11px 22px",
                   color: "#fff", fontSize: 13, fontWeight: 700,
@@ -1090,12 +1228,21 @@ export default function DealsPage() {
             </div>
           )}
         </div>
+
+        {/* Desktop empty state when no deal selected */}
+        <style>{`
+          @media (min-width: 768px) {
+            .deals-detail--hidden {
+              display: flex !important;
+            }
+          }
+        `}</style>
       </div>
 
       {showCreate && (
         <CreateDealModal
           onClose={() => setShowCreate(false)}
-          onCreated={id => { setShowCreate(false); setSelectedId(id); }}
+          onCreated={id => { setShowCreate(false); handleSelectDeal(id); }}
         />
       )}
     </DashboardLayout>
