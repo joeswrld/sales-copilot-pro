@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 
 import TranscriptClipSelector from "@/components/coaching/TranscriptClipSelector";
 import { useCoachingClips } from "@/hooks/useCoachingClips";
+import { useCallAction } from "@/hooks/useCallActions";
+import { toast } from "sonner";
 
 interface Objection {
   text?: string;
@@ -57,6 +59,8 @@ export default function CallDetail() {
   const { useCallClips } = useCoachingClips();
   const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
+
+  const { action, isLoading: actionLoading, generate: generateAction, toggleComplete, markCrmPushed } = useCallAction(id);
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -186,6 +190,119 @@ export default function CallDetail() {
               className="w-full rounded-lg bg-black max-h-[400px]"
               preload="metadata"
             />
+          </div>
+        )}
+
+        {/* AI Action Layer */}
+        {callData.status === "completed" && summaryData && (
+          <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" /> Priority Next Action
+              </h3>
+              {!action && !actionLoading && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-7"
+                  onClick={() => generateAction.mutate(callData.id)}
+                  disabled={generateAction.isPending}
+                >
+                  {generateAction.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  Generate
+                </Button>
+              )}
+            </div>
+
+            {actionLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+              </div>
+            )}
+
+            {action && (
+              <div className="space-y-3">
+                {/* Priority action */}
+                <div className="flex items-start gap-3">
+                  <button
+                    onClick={() => toggleComplete.mutate({ actionId: action.id, completed: !action.is_completed })}
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      action.is_completed
+                        ? "bg-green-500 border-green-500 text-white"
+                        : "border-muted-foreground/40 hover:border-primary"
+                    }`}
+                  >
+                    {action.is_completed && <CheckCircle className="w-3 h-3" />}
+                  </button>
+                  <p className={`text-sm font-medium ${action.is_completed ? "line-through text-muted-foreground" : ""}`}>
+                    {action.priority_action}
+                  </p>
+                </div>
+
+                {/* Draft email */}
+                {action.draft_email_subject && (
+                  <div className="rounded-lg bg-card border border-border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Draft Follow-up Email</p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => {
+                          const text = `Subject: ${action.draft_email_subject}\n\n${action.draft_email_body || ""}`;
+                          navigator.clipboard.writeText(text);
+                          toast.success("Email copied to clipboard!");
+                        }}
+                      >
+                        <FileText className="w-3 h-3" /> Copy
+                      </Button>
+                    </div>
+                    <p className="text-sm font-medium">{action.draft_email_subject}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                      {action.draft_email_body}
+                    </p>
+                  </div>
+                )}
+
+                {/* CRM push */}
+                <div className="flex items-center gap-2">
+                  {action.crm_pushed ? (
+                    <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
+                      <CheckCircle className="w-3 h-3 mr-1" /> Pushed to {action.crm_provider || "CRM"}
+                    </Badge>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}
+                      >
+                        Push to HubSpot
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "salesforce" })}
+                      >
+                        Push to Salesforce
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {generateAction.isPending && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating your next action...
+              </div>
+            )}
           </div>
         )}
 
