@@ -360,6 +360,10 @@ export default function LiveCall() {
   const handleEndCall = useCallback(async () => {
     try {
       if (dailyFrameRef.current) {
+        // Stop recording before leaving
+        try {
+          dailyFrameRef.current.stopRecording();
+        } catch {}
         dailyFrameRef.current.destroy();
         dailyFrameRef.current = null;
       }
