@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.create-daily-room]
 verify_jwt = false
+
+[functions.daily-recording-webhook]
+verify_jwt = false
