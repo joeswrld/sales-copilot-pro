@@ -475,6 +475,7 @@ export type Database = {
           call_id: string
           call_recording_url: string | null
           call_title: string | null
+          coaching_tag: string | null
           created_at: string | null
           created_by: string
           duration_seconds: number | null
@@ -482,6 +483,8 @@ export type Database = {
           id: string
           is_public: boolean | null
           manager_comment: string
+          playlist_id: string | null
+          rating: number | null
           share_token: string | null
           start_seconds: number
           tags: string[] | null
@@ -495,6 +498,7 @@ export type Database = {
           call_id: string
           call_recording_url?: string | null
           call_title?: string | null
+          coaching_tag?: string | null
           created_at?: string | null
           created_by: string
           duration_seconds?: number | null
@@ -502,6 +506,8 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           manager_comment: string
+          playlist_id?: string | null
+          rating?: number | null
           share_token?: string | null
           start_seconds?: number
           tags?: string[] | null
@@ -515,6 +521,7 @@ export type Database = {
           call_id?: string
           call_recording_url?: string | null
           call_title?: string | null
+          coaching_tag?: string | null
           created_at?: string | null
           created_by?: string
           duration_seconds?: number | null
@@ -522,6 +529,8 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           manager_comment?: string
+          playlist_id?: string | null
+          rating?: number | null
           share_token?: string | null
           start_seconds?: number
           tags?: string[] | null
@@ -547,7 +556,52 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "coaching_clips_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_playlists"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "coaching_clips_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_playlists: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          team_id: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          team_id?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          team_id?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_playlists_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
