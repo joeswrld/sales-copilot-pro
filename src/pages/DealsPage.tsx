@@ -16,11 +16,12 @@ import {
   ChevronRight, Phone, Clock, BarChart3, Sparkles, Target,
   Building2, User, Calendar, DollarSign, Loader2, ArrowLeft,
   X, Check, Edit3, Trash2, ExternalLink, Activity, Award,
-  Zap, RefreshCw, Shield, Tag, MoreHorizontal,
+  Zap, RefreshCw, Shield, Tag, MoreHorizontal, Brain,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useDeals, DEAL_STAGE_CFG, type DealStageValue, type DealListItem } from "@/hooks/useDeals";
 import { useCalls } from "@/hooks/useCalls";
+import { useDealIntelligence, type DealChangeAnalysis } from "@/hooks/useDealIntelligence";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
