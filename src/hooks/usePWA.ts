@@ -124,9 +124,10 @@ export function usePWA(): PWAState {
     }
 
     try {
+      const vapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
       const subscription = await swReg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: vapidKey.buffer as ArrayBuffer,
       });
 
       // Store subscription in Supabase for server-side push delivery

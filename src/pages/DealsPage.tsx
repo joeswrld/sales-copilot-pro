@@ -16,11 +16,12 @@ import {
   ChevronRight, Phone, Clock, BarChart3, Sparkles, Target,
   Building2, User, Calendar, DollarSign, Loader2, ArrowLeft,
   X, Check, Edit3, Trash2, ExternalLink, Activity, Award,
-  Zap, RefreshCw, Shield, Tag, MoreHorizontal,
+  Zap, RefreshCw, Shield, Tag, MoreHorizontal, Brain,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useDeals, DEAL_STAGE_CFG, type DealStageValue, type DealListItem } from "@/hooks/useDeals";
 import { useCalls } from "@/hooks/useCalls";
+import { useDealIntelligence, type DealChangeAnalysis } from "@/hooks/useDealIntelligence";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -441,10 +442,12 @@ function AttachCallModal({
 
 function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => void }) {
   const { useDealDetail, generateSummary, updateDeal, deleteDeal } = useDeals();
+  const { analyzeChanges } = useDealIntelligence();
   const { data, isLoading, error } = useDealDetail(dealId);
   const navigate = useNavigate();
   const [showAttach, setShowAttach] = useState(false);
   const [editStage, setEditStage] = useState(false);
+  const [changeAnalysis, setChangeAnalysis] = useState<DealChangeAnalysis | null>(null);
 
   if (isLoading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -663,7 +666,103 @@ function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => voi
           )}
         </div>
 
-        {/* Next step */}
+        {/* What Changed? — Deal progression intelligence */}
+        {calls.length >= 1 && (
+          <div style={{
+            background: "linear-gradient(135deg, rgba(167,139,250,.08), rgba(236,72,153,.06))",
+            border: "1px solid rgba(167,139,250,.2)", borderRadius: 14, padding: 14, marginBottom: 16,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: changeAnalysis ? 10 : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Brain style={{ width: 14, height: 14, color: "#a78bfa" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
+                  What Changed?
+                </span>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const result = await analyzeChanges.mutateAsync(deal.id);
+                    setChangeAnalysis(result);
+                  } catch {}
+                }}
+                disabled={analyzeChanges.isPending}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
+                  background: "rgba(167,139,250,.15)", border: "1px solid rgba(167,139,250,.3)",
+                  borderRadius: 8, color: "#a78bfa", fontSize: 11, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                }}
+              >
+                {analyzeChanges.isPending
+                  ? <Loader2 style={{ width: 11, height: 11, animation: "spin 1s linear infinite" }} />
+                  : <Zap style={{ width: 11, height: 11 }} />}
+                {changeAnalysis ? "Refresh" : "Analyze"}
+              </button>
+            </div>
+
+            {analyzeChanges.isPending && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", color: "rgba(255,255,255,.4)", fontSize: 12 }}>
+                <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
+                Comparing calls…
+              </div>
+            )}
+
+            {!changeAnalysis && !analyzeChanges.isPending && (
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,.3)", margin: "8px 0 0", lineHeight: 1.6 }}>
+                Click Analyze to compare calls and see what changed.
+              </p>
+            )}
+
+            {changeAnalysis && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Direction */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {changeAnalysis.direction === "improving" && <TrendingUp style={{ width: 16, height: 16, color: "#22c55e" }} />}
+                  {changeAnalysis.direction === "declining" && <TrendingDown style={{ width: 16, height: 16, color: "#ef4444" }} />}
+                  {changeAnalysis.direction === "stable" && <Minus style={{ width: 16, height: 16, color: "#94a3b8" }} />}
+                  <span style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: changeAnalysis.direction === "improving" ? "#22c55e"
+                      : changeAnalysis.direction === "declining" ? "#ef4444" : "#94a3b8",
+                  }}>
+                    Deal is {changeAnalysis.direction}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.65)", lineHeight: 1.55 }}>
+                  {changeAnalysis.direction_explanation}
+                </p>
+
+                {/* Next Best Action */}
+                <div style={{
+                  background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
+                  borderRadius: 10, padding: "9px 12px",
+                }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                    🎯 Next Best Action
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
+                    {changeAnalysis.next_best_action}
+                  </p>
+                </div>
+
+                {/* New Objections / Buying Signals / Stakeholders */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {changeAnalysis.new_objections?.length > 0 && (
+                    <IntelSection label="New Objections" color="#ef4444" items={changeAnalysis.new_objections} />
+                  )}
+                  {changeAnalysis.buying_signals?.length > 0 && (
+                    <IntelSection label="Buying Signals" color="#22c55e" items={changeAnalysis.buying_signals} />
+                  )}
+                  {changeAnalysis.new_stakeholders?.length > 0 && (
+                    <IntelSection label="New Stakeholders" color="#60a5fa" items={changeAnalysis.new_stakeholders} />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {deal.next_step && (
           <div style={{
             display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 13px",

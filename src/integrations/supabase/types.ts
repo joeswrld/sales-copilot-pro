@@ -284,6 +284,7 @@ export type Database = {
           daily_room_name: string | null
           daily_room_url: string | null
           date: string
+          deal_id: string | null
           deal_score: string | null
           duration_minutes: number | null
           end_time: string | null
@@ -314,6 +315,7 @@ export type Database = {
           daily_room_name?: string | null
           daily_room_url?: string | null
           date?: string
+          deal_id?: string | null
           deal_score?: string | null
           duration_minutes?: number | null
           end_time?: string | null
@@ -344,6 +346,7 @@ export type Database = {
           daily_room_name?: string | null
           daily_room_url?: string | null
           date?: string
+          deal_id?: string | null
           deal_score?: string | null
           duration_minutes?: number | null
           end_time?: string | null
@@ -366,7 +369,15 @@ export type Database = {
           status?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "calls_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_messages: {
         Row: {
@@ -464,6 +475,7 @@ export type Database = {
           call_id: string
           call_recording_url: string | null
           call_title: string | null
+          coaching_tag: string | null
           created_at: string | null
           created_by: string
           duration_seconds: number | null
@@ -471,6 +483,8 @@ export type Database = {
           id: string
           is_public: boolean | null
           manager_comment: string
+          playlist_id: string | null
+          rating: number | null
           share_token: string | null
           start_seconds: number
           tags: string[] | null
@@ -484,6 +498,7 @@ export type Database = {
           call_id: string
           call_recording_url?: string | null
           call_title?: string | null
+          coaching_tag?: string | null
           created_at?: string | null
           created_by: string
           duration_seconds?: number | null
@@ -491,6 +506,8 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           manager_comment: string
+          playlist_id?: string | null
+          rating?: number | null
           share_token?: string | null
           start_seconds?: number
           tags?: string[] | null
@@ -504,6 +521,7 @@ export type Database = {
           call_id?: string
           call_recording_url?: string | null
           call_title?: string | null
+          coaching_tag?: string | null
           created_at?: string | null
           created_by?: string
           duration_seconds?: number | null
@@ -511,6 +529,8 @@ export type Database = {
           id?: string
           is_public?: boolean | null
           manager_comment?: string
+          playlist_id?: string | null
+          rating?: number | null
           share_token?: string | null
           start_seconds?: number
           tags?: string[] | null
@@ -536,7 +556,52 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "coaching_clips_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_playlists"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "coaching_clips_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_playlists: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          team_id: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          team_id?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          team_id?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_playlists_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
@@ -781,6 +846,194 @@ export type Database = {
             columns: ["deal_room_id"]
             isOneToOne: false
             referencedRelation: "deal_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_summaries: {
+        Row: {
+          buying_signals: string[] | null
+          call_count: number
+          deal_id: string
+          generated_at: string
+          id: string
+          key_themes: string[] | null
+          open_objections: string[] | null
+          recommended_actions: string[] | null
+          risks: string[] | null
+          summary: string
+        }
+        Insert: {
+          buying_signals?: string[] | null
+          call_count?: number
+          deal_id: string
+          generated_at?: string
+          id?: string
+          key_themes?: string[] | null
+          open_objections?: string[] | null
+          recommended_actions?: string[] | null
+          risks?: string[] | null
+          summary: string
+        }
+        Update: {
+          buying_signals?: string[] | null
+          call_count?: number
+          deal_id?: string
+          generated_at?: string
+          id?: string
+          key_themes?: string[] | null
+          open_objections?: string[] | null
+          recommended_actions?: string[] | null
+          risks?: string[] | null
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_summaries_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_timeline_events: {
+        Row: {
+          deal_id: string
+          detail: string | null
+          event_type: string
+          happened_at: string
+          id: string
+          metadata: Json | null
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          deal_id: string
+          detail?: string | null
+          event_type: string
+          happened_at?: string
+          id?: string
+          metadata?: Json | null
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          deal_id?: string
+          detail?: string | null
+          event_type?: string
+          happened_at?: string
+          id?: string
+          metadata?: Json | null
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_timeline_events_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_timeline_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deals: {
+        Row: {
+          close_date: string | null
+          company: string | null
+          contact_email: string | null
+          contact_name: string | null
+          created_at: string
+          currency: string
+          deal_summary: string | null
+          deal_summary_at: string | null
+          id: string
+          name: string
+          next_step: string | null
+          next_step_due: string | null
+          notes: string | null
+          owner_id: string
+          probability: number | null
+          risk_score: number | null
+          sentiment_trend: string | null
+          source: string | null
+          stage: string
+          tags: string[] | null
+          team_id: string | null
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          close_date?: string | null
+          company?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          currency?: string
+          deal_summary?: string | null
+          deal_summary_at?: string | null
+          id?: string
+          name: string
+          next_step?: string | null
+          next_step_due?: string | null
+          notes?: string | null
+          owner_id: string
+          probability?: number | null
+          risk_score?: number | null
+          sentiment_trend?: string | null
+          source?: string | null
+          stage?: string
+          tags?: string[] | null
+          team_id?: string | null
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          close_date?: string | null
+          company?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          currency?: string
+          deal_summary?: string | null
+          deal_summary_at?: string | null
+          id?: string
+          name?: string
+          next_step?: string | null
+          next_step_due?: string | null
+          notes?: string | null
+          owner_id?: string
+          probability?: number | null
+          risk_score?: number | null
+          sentiment_trend?: string | null
+          source?: string | null
+          stage?: string
+          tags?: string[] | null
+          team_id?: string | null
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -1344,6 +1597,36 @@ export type Database = {
           onboarding_complete?: boolean | null
           plan_type?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string | null
+          endpoint: string
+          id: string
+          p256dh: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          p256dh: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -2044,6 +2327,10 @@ export type Database = {
         Args: { p_team_id: string }
         Returns: undefined
       }
+      attach_call_to_deal: {
+        Args: { p_call_id: string; p_deal_id: string }
+        Returns: undefined
+      }
       can_add_conversation_participant: {
         Args: { _conversation_id: string; _participant_user_id: string }
         Returns: boolean
@@ -2096,6 +2383,7 @@ export type Database = {
         Args: { p_team_id: string }
         Returns: undefined
       }
+      get_deal_with_calls: { Args: { p_deal_id: string }; Returns: Json }
       get_effective_calls_limit: { Args: { _user_id: string }; Returns: number }
       get_effective_plan: { Args: { _user_id: string }; Returns: string }
       get_effective_plan_id: { Args: { p_user_id: string }; Returns: string }
@@ -2168,6 +2456,28 @@ export type Database = {
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
+      }
+      list_my_deals: {
+        Args: never
+        Returns: {
+          avg_sentiment: number
+          call_count: number
+          close_date: string
+          company: string
+          contact_name: string
+          created_at: string
+          deal_summary: string
+          id: string
+          last_call_at: string
+          name: string
+          next_step: string
+          probability: number
+          risk_score: number
+          sentiment_trend: string
+          stage: string
+          updated_at: string
+          value: number
+        }[]
       }
       log_call_usage: {
         Args: {
