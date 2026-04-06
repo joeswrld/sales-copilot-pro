@@ -9,10 +9,11 @@ import { useState, useMemo } from "react";
 import {
   Scissors, Play, Copy, Trash2, ExternalLink, Search, Tag,
   Clock, Eye, MessageSquare, Filter, ChevronRight, Smile,
-  Loader2, Film, TrendingUp, Users,
+  Loader2, Film, TrendingUp, Users, Plus, ListMusic, Star, ArrowLeft,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useCoachingClips, type CoachingClip } from "@/hooks/useCoachingClips";
+import { useCoachingPlaylists, type CoachingPlaylist } from "@/hooks/useCoachingPlaylists";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { cn } from "@/lib/utils";
@@ -262,11 +263,17 @@ export default function CoachingClipsTab() {
   const { user } = useAuth();
   const { role } = useTeam();
   const { teamClips, isLoading, deleteClip, toggleReaction, copyShareLink, totalClips, totalViews } = useCoachingClips();
+  const { playlists, isLoading: playlistsLoading, createPlaylist, deletePlaylist, addClipToPlaylist } = useCoachingPlaylists();
 
   const [search, setSearch] = useState("");
   const [filterTag, setFilterTag] = useState("");
   const [filterMember, setFilterMember] = useState("");
+  const [filterRating, setFilterRating] = useState("");
   const [playClip, setPlayClip] = useState<CoachingClip | null>(null);
+  const [activePlaylist, setActivePlaylist] = useState<string | null>(null);
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
+  const [newPlaylistDesc, setNewPlaylistDesc] = useState("");
 
   const isAdmin = role === "admin" || role === "manager";
 
