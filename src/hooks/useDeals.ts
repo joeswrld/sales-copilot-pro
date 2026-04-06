@@ -143,7 +143,15 @@ export function useDeals() {
           p_deal_id: dealId,
         });
         if (error) throw error;
-        return data as DealDetail;
+        // The RPC returns a jsonb object directly
+        const parsed = data as any;
+        if (!parsed) throw new Error("Deal not found");
+        return {
+          deal: parsed.deal,
+          calls: parsed.calls || [],
+          summary: parsed.summary || null,
+          events: parsed.events || [],
+        } as DealDetail;
       },
       enabled: !!dealId && !!user,
       staleTime: 10_000,
