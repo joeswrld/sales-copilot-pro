@@ -311,14 +311,181 @@ export default function CoachingClipsTab() {
 
       <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
         {/* ── Header ────────────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--foreground)", margin: "0 0 4px", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
-            Coaching Clips
-          </h2>
-          <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0 }}>
-            Highlight key moments from calls. Share them to coach your team at scale.
-          </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--foreground)", margin: "0 0 4px", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
+              Coaching Library
+            </h2>
+            <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0 }}>
+              Organize clips into playlists. Build training infrastructure for your team.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreatePlaylist(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "7px 14px",
+              background: "rgba(167,139,250,.15)", border: "1px solid rgba(167,139,250,.3)",
+              borderRadius: 9, color: "#a78bfa", fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+            }}
+          >
+            <Plus style={{ width: 12, height: 12 }} />
+            New Playlist
+          </button>
         </div>
+
+        {/* ── Create Playlist modal ──────────────────────────────────── */}
+        {showCreatePlaylist && (
+          <div style={{
+            background: "var(--secondary)", border: "1px solid var(--border)",
+            borderRadius: 14, padding: 16, marginBottom: 16,
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "var(--foreground)", margin: "0 0 10px" }}>
+              Create Playlist
+            </p>
+            <input
+              value={newPlaylistTitle}
+              onChange={e => setNewPlaylistTitle(e.target.value)}
+              placeholder="e.g. Handling Pricing Objections"
+              style={{
+                width: "100%", padding: "8px 12px", marginBottom: 8,
+                background: "var(--background)", border: "1px solid var(--border)", borderRadius: 9,
+                color: "var(--foreground)", fontSize: 13, outline: "none",
+              }}
+            />
+            <input
+              value={newPlaylistDesc}
+              onChange={e => setNewPlaylistDesc(e.target.value)}
+              placeholder="Description (optional)"
+              style={{
+                width: "100%", padding: "8px 12px", marginBottom: 12,
+                background: "var(--background)", border: "1px solid var(--border)", borderRadius: 9,
+                color: "var(--foreground)", fontSize: 12, outline: "none",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setShowCreatePlaylist(false)}
+                style={{
+                  padding: "7px 16px", background: "transparent", border: "1px solid var(--border)",
+                  borderRadius: 8, color: "var(--muted-foreground)", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!newPlaylistTitle.trim()) return;
+                  await createPlaylist.mutateAsync({ title: newPlaylistTitle.trim(), description: newPlaylistDesc.trim() || undefined });
+                  setNewPlaylistTitle("");
+                  setNewPlaylistDesc("");
+                  setShowCreatePlaylist(false);
+                }}
+                disabled={!newPlaylistTitle.trim() || createPlaylist.isPending}
+                style={{
+                  padding: "7px 16px", background: "#7c3aed", border: "none",
+                  borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  opacity: !newPlaylistTitle.trim() ? 0.5 : 1,
+                }}
+              >
+                {createPlaylist.isPending ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Playlists ─────────────────────────────────────────────── */}
+        {playlists.length > 0 && !activePlaylist && (
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--muted-foreground)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: ".06em" }}>
+              Playlists
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+              {playlists.map(pl => (
+                <button
+                  key={pl.id}
+                  onClick={() => setActivePlaylist(pl.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                    background: "var(--secondary)", border: "1px solid var(--border)",
+                    borderRadius: 12, cursor: "pointer", textAlign: "left", width: "100%",
+                    transition: ".12s",
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                    background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.2)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <ListMusic style={{ width: 16, height: 16, color: "#a78bfa" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "var(--foreground)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {pl.title}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--muted-foreground)" }}>
+                      {pl.clip_count ?? 0} clip{(pl.clip_count ?? 0) !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <ChevronRight style={{ width: 14, height: 14, color: "var(--muted-foreground)", flexShrink: 0 }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Active playlist view ──────────────────────────────────── */}
+        {activePlaylist && (() => {
+          const pl = playlists.find(p => p.id === activePlaylist);
+          const playlistClips = teamClips.filter((c: any) => c.playlist_id === activePlaylist);
+          return (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <button onClick={() => setActivePlaylist(null)} style={{
+                  background: "var(--secondary)", border: "1px solid var(--border)", borderRadius: 8,
+                  width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", color: "var(--muted-foreground)",
+                }}>
+                  <ArrowLeft style={{ width: 14, height: 14 }} />
+                </button>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>{pl?.title}</h3>
+                  {pl?.description && <p style={{ margin: 0, fontSize: 11, color: "var(--muted-foreground)" }}>{pl.description}</p>}
+                </div>
+                <button
+                  onClick={() => { if (pl) deletePlaylist.mutate(pl.id); setActivePlaylist(null); }}
+                  style={{
+                    marginLeft: "auto", background: "transparent", border: "1px solid rgba(239,68,68,.3)",
+                    borderRadius: 8, padding: "5px 10px", color: "#f87171", fontSize: 11,
+                    cursor: "pointer", fontWeight: 600,
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+              {playlistClips.length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--muted-foreground)", textAlign: "center", padding: "30px 0" }}>
+                  No clips in this playlist yet. Add clips from the library below.
+                </p>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+                  {playlistClips.map((clip: any) => (
+                    <ClipCard
+                      key={clip.id}
+                      clip={clip}
+                      isAdmin={isAdmin}
+                      myId={user?.id ?? ""}
+                      onPlay={() => setPlayClip(clip)}
+                      onDelete={() => deleteClip.mutate(clip.id)}
+                      onCopy={() => copyShareLink(clip.share_token)}
+                      onReact={(emoji) => toggleReaction.mutate({ clipId: clip.id, emoji })}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Stats ─────────────────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 20 }}>
