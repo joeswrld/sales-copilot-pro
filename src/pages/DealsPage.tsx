@@ -442,10 +442,12 @@ function AttachCallModal({
 
 function DealDetailPanel({ dealId, onBack }: { dealId: string; onBack: () => void }) {
   const { useDealDetail, generateSummary, updateDeal, deleteDeal } = useDeals();
+  const { analyzeChanges } = useDealIntelligence();
   const { data, isLoading, error } = useDealDetail(dealId);
   const navigate = useNavigate();
   const [showAttach, setShowAttach] = useState(false);
   const [editStage, setEditStage] = useState(false);
+  const [changeAnalysis, setChangeAnalysis] = useState<DealChangeAnalysis | null>(null);
 
   if (isLoading) return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
