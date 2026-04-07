@@ -1,12 +1,13 @@
 /**
- * LiveCall.tsx — v11 (Daily + Lovable AI rebuild)
+ * LiveCall.tsx — v12 (Streaming Architecture, no bots)
  *
- * Clean flow:
+ * Flow:
  *  1. Create Daily.co room via edge function
- *  2. Share link with prospect
+ *  2. Share invite link with prospect
  *  3. Join as host → embedded Daily iframe
- *  4. Real-time transcript + insights via LiveMeeting page (/dashboard/live/:id)
- *  5. End call → AI summary → redirect to call detail
+ *  4. Daily JS SDK fires `track-started` events → useAudioStreaming captures per-participant audio
+ *  5. Audio chunks → transcribe-stream edge fn → Supabase → LiveMeeting page updates live
+ *  6. End call → AI summary → redirect to call detail
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -15,7 +16,7 @@ import { useNavigate, Link } from "react-router-dom";
 import {
   Loader2, ExternalLink, CheckCircle2, ChevronRight,
   AlertTriangle, Shield, StopCircle, VideoIcon, Copy,
-  Check, Plus, Sparkles, Radio, Eye, RefreshCw, Link2, Bot,
+  Check, Plus, Sparkles, Radio, Eye, RefreshCw, Link2, Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,66 +25,11 @@ import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useDailyRoom } from "@/hooks/useDailyRoom";
+import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// ─── Bot phase tracker ────────────────────────────────────────────────────────
-
-type BotPhase = "idle" | "joining" | "waiting_room" | "recording" | "ended" | "bot_failed";
-
-function useBotPhase(callId: string | null | undefined) {
-  const [phase, setPhase] = useState<BotPhase>("idle");
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!callId) { setPhase("idle"); return; }
-
-    supabase
-      .from("calls")
-      .select("recall_bot_status")
-      .eq("id", callId)
-      .single()
-      .then(({ data }: any) => {
-        if (data?.recall_bot_status) mapStatus(data.recall_bot_status);
-      });
-
-    const ch = supabase
-      .channel(`call-bot-${callId}`)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}`,
-      }, (p: any) => mapStatus(p.new?.recall_bot_status || "none"))
-      .subscribe();
-
-    timeoutRef.current = setTimeout(() => {
-      setPhase(prev => prev === "joining" ? "bot_failed" : prev);
-    }, 45_000);
-
-    return () => {
-      supabase.removeChannel(ch);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [callId]);
-
-  function mapStatus(rs: string) {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const map: Record<string, BotPhase> = {
-      joining: "joining", joining_call: "joining",
-      in_waiting_room: "waiting_room",
-      in_call_not_recording: "joining",
-      "recording_permission.allowed": "recording",
-      in_call_recording: "recording", recording: "recording",
-      call_ended: "ended", done: "ended",
-      failed: "bot_failed", fatal: "bot_failed",
-      "recording_permission.denied": "bot_failed",
-      none: "joining",
-    };
-    setPhase(map[rs] ?? "joining");
-  }
-
-  return { phase, setPhase };
-}
-
-// ─── Share link panel ─────────────────────────────────────────────────────────
+// ─── Share link panel ──────────────────────────────────────────────────────────
 
 function ShareLinkPanel({
   shareLink,
@@ -165,24 +111,28 @@ function ShareLinkPanel({
 
       <p className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
         <Shield className="w-3 h-3" />
-        Room expires in 3 hours · AI transcription & analysis active
+        Room expires in 3 hours · AI transcription & analysis active when you join
       </p>
     </div>
   );
 }
 
-// ─── Active meeting card ──────────────────────────────────────────────────────
+// ─── Active meeting card ───────────────────────────────────────────────────────
 
 function ActiveMeetingCard({
   callId,
   onEnd,
   isEnding,
   shareLink,
+  isStreaming,
+  chunksSent,
 }: {
   callId: string;
   onEnd: () => void;
   isEnding: boolean;
   shareLink?: string;
+  isStreaming: boolean;
+  chunksSent: number;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -203,7 +153,11 @@ function ActiveMeetingCard({
           <span className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
           <div>
             <p className="font-semibold text-sm text-green-400">Meeting in progress</p>
-            <p className="text-xs text-muted-foreground mt-0.5">AI transcription running in real-time</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {isStreaming
+                ? `AI transcribing live · ${chunksSent} chunks processed`
+                : "Waiting for audio…"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -242,18 +196,24 @@ function ActiveMeetingCard({
         <span className="inline-flex items-center gap-1.5 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
           <Radio className="w-3 h-3" />Daily.co room active
         </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1">
-          <Sparkles className="w-3 h-3" />AI analysis running
+        <span className={cn(
+          "inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border",
+          isStreaming
+            ? "text-primary bg-primary/10 border-primary/20"
+            : "text-muted-foreground bg-secondary/50 border-border/60"
+        )}>
+          <Mic className="w-3 h-3" />
+          {isStreaming ? "AI transcribing both sides" : "Waiting for participants"}
         </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-3 py-1">
-          <Bot className="w-3 h-3" />Bot recording both sides
+        <span className="inline-flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 rounded-full px-3 py-1">
+          <Sparkles className="w-3 h-3" />AI analysis running
         </span>
       </div>
     </div>
   );
 }
 
-// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+// ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function LiveCall() {
   const navigate = useNavigate();
@@ -263,21 +223,23 @@ export default function LiveCall() {
 
   const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
-    onCallEnded:   () => setStatus("available"),
+    onCallEnded: () => setStatus("available"),
   });
 
-  const { phase, setPhase } = useBotPhase(callId);
   const { createRoom, isCreating, roomInfo } = useDailyRoom();
+  const { state: streamState, startTrackRecording, stopTrackRecording, stopAll } =
+    useAudioStreaming({ callId: callId ?? null });
 
-  const [isStarting, setIsStarting]             = useState(false);
-  const [hostJoined, setHostJoined]             = useState(false);
-  const [zombieDetected, setZombieDetected]     = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [hostJoined, setHostJoined] = useState(false);
+  const [zombieDetected, setZombieDetected] = useState(false);
   const [isAbandoningZombie, setIsAbandoningZombie] = useState(false);
 
-  const dailyHostRef  = useRef<HTMLDivElement>(null);
+  const dailyHostRef = useRef<HTMLDivElement>(null);
   const dailyFrameRef = useRef<any>(null);
+  const dailyCallRef = useRef<any>(null); // Daily.co call object for track events
 
-  // Zombie detection — live call with no meeting_url and no fresh roomInfo
+  // Zombie detection — live call stuck without room info
   useEffect(() => {
     if (isLive && liveCall && !(liveCall as any).meeting_url && !roomInfo) {
       setZombieDetected(true);
@@ -286,13 +248,9 @@ export default function LiveCall() {
     }
   }, [isLive, liveCall, roomInfo]);
 
-  useEffect(() => {
-    if (isLive && callId && !zombieDetected) setPhase("joining");
-  }, [isLive, callId, zombieDetected, setPhase]);
-
   const hasActiveSession = isLive && !!callId && !zombieDetected;
 
-  // ── Abandon zombie ────────────────────────────────────────────────────────
+  // ── Abandon zombie ─────────────────────────────────────────────────────────
   const handleAbandonZombie = useCallback(async () => {
     if (!callId) return;
     setIsAbandoningZombie(true);
@@ -321,7 +279,7 @@ export default function LiveCall() {
     return true;
   }, [usage]);
 
-  // ── Create Daily meeting ──────────────────────────────────────────────────
+  // ── Create Daily meeting ───────────────────────────────────────────────────
   const handleCreateMeeting = useCallback(async () => {
     if (!checkLimit()) return;
     setIsStarting(true);
@@ -329,18 +287,17 @@ export default function LiveCall() {
 
     try {
       callRow = await startCall.mutateAsync({
-        platform:     "Daily.co",
-        name:         "Fixsense Meeting",
+        platform: "Daily.co",
+        name: "Fixsense Meeting",
         participants: [],
       } as any);
 
       await createRoom({
-        callId:     callRow.id,
-        title:      "Fixsense Meeting",
+        callId: callRow.id,
+        title: "Fixsense Meeting",
         expMinutes: 180,
       });
 
-      setPhase("joining");
       toast.success("Room ready — share the link with your prospect!");
     } catch (err: any) {
       if (callRow?.id) {
@@ -350,68 +307,113 @@ export default function LiveCall() {
           duration_minutes: 0,
         }).eq("id", callRow.id).catch(() => {});
       }
-
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("Meeting limit reached. Upgrade to continue.");
       } else {
         toast.error("Could not create meeting room. Please try again.");
       }
-      setPhase("idle");
     } finally {
       setIsStarting(false);
     }
-  }, [checkLimit, startCall, createRoom, setPhase]);
+  }, [checkLimit, startCall, createRoom]);
+
+  // ── Attach Daily track listeners for audio streaming ──────────────────────
+  const attachDailyListeners = useCallback(
+    (callObject: any) => {
+      if (!callObject) return;
+
+      callObject.on("track-started", (event: any) => {
+        const { track, participant } = event;
+        if (!track || track.kind !== "audio") return;
+
+        const sessionId: string = participant?.session_id ?? participant?.user_id ?? "unknown";
+        const isLocal: boolean = participant?.local === true;
+
+        startTrackRecording(track, sessionId, isLocal);
+      });
+
+      callObject.on("track-stopped", (event: any) => {
+        const { participant } = event;
+        const sessionId: string = participant?.session_id ?? participant?.user_id ?? "unknown";
+        stopTrackRecording(sessionId);
+      });
+
+      callObject.on("participant-left", (event: any) => {
+        const sessionId: string = event?.participant?.session_id ?? "unknown";
+        stopTrackRecording(sessionId);
+      });
+    },
+    [startTrackRecording, stopTrackRecording]
+  );
 
   // ── Join as host in embedded Daily iframe ─────────────────────────────────
   const handleJoinAsHost = useCallback(async () => {
     if (!roomInfo?.room_url) return;
+
     try {
       if (!(window as any).DailyIframe) {
         await new Promise<void>((resolve, reject) => {
           const s = document.createElement("script");
           s.src = "https://unpkg.com/@daily-co/daily-js";
           s.async = true;
-          s.onload  = () => resolve();
+          s.onload = () => resolve();
           s.onerror = () => reject();
           document.head.appendChild(s);
         });
       }
 
       const DailyIframe = (window as any).DailyIframe;
-      if (dailyFrameRef.current) dailyFrameRef.current.destroy();
+      if (dailyFrameRef.current) {
+        dailyFrameRef.current.destroy();
+        dailyCallRef.current = null;
+      }
 
       const frame = DailyIframe.createFrame(dailyHostRef.current!, {
-        showLeaveButton:      true,
+        showLeaveButton: true,
         showFullscreenButton: true,
         iframeStyle: {
-          position: "absolute", top: 0, left: 0,
-          width: "100%", height: "100%",
-          border: "none", borderRadius: "0.75rem",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          border: "none",
+          borderRadius: "0.75rem",
         },
       });
 
       dailyFrameRef.current = frame;
-      frame.on("joined-meeting", () => setHostJoined(true));
-      frame.on("left-meeting", () => { setHostJoined(false); handleEndCall(); });
+
+      frame.on("joined-meeting", () => {
+        setHostJoined(true);
+        dailyCallRef.current = frame;
+        attachDailyListeners(frame);
+        if (callId) navigate(`/dashboard/live/${callId}`);
+      });
+
+      frame.on("left-meeting", () => {
+        setHostJoined(false);
+        stopAll();
+        handleEndCall();
+      });
 
       await frame.join({ url: roomInfo.room_url });
       setHostJoined(true);
-
-      // Navigate to live insights page so user can see transcript
-      if (callId) {
-        navigate(`/dashboard/live/${callId}`);
-      }
     } catch {
       toast.error("Failed to open meeting. Try opening in a new tab.");
     }
-  }, [roomInfo, callId, navigate]);
+  }, [roomInfo, callId, navigate, attachDailyListeners, stopAll]);
 
-  // ── End call ──────────────────────────────────────────────────────────────
+  // ── End call ───────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
+    // Stop all audio streaming first
+    stopAll();
+
     try {
       if (dailyFrameRef.current) {
         try { dailyFrameRef.current.destroy(); } catch {}
         dailyFrameRef.current = null;
+        dailyCallRef.current = null;
       }
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
@@ -420,7 +422,7 @@ export default function LiveCall() {
     } catch {
       toast.error("Failed to end call. Please try again.");
     }
-  }, [endCall, callId, navigate]);
+  }, [endCall, callId, navigate, stopAll]);
 
   if (isLoading) {
     return (
@@ -440,7 +442,7 @@ export default function LiveCall() {
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
           <p className="text-sm text-muted-foreground">
-            Create a room, share the link with your prospect — AI joins, transcribes, and coaches you in real-time
+            Create a room, share the link — AI transcribes both sides in real-time, no bots needed
           </p>
         </div>
 
@@ -490,6 +492,7 @@ export default function LiveCall() {
               <h2 className="font-semibold text-base">Create a Meeting Room</h2>
               <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                 Instant Daily.co room — one link, no login for your prospect.
+                AI transcribes directly from your browser.
               </p>
             </div>
 
@@ -505,8 +508,8 @@ export default function LiveCall() {
 
             <div className="flex flex-wrap justify-center gap-2">
               {[
-                { icon: Shield,   text: "No login for guests" },
-                { icon: Radio,    text: "Real-time transcription" },
+                { icon: Shield, text: "No login for guests" },
+                { icon: Radio, text: "Real-time transcription" },
                 { icon: Sparkles, text: "AI coaching insights" },
               ].map(({ icon: Icon, text }) => (
                 <span key={text} className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1">
@@ -525,7 +528,7 @@ export default function LiveCall() {
             </div>
             <div>
               <p className="font-semibold text-sm text-primary">Preparing Meeting Room</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Setting up your room and dispatching AI recorder…</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Creating your Daily.co room…</p>
             </div>
           </div>
         )}
@@ -547,6 +550,8 @@ export default function LiveCall() {
             onEnd={handleEndCall}
             isEnding={endCall.isPending}
             shareLink={roomInfo?.share_link}
+            isStreaming={streamState.isStreaming}
+            chunksSent={streamState.chunksSent}
           />
         )}
 
