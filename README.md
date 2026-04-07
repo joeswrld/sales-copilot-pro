@@ -115,7 +115,7 @@ Fixsense uses a **usage-based pricing model** tied to meetings (calls).
 
 ## Tech Stack
 
-- **Frontend:** Lovable / React  
+- **Frontend:** Typescript / React / Vite 
 - **Backend:** Supabase (Auth, Database, Realtime)  
 - **AI:** Gemini API  
 - **Payments:** Paystack  
