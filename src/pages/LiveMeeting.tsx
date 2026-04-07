@@ -1,565 +1,237 @@
 /**
- * LiveMeeting.tsx — v3
+ * LiveMeeting.tsx — v4 (Daily + Lovable AI rebuild)
  *
- * Key changes from v2:
- *  1. Uses useAudioCapture v3 (dual-stream: tab + mic merged via AudioContext)
- *  2. AudioCapturePanel: step-by-step visual guide so users know exactly
- *     what to do in Chrome's screen share picker to get both sides captured
- *  3. CaptureStatusBadge: shows capture quality (both sides / mic only)
- *  4. isFullCapture badge in transcript header
- *  5. Mobile: same improvements, compact layout
+ * Architecture:
+ *  - Left/center: embedded Daily.co iframe (the actual meeting)
+ *  - Right sidebar: live transcript + AI insights from Supabase Realtime
+ *  - Transcript is written by the `transcribe-stream` edge function
+ *    which receives Daily webhooks / bot transcripts
+ *  - Mobile: tabbed layout (Meeting / Transcript / Insights)
+ *
+ * No manual audio capture — the Daily bot (via join-meeting-bot) handles
+ * all recording & transcription server-side.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Video as VideoIcon } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  Mic, MicOff, AlertCircle, Lightbulb, TrendingUp, Clock, Loader2,
-  Video, MonitorUp, ExternalLink, MessageSquare, BarChart3, Target,
-  CheckCircle2, Circle, Radio, Users, Headphones, ChevronDown, Bot,
+  Loader2, AlertCircle, Lightbulb, TrendingUp, Clock,
+  MessageSquare, BarChart3, Target, CheckCircle2, Radio,
+  Users, Bot, StopCircle, ExternalLink, ChevronDown, ChevronUp,
+  Zap, Eye, MicOff,
 } from "lucide-react";
-import { Button }        from "@/components/ui/button";
-import { cn }            from "@/lib/utils";
-import { useLiveCall }   from "@/hooks/useLiveCall";
-import { useAudioCapture, type CaptureSource, type CaptureStep } from "@/hooks/useAudioCapture";
-import { useTeam }       from "@/hooks/useTeam";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useLiveCall } from "@/hooks/useLiveCall";
+import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
-import { useIsMobile }   from "@/hooks/use-mobile";
-import { supabase }      from "@/integrations/supabase/client";
-import { toast }         from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const MEETING_TYPE_LABELS: Record<string, string> = {
-  discovery:   "Discovery Call",
-  demo:        "Product Demo",
-  follow_up:   "Follow-up",
-  negotiation: "Negotiation",
-  other:       "Other",
-};
-
-const DISCOVERY_REMINDERS = [
-  "Ask about their current process",
-  "Understand their budget timeline",
-  "Identify the decision maker",
-  "Discuss pain points in detail",
-  "Ask about competing solutions",
-];
-
-// ─── Capture status badge ─────────────────────────────────────────────────────
-
-function CaptureStatusBadge({
-  isCapturing,
-  captureSource,
-  isFullCapture,
-}: {
-  isCapturing:    boolean;
-  captureSource:  CaptureSource;
-  isFullCapture:  boolean;
-}) {
-  if (!isCapturing) return null;
-
-  if (isFullCapture) {
-    return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-medium">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-        Both sides captured
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-xs font-medium">
-      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-      {captureSource === "mic" ? "Your mic only" : "Meeting audio only"}
-    </div>
-  );
-}
-
-// ─── Bot status banner ────────────────────────────────────────────────────────
-// Shows the Recall.ai bot status — replaces the manual audio capture panel
-// when the bot is active.
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type BotStatus =
-  | "none"
-  | "joining"
-  | "in_waiting_room"
-  | "in_call_not_recording"
-  | "recording_permission_allowed"
-  | "recording_permission_denied"
-  | "in_call"
-  | "recording"
-  | "call_ended"
-  | "done"
-  | "failed";
+  | "none" | "joining" | "in_waiting_room" | "in_call_not_recording"
+  | "recording_permission_allowed" | "in_call" | "recording"
+  | "recording_permission_denied" | "call_ended" | "done" | "failed";
+
+const MEETING_TYPE_LABELS: Record<string, string> = {
+  discovery: "Discovery", demo: "Demo",
+  follow_up: "Follow-up", negotiation: "Negotiation", other: "Meeting",
+};
+
+const DISCOVERY_TIPS = [
+  "Ask about their current process first",
+  "Understand budget authority & timeline",
+  "Identify the primary pain point",
+  "Who else is involved in the decision?",
+  "End with a clear agreed next step",
+];
+
+// ─── Bot status hook ──────────────────────────────────────────────────────────
 
 function useBotStatus(callId: string | undefined) {
   const [botStatus, setBotStatus] = useState<BotStatus>("none");
 
   useEffect(() => {
     if (!callId) return;
-
-    // Poll the call row for bot status updates
     const fetch = async () => {
       const { data } = await (supabase as any)
-        .from("calls")
-        .select("recall_bot_status")
-        .eq("id", callId)
-        .maybeSingle();
-      if (data?.recall_bot_status) {
-        setBotStatus((data.recall_bot_status as BotStatus) ?? "none");
-      }
+        .from("calls").select("recall_bot_status").eq("id", callId).maybeSingle();
+      if (data?.recall_bot_status) setBotStatus(data.recall_bot_status as BotStatus);
     };
-
     fetch();
-
-    // Also subscribe to realtime changes so status updates instantly
-    const ch = supabase
-      .channel(`bot-status:${callId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}` },
-        (payload: any) => {
-          if (payload.new?.recall_bot_status) {
-            setBotStatus(payload.new.recall_bot_status as BotStatus);
-          }
-        },
-      )
-      .subscribe();
-
+    const ch = supabase.channel(`bot-status:${callId}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}`,
+      }, (p: any) => {
+        if (p.new?.recall_bot_status) setBotStatus(p.new.recall_bot_status as BotStatus);
+      }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [callId]);
 
-  const isActive  = ["joining", "in_waiting_room", "in_call_not_recording",
-    "recording_permission_allowed", "in_call", "recording"].includes(botStatus);
-  const isCapturing = botStatus === "recording" || botStatus === "recording_permission_allowed";
-  const isFailed  = botStatus === "failed" || botStatus === "recording_permission_denied";
+  const isCapturing = ["recording", "recording_permission_allowed", "in_call"].includes(botStatus);
+  const isJoining   = ["joining", "in_waiting_room", "in_call_not_recording"].includes(botStatus);
+  const isFailed    = ["failed", "recording_permission_denied"].includes(botStatus);
 
-  return { botStatus, isActive, isCapturing, isFailed };
+  return { botStatus, isCapturing, isJoining, isFailed };
 }
 
-function BotStatusBanner({
-  botStatus,
-  isFailed,
-  isActive,
-  isBotCapturing,
-  onFallback,
-}: {
-  botStatus:      BotStatus;
-  isFailed:       boolean;
-  isActive:       boolean;
-  isBotCapturing: boolean;
-  onFallback:     () => void;
+// ─── Bot status banner ────────────────────────────────────────────────────────
+
+function BotBanner({ botStatus, isCapturing, isJoining, isFailed }: {
+  botStatus: BotStatus; isCapturing: boolean; isJoining: boolean; isFailed: boolean;
 }) {
-  if (botStatus === "none") return null;
+  if (botStatus === "none" || botStatus === "call_ended" || botStatus === "done") return null;
 
-  const states: Record<BotStatus, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
-    none:                          { label: "", color: "", bg: "", border: "", icon: null },
-    joining:                       { label: "Fixsense AI is joining the meeting…",                color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <Loader2 className="w-4 h-4 animate-spin text-primary" /> },
-    in_waiting_room:               { label: "Fixsense AI is in the waiting room — please admit it", color: "text-yellow-400", bg: "bg-yellow-500/5",  border: "border-yellow-500/20",  icon: <Loader2 className="w-4 h-4 animate-spin text-yellow-400" /> },
-    in_call_not_recording:         { label: "Fixsense AI joined — waiting to start recording",     color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <Loader2 className="w-4 h-4 animate-spin text-primary" /> },
-    recording_permission_allowed:  { label: "🎙️ Fixsense AI is recording — both sides captured",  color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
-    in_call:                       { label: "🎙️ Fixsense AI is in the call — recording both sides", color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
-    recording:                     { label: "🎙️ Fixsense AI is recording — both sides captured",  color: "text-green-400",  bg: "bg-green-500/5",   border: "border-green-500/20",   icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
-    recording_permission_denied:   { label: "Recording permission denied — click 'Allow' in Meet", color: "text-yellow-400", bg: "bg-yellow-500/5",  border: "border-yellow-500/20",  icon: <AlertCircle className="w-4 h-4 text-yellow-400" /> },
-    call_ended:                    { label: "Fixsense AI has left the meeting",                    color: "text-muted-foreground", bg: "bg-muted/30", border: "border-border",        icon: <Bot className="w-4 h-4 opacity-40" /> },
-    done:                          { label: "Bot recording complete — transcript processing",      color: "text-primary",    bg: "bg-primary/5",     border: "border-primary/20",     icon: <CheckCircle2 className="w-4 h-4 text-primary" /> },
-    failed:                        { label: "Bot failed to join — use manual capture below",       color: "text-red-400",    bg: "bg-red-500/5",     border: "border-red-500/20",     icon: <AlertCircle className="w-4 h-4 text-red-400" /> },
-  };
+  const cfg = {
+    joining:                      { text: "AI recorder joining the meeting…",                     cls: "border-primary/20 bg-primary/5 text-primary",    icon: <Loader2 className="w-3.5 h-3.5 animate-spin" /> },
+    in_waiting_room:              { text: "AI recorder in waiting room — please admit it",         cls: "border-yellow-500/20 bg-yellow-500/5 text-yellow-400", icon: <Loader2 className="w-3.5 h-3.5 animate-spin" /> },
+    in_call_not_recording:        { text: "AI recorder joined — starting transcription…",          cls: "border-primary/20 bg-primary/5 text-primary",    icon: <Loader2 className="w-3.5 h-3.5 animate-spin" /> },
+    recording_permission_allowed: { text: "🎙️ Both sides being transcribed by AI",                 cls: "border-green-500/20 bg-green-500/5 text-green-400", icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    in_call:                      { text: "🎙️ AI recorder active — transcribing both sides",       cls: "border-green-500/20 bg-green-500/5 text-green-400", icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    recording:                    { text: "🎙️ AI transcription active — both sides captured",      cls: "border-green-500/20 bg-green-500/5 text-green-400", icon: <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> },
+    recording_permission_denied:  { text: "Recording permission denied — allow in meeting settings", cls: "border-yellow-500/20 bg-yellow-500/5 text-yellow-400", icon: <AlertCircle className="w-3.5 h-3.5" /> },
+    failed:                       { text: "AI recorder failed — transcript unavailable",            cls: "border-red-500/20 bg-red-500/5 text-red-400",    icon: <AlertCircle className="w-3.5 h-3.5" /> },
+  } as Record<string, any>;
 
-  const state = states[botStatus] ?? states.joining;
+  const c = cfg[botStatus];
+  if (!c) return null;
 
   return (
-    <div className={cn("rounded-xl p-3.5 border flex items-center gap-3", state.bg, state.border)}>
-      <div className="shrink-0">{state.icon}</div>
-      <p className={cn("text-sm flex-1", state.color)}>{state.label}</p>
-      {isFailed && (
-        <Button onClick={onFallback} size="sm" variant="outline" className="text-xs gap-1.5 shrink-0">
-          <Mic className="w-3 h-3" />
-          Use mic instead
-        </Button>
-      )}
-      {botStatus === "in_waiting_room" && (
-        <span className="text-xs text-muted-foreground shrink-0">
-          Check the "Admit" dialog in your meeting
+    <div className={cn("flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-xs font-medium", c.cls)}>
+      {c.icon}
+      {c.text}
+    </div>
+  );
+}
+
+// ─── Transcript line ──────────────────────────────────────────────────────────
+
+function TranscriptLine({ line }: { line: any }) {
+  const isRep = line.speaker === "Rep";
+  return (
+    <div className={cn("group", !isRep && "pl-3 border-l-2 border-accent/30")}>
+      <div className="flex items-center gap-2 mb-0.5">
+        <span className={cn("text-[11px] font-semibold uppercase tracking-wide", isRep ? "text-primary" : "text-accent")}>
+          {line.speaker}
         </span>
-      )}
-    </div>
-  );
-}
-// Shows step-by-step instructions so the user knows exactly what to do.
-
-function AudioCapturePanel({
-  isCapturing,
-  captureStep,
-  captureSource,
-  captureSourceLabel,
-  isFullCapture,
-  error,
-  capabilities,
-  onStart,
-  onStop,
-}: {
-  isCapturing:        boolean;
-  captureStep:        CaptureStep;
-  captureSource:      CaptureSource;
-  captureSourceLabel: string | null;
-  isFullCapture:      boolean;
-  error:              string | null;
-  capabilities:       { tabAudio: boolean; micAudio: boolean; isMobile: boolean };
-  onStart:            () => void;
-  onStop:             () => void;
-}) {
-  const [showInstructions, setShowInstructions] = useState(false);
-
-  if (error) {
-    return (
-      <div className="glass rounded-xl p-4 border border-destructive/20 bg-destructive/5 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-destructive">Audio capture failed</p>
-          <p className="text-xs text-muted-foreground mt-1">{error}</p>
-        </div>
+        <span className="text-[10px] text-muted-foreground/60">
+          {new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        </span>
       </div>
-    );
-  }
-
-  if (isCapturing) {
-    return (
-      <div className={cn(
-        "glass rounded-xl p-4 flex items-center gap-3 border",
-        isFullCapture
-          ? "border-green-500/25 bg-green-500/5"
-          : "border-yellow-500/25 bg-yellow-500/5"
-      )}>
-        <div className={cn(
-          "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
-          isFullCapture ? "bg-green-500/15" : "bg-yellow-500/15"
-        )}>
-          <Radio className={cn("w-4 h-4", isFullCapture ? "text-green-400" : "text-yellow-400")} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className={cn("text-sm font-medium", isFullCapture ? "text-green-400" : "text-yellow-400")}>
-            {isFullCapture ? "Full transcription active" : "Partial capture active"}
-          </p>
-          {captureSourceLabel && (
-            <p className="text-xs text-muted-foreground mt-0.5">{captureSourceLabel}</p>
-          )}
-          {!isFullCapture && captureSource === "mic" && (
-            <p className="text-xs text-yellow-500/80 mt-1">
-              Your prospect's voice won't be transcribed. Stop and restart, then tick "Share tab audio" in Chrome.
-            </p>
-          )}
-        </div>
-        <Button
-          onClick={onStop}
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-destructive shrink-0 text-xs"
-        >
-          Stop
-        </Button>
-      </div>
-    );
-  }
-
-  // Requesting state
-  if (captureStep === "requesting_display" || captureStep === "requesting_mic") {
-    return (
-      <div className="glass rounded-xl p-4 border border-primary/20 bg-primary/5 flex items-center gap-3">
-        <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
-        <div>
-          <p className="text-sm font-medium">
-            {captureStep === "requesting_display"
-              ? "Select the tab with your meeting…"
-              : "Allowing microphone access…"}
-          </p>
-          {captureStep === "requesting_display" && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              In Chrome's popup: select your meeting tab, then tick <strong>"Share tab audio"</strong>
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Idle — show the main CTA with optional step-by-step instructions
-  return (
-    <div className="glass rounded-xl border border-accent/20 overflow-hidden">
-      {/* Main row */}
-      <div className="p-4 flex items-start gap-3">
-        <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
-          <MonitorUp className="w-4 h-4 text-accent" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">Enable audio capture</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {capabilities.tabAudio
-              ? "Captures both you and your prospect for full AI transcription"
-              : "Captures your microphone for partial transcription"}
-          </p>
-          {/* Inline step hints */}
-          {capabilities.tabAudio && (
-            <button
-              onClick={() => setShowInstructions(v => !v)}
-              className="flex items-center gap-1 text-xs text-primary mt-1.5 hover:underline"
-            >
-              How does it work?
-              <ChevronDown className={cn("w-3 h-3 transition-transform", showInstructions && "rotate-180")} />
-            </button>
-          )}
-        </div>
-        <Button
-          onClick={onStart}
-          size="sm"
-          className="gap-2 shrink-0"
-          disabled={!capabilities.tabAudio && !capabilities.micAudio}
-        >
-          <Mic className="w-3.5 h-3.5" />
-          {capabilities.tabAudio ? "Capture Both Sides" : "Capture Mic Audio"}
-        </Button>
-      </div>
-
-      {/* Expandable step-by-step instructions */}
-      {showInstructions && capabilities.tabAudio && (
-        <div className="border-t border-border bg-secondary/30 px-4 py-3">
-          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-            What will happen
-          </p>
-          <ol className="space-y-2">
-            {[
-              {
-                icon: <MonitorUp className="w-3.5 h-3.5 text-primary" />,
-                text: <>Chrome shows a screen share picker. Select the <strong>tab running your meeting</strong> (Google Meet, Zoom, etc.).</>,
-              },
-              {
-                icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />,
-                text: <>In that same picker, tick the <strong>"Share tab audio"</strong> checkbox at the bottom left. This is what captures your prospect's voice.</>,
-              },
-              {
-                icon: <Mic className="w-3.5 h-3.5 text-primary" />,
-                text: <>Chrome then asks for <strong>microphone access</strong>. Allow it — this captures your own voice.</>,
-              },
-              {
-                icon: <Radio className="w-3.5 h-3.5 text-green-400" />,
-                text: <>Both audio streams are merged. You'll see <strong>"Both sides captured"</strong> and transcription starts immediately.</>,
-              },
-            ].map((step, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-xs text-muted-foreground">
-                <span className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
-                  {i + 1}
-                </span>
-                <span>{step.text}</span>
-              </li>
-            ))}
-          </ol>
-          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border">
-            <strong>Not seeing "Share tab audio"?</strong> Make sure you're on Chrome or Edge on a desktop computer.
-            Safari and Firefox don't support tab audio capture.
-          </p>
-        </div>
-      )}
+      <p className="text-sm text-foreground/90 leading-relaxed">{line.text}</p>
     </div>
   );
 }
 
-// ─── Mobile tabbed layout ─────────────────────────────────────────────────────
+// ─── AI insight card ──────────────────────────────────────────────────────────
 
-type MobileTab = "transcript" | "insights" | "objections";
+function InsightCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="glass rounded-xl p-4">
+      <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
+        {icon}{title}
+      </h3>
+      {children}
+    </div>
+  );
+}
 
-function MobileLiveMeeting({
-  transcripts,
-  objections,
-  topics,
-  talkRatio,
-  engagementScore,
-  questionsCount,
-  elapsed,
-  meetingType,
-  isCapturing,
-  isFullCapture,
-  captureSource,
-  capabilities,
-  formatTime,
-  transcriptEndRef,
-}: {
-  transcripts:        any[];
-  objections:         any[];
-  topics:             any[];
-  talkRatio:          { rep: number; prospect: number };
-  engagementScore:    number;
-  questionsCount:     number;
-  elapsed:            number;
-  meetingType:        string | undefined;
-  isCapturing:        boolean;
-  isFullCapture:      boolean;
-  captureSource:      CaptureSource;
-  capabilities:       { tabAudio: boolean; micAudio: boolean };
-  formatTime:         (s: number) => string;
-  transcriptEndRef:   React.RefObject<HTMLDivElement>;
-}) {
-  const [activeTab, setActiveTab] = useState<MobileTab>("transcript");
+// ─── Mobile layout ────────────────────────────────────────────────────────────
 
-  const tabs: { id: MobileTab; label: string; badge?: number }[] = [
-    { id: "transcript", label: "Live" },
-    { id: "insights",   label: "Insights" },
-    { id: "objections", label: "Objections", badge: objections.length || undefined },
-  ];
+type MobileTab = "meeting" | "transcript" | "insights";
+
+function MobileView({
+  callId, roomUrl, transcripts, objections, topics,
+  talkRatio, engagementScore, questionsCount, elapsed,
+  meetingType, isCapturing, formatTime, transcriptEndRef,
+}: any) {
+  const [tab, setTab] = useState<MobileTab>("meeting");
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Compact status strip */}
-      <div className="flex items-center justify-between px-3 py-2 bg-secondary/40 rounded-lg mb-3 text-xs shrink-0">
-        <span className="font-mono font-bold">{formatTime(elapsed)}</span>
-        {isCapturing ? (
-          <CaptureStatusBadge
-            isCapturing={isCapturing}
-            captureSource={captureSource}
-            isFullCapture={isFullCapture}
-          />
-        ) : (
-          <span className="text-muted-foreground">Audio not capturing</span>
-        )}
-        <span className="text-primary font-medium">{engagementScore}%</span>
-      </div>
-
+    <div className="flex flex-col h-full gap-2">
       {/* Tab bar */}
-      <div className="flex border-b border-border mb-3 shrink-0">
-        {tabs.map(tab => (
+      <div className="flex border-b border-border shrink-0">
+        {([
+          { id: "meeting", label: "Meeting" },
+          { id: "transcript", label: "Transcript", badge: transcripts.length },
+          { id: "insights", label: "Insights", badge: objections.length || undefined },
+        ] as const).map(t => (
           <button
-            key={tab.id}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={cn(
-              "flex-1 py-2 text-xs font-medium border-b-2 transition-colors relative",
-              activeTab === tab.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground"
+              "flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors relative",
+              tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground"
             )}
-            onClick={() => setActiveTab(tab.id)}
           >
-            {tab.label}
-            {tab.badge ? (
-              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-white text-[10px]">
-                {tab.badge}
+            {t.label}
+            {t.badge ? (
+              <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/20 text-primary text-[10px]">
+                {t.badge > 99 ? "99+" : t.badge}
               </span>
             ) : null}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === "transcript" && (
-          <div className="space-y-3 pb-4">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {tab === "meeting" && (
+          <div className="rounded-xl overflow-hidden bg-black" style={{ height: "300px" }}>
+            {roomUrl
+              ? <iframe src={roomUrl} allow="camera; microphone; fullscreen; display-capture" className="w-full h-full border-none" title="Daily meeting" />
+              : <div className="flex items-center justify-center h-full text-muted-foreground text-sm">No meeting URL</div>
+            }
+          </div>
+        )}
+
+        {tab === "transcript" && (
+          <div className="space-y-4 pb-4">
             {transcripts.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
-                <Mic className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">
-                  {isCapturing
-                    ? "Listening — transcription will appear shortly…"
-                    : capabilities.tabAudio
-                      ? "Tap 'Capture Both Sides' to start"
-                      : "Tap 'Capture Mic Audio' to start"}
-                </p>
+                <Radio className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">Transcription appears here as the call progresses</p>
               </div>
             ) : (
-              transcripts.map((line: any) => (
-                <div
-                  key={line.id}
-                  className={cn("text-sm", line.speaker !== "Rep" && "pl-3 border-l-2 border-accent/40")}
-                >
-                  <span className={cn(
-                    "text-xs font-medium mr-2",
-                    line.speaker === "Rep" ? "text-primary" : "text-accent"
-                  )}>
-                    {line.speaker}
-                  </span>
-                  <span className="text-muted-foreground text-xs mr-2">
-                    {new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  <span>{line.text}</span>
-                </div>
-              ))
+              transcripts.map((l: any) => <TranscriptLine key={l.id} line={l} />)
             )}
             <div ref={transcriptEndRef} />
           </div>
         )}
 
-        {activeTab === "insights" && (
+        {tab === "insights" && (
           <div className="space-y-3 pb-4">
-            <div className="glass rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                <BarChart3 className="w-3 h-3" /> Talk Ratio
-              </p>
+            <div className="glass rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-2">Talk Ratio</p>
               <div className="flex justify-between text-xs mb-1.5">
                 <span className="text-primary">You {talkRatio.rep}%</span>
                 <span className="text-accent">Prospect {talkRatio.prospect}%</span>
               </div>
-              <div className="h-2.5 rounded-full bg-muted flex overflow-hidden">
-                <div className="h-full bg-primary transition-all" style={{ width: `${talkRatio.rep}%` }} />
-                <div className="h-full bg-accent transition-all" style={{ width: `${talkRatio.prospect}%` }} />
+              <div className="h-2 rounded-full bg-muted flex overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent" style={{ width: `${talkRatio.prospect}%` }} />
               </div>
               {talkRatio.rep > 65 && transcripts.length > 5 && (
-                <p className="text-xs text-yellow-500 mt-1.5">⚠️ You're speaking too much. Ask more questions.</p>
+                <p className="text-xs text-yellow-500 mt-1.5">⚠️ Let your prospect talk more</p>
               )}
             </div>
-
             <div className="grid grid-cols-2 gap-2">
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-display text-primary">{engagementScore}%</div>
-                <div className="text-xs text-muted-foreground">Engagement</div>
-              </div>
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-display">{questionsCount}</div>
-                <div className="text-xs text-muted-foreground">Questions</div>
-              </div>
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-display">{objections.length}</div>
-                <div className="text-xs text-muted-foreground">Objections</div>
-              </div>
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-display">{topics.length}</div>
-                <div className="text-xs text-muted-foreground">Topics</div>
-              </div>
-            </div>
-
-            {meetingType === "discovery" && (
-              <div className="glass rounded-lg p-3">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  <Target className="w-3 h-3 inline mr-1" /> Discovery Reminders
-                </p>
-                <ul className="space-y-1.5">
-                  {DISCOVERY_REMINDERS.map((r, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                      <Circle className="w-2 h-2 mt-1 shrink-0 opacity-40" />{r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "objections" && (
-          <div className="space-y-2 pb-4">
-            {objections.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <CheckCircle2 className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">No objections detected yet</p>
-              </div>
-            ) : (
-              objections.map((obj: any) => (
-                <div key={obj.id} className="glass rounded-lg p-3 text-xs border border-destructive/20 bg-destructive/5">
-                  <p className="font-medium">{obj.objection_type}</p>
-                  {obj.suggestion && (
-                    <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
-                      <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                      {obj.suggestion}
-                    </div>
-                  )}
+              {[
+                { label: "Engagement", val: `${engagementScore}%` },
+                { label: "Questions", val: questionsCount },
+                { label: "Objections", val: objections.length },
+                { label: "Duration", val: formatTime(elapsed) },
+              ].map(({ label, val }) => (
+                <div key={label} className="glass rounded-xl p-3 text-center">
+                  <div className="text-xl font-bold font-display">{val}</div>
+                  <div className="text-xs text-muted-foreground">{label}</div>
                 </div>
-              ))
-            )}
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -567,14 +239,12 @@ function MobileLiveMeeting({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 export default function LiveMeeting() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-
-  // Status wiring
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
 
@@ -582,72 +252,32 @@ export default function LiveMeeting() {
     onCallEnded: () => setStatus("available"),
   });
 
-  const [elapsed, setElapsed]       = useState(0);
-  const [meetPopupOpen, setMeetPopupOpen] = useState(false);
+  const { botStatus, isCapturing, isJoining, isFailed } = useBotStatus(callId);
+
+  const [elapsed, setElapsed] = useState(0);
+  const [showTips, setShowTips] = useState(false);
   const intervalRef      = useRef<number>();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  const {
-    isCapturing,
-    error: captureError,
-    captureSource,
-    captureSourceLabel,
-    captureButtonLabel,
-    captureStep,
-    isFullCapture,
-    capabilities,
-    startCapture,
-    stopCapture,
-  } = useAudioCapture({
-    callId: callId || null,
-    onChunkProcessed: (result) => {
-      if (result?.analysis) console.log("Chunk processed:", result.analysis);
-    },
-  });
-
-  // ── Recall bot status ──────────────────────────────────────────────────────
-  const {
-    botStatus,
-    isActive:       isBotActive,
-    isCapturing:    isBotCapturing,
-    isFailed:       isBotFailed,
-  } = useBotStatus(callId);
-
-  // If bot is capturing, hide the manual audio capture panel.
-  // If bot failed, show fallback panel automatically.
-  const [showFallbackCapture, setShowFallbackCapture] = useState(false);
-  const showManualCapture = !isBotActive || showFallbackCapture || isBotFailed;
-
-  // Overall capture quality for status badge
-  const effectivelyCapturingBothSides = isBotCapturing || isFullCapture;
-
-  // ── Derived analytics ──────────────────────────────────────────────────────
-  const talkRatio = useMemo(() => {
-    if (transcripts.length === 0) return { rep: 0, prospect: 0 };
-    const repWords = transcripts
-      .filter(t => t.speaker === "Rep")
-      .reduce((sum, t) => sum + t.text.split(/\s+/).length, 0);
-    const prospectWords = transcripts
-      .filter(t => t.speaker !== "Rep")
-      .reduce((sum, t) => sum + t.text.split(/\s+/).length, 0);
-    const total = repWords + prospectWords;
-    if (total === 0) return { rep: 0, prospect: 0 };
-    return {
-      rep:      Math.round((repWords / total) * 100),
-      prospect: Math.round((prospectWords / total) * 100),
-    };
-  }, [transcripts]);
-
-  const questionsCount = useMemo(
-    () => transcripts.filter(t => t.text.includes("?")).length,
-    [transcripts],
-  );
-
-  const meetingType    = (liveCall as any)?.meeting_type as string | undefined;
-  const meetingUrl     = (liveCall as any)?.meeting_url as string | undefined;
+  const meetingType = (liveCall as any)?.meeting_type as string | undefined;
+  const meetingUrl  = (liveCall as any)?.meeting_url as string | undefined;
   const engagementScore = liveCall?.sentiment_score || 0;
 
-  // ── Timer ──────────────────────────────────────────────────────────────────
+  // Talk ratio
+  const talkRatio = useMemo(() => {
+    if (!transcripts.length) return { rep: 0, prospect: 0 };
+    const rw = transcripts.filter(t => t.speaker === "Rep").reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const pw = transcripts.filter(t => t.speaker !== "Rep").reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const total = rw + pw;
+    if (!total) return { rep: 0, prospect: 0 };
+    return { rep: Math.round((rw / total) * 100), prospect: Math.round((pw / total) * 100) };
+  }, [transcripts]);
+
+  const questionsCount = useMemo(() => transcripts.filter(t => t.text.includes("?")).length, [transcripts]);
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  // Timer
   useEffect(() => {
     if (isLive && liveCall?.start_time) {
       const start = new Date(liveCall.start_time).getTime();
@@ -655,43 +285,29 @@ export default function LiveMeeting() {
       tick();
       intervalRef.current = window.setInterval(tick, 1000);
       return () => clearInterval(intervalRef.current);
-    } else {
-      setElapsed(0);
     }
+    setElapsed(0);
   }, [isLive, liveCall?.start_time]);
 
+  // Auto-scroll transcript
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts.length]);
 
+  // Redirect if no live call
   useEffect(() => {
     if (!isLoading && !isLive) navigate("/dashboard/live");
   }, [isLoading, isLive, navigate]);
 
-  const formatTime = (s: number) =>
-    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-
-  // ── End call ───────────────────────────────────────────────────────────────
   const handleEnd = useCallback(async () => {
-    stopCapture();
     try {
       await endCall.mutateAsync();
-      toast.success("Call ended — AI summary generating…");
+      toast.success("Call ended — generating AI summary…");
       navigate(callId ? `/dashboard/calls/${callId}` : "/dashboard/live");
     } catch {
       toast.error("Failed to end call");
     }
-  }, [endCall, stopCapture, navigate, callId]);
-
-  const handleOpenMeeting = () => {
-    const url = meetingUrl || liveCall?.meeting_id;
-    if (url && (url.startsWith("http") || url.includes("meet.google.com"))) {
-      window.open(url, "fixsense-meeting", "width=1000,height=700,menubar=no,toolbar=no");
-      setMeetPopupOpen(true);
-    } else {
-      toast.info("No meeting URL attached. Open your meeting separately and capture audio here.");
-    }
-  };
+  }, [endCall, callId, navigate]);
 
   if (isLoading) {
     return (
@@ -703,98 +319,35 @@ export default function LiveMeeting() {
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // MOBILE LAYOUT
-  // ════════════════════════════════════════════════════════════════════════════
+  // ════ MOBILE ════════════════════════════════════════════════════════════════
   if (isMobile) {
     return (
       <DashboardLayout>
         <div className="flex flex-col gap-3" style={{ height: "calc(100dvh - 8rem)" }}>
           {/* Header */}
-          <div className="flex items-center justify-between gap-2 flex-shrink-0">
+          <div className="flex items-center justify-between gap-2 shrink-0">
             <div className="min-w-0">
-              <h1 className="text-base font-bold font-display truncate">
-                {liveCall?.name || "Live Meeting"}
-              </h1>
-              {meetingType && (
-                <span className="text-xs text-primary">
-                  {MEETING_TYPE_LABELS[meetingType] || meetingType}
-                </span>
-              )}
+              <h1 className="text-base font-bold font-display truncate">{liveCall?.name || "Live Meeting"}</h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                <span className="text-xs text-red-400 font-medium">LIVE</span>
+                <span className="text-xs text-muted-foreground font-mono">{formatTime(elapsed)}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {!isCapturing && captureStep === "idle" && (
-                <Button
-                  onClick={startCapture}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 h-8 text-xs"
-                  disabled={!capabilities.micAudio}
-                >
-                  <Mic className="w-3.5 h-3.5" />
-                  {capabilities.tabAudio ? "Capture Audio" : "Mic Audio"}
-                </Button>
-              )}
-              {(captureStep === "requesting_display" || captureStep === "requesting_mic") && (
-                <div className="flex items-center gap-1.5 text-xs text-primary px-2 py-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Requesting…
-                </div>
-              )}
-              {isCapturing && (
-                <button
-                  onClick={stopCapture}
-                  className={cn(
-                    "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full",
-                    isFullCapture
-                      ? "bg-green-500/15 text-green-400"
-                      : "bg-yellow-500/15 text-yellow-400"
-                  )}
-                >
-                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isFullCapture ? "bg-green-400" : "bg-yellow-400")} />
-                  {isFullCapture ? "Both sides" : "Mic only"}
-                </button>
-              )}
-              <Button
-                onClick={handleEnd}
-                variant="destructive"
-                size="sm"
-                className="gap-1.5 h-8 text-xs"
-                disabled={endCall.isPending}
-              >
-                {endCall.isPending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <MicOff className="w-3.5 h-3.5" />}
-                End
-              </Button>
-            </div>
+            <Button onClick={handleEnd} variant="destructive" size="sm" className="gap-1.5 h-8 text-xs shrink-0" disabled={endCall.isPending}>
+              {endCall.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MicOff className="w-3.5 h-3.5" />}
+              End
+            </Button>
           </div>
-
-          {/* Mobile capture warning if mic-only */}
-          {isCapturing && !isFullCapture && captureSource === "mic" && (
-            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400 flex-shrink-0">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              Only your voice is being transcribed. Your prospect's words won't appear.
-            </div>
-          )}
-
-          {/* Main tabbed content */}
+          <BotBanner botStatus={botStatus} isCapturing={isCapturing} isJoining={isJoining} isFailed={isFailed} />
           <div className="flex-1 min-h-0">
-            <MobileLiveMeeting
-              transcripts={transcripts}
-              objections={objections}
-              topics={topics}
-              talkRatio={talkRatio}
-              engagementScore={engagementScore}
-              questionsCount={questionsCount}
-              elapsed={elapsed}
-              meetingType={meetingType}
-              isCapturing={isCapturing}
-              isFullCapture={isFullCapture}
-              captureSource={captureSource}
-              capabilities={capabilities}
-              formatTime={formatTime}
-              transcriptEndRef={transcriptEndRef}
+            <MobileView
+              callId={callId} roomUrl={meetingUrl}
+              transcripts={transcripts} objections={objections} topics={topics}
+              talkRatio={talkRatio} engagementScore={engagementScore}
+              questionsCount={questionsCount} elapsed={elapsed}
+              meetingType={meetingType} isCapturing={isCapturing}
+              formatTime={formatTime} transcriptEndRef={transcriptEndRef}
             />
           </div>
         </div>
@@ -802,304 +355,238 @@ export default function LiveMeeting() {
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // DESKTOP LAYOUT
-  // ════════════════════════════════════════════════════════════════════════════
+  // ════ DESKTOP ════════════════════════════════════════════════════════════════
   return (
     <DashboardLayout>
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4 h-full">
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        {/* ── Header bar ──────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between flex-wrap gap-3 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold font-display">{liveCall?.name || "Live Meeting"}</h1>
+            <h1 className="text-xl font-bold font-display">{liveCall?.name || "Live Meeting"}</h1>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm text-muted-foreground">Real-time AI call intelligence</p>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                <span className="text-xs text-red-400 font-semibold">LIVE</span>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
+                <Clock className="w-3 h-3" />{formatTime(elapsed)}
+              </div>
               {meetingType && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                   {MEETING_TYPE_LABELS[meetingType] || meetingType}
                 </span>
               )}
+              {(liveCall?.participants as string[] | undefined)?.length ? (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Users className="w-3 h-3" />
+                  {(liveCall!.participants as string[]).join(", ")}
+                </div>
+              ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={handleOpenMeeting} variant="outline" className="gap-2" size="sm">
-              <ExternalLink className="w-4 h-4" />
-              {meetPopupOpen ? "Reopen Meeting" : "Open Meeting"}
-            </Button>
-            <Button
-              onClick={handleEnd}
-              variant="destructive"
-              className="gap-2"
-              size="sm"
-              disabled={endCall.isPending}
-            >
-              {endCall.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              <MicOff className="w-4 h-4" />
+          <div className="flex items-center gap-2">
+            {meetingUrl && (
+              <a href={meetingUrl} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open meeting
+                </Button>
+              </a>
+            )}
+            <Button onClick={handleEnd} variant="destructive" size="sm" className="gap-1.5" disabled={endCall.isPending}>
+              {endCall.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
               End Call
             </Button>
           </div>
         </div>
 
-        {/* ── Status bar ─────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4 text-sm flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-            <span className="text-destructive font-medium">LIVE</span>
-          </div>
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Clock className="w-3 h-3" /> {formatTime(elapsed)}
-          </div>
-          {liveCall?.platform && (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Video className="w-3 h-3" /> {liveCall.platform}
-            </div>
-          )}
-          {(liveCall?.participants as string[] | undefined)?.length ? (
-            <div className="flex items-center gap-1 text-muted-foreground text-xs">
-              <Users className="w-3 h-3" />
-              {(liveCall!.participants as string[]).join(", ")}
-            </div>
-          ) : null}
-          {/* Show bot capture status or manual capture status */}
-          {isBotCapturing ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 border border-green-500/30 text-green-400 text-xs font-medium">
-              <Bot className="w-3 h-3" />
-              AI bot capturing both sides
-            </div>
-          ) : (
-            <CaptureStatusBadge
-              isCapturing={isCapturing}
-              captureSource={captureSource}
-              isFullCapture={isFullCapture}
-            />
-          )}
-        </div>
+        {/* Bot status */}
+        <BotBanner botStatus={botStatus} isCapturing={isCapturing} isJoining={isJoining} isFailed={isFailed} />
 
-        {/* ── Bot status banner ──────────────────────────────────────────── */}
-        {botStatus !== "none" && (
-          <BotStatusBanner
-            botStatus={botStatus}
-            isFailed={isBotFailed}
-            isActive={isBotActive}
-            isBotCapturing={isBotCapturing}
-            onFallback={() => setShowFallbackCapture(true)}
-          />
-        )}
+        {/* ── Main content: 3 columns ──────────────────────────────────────── */}
+        <div className="grid grid-cols-12 gap-4 flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 220px)" }}>
 
-        {/* ── Manual audio capture panel (hidden when bot is working) ────── */}
-        {showManualCapture && (
-          <AudioCapturePanel
-            isCapturing={isCapturing}
-            captureStep={captureStep}
-            captureSource={captureSource}
-            captureSourceLabel={captureSourceLabel}
-            isFullCapture={isFullCapture}
-            error={captureError}
-            capabilities={capabilities}
-            onStart={startCapture}
-            onStop={stopCapture}
-          />
-        )}
-
-        {/* ── Main content grid ───────────────────────────────────────────── */}
-        <div className="grid lg:grid-cols-3 gap-4">
-
-          {/* Transcription */}
-          <div className="lg:col-span-2 glass rounded-xl flex flex-col max-h-[600px]">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h2 className="font-display font-semibold text-sm">Live Transcription</h2>
-              {(isCapturing || isBotCapturing) && (
-                <div className={cn(
-                  "flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full",
-                  (isFullCapture || isBotCapturing) ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"
-                )}>
-                  <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", (isFullCapture || isBotCapturing) ? "bg-green-400" : "bg-yellow-400")} />
-                  {isBotCapturing ? "Both sides via AI bot" : isFullCapture ? "Both sides" : captureSource === "mic" ? "Your voice only" : "Meeting audio only"}
-                </div>
+          {/* Video pane — 5 cols */}
+          <div className="col-span-5 glass rounded-xl overflow-hidden flex flex-col">
+            <div className="p-3 border-b border-border flex items-center justify-between shrink-0">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <VideoIcon className="w-3 h-3" />Meeting Room
+              </span>
+              {isCapturing && (
+                <span className="flex items-center gap-1.5 text-[11px] text-green-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Transcribing
+                </span>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 bg-black relative min-h-0">
+              {meetingUrl
+                ? <iframe
+                    src={meetingUrl}
+                    allow="camera; microphone; fullscreen; display-capture"
+                    className="absolute inset-0 w-full h-full border-none"
+                    title="Daily meeting"
+                  />
+                : <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Eye className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">Join the meeting to see video</p>
+                      {meetingUrl && (
+                        <a href={meetingUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary mt-1 hover:underline inline-block">
+                          Open meeting →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+              }
+            </div>
+          </div>
+
+          {/* Transcript — 4 cols */}
+          <div className="col-span-4 glass rounded-xl flex flex-col min-h-0">
+            <div className="p-3.5 border-b border-border flex items-center justify-between shrink-0">
+              <h2 className="text-xs font-semibold flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                Live Transcript
+              </h2>
+              {isCapturing ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-green-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Both sides
+                </span>
+              ) : isJoining ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-primary">
+                  <Loader2 className="w-3 h-3 animate-spin" />Joining…
+                </span>
+              ) : null}
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
               {transcripts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                  {isCapturing ? (
-                    <>
-                      <Loader2 className="w-6 h-6 animate-spin mb-3 opacity-50" />
-                      <p className="text-sm">Listening for audio…</p>
-                      <p className="text-xs mt-1 opacity-60">Transcription appears as speech is detected</p>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-10 h-10 mb-3 opacity-20" />
-                      <p className="text-sm">Click "Capture Both Sides" above to start</p>
-                    </>
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground pb-8">
+                  <Bot className="w-8 h-8 mb-3 opacity-20" />
+                  <p className="text-sm text-center">
+                    {isJoining ? "AI recorder joining…" : isCapturing ? "Listening for speech…" : "Transcript will appear here"}
+                  </p>
+                  {isJoining && (
+                    <p className="text-xs text-center mt-1 opacity-60">This takes 15–30 seconds</p>
                   )}
                 </div>
               ) : (
                 <>
-                  {transcripts.map(line => (
-                    <div
-                      key={line.id}
-                      className={cn(
-                        "animate-slide-up",
-                        line.speaker !== "Rep" ? "pl-4 border-l-2 border-accent/40" : ""
-                      )}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={cn(
-                          "text-xs font-medium",
-                          line.speaker === "Rep" ? "text-primary" : "text-accent"
-                        )}>
-                          {line.speaker}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(line.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit", minute: "2-digit", second: "2-digit",
-                          })}
-                        </span>
-                      </div>
-                      <p className="text-sm text-foreground/90">{line.text}</p>
-                    </div>
-                  ))}
+                  {transcripts.map(line => <TranscriptLine key={line.id} line={line} />)}
                   <div ref={transcriptEndRef} />
                 </>
               )}
             </div>
           </div>
 
-          {/* AI Insights Sidebar */}
-          <div className="space-y-4">
+          {/* Insights sidebar — 3 cols */}
+          <div className="col-span-3 flex flex-col gap-3 overflow-y-auto min-h-0 pr-0.5">
 
-            {/* Talk Ratio */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                <BarChart3 className="w-3 h-3" /> Talk Ratio
-              </h3>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-primary">You ({talkRatio.rep}%)</span>
-                  <span className="text-accent">Prospect ({talkRatio.prospect}%)</span>
-                </div>
-                <div className="h-2 rounded-full bg-muted flex overflow-hidden">
-                  <div className="h-full bg-primary transition-all duration-500" style={{ width: `${talkRatio.rep}%` }} />
-                  <div className="h-full bg-accent transition-all duration-500" style={{ width: `${talkRatio.prospect}%` }} />
-                </div>
-                {talkRatio.rep > 65 && transcripts.length > 5 && (
-                  <p className="text-xs text-yellow-500 mt-1">
-                    ⚠️ You're speaking more than 65%. Let the prospect talk more.
-                  </p>
-                )}
+            {/* Talk ratio */}
+            <InsightCard title="Talk Ratio" icon={<BarChart3 className="w-3 h-3" />}>
+              <div className="flex justify-between text-xs mb-1.5">
+                <span className="text-primary">You {talkRatio.rep}%</span>
+                <span className="text-accent">Prospect {talkRatio.prospect}%</span>
               </div>
-            </div>
+              <div className="h-2 rounded-full bg-muted flex overflow-hidden">
+                <div className="h-full bg-primary transition-all duration-700" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent transition-all duration-700" style={{ width: `${talkRatio.prospect}%` }} />
+              </div>
+              {talkRatio.rep > 65 && transcripts.length > 5 && (
+                <p className="text-xs text-yellow-500 mt-2">⚠️ You're over 65% — let them talk more</p>
+              )}
+            </InsightCard>
 
             {/* Engagement */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                <TrendingUp className="w-3 h-3" /> Engagement Score
-              </h3>
-              <div className="text-3xl font-bold font-display text-primary">{engagementScore}%</div>
-              <div className="h-1.5 rounded-full bg-muted mt-2">
+            <InsightCard title="Engagement" icon={<TrendingUp className="w-3 h-3" />}>
+              <div className="flex items-end gap-2 mb-1.5">
+                <span className="text-3xl font-bold font-display text-primary">{engagementScore}</span>
+                <span className="text-xs text-muted-foreground mb-1">/ 100</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted">
                 <div
-                  className="h-1.5 rounded-full bg-primary transition-all duration-1000"
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-1000",
+                    engagementScore >= 70 ? "bg-green-500" : engagementScore >= 40 ? "bg-primary" : "bg-red-500"
+                  )}
                   style={{ width: `${engagementScore}%` }}
                 />
               </div>
-            </div>
+            </InsightCard>
 
-            {/* Quick stats */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                <MessageSquare className="w-3 h-3" /> Call Stats
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-lg font-bold font-display">{questionsCount}</div>
-                  <div className="text-xs text-muted-foreground">Questions</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold font-display">{objections.length}</div>
-                  <div className="text-xs text-muted-foreground">Objections</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold font-display">{topics.length}</div>
-                  <div className="text-xs text-muted-foreground">Topics</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold font-display font-mono">{formatTime(elapsed)}</div>
-                  <div className="text-xs text-muted-foreground">Duration</div>
-                </div>
+            {/* Stats */}
+            <InsightCard title="Call Stats" icon={<Zap className="w-3 h-3" />}>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { v: questionsCount,   l: "Questions" },
+                  { v: objections.length, l: "Objections" },
+                  { v: topics.length,    l: "Topics" },
+                  { v: formatTime(elapsed), l: "Duration" },
+                ].map(({ v, l }) => (
+                  <div key={l}>
+                    <div className="text-base font-bold font-display">{v}</div>
+                    <div className="text-[11px] text-muted-foreground">{l}</div>
+                  </div>
+                ))}
               </div>
-            </div>
+            </InsightCard>
 
             {/* Objections */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                <AlertCircle className="w-3 h-3" /> Objections ({objections.length})
-              </h3>
-              {objections.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No objections detected yet</p>
-              ) : (
-                <div className="space-y-3 max-h-[200px] overflow-y-auto">
+            {objections.length > 0 && (
+              <InsightCard title={`Objections (${objections.length})`} icon={<AlertCircle className="w-3 h-3 text-destructive" />}>
+                <div className="space-y-2.5 max-h-40 overflow-y-auto">
                   {objections.map(obj => (
-                    <div
-                      key={obj.id}
-                      className={cn(
-                        "rounded-lg p-3 text-xs",
-                        (obj.confidence_score || 0) > 0.7
-                          ? "bg-destructive/10 border border-destructive/20"
-                          : "bg-accent/10 border border-accent/20"
-                      )}
-                    >
-                      <p className="font-medium mb-1">{obj.objection_type}</p>
+                    <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
+                      <p className="font-medium text-destructive/90">{obj.objection_type}</p>
                       {obj.suggestion && (
-                        <div className="flex items-start gap-1.5 text-muted-foreground mt-2">
+                        <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
                           <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                          <span>{obj.suggestion}</span>
+                          {obj.suggestion}
                         </div>
                       )}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            {/* Discovery reminders */}
-            {meetingType === "discovery" && (
-              <div className="glass rounded-xl p-4">
-                <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                  <Target className="w-3 h-3" /> Discovery Reminders
-                </h3>
-                <ul className="space-y-2">
-                  {DISCOVERY_REMINDERS.map((reminder, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                      <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">
-                        {i + 1}
-                      </span>
-                      {reminder}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              </InsightCard>
             )}
 
-            {/* Key Topics */}
-            <div className="glass rounded-xl p-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-3">Key Topics</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {topics.length > 0 ? (
-                  topics.map(t => (
-                    <span
-                      key={t.id}
-                      className="text-xs px-2 py-1 rounded-full bg-secondary text-secondary-foreground"
-                    >
+            {/* Topics */}
+            {topics.length > 0 && (
+              <InsightCard title="Key Topics" icon={<Radio className="w-3 h-3" />}>
+                <div className="flex flex-wrap gap-1.5">
+                  {topics.map(t => (
+                    <span key={t.id} className="text-[11px] px-2 py-1 rounded-full bg-secondary/60 text-secondary-foreground">
                       {t.topic}
                     </span>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">Analyzing topics…</p>
+                  ))}
+                </div>
+              </InsightCard>
+            )}
+
+            {/* Discovery tips */}
+            {meetingType === "discovery" && (
+              <InsightCard title="Discovery Tips" icon={<Target className="w-3 h-3 text-primary" />}>
+                <button
+                  onClick={() => setShowTips(v => !v)}
+                  className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground mb-2"
+                >
+                  <span>{showTips ? "Hide" : "Show"} checklist</span>
+                  {showTips ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {showTips && (
+                  <ul className="space-y-2">
+                    {DISCOVERY_TIPS.map((tip, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5">{i + 1}</span>
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-            </div>
+              </InsightCard>
+            )}
 
           </div>
         </div>
@@ -1107,3 +594,5 @@ export default function LiveMeeting() {
     </DashboardLayout>
   );
 }
+
+// Add missing VideoIcon import
