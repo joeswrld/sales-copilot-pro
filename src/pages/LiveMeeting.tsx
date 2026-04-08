@@ -1,9 +1,9 @@
 /**
- * LiveMeeting.tsx — v5 (Streaming Architecture)
+ * LiveMeeting.tsx — 100ms Edition
  *
- * No bots. No MeetingBaas. No webhooks.
- * Transcript comes from Supabase Realtime (inserted by transcribe-stream edge fn).
- * Audio captured by useAudioStreaming in LiveCall.tsx via Daily track events.
+ * Real-time transcript + insights panel during a live 100ms call.
+ * Audio is captured in LiveCall.tsx via 100ms track events → transcribe-stream.
+ * This page reads Supabase Realtime for live transcript/objection/topic updates.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -12,8 +12,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   Loader2, AlertCircle, Lightbulb, TrendingUp, Clock,
   MessageSquare, BarChart3, Target, Radio,
-  Users, StopCircle, ExternalLink, ChevronDown, ChevronUp,
-  Zap, Eye, MicOff, Mic,
+  Users, StopCircle, ChevronDown, ChevronUp,
+  Zap, Mic, MicOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,10 +22,8 @@ import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
-import { Video as VideoIcon } from "lucide-react";
 
-// ─── Types & constants ─────────────────────────────────────────────────────────
-
+// ─── Constants ────────────────────────────────────────────────────────────────
 const MEETING_TYPE_LABELS: Record<string, string> = {
   discovery: "Discovery",
   demo: "Demo",
@@ -42,25 +40,17 @@ const DISCOVERY_TIPS = [
   "End with a clear agreed next step",
 ];
 
-// ─── Transcript line ───────────────────────────────────────────────────────────
-
+// ─── Components ───────────────────────────────────────────────────────────────
 function TranscriptLine({ line }: { line: any }) {
-  const isYou = line.speaker === "You" || line.speaker === "Rep";
+  const isYou = line.speaker === "You" || line.speaker === "Rep" || line.speaker === "Host" || line.speaker_role === "host";
   return (
-    <div className={cn("group", !isYou && "pl-3 border-l-2 border-accent/30")}>
+    <div className={cn("group animate-in fade-in slide-in-from-bottom-1 duration-300", !isYou && "pl-3 border-l-2 border-accent/30")}>
       <div className="flex items-center gap-2 mb-0.5">
-        <span className={cn(
-          "text-[11px] font-semibold uppercase tracking-wide",
-          isYou ? "text-primary" : "text-accent"
-        )}>
-          {line.speaker}
+        <span className={cn("text-[11px] font-semibold uppercase tracking-wide", isYou ? "text-primary" : "text-accent")}>
+          {line.speaker_name || line.speaker}
         </span>
         <span className="text-[10px] text-muted-foreground/60">
-          {new Date(line.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          })}
+          {new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </span>
       </div>
       <p className="text-sm text-foreground/90 leading-relaxed">{line.text}</p>
@@ -68,13 +58,7 @@ function TranscriptLine({ line }: { line: any }) {
   );
 }
 
-// ─── Insight card ──────────────────────────────────────────────────────────────
-
-function InsightCard({ title, icon, children }: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function InsightCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="glass rounded-xl p-4">
       <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
@@ -85,8 +69,6 @@ function InsightCard({ title, icon, children }: {
   );
 }
 
-// ─── Streaming status banner ───────────────────────────────────────────────────
-
 function StreamingBanner({ transcriptCount }: { transcriptCount: number }) {
   if (transcriptCount === 0) {
     return (
@@ -96,7 +78,6 @@ function StreamingBanner({ transcriptCount }: { transcriptCount: number }) {
       </div>
     );
   }
-
   return (
     <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-green-500/20 bg-green-500/5 text-xs font-medium text-green-400">
       <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -105,31 +86,25 @@ function StreamingBanner({ transcriptCount }: { transcriptCount: number }) {
   );
 }
 
-// ─── Mobile tabs ───────────────────────────────────────────────────────────────
+// ─── Mobile view ──────────────────────────────────────────────────────────────
+type MobileTab = "transcript" | "insights";
 
-type MobileTab = "meeting" | "transcript" | "insights";
-
-function MobileView({
-  meetingUrl, transcripts, objections, topics,
-  talkRatio, engagementScore, questionsCount, elapsed,
-  formatTime, transcriptEndRef,
-}: any) {
-  const [tab, setTab] = useState<MobileTab>("meeting");
+function MobileView({ transcripts, objections, topics, talkRatio, engagementScore, questionsCount, elapsed, formatTime, transcriptEndRef }: any) {
+  const [tab, setTab] = useState<MobileTab>("transcript");
 
   return (
     <div className="flex flex-col h-full gap-2">
       <div className="flex border-b border-border shrink-0">
         {([
-          { id: "meeting", label: "Meeting" },
-          { id: "transcript", label: "Transcript", badge: transcripts.length },
-          { id: "insights", label: "Insights", badge: objections.length || undefined },
-        ] as const).map((t) => (
+          { id: "transcript" as const, label: "Transcript", badge: transcripts.length },
+          { id: "insights" as const, label: "Insights", badge: objections.length || undefined },
+        ]).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
               "flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors",
-              tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+              tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground",
             )}
           >
             {t.label}
@@ -143,15 +118,6 @@ function MobileView({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {tab === "meeting" && (
-          <div className="rounded-xl overflow-hidden bg-black" style={{ height: "300px" }}>
-            {meetingUrl
-              ? <iframe src={meetingUrl} allow="camera; microphone; fullscreen; display-capture" className="w-full h-full border-none" title="Daily meeting" />
-              : <div className="flex items-center justify-center h-full text-muted-foreground text-sm">No meeting URL available</div>
-            }
-          </div>
-        )}
-
         {tab === "transcript" && (
           <div className="space-y-4 pb-4">
             {transcripts.length === 0 ? (
@@ -176,8 +142,8 @@ function MobileView({
                 <span className="text-accent">Prospect {talkRatio.prospect}%</span>
               </div>
               <div className="h-2 rounded-full bg-muted flex overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: `${talkRatio.rep}%` }} />
-                <div className="h-full bg-accent" style={{ width: `${talkRatio.prospect}%` }} />
+                <div className="h-full bg-primary transition-all" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent transition-all" style={{ width: `${talkRatio.prospect}%` }} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -193,6 +159,22 @@ function MobileView({
                 </div>
               ))}
             </div>
+            {objections.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Objections</p>
+                {objections.map((obj: any) => (
+                  <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
+                    <p className="font-medium text-destructive/90">{obj.objection_type}</p>
+                    {obj.suggestion && (
+                      <div className="flex items-start gap-1.5 text-muted-foreground mt-1">
+                        <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
+                        {obj.suggestion}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -201,7 +183,6 @@ function MobileView({
 }
 
 // ─── MAIN ──────────────────────────────────────────────────────────────────────
-
 export default function LiveMeeting() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -209,11 +190,8 @@ export default function LiveMeeting() {
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
 
-  const {
-    liveCall, isLive, isLoading,
-    transcripts, objections, topics,
-    endCall, callId,
-  } = useLiveCall({ onCallEnded: () => setStatus("available") });
+  const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } =
+    useLiveCall({ onCallEnded: () => setStatus("available") });
 
   const [elapsed, setElapsed] = useState(0);
   const [showTips, setShowTips] = useState(false);
@@ -221,29 +199,23 @@ export default function LiveMeeting() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   const meetingType = (liveCall as any)?.meeting_type as string | undefined;
-  const meetingUrl = (liveCall as any)?.meeting_url as string | undefined;
   const engagementScore = liveCall?.sentiment_score ?? 0;
 
   // Talk ratio
   const talkRatio = useMemo(() => {
     if (!transcripts.length) return { rep: 0, prospect: 0 };
-    const rw = transcripts
-      .filter((t) => t.speaker === "You" || t.speaker === "Rep")
-      .reduce((s, t) => s + t.text.split(/\s+/).length, 0);
-    const pw = transcripts
-      .filter((t) => t.speaker !== "You" && t.speaker !== "Rep")
-      .reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const isHost = (t: any) =>
+      t.speaker === "You" || t.speaker === "Rep" || t.speaker === "Host" || t.speaker_role === "host";
+    const rw = transcripts.filter(isHost).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const pw = transcripts.filter((t) => !isHost(t)).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
     const total = rw + pw;
     if (!total) return { rep: 0, prospect: 0 };
-    return {
-      rep: Math.round((rw / total) * 100),
-      prospect: Math.round((pw / total) * 100),
-    };
+    return { rep: Math.round((rw / total) * 100), prospect: Math.round((pw / total) * 100) };
   }, [transcripts]);
 
   const questionsCount = useMemo(
     () => transcripts.filter((t) => t.text.includes("?")).length,
-    [transcripts]
+    [transcripts],
   );
 
   const formatTime = (s: number) =>
@@ -321,7 +293,6 @@ export default function LiveMeeting() {
           <StreamingBanner transcriptCount={transcripts.length} />
           <div className="flex-1 min-h-0">
             <MobileView
-              meetingUrl={meetingUrl}
               transcripts={transcripts}
               objections={objections}
               topics={topics}
@@ -342,7 +313,6 @@ export default function LiveMeeting() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4 h-full">
-
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3 shrink-0">
           <div>
@@ -370,81 +340,32 @@ export default function LiveMeeting() {
               ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {meetingUrl && (
-              <a href={meetingUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open meeting
-                </Button>
-              </a>
-            )}
-            <Button
-              onClick={handleEnd}
-              variant="destructive"
-              size="sm"
-              className="gap-1.5"
-              disabled={endCall.isPending}
-            >
-              {endCall.isPending
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <StopCircle className="w-3.5 h-3.5" />}
-              End Call
-            </Button>
-          </div>
+          <Button
+            onClick={handleEnd}
+            variant="destructive"
+            size="sm"
+            className="gap-1.5"
+            disabled={endCall.isPending}
+          >
+            {endCall.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
+            End Call
+          </Button>
         </div>
 
         {/* Streaming status */}
         <StreamingBanner transcriptCount={transcripts.length} />
 
-        {/* Main 3-column layout */}
-        <div
-          className="grid grid-cols-12 gap-4 flex-1 min-h-0"
-          style={{ maxHeight: "calc(100vh - 220px)" }}
-        >
+        {/* Main 2-column layout (transcript + insights, no embedded video since 100ms is in separate window/tab) */}
+        <div className="grid grid-cols-12 gap-4 flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 220px)" }}>
 
-          {/* Video — 5 cols */}
-          <div className="col-span-5 glass rounded-xl overflow-hidden flex flex-col">
-            <div className="p-3 border-b border-border flex items-center justify-between shrink-0">
-              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                <VideoIcon className="w-3 h-3" />Meeting Room
-              </span>
-              {transcripts.length > 0 && (
-                <span className="flex items-center gap-1.5 text-[11px] text-green-400 font-medium">
-                  <Mic className="w-3 h-3" />
-                  Transcribing
-                </span>
-              )}
-            </div>
-            <div className="flex-1 bg-black relative min-h-0">
-              {meetingUrl ? (
-                <iframe
-                  src={meetingUrl}
-                  allow="camera; microphone; fullscreen; display-capture"
-                  className="absolute inset-0 w-full h-full border-none"
-                  title="Daily meeting"
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                  <div className="text-center">
-                    <Eye className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-sm">Join the meeting from the Live Call page</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Transcript — 4 cols */}
-          <div className="col-span-4 glass rounded-xl flex flex-col min-h-0">
+          {/* Transcript — 7 cols */}
+          <div className="col-span-7 glass rounded-xl flex flex-col min-h-0">
             <div className="p-3.5 border-b border-border flex items-center justify-between shrink-0">
               <h2 className="text-xs font-semibold flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-primary" />
                 Live Transcript
               </h2>
-              <span className="text-[11px] text-muted-foreground">
-                {transcripts.length} lines
-              </span>
+              <span className="text-[11px] text-muted-foreground">{transcripts.length} lines</span>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
               {transcripts.length === 0 ? (
@@ -452,7 +373,7 @@ export default function LiveMeeting() {
                   <Radio className="w-8 h-8 mb-3 opacity-20" />
                   <p className="text-sm text-center">Transcript appears here live</p>
                   <p className="text-xs text-center mt-1 opacity-60">
-                    Join the Daily room and speak to begin
+                    Join the 100ms room and speak to begin
                   </p>
                 </div>
               ) : (
@@ -466,8 +387,8 @@ export default function LiveMeeting() {
             </div>
           </div>
 
-          {/* Insights — 3 cols */}
-          <div className="col-span-3 flex flex-col gap-3 overflow-y-auto min-h-0 pr-0.5">
+          {/* Insights — 5 cols */}
+          <div className="col-span-5 flex flex-col gap-3 overflow-y-auto min-h-0 pr-0.5">
 
             {/* Talk ratio */}
             <InsightCard title="Talk Ratio" icon={<BarChart3 className="w-3 h-3" />}>
@@ -476,43 +397,31 @@ export default function LiveMeeting() {
                 <span className="text-accent">Prospect {talkRatio.prospect}%</span>
               </div>
               <div className="h-2 rounded-full bg-muted flex overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-700"
-                  style={{ width: `${talkRatio.rep}%` }}
-                />
-                <div
-                  className="h-full bg-accent transition-all duration-700"
-                  style={{ width: `${talkRatio.prospect}%` }}
-                />
+                <div className="h-full bg-primary transition-all duration-700" style={{ width: `${talkRatio.rep}%` }} />
+                <div className="h-full bg-accent transition-all duration-700" style={{ width: `${talkRatio.prospect}%` }} />
               </div>
               {talkRatio.rep > 65 && transcripts.length > 5 && (
-                <p className="text-xs text-yellow-500 mt-2">
-                  ⚠️ Over 65% — let them talk more
-                </p>
+                <p className="text-xs text-yellow-500 mt-2">⚠️ Over 65% — let them talk more</p>
               )}
             </InsightCard>
 
             {/* Engagement */}
             <InsightCard title="Engagement" icon={<TrendingUp className="w-3 h-3" />}>
               <div className="flex items-end gap-2 mb-1.5">
-                <span className="text-3xl font-bold font-display text-primary">
-                  {engagementScore}
-                </span>
+                <span className="text-3xl font-bold font-display text-primary">{engagementScore}</span>
                 <span className="text-xs text-muted-foreground mb-1">/ 100</span>
               </div>
               <div className="h-1.5 rounded-full bg-muted">
                 <div
-                  className={cn(
-                    "h-1.5 rounded-full transition-all duration-1000",
-                    engagementScore >= 70
-                      ? "bg-green-500"
-                      : engagementScore >= 40
-                      ? "bg-primary"
-                      : "bg-red-500"
+                  className={cn("h-1.5 rounded-full transition-all duration-1000",
+                    engagementScore >= 70 ? "bg-green-500" : engagementScore >= 40 ? "bg-primary" : "bg-red-500"
                   )}
                   style={{ width: `${engagementScore}%` }}
                 />
               </div>
+              {engagementScore < 40 && transcripts.length > 3 && (
+                <p className="text-xs text-orange-400 mt-2">💡 Try asking an open-ended question</p>
+              )}
             </InsightCard>
 
             {/* Stats */}
@@ -534,16 +443,10 @@ export default function LiveMeeting() {
 
             {/* Objections */}
             {objections.length > 0 && (
-              <InsightCard
-                title={`Objections (${objections.length})`}
-                icon={<AlertCircle className="w-3 h-3 text-destructive" />}
-              >
+              <InsightCard title={`Objections (${objections.length})`} icon={<AlertCircle className="w-3 h-3 text-destructive" />}>
                 <div className="space-y-2.5 max-h-40 overflow-y-auto">
                   {objections.map((obj) => (
-                    <div
-                      key={obj.id}
-                      className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15"
-                    >
+                    <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
                       <p className="font-medium text-destructive/90">{obj.objection_type}</p>
                       {obj.suggestion && (
                         <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
@@ -562,10 +465,7 @@ export default function LiveMeeting() {
               <InsightCard title="Key Topics" icon={<Radio className="w-3 h-3" />}>
                 <div className="flex flex-wrap gap-1.5">
                   {topics.map((t) => (
-                    <span
-                      key={t.id}
-                      className="text-[11px] px-2 py-1 rounded-full bg-secondary/60 text-secondary-foreground"
-                    >
+                    <span key={t.id} className="text-[11px] px-2 py-1 rounded-full bg-secondary/60 text-secondary-foreground">
                       {t.topic}
                     </span>
                   ))}
@@ -575,10 +475,7 @@ export default function LiveMeeting() {
 
             {/* Discovery tips */}
             {meetingType === "discovery" && (
-              <InsightCard
-                title="Discovery Tips"
-                icon={<Target className="w-3 h-3 text-primary" />}
-              >
+              <InsightCard title="Discovery Tips" icon={<Target className="w-3 h-3 text-primary" />}>
                 <button
                   onClick={() => setShowTips((v) => !v)}
                   className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground mb-2"
@@ -600,7 +497,6 @@ export default function LiveMeeting() {
                 )}
               </InsightCard>
             )}
-
           </div>
         </div>
       </div>
