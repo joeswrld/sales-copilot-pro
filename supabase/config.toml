@@ -77,3 +77,10 @@ verify_jwt = false
 
 [functions.analyze-deal-changes]
 verify_jwt = false
+
+
+[functions.create-hms-room]
+verify_jwt = false
+
+[functions.transcribe-stream]
+verify_jwt = false
