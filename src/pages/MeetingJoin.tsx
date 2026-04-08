@@ -1,346 +1,341 @@
 /**
- * MeetingJoin.tsx
+ * MeetingJoin.tsx — Guest join page for 100ms meetings
  *
- * Public guest join page — accessible at /meet/:roomName
- * No login required. Prospect enters their name and joins.
- *
- * Works with Daily.co prebuilt UI loaded via <script> tag (no npm required).
- * Loads the Daily iframe SDK dynamically so the rest of the app doesn't
- * need to bundle it.
+ * Route: /meet/:roomName
+ * No auth required — guests can join without a Fixsense account.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Video, Mic, MicOff, VideoOff, Users, ExternalLink } from "lucide-react";
+import { Loader2, Mic, MicOff, Video, VideoOff, PhoneOff, Users, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface RoomInfo {
-  title:       string;
-  room_url:    string;
-  room_name:   string;
-  status:      "waiting" | "live" | "ended";
-  expires_at:  string | null;
-  host_name?:  string;
+declare global {
+  interface Window {
+    HMS: any;
+  }
 }
 
-type JoinState = "loading" | "form" | "joining" | "live" | "ended" | "not_found" | "expired" | string;
+// ─── Guest token via Supabase anon call ────────────────────────────────────────
+async function getGuestToken(roomName: string): Promise<string> {
+  // We call create-hms-room with just the room name to get a guest auth token.
+  // For a guest, we generate a token on the client side using the public app token.
+  // Since 100ms provides app access keys, we use the HMS SDK preview flow.
+  // In production, you'd have a get-hms-guest-token edge function.
+  // For now we use the room's existing management token stored in hms_meeting_rooms.
 
-// ─── Daily loader (dynamic script injection) ─────────────────────────────────
+  const { data } = await supabase
+    .from("hms_meeting_rooms")
+    .select("room_id")
+    .eq("room_name", roomName)
+    .maybeSingle();
 
-function loadDailyScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).DailyIframe) { resolve(); return; }
-    const script = document.createElement("script");
-    script.src   = "https://unpkg.com/@daily-co/daily-js";
-    script.async = true;
-    script.onload  = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Daily.co SDK"));
-    document.head.appendChild(script);
+  if (!data?.room_id) {
+    // Try calls table
+    const { data: callData } = await supabase
+      .from("calls")
+      .select("hms_room_id, hms_room_name")
+      .eq("hms_room_name", roomName)
+      .maybeSingle();
+
+    if (!callData) throw new Error("Meeting room not found");
+  }
+
+  // For the guest flow, we invoke a lightweight function to generate a guest token
+  const res = await supabase.functions.invoke("create-hms-room", {
+    body: { guest_token: true, room_name: roomName },
   });
+
+  if (res.data?.guest_token) return res.data.guest_token;
+
+  // Fallback: use the room name as a reference and let 100ms SDK handle it
+  // (100ms supports joining with just a room_id + auth token from dashboard)
+  throw new Error("Could not get guest token. Please ask the host to resend the link.");
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function VideoTile({ peerId, isLocal, peerName, hmsActions }: any) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!hmsActions || !videoRef.current) return;
+    hmsActions.attachVideo(peerId, videoRef.current).catch(() => {});
+    return () => { hmsActions.detachVideo(peerId, videoRef.current!).catch(() => {}); };
+  }, [peerId, hmsActions]);
+
+  return (
+    <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-video">
+      <video ref={videoRef} autoPlay muted={isLocal} playsInline className="w-full h-full object-cover" />
+      <div className="absolute bottom-2 left-2 text-[11px] font-medium bg-black/60 text-white px-2 py-0.5 rounded-full">
+        {isLocal ? "You (Guest)" : peerName || "Host"}
+      </div>
+    </div>
+  );
+}
 
 export default function MeetingJoin() {
   const { roomName } = useParams<{ roomName: string }>();
+  const [status, setStatus] = useState<"loading" | "preview" | "joined" | "ended" | "error">("loading");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [peers, setPeers] = useState<any[]>([]);
+  const [isAudioOn, setIsAudioOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [guestName, setGuestName] = useState("Guest");
+  const [nameInput, setNameInput] = useState("");
 
-  const [joinState, setJoinState] = useState<JoinState>("loading");
-  const [room,      setRoom]      = useState<RoomInfo | null>(null);
-  const [name,      setName]      = useState("");
-  const [nameError, setNameError] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const callFrameRef = useRef<any>(null);
+  const hmsActionsRef = useRef<any>(null);
+  const hmsStoreRef = useRef<any>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
+  const tokenRef = useRef<string>("");
 
-  // ── Fetch room info from Supabase ──────────────────────────────────────────
+  // Load 100ms SDK
   useEffect(() => {
-    if (!roomName) { setJoinState("not_found"); return; }
-
-    supabase
-      .from("native_meeting_rooms")
-      .select("title, room_url, room_name, status, expires_at")
-      .eq("room_name", roomName)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error || !data) { setJoinState("not_found"); return; }
-
-        const roomData = data as RoomInfo;
-
-        // Check expiry
-        if (roomData.expires_at && new Date(roomData.expires_at) < new Date()) {
-          setJoinState("expired"); return;
+    const load = async () => {
+      try {
+        if (!window.HMS) {
+          await new Promise<void>((res, rej) => {
+            const s = document.createElement("script");
+            s.src = "https://cdn.100ms.live/sdk/v2.9.15/hms.min.js";
+            s.async = true;
+            s.onload = () => res();
+            s.onerror = () => rej(new Error("Failed to load 100ms SDK"));
+            document.head.appendChild(s);
+          });
         }
-        if (roomData.status === "ended") { setJoinState("ended"); return; }
-
-        setRoom(roomData);
-        setJoinState("form");
-      });
-  }, [roomName]);
-
-  // ── Join handler ───────────────────────────────────────────────────────────
-  const handleJoin = useCallback(async () => {
-    if (!name.trim()) { setNameError("Please enter your name"); return; }
-    if (!room?.room_url) return;
-
-    setNameError("");
-    setJoinState("joining");
-
-    try {
-      await loadDailyScript();
-
-      const DailyIframe = (window as any).DailyIframe;
-      if (!DailyIframe) throw new Error("Daily SDK not loaded");
-
-      // Destroy any existing frame
-      if (callFrameRef.current) {
-        callFrameRef.current.destroy();
-        callFrameRef.current = null;
-      }
-
-      const frame = DailyIframe.createFrame(containerRef.current!, {
-        showLeaveButton:     true,
-        showFullscreenButton: true,
-        iframeStyle: {
-          position:   "absolute",
-          top:        0,
-          left:       0,
-          width:      "100%",
-          height:     "100%",
-          border:     "none",
-          borderRadius: "0.75rem",
-        },
-      });
-
-      callFrameRef.current = frame;
-
-      frame.on("joined-meeting", () => setJoinState("live"));
-      frame.on("left-meeting",   () => setJoinState("ended"));
-      frame.on("error",          (e: any) => {
-        console.error("Daily frame error:", e);
-        setJoinState("form");
-      });
-
-      await frame.join({
-        url:      room.room_url,
-        userName: name.trim(),
-      });
-
-    } catch (err: any) {
-      console.error("Failed to join meeting:", err);
-      setJoinState("form");
-      setNameError(err?.message || "Failed to join. Please try again.");
-    }
-  }, [name, room]);
-
-  // ── Cleanup on unmount ─────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      if (callFrameRef.current) {
-        callFrameRef.current.destroy();
+        // Get guest token
+        try {
+          const token = await getGuestToken(roomName!);
+          tokenRef.current = token;
+        } catch (e: any) {
+          setErrorMsg(e.message);
+          setStatus("error");
+          return;
+        }
+        setStatus("preview");
+      } catch (e: any) {
+        setErrorMsg(e.message || "Failed to load meeting SDK");
+        setStatus("error");
       }
     };
+    load();
+  }, [roomName]);
+
+  const handleJoin = useCallback(async () => {
+    if (!tokenRef.current) return;
+    const name = nameInput.trim() || "Guest";
+    setGuestName(name);
+    setStatus("loading");
+
+    try {
+      const HMS = window.HMS;
+      hmsActionsRef.current = new HMS.HMSActions();
+      hmsStoreRef.current = new HMS.HMSStore();
+
+      const unsub = hmsStoreRef.current.subscribe((store: any) => {
+        const allPeers = Object.values(store.peers || {}) as any[];
+        setPeers(allPeers);
+      });
+      unsubRef.current = unsub;
+
+      await hmsActionsRef.current.join({
+        userName: name,
+        authToken: tokenRef.current,
+        settings: { isAudioMuted: !isAudioOn, isVideoMuted: !isVideoOn },
+      });
+
+      setStatus("joined");
+    } catch (e: any) {
+      setErrorMsg(e.message || "Failed to join meeting");
+      setStatus("error");
+    }
+  }, [nameInput, isAudioOn, isVideoOn]);
+
+  const handleLeave = useCallback(async () => {
+    if (unsubRef.current) unsubRef.current();
+    try { await hmsActionsRef.current?.leave(); } catch {}
+    setStatus("ended");
   }, []);
 
-  // ── Render states ──────────────────────────────────────────────────────────
+  const handleToggleAudio = async () => {
+    if (!hmsActionsRef.current) return;
+    await hmsActionsRef.current.setLocalAudioEnabled(!isAudioOn);
+    setIsAudioOn((v) => !v);
+  };
 
-  if (joinState === "loading") {
+  const handleToggleVideo = async () => {
+    if (!hmsActionsRef.current) return;
+    await hmsActionsRef.current.setLocalVideoEnabled(!isVideoOn);
+    setIsVideoOn((v) => !v);
+  };
+
+  // ── Ended ─────────────────────────────────────────────────────────────────
+  if (status === "ended") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="w-16 h-16 rounded-full bg-green-500/15 border border-green-500/20 flex items-center justify-center mx-auto">
+            <PhoneOff className="w-7 h-7 text-green-400" />
+          </div>
+          <h1 className="text-xl font-bold">Meeting ended</h1>
+          <p className="text-sm text-muted-foreground">Thank you for joining. You can close this window.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (status === "error") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <h1 className="text-xl font-bold text-destructive">Could not join meeting</h1>
+          <p className="text-sm text-muted-foreground">{errorMsg}</p>
+          <p className="text-xs text-muted-foreground">Please ask the host to resend the invite link.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading meeting…</p>
+          <p className="text-sm text-muted-foreground">Connecting to meeting…</p>
         </div>
       </div>
     );
   }
 
-  if (joinState === "not_found") {
+  // ── Preview / name entry ──────────────────────────────────────────────────
+  if (status === "preview") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center mx-auto">
-            <VideoOff className="w-8 h-8 text-destructive" />
-          </div>
-          <h1 className="text-xl font-bold font-display">Meeting not found</h1>
-          <p className="text-sm text-muted-foreground">
-            This meeting link is invalid or has been removed. Please check with your host.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (joinState === "expired") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto">
-            <Video className="w-8 h-8 text-accent" />
-          </div>
-          <h1 className="text-xl font-bold font-display">Meeting has expired</h1>
-          <p className="text-sm text-muted-foreground">
-            This meeting room is no longer available. Ask your host to create a new meeting.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (joinState === "ended") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
-            <Video className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-xl font-bold font-display">Meeting ended</h1>
-          <p className="text-sm text-muted-foreground">
-            This meeting has ended. Thanks for joining!
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Powered by{" "}
-            <a href="https://fixsense.com.ng" className="text-primary hover:underline">
-              Fixsense
-            </a>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Live state: full-screen iframe
-  if (joinState === "live") {
-    return (
-      <div className="fixed inset-0 bg-background">
-        <div ref={containerRef} className="relative w-full h-full rounded-xl overflow-hidden" />
-      </div>
-    );
-  }
-
-  // Joining state: keep container mounted so Daily can attach, show overlay
-  if (joinState === "joining") {
-    return (
-      <div className="fixed inset-0 bg-background">
-        <div ref={containerRef} className="relative w-full h-full" />
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            <p className="text-sm font-medium">Joining meeting…</p>
-            <p className="text-xs text-muted-foreground">Setting up audio & video</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Form state: name entry
-  return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-
-      {/* Fixsense branding */}
-      <div className="mb-8 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary/30">
-          <Video className="w-6 h-6 text-primary-foreground" />
-        </div>
-        <p className="text-xs text-muted-foreground">Powered by Fixsense</p>
-      </div>
-
-      {/* Join card */}
-      <div className="w-full max-w-sm space-y-6 bg-card border border-border rounded-2xl p-8 shadow-xl">
-
-        {/* Meeting info */}
-        <div className="text-center space-y-1">
-          <h1 className="text-xl font-bold font-display">{room?.title || "Meeting"}</h1>
-          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="w-3 h-3" />
-            <span>You're invited to join</span>
-          </div>
-        </div>
-
-        {/* Status badge */}
-        <div className="flex justify-center">
-          {room?.status === "live" ? (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-green-500/15 border border-green-500/25 text-green-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              Meeting is live
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              Ready to join
-            </span>
-          )}
-        </div>
-
-        {/* Name input */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Your name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => { setName(e.target.value); setNameError(""); }}
-            onKeyDown={e => e.key === "Enter" && handleJoin()}
-            placeholder="e.g. John Smith"
-            autoFocus
-            className={`
-              w-full px-4 py-3 rounded-xl bg-secondary border text-sm
-              focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all
-              ${nameError ? "border-destructive" : "border-border"}
-            `}
-          />
-          {nameError && (
-            <p className="text-xs text-destructive">{nameError}</p>
-          )}
-        </div>
-
-        {/* Feature hints */}
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { icon: Mic,   label: "Microphone" },
-            { icon: Video, label: "Camera" },
-          ].map(({ icon: Icon, label }) => (
-            <div key={label} className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
-              <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
-              {label}
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+              <Users className="w-7 h-7 text-primary" />
             </div>
-          ))}
+            <h1 className="text-2xl font-bold font-display">Join Meeting</h1>
+            <p className="text-sm text-muted-foreground">You're about to join a Fixsense meeting</p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Your name</label>
+            <input
+              type="text"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              placeholder="Enter your name"
+              className="w-full h-11 rounded-xl border border-border bg-background/60 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              autoFocus
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsAudioOn((v) => !v)}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-colors",
+                isAudioOn ? "bg-secondary/60 border-border" : "bg-red-500/10 border-red-500/30 text-red-400",
+              )}
+            >
+              {isAudioOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              {isAudioOn ? "Mic On" : "Mic Off"}
+            </button>
+            <button
+              onClick={() => setIsVideoOn((v) => !v)}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-colors",
+                isVideoOn ? "bg-secondary/60 border-border" : "bg-red-500/10 border-red-500/30 text-red-400",
+              )}
+            >
+              {isVideoOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+              {isVideoOn ? "Cam On" : "Cam Off"}
+            </button>
+          </div>
+
+          <Button onClick={handleJoin} className="w-full h-12 text-sm font-semibold">
+            Join Now
+          </Button>
+
+          <p className="text-center text-[11px] text-muted-foreground/60 flex items-center justify-center gap-1.5">
+            <Shield className="w-3 h-3" />
+            No account needed · Powered by 100ms
+          </p>
         </div>
+      </div>
+    );
+  }
 
-        {/* Join button */}
-        <button
-          onClick={handleJoin}
-          disabled={!name.trim() || joinState === "joining"}
-          className="
-            w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold
-            flex items-center justify-center gap-2 text-sm
-            hover:opacity-90 transition-opacity
-            disabled:opacity-50 disabled:cursor-not-allowed
-          "
+  // ── In meeting ────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-zinc-950 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-sm font-medium text-white">Fixsense Meeting</span>
+          <span className="text-xs text-zinc-400 font-medium">· {peers.length} participant{peers.length !== 1 ? "s" : ""}</span>
+        </div>
+        <Button
+          onClick={handleLeave}
+          variant="destructive"
+          size="sm"
+          className="gap-1.5 h-8 text-xs"
         >
-          {joinState === "joining" ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Joining…</>
-          ) : (
-            <><Video className="w-4 h-4" /> Join Meeting</>
-          )}
-        </button>
-
-        <p className="text-center text-xs text-muted-foreground">
-          No account required · Your camera & mic will be requested after joining
-        </p>
+          <PhoneOff className="w-3 h-3" />
+          Leave
+        </Button>
       </div>
 
-      {/* Footer */}
-      <div className="mt-6 text-center">
-        <a
-          href="https://fixsense.com.ng"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-1 transition-colors"
+      {/* Video grid */}
+      <div className="flex-1 p-4">
+        {peers.length === 0 ? (
+          <div className="flex items-center justify-center h-64 text-zinc-400 text-sm">
+            <div className="text-center">
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>Waiting for host to join…</p>
+            </div>
+          </div>
+        ) : (
+          <div className={cn("grid gap-3", peers.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2")}>
+            {peers.map((peer) => (
+              <VideoTile key={peer.id} peerId={peer.id} isLocal={peer.isLocal} peerName={peer.name} hmsActions={hmsActionsRef.current} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="flex items-center justify-center gap-3 px-4 py-4 border-t border-zinc-800">
+        <button
+          onClick={handleToggleAudio}
+          className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center transition-colors",
+            isAudioOn ? "bg-zinc-700 hover:bg-zinc-600" : "bg-red-600 hover:bg-red-700",
+          )}
         >
-          <ExternalLink className="w-3 h-3" />
-          Learn about Fixsense
-        </a>
+          {isAudioOn ? <Mic className="w-5 h-5 text-white" /> : <MicOff className="w-5 h-5 text-white" />}
+        </button>
+        <button
+          onClick={handleToggleVideo}
+          className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center transition-colors",
+            isVideoOn ? "bg-zinc-700 hover:bg-zinc-600" : "bg-red-600 hover:bg-red-700",
+          )}
+        >
+          {isVideoOn ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-white" />}
+        </button>
+        <button
+          onClick={handleLeave}
+          className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors"
+        >
+          <PhoneOff className="w-5 h-5 text-white" />
+        </button>
       </div>
     </div>
   );
