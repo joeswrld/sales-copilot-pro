@@ -31,6 +31,7 @@ import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from '@/components/PWABanner';
 import DealsPage from "@/pages/DealsPage";
+import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import {
   PrivacyPage,
   TermsPage,
@@ -172,6 +173,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+              <Route path="/dashboard/integrations" element={<ProtectedRoute><IntegrationsDashboardPage /></ProtectedRoute>} />
               <Route
                 path="/dashboard/profile"
                 element={
