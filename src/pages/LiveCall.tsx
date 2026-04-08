@@ -1,13 +1,12 @@
 /**
- * LiveCall.tsx — v12 (Streaming Architecture, no bots)
+ * LiveCall.tsx — 100ms Edition
  *
  * Flow:
- *  1. Create Daily.co room via edge function
+ *  1. Create 100ms room via create-hms-room edge function
  *  2. Share invite link with prospect
- *  3. Join as host → embedded Daily iframe
- *  4. Daily JS SDK fires `track-started` events → useAudioStreaming captures per-participant audio
- *  5. Audio chunks → transcribe-stream edge fn → Supabase → LiveMeeting page updates live
- *  6. End call → AI summary → redirect to call detail
+ *  3. Join as host via 100ms React SDK
+ *  4. Audio tracks captured per peer → transcribe-stream edge fn
+ *  5. End call → AI summary → redirect to call detail
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -17,6 +16,7 @@ import {
   Loader2, ExternalLink, CheckCircle2, ChevronRight,
   AlertTriangle, Shield, StopCircle, VideoIcon, Copy,
   Check, Plus, Sparkles, Radio, Eye, RefreshCw, Link2, Mic,
+  MicOff, Video, VideoOff, PhoneOff, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,21 +24,167 @@ import { useLiveCall } from "@/hooks/useLiveCall";
 import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
-import { useDailyRoom } from "@/hooks/useDailyRoom";
-import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// ─── Share link panel ──────────────────────────────────────────────────────────
+// ─── 100ms types ───────────────────────────────────────────────────────────────
+declare global {
+  interface Window {
+    HMS: any;
+  }
+}
 
+// ─── Audio chunk processor ─────────────────────────────────────────────────────
+class AudioChunkProcessor {
+  private mediaRecorder: MediaRecorder | null = null;
+  private chunks: Blob[] = [];
+  private intervalId: number | null = null;
+  private chunkIndex = 0;
+
+  constructor(
+    private stream: MediaStream,
+    private onChunk: (blob: Blob, index: number) => void,
+    private intervalMs = 3000,
+  ) {}
+
+  start() {
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    this.mediaRecorder = new MediaRecorder(this.stream, { mimeType });
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.chunks.push(e.data);
+    };
+    this.mediaRecorder.onstop = () => {
+      if (this.chunks.length > 0) {
+        const blob = new Blob([...this.chunks], { type: mimeType });
+        this.chunks = [];
+        this.onChunk(blob, this.chunkIndex++);
+      }
+    };
+    this.mediaRecorder.start();
+    this.intervalId = window.setInterval(() => {
+      if (this.mediaRecorder?.state === "recording") {
+        this.mediaRecorder.stop();
+        this.mediaRecorder.start();
+      }
+    }, this.intervalMs);
+  }
+
+  stop() {
+    if (this.intervalId) clearInterval(this.intervalId);
+    if (this.mediaRecorder?.state === "recording") this.mediaRecorder.stop();
+    this.stream.getTracks().forEach((t) => t.stop());
+  }
+}
+
+// ─── Hook: HMS room management ─────────────────────────────────────────────────
+function useHMSRoom() {
+  const [roomInfo, setRoomInfo] = useState<{
+    room_id: string;
+    room_name: string;
+    share_link: string;
+    mgmt_token: string;
+  } | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const createRoom = useCallback(async (callId: string, title: string) => {
+    setIsCreating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Not authenticated");
+      const { data, error } = await supabase.functions.invoke("create-hms-room", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: {
+          call_id: callId,
+          title,
+          app_origin: window.location.origin,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setRoomInfo(data);
+      return data;
+    } finally {
+      setIsCreating(false);
+    }
+  }, []);
+
+  return { roomInfo, isCreating, createRoom, setRoomInfo };
+}
+
+// ─── Hook: audio streaming to transcribe-stream ────────────────────────────────
+function useHMSAudioStreaming(callId: string | null) {
+  const processorsRef = useRef<Map<string, AudioChunkProcessor>>(new Map());
+  const [chunksSent, setChunksSent] = useState(0);
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const sendChunk = useCallback(
+    async (blob: Blob, index: number, peerId: string, isLocal: boolean) => {
+      if (!callId || blob.size < 100) return;
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((res, rej) => {
+          reader.onloadend = () => res((reader.result as string).split(",")[1] ?? "");
+          reader.onerror = rej;
+          reader.readAsDataURL(blob);
+        });
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        await supabase.functions.invoke("transcribe-stream", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: {
+            call_id: callId,
+            audio_base64: base64,
+            chunk_index: index,
+            speaker_id: peerId,
+            speaker_label: isLocal ? "You" : "Prospect",
+          },
+        });
+        setChunksSent((n) => n + 1);
+      } catch (e) {
+        console.warn("sendChunk error:", e);
+      }
+    },
+    [callId],
+  );
+
+  const startPeerAudio = useCallback(
+    (peerId: string, track: MediaStreamTrack, isLocal: boolean) => {
+      if (processorsRef.current.has(peerId)) return;
+      const stream = new MediaStream([track]);
+      const proc = new AudioChunkProcessor(stream, (blob, idx) =>
+        sendChunk(blob, idx, peerId, isLocal),
+      );
+      proc.start();
+      processorsRef.current.set(peerId, proc);
+      setIsStreaming(true);
+    },
+    [sendChunk],
+  );
+
+  const stopPeerAudio = useCallback((peerId: string) => {
+    processorsRef.current.get(peerId)?.stop();
+    processorsRef.current.delete(peerId);
+    if (processorsRef.current.size === 0) setIsStreaming(false);
+  }, []);
+
+  const stopAll = useCallback(() => {
+    processorsRef.current.forEach((p) => p.stop());
+    processorsRef.current.clear();
+    setIsStreaming(false);
+  }, []);
+
+  return { chunksSent, isStreaming, startPeerAudio, stopPeerAudio, stopAll };
+}
+
+// ─── Share link panel ──────────────────────────────────────────────────────────
 function ShareLinkPanel({
   shareLink,
-  roomUrl,
   callId,
   onJoinAsHost,
 }: {
   shareLink: string;
-  roomUrl: string;
   callId: string;
   onJoinAsHost: () => void;
 }) {
@@ -65,7 +211,7 @@ function ShareLinkPanel({
         <div>
           <p className="font-semibold text-sm text-primary">Meeting room ready!</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Share this link with your prospect — no login needed for them.
+            Share this link with your prospect — no account needed.
           </p>
         </div>
       </div>
@@ -79,7 +225,7 @@ function ShareLinkPanel({
             "flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all shrink-0",
             copied
               ? "bg-green-500/15 text-green-400 border border-green-500/25"
-              : "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+              : "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20",
           )}
         >
           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -92,12 +238,6 @@ function ShareLinkPanel({
           <VideoIcon className="w-3.5 h-3.5" />
           Join as Host
         </Button>
-        <a href={roomUrl} target="_blank" rel="noopener noreferrer">
-          <Button size="sm" variant="outline" className="gap-1.5">
-            <ExternalLink className="w-3.5 h-3.5" />
-            Open in New Tab
-          </Button>
-        </a>
         <Button
           size="sm"
           variant="outline"
@@ -107,55 +247,67 @@ function ShareLinkPanel({
           <Eye className="w-3.5 h-3.5" />
           Live Insights
         </Button>
+        <a href={shareLink} target="_blank" rel="noopener noreferrer">
+          <Button size="sm" variant="outline" className="gap-1.5">
+            <ExternalLink className="w-3.5 h-3.5" />
+            Open in Tab
+          </Button>
+        </a>
       </div>
 
       <p className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
         <Shield className="w-3 h-3" />
-        Room expires in 3 hours · AI transcription & analysis active when you join
+        Powered by 100ms · AI transcription active when you join
       </p>
     </div>
   );
 }
 
-// ─── Active meeting card ───────────────────────────────────────────────────────
-
-function ActiveMeetingCard({
+// ─── In-meeting controls ───────────────────────────────────────────────────────
+function MeetingControls({
   callId,
-  onEnd,
-  isEnding,
   shareLink,
   isStreaming,
   chunksSent,
+  isAudioOn,
+  isVideoOn,
+  onToggleAudio,
+  onToggleVideo,
+  onEnd,
+  isEnding,
 }: {
   callId: string;
-  onEnd: () => void;
-  isEnding: boolean;
   shareLink?: string;
   isStreaming: boolean;
   chunksSent: number;
+  isAudioOn: boolean;
+  isVideoOn: boolean;
+  onToggleAudio: () => void;
+  onToggleVideo: () => void;
+  onEnd: () => void;
+  isEnding: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
 
-  const copyLink = async () => {
+  const copyLink = () => {
     if (!shareLink) return;
-    try {
-      await navigator.clipboard.writeText(shareLink);
+    navigator.clipboard.writeText(shareLink).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-      toast.success("Link copied!");
-    } catch {}
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   return (
-    <div className="glass rounded-2xl border border-green-500/25 bg-green-500/5 p-5 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+    <div className="glass rounded-2xl border border-green-500/25 bg-green-500/5 p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
           <div>
             <p className="font-semibold text-sm text-green-400">Meeting in progress</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground">
               {isStreaming
-                ? `AI transcribing live · ${chunksSent} chunks processed`
+                ? `AI transcribing · ${chunksSent} chunks`
                 : "Waiting for audio…"}
             </p>
           </div>
@@ -164,10 +316,10 @@ function ActiveMeetingCard({
           {shareLink && (
             <button
               onClick={copyLink}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors border border-border/60 rounded-lg px-2.5 py-1.5"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg px-2.5 py-1.5 transition-colors"
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              {copied ? "Copied!" : "Copy invite link"}
+              {copied ? "Copied!" : "Copy invite"}
             </button>
           )}
           <Link
@@ -175,46 +327,108 @@ function ActiveMeetingCard({
             className="flex items-center gap-1.5 text-xs text-primary border border-primary/30 bg-primary/10 rounded-lg px-2.5 py-1.5 hover:bg-primary/20 transition-colors"
           >
             <Eye className="w-3 h-3" />
-            Live transcript
+            Transcript
           </Link>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-8 px-3 text-xs gap-1.5"
-            onClick={onEnd}
-            disabled={isEnding}
-          >
-            {isEnding
-              ? <Loader2 className="w-3 h-3 animate-spin" />
-              : <StopCircle className="w-3 h-3" />}
-            End call
-          </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-1.5 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
-          <Radio className="w-3 h-3" />Daily.co room active
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={onToggleAudio}
+          className={cn(
+            "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors",
+            isAudioOn
+              ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
+              : "bg-red-500/15 border-red-500/30 text-red-400",
+          )}
+        >
+          {isAudioOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+          {isAudioOn ? "Mute" : "Unmute"}
+        </button>
+        <button
+          onClick={onToggleVideo}
+          className={cn(
+            "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors",
+            isVideoOn
+              ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
+              : "bg-red-500/15 border-red-500/30 text-red-400",
+          )}
+        >
+          {isVideoOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
+          {isVideoOn ? "Stop Video" : "Start Video"}
+        </button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="h-8 px-3 text-xs gap-1.5 ml-auto"
+          onClick={onEnd}
+          disabled={isEnding}
+        >
+          {isEnding ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <PhoneOff className="w-3 h-3" />
+          )}
+          End Call
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        <span className="inline-flex items-center gap-1 text-[11px] text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
+          <Radio className="w-2.5 h-2.5" />100ms room active
         </span>
-        <span className={cn(
-          "inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border",
-          isStreaming
-            ? "text-primary bg-primary/10 border-primary/20"
-            : "text-muted-foreground bg-secondary/50 border-border/60"
-        )}>
-          <Mic className="w-3 h-3" />
-          {isStreaming ? "AI transcribing both sides" : "Waiting for participants"}
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 rounded-full px-3 py-1">
-          <Sparkles className="w-3 h-3" />AI analysis running
+        {isStreaming && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-primary bg-primary/10 border border-primary/20 rounded-full px-2.5 py-0.5">
+            <Mic className="w-2.5 h-2.5" />AI transcribing both sides
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1 text-[11px] text-accent bg-accent/10 border border-accent/20 rounded-full px-2.5 py-0.5">
+          <Sparkles className="w-2.5 h-2.5" />AI coaching active
         </span>
       </div>
     </div>
   );
 }
 
-// ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
+// ─── Video tile ────────────────────────────────────────────────────────────────
+function VideoTile({
+  peerId,
+  isLocal,
+  peerName,
+  hmsActions,
+}: {
+  peerId: string;
+  isLocal: boolean;
+  peerName: string;
+  hmsActions: any;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
+  useEffect(() => {
+    if (!hmsActions || !videoRef.current) return;
+    hmsActions.attachVideo(peerId, videoRef.current).catch(() => {});
+    return () => {
+      hmsActions.detachVideo(peerId, videoRef.current!).catch(() => {});
+    };
+  }, [peerId, hmsActions]);
+
+  return (
+    <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-video">
+      <video
+        ref={videoRef}
+        autoPlay
+        muted={isLocal}
+        playsInline
+        className="w-full h-full object-cover"
+      />
+      <div className="absolute bottom-2 left-2 text-[11px] font-medium bg-black/50 text-white px-2 py-0.5 rounded-full">
+        {isLocal ? "You" : peerName || "Prospect"}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function LiveCall() {
   const navigate = useNavigate();
   const { team } = useTeam();
@@ -226,20 +440,23 @@ export default function LiveCall() {
     onCallEnded: () => setStatus("available"),
   });
 
-  const { createRoom, isCreating, roomInfo } = useDailyRoom();
-  const { state: streamState, startTrackRecording, stopTrackRecording, stopAll } =
-    useAudioStreaming({ callId: callId ?? null });
+  const { roomInfo, isCreating, createRoom } = useHMSRoom();
+  const { chunksSent, isStreaming, startPeerAudio, stopPeerAudio, stopAll } =
+    useHMSAudioStreaming(callId ?? null);
 
   const [isStarting, setIsStarting] = useState(false);
   const [hostJoined, setHostJoined] = useState(false);
   const [zombieDetected, setZombieDetected] = useState(false);
   const [isAbandoningZombie, setIsAbandoningZombie] = useState(false);
+  const [isAudioOn, setIsAudioOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [peers, setPeers] = useState<any[]>([]);
 
-  const dailyHostRef = useRef<HTMLDivElement>(null);
-  const dailyFrameRef = useRef<any>(null);
-  const dailyCallRef = useRef<any>(null); // Daily.co call object for track events
+  const hmsActionsRef = useRef<any>(null);
+  const hmsStoreRef = useRef<any>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
 
-  // Zombie detection — live call stuck without room info
+  // Zombie detection
   useEffect(() => {
     if (isLive && liveCall && !(liveCall as any).meeting_url && !roomInfo) {
       setZombieDetected(true);
@@ -250,14 +467,13 @@ export default function LiveCall() {
 
   const hasActiveSession = isLive && !!callId && !zombieDetected;
 
-  // ── Abandon zombie ─────────────────────────────────────────────────────────
   const handleAbandonZombie = useCallback(async () => {
     if (!callId) return;
     setIsAbandoningZombie(true);
     try {
       await endCall.mutateAsync();
       setZombieDetected(false);
-      toast.success("Cleared stuck session — ready for a new meeting.");
+      toast.success("Cleared stuck session.");
     } catch {
       await supabase.from("calls").update({
         status: "completed",
@@ -265,7 +481,6 @@ export default function LiveCall() {
         duration_minutes: 0,
       }).eq("id", callId);
       setZombieDetected(false);
-      toast.success("Cleared. Ready to start.");
     } finally {
       setIsAbandoningZombie(false);
     }
@@ -279,25 +494,80 @@ export default function LiveCall() {
     return true;
   }, [usage]);
 
-  // ── Create Daily meeting ───────────────────────────────────────────────────
+  // ── Load 100ms SDK ────────────────────────────────────────────────────────
+  const loadHMSSDK = useCallback(async () => {
+    if (window.HMS) return window.HMS;
+    await new Promise<void>((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.100ms.live/sdk/v2.9.15/hms.min.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load 100ms SDK"));
+      document.head.appendChild(s);
+    });
+    return window.HMS;
+  }, []);
+
+  // ── Join as host ──────────────────────────────────────────────────────────
+  const handleJoinAsHost = useCallback(async () => {
+    if (!roomInfo || !callId) return;
+    try {
+      const HMS = await loadHMSSDK();
+      hmsActionsRef.current = new HMS.HMSActions();
+      hmsStoreRef.current = new HMS.HMSStore();
+
+      const hmsActions = hmsActionsRef.current;
+
+      // Subscribe to peers
+      const unsub = hmsStoreRef.current.subscribe((store: any) => {
+        const allPeers = Object.values(store.peers || {}) as any[];
+        setPeers(allPeers);
+
+        // Attach audio tracks for streaming
+        allPeers.forEach((peer: any) => {
+          const audioTrackId = peer.audioTrack;
+          if (audioTrackId) {
+            const trackInfo = store.tracks?.[audioTrackId];
+            if (trackInfo?.nativeTrack && !trackInfo._streaming) {
+              trackInfo._streaming = true;
+              startPeerAudio(peer.id, trackInfo.nativeTrack, peer.isLocal);
+            }
+          }
+        });
+      });
+      unsubRef.current = unsub;
+
+      await hmsActions.join({
+        userName: "Host",
+        authToken: roomInfo.mgmt_token,
+        settings: {
+          isAudioMuted: false,
+          isVideoMuted: false,
+        },
+        rememberDeviceSelection: true,
+        captureNetworkQualityInPreview: false,
+      });
+
+      setHostJoined(true);
+      navigate(`/dashboard/live/${callId}`);
+    } catch (err: any) {
+      console.error("Failed to join 100ms:", err);
+      toast.error("Failed to join meeting: " + err.message);
+    }
+  }, [roomInfo, callId, loadHMSSDK, startPeerAudio, navigate]);
+
+  // ── Create meeting ────────────────────────────────────────────────────────
   const handleCreateMeeting = useCallback(async () => {
     if (!checkLimit()) return;
     setIsStarting(true);
     let callRow: any = null;
-
     try {
       callRow = await startCall.mutateAsync({
-        platform: "Daily.co",
+        platform: "100ms",
         name: "Fixsense Meeting",
         participants: [],
       } as any);
-
-      await createRoom({
-        callId: callRow.id,
-        title: "Fixsense Meeting",
-        expMinutes: 180,
-      });
-
+      await createRoom(callRow.id, "Fixsense Meeting");
       toast.success("Room ready — share the link with your prospect!");
     } catch (err: any) {
       if (callRow?.id) {
@@ -317,103 +587,26 @@ export default function LiveCall() {
     }
   }, [checkLimit, startCall, createRoom]);
 
-  // ── Attach Daily track listeners for audio streaming ──────────────────────
-  const attachDailyListeners = useCallback(
-    (callObject: any) => {
-      if (!callObject) return;
+  // ── Toggle audio/video ────────────────────────────────────────────────────
+  const handleToggleAudio = useCallback(async () => {
+    if (!hmsActionsRef.current) return;
+    await hmsActionsRef.current.setLocalAudioEnabled(!isAudioOn);
+    setIsAudioOn((v) => !v);
+  }, [isAudioOn]);
 
-      callObject.on("track-started", (event: any) => {
-        const { track, participant } = event;
-        if (!track || track.kind !== "audio") return;
+  const handleToggleVideo = useCallback(async () => {
+    if (!hmsActionsRef.current) return;
+    await hmsActionsRef.current.setLocalVideoEnabled(!isVideoOn);
+    setIsVideoOn((v) => !v);
+  }, [isVideoOn]);
 
-        const sessionId: string = participant?.session_id ?? participant?.user_id ?? "unknown";
-        const isLocal: boolean = participant?.local === true;
-
-        startTrackRecording(track, sessionId, isLocal);
-      });
-
-      callObject.on("track-stopped", (event: any) => {
-        const { participant } = event;
-        const sessionId: string = participant?.session_id ?? participant?.user_id ?? "unknown";
-        stopTrackRecording(sessionId);
-      });
-
-      callObject.on("participant-left", (event: any) => {
-        const sessionId: string = event?.participant?.session_id ?? "unknown";
-        stopTrackRecording(sessionId);
-      });
-    },
-    [startTrackRecording, stopTrackRecording]
-  );
-
-  // ── Join as host in embedded Daily iframe ─────────────────────────────────
-  const handleJoinAsHost = useCallback(async () => {
-    if (!roomInfo?.room_url) return;
-
-    try {
-      if (!(window as any).DailyIframe) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://unpkg.com/@daily-co/daily-js";
-          s.async = true;
-          s.onload = () => resolve();
-          s.onerror = () => reject();
-          document.head.appendChild(s);
-        });
-      }
-
-      const DailyIframe = (window as any).DailyIframe;
-      if (dailyFrameRef.current) {
-        dailyFrameRef.current.destroy();
-        dailyCallRef.current = null;
-      }
-
-      const frame = DailyIframe.createFrame(dailyHostRef.current!, {
-        showLeaveButton: true,
-        showFullscreenButton: true,
-        iframeStyle: {
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          border: "none",
-          borderRadius: "0.75rem",
-        },
-      });
-
-      dailyFrameRef.current = frame;
-
-      frame.on("joined-meeting", () => {
-        setHostJoined(true);
-        dailyCallRef.current = frame;
-        attachDailyListeners(frame);
-        if (callId) navigate(`/dashboard/live/${callId}`);
-      });
-
-      frame.on("left-meeting", () => {
-        setHostJoined(false);
-        stopAll();
-        handleEndCall();
-      });
-
-      await frame.join({ url: roomInfo.room_url });
-      setHostJoined(true);
-    } catch {
-      toast.error("Failed to open meeting. Try opening in a new tab.");
-    }
-  }, [roomInfo, callId, navigate, attachDailyListeners, stopAll]);
-
-  // ── End call ───────────────────────────────────────────────────────────────
+  // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
-    // Stop all audio streaming first
     stopAll();
-
+    if (unsubRef.current) unsubRef.current();
     try {
-      if (dailyFrameRef.current) {
-        try { dailyFrameRef.current.destroy(); } catch {}
-        dailyFrameRef.current = null;
-        dailyCallRef.current = null;
+      if (hmsActionsRef.current) {
+        try { await hmsActionsRef.current.leave(); } catch {}
       }
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
@@ -437,12 +630,11 @@ export default function LiveCall() {
   return (
     <DashboardLayout>
       <div className="space-y-5 pb-10 max-w-2xl mx-auto">
-
         {/* Header */}
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
           <p className="text-sm text-muted-foreground">
-            Create a room, share the link — AI transcribes both sides in real-time, no bots needed
+            Create a room, share the link — AI transcribes both sides in real-time via 100ms
           </p>
         </div>
 
@@ -461,9 +653,11 @@ export default function LiveCall() {
               onClick={handleAbandonZombie}
               disabled={isAbandoningZombie}
             >
-              {isAbandoningZombie
-                ? <Loader2 className="w-3 h-3 animate-spin" />
-                : <RefreshCw className="w-3 h-3" />}
+              {isAbandoningZombie ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
               Clear & Retry
             </Button>
           </div>
@@ -491,8 +685,8 @@ export default function LiveCall() {
               </div>
               <h2 className="font-semibold text-base">Create a Meeting Room</h2>
               <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                Instant Daily.co room — one link, no login for your prospect.
-                AI transcribes directly from your browser.
+                Instant 100ms room — one link, no login for your prospect.
+                AI transcribes both sides directly from your browser.
               </p>
             </div>
 
@@ -501,9 +695,15 @@ export default function LiveCall() {
               disabled={isCreating || isStarting || (usage?.isAtLimit ?? false)}
               className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isCreating || isStarting
-                ? <><Loader2 className="w-4 h-4 animate-spin" />Creating room…</>
-                : <><Plus className="w-4 h-4" />Create Meeting Room</>}
+              {isCreating || isStarting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />Creating room…
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />Create Meeting Room
+                </>
+              )}
             </button>
 
             <div className="flex flex-wrap justify-center gap-2">
@@ -512,15 +712,19 @@ export default function LiveCall() {
                 { icon: Radio, text: "Real-time transcription" },
                 { icon: Sparkles, text: "AI coaching insights" },
               ].map(({ icon: Icon, text }) => (
-                <span key={text} className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1">
-                  <Icon className="w-3 h-3 text-primary" />{text}
+                <span
+                  key={text}
+                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1"
+                >
+                  <Icon className="w-3 h-3 text-primary" />
+                  {text}
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Loading state */}
+        {/* Loading */}
         {(isStarting || isCreating) && !roomInfo && (
           <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
@@ -528,7 +732,7 @@ export default function LiveCall() {
             </div>
             <div>
               <p className="font-semibold text-sm text-primary">Preparing Meeting Room</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Creating your Daily.co room…</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Creating your 100ms room…</p>
             </div>
           </div>
         )}
@@ -537,28 +741,50 @@ export default function LiveCall() {
         {roomInfo && !hostJoined && callId && (
           <ShareLinkPanel
             shareLink={roomInfo.share_link}
-            roomUrl={roomInfo.room_url}
             callId={callId}
             onJoinAsHost={handleJoinAsHost}
           />
         )}
 
-        {/* Active meeting card */}
+        {/* Active meeting controls */}
         {hostJoined && callId && (
-          <ActiveMeetingCard
+          <MeetingControls
             callId={callId}
+            shareLink={roomInfo?.share_link}
+            isStreaming={isStreaming}
+            chunksSent={chunksSent}
+            isAudioOn={isAudioOn}
+            isVideoOn={isVideoOn}
+            onToggleAudio={handleToggleAudio}
+            onToggleVideo={handleToggleVideo}
             onEnd={handleEndCall}
             isEnding={endCall.isPending}
-            shareLink={roomInfo?.share_link}
-            isStreaming={streamState.isStreaming}
-            chunksSent={streamState.chunksSent}
           />
         )}
 
-        {/* Daily embedded host frame */}
+        {/* Video grid */}
+        {hostJoined && peers.length > 0 && (
+          <div className={cn(
+            "grid gap-3",
+            peers.length === 1 ? "grid-cols-1" : "grid-cols-2",
+          )}>
+            {peers.map((peer) => (
+              <VideoTile
+                key={peer.id}
+                peerId={peer.id}
+                isLocal={peer.isLocal}
+                peerName={peer.name}
+                hmsActions={hmsActionsRef.current}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Peer count */}
         {hostJoined && (
-          <div className="glass rounded-2xl border border-primary/20 overflow-hidden">
-            <div ref={dailyHostRef} className="relative w-full" style={{ height: "560px" }} />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Users className="w-3.5 h-3.5" />
+            {peers.length} participant{peers.length !== 1 ? "s" : ""} in room
           </div>
         )}
 
@@ -566,12 +792,14 @@ export default function LiveCall() {
         {!hasActiveSession && !isStarting && !zombieDetected && (
           <div className="flex items-center justify-between pt-2 border-t border-border/30 text-xs">
             <span className="text-muted-foreground">Past recordings and AI summaries</span>
-            <Link to="/dashboard/calls" className="text-primary hover:underline flex items-center gap-1 font-medium">
+            <Link
+              to="/dashboard/calls"
+              className="text-primary hover:underline flex items-center gap-1 font-medium"
+            >
               All calls <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
         )}
-
       </div>
     </DashboardLayout>
   );
