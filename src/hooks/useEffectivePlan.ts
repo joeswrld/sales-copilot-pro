@@ -1,41 +1,26 @@
 /**
- * useEffectivePlan.ts — v2
- *
+ * useEffectivePlan.ts — v3
  * Resolves the effective plan for the authenticated user.
- * Now exposes both callsLimit (legacy) and minuteQuota (new billing unit).
- *
- * Resolution order:
- *  1. Team admin's active subscription plan_name  ← most authoritative for team members
- *  2. Team admin's profile.plan_type              ← fallback when webhook hasn't fired yet
- *  3. User's own active subscription plan_name
- *  4. User's own profile.plan_type
- *  5. "free" default
+ * Now uses new minute quotas: Free 30 | Starter 300 | Growth 1500 | Scale 5000
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  PLAN_CONFIG,
-  PLAN_ORDER,
-  getMinuteQuota,
-  normalizePlanKey,
-} from "@/config/plans";
+import { PLAN_CONFIG, PLAN_ORDER, getMinuteQuota, normalizePlanKey } from "@/config/plans";
 
 export { PLAN_CONFIG };
 
 export interface EffectivePlan {
-  planKey: string;
-  planName: string;
-  /** Legacy call count limit. -1 = unlimited. */
-  callsLimit: number;
-  /** Minute quota for new billing. -1 = unlimited. */
-  minuteQuota: number;
+  planKey:          string;
+  planName:         string;
+  callsLimit:       number;   // legacy compat — -1 = unlimited
+  minuteQuota:      number;   // -1 = unlimited
   teamMembersLimit: number;
-  isInherited: boolean;
-  adminUserId: string | null;
-  personalPlanKey: string;
-  workspaceId: string | null;
+  isInherited:      boolean;
+  adminUserId:      string | null;
+  personalPlanKey:  string;
+  workspaceId:      string | null;
 }
 
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
@@ -46,7 +31,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
     queryFn: async (): Promise<EffectivePlan> => {
       if (!user) throw new Error("Not authenticated");
 
-      // ── 1. User's own subscription ────────────────────────────────
+      // ── 1. Own subscription ───────────────────────────────────────────
       const { data: ownSub } = await supabase
         .from("subscriptions" as any)
         .select("status, plan_name")
@@ -58,17 +43,17 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
           ? normalizePlanKey((ownSub as any)?.plan_name)
           : null;
 
-      // ── 2. User's own profile plan ────────────────────────────────
+      // ── 2. Own profile plan ───────────────────────────────────────────
       const { data: ownProfile } = await supabase
         .from("profiles")
         .select("plan_type")
         .eq("id", user.id)
         .single();
 
-      const ownProfilePlan = ownProfile?.plan_type ?? "free";
+      const ownProfilePlan  = ownProfile?.plan_type ?? "free";
       const personalPlanKey = ownSubPlanKey ?? ownProfilePlan;
 
-      // ── 3. Team membership check ──────────────────────────────────
+      // ── 3. Team membership ────────────────────────────────────────────
       const { data: membership } = await supabase
         .from("team_members")
         .select("team_id")
@@ -94,7 +79,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
         };
       }
 
-      // ── 4. Resolve workspace + admin plan ─────────────────────────
+      // ── 4. Workspace admin plan ───────────────────────────────────────
       const { data: ws } = await supabase
         .from("workspaces" as any)
         .select("id, owner_id")
@@ -103,8 +88,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
 
       const workspaceId = (ws as any)?.id ?? null;
       const adminUserId = (ws as any)?.owner_id ?? null;
-
-      let adminPlanKey = "free";
+      let adminPlanKey  = "free";
 
       if (adminUserId) {
         const { data: adminSub } = await supabase
@@ -113,7 +97,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
           .eq("user_id", adminUserId)
           .maybeSingle();
 
-        const adminSubPlanKey =
+        const adminSubKey =
           (adminSub as any)?.status === "active"
             ? normalizePlanKey((adminSub as any)?.plan_name)
             : null;
@@ -124,13 +108,12 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
           .eq("id", adminUserId)
           .single();
 
-        adminPlanKey = adminSubPlanKey ?? adminProfile?.plan_type ?? "free";
+        adminPlanKey = adminSubKey ?? adminProfile?.plan_type ?? "free";
       }
 
-      // ── 5. Pick higher of admin plan vs personal plan ─────────────
+      // ── 5. Pick higher plan ───────────────────────────────────────────
       const adminIdx    = PLAN_ORDER.indexOf(adminPlanKey);
       const personalIdx = PLAN_ORDER.indexOf(personalPlanKey);
-
       const finalPlanKey = adminIdx > personalIdx ? adminPlanKey : personalPlanKey;
       const isInherited  = adminIdx > personalIdx;
 
@@ -149,8 +132,8 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       };
     },
     enabled:   !!user,
-    staleTime: 2 * 60 * 1000,
-    gcTime:    5 * 60 * 1000,
+    staleTime: 2 * 60_000,
+    gcTime:    5 * 60_000,
   });
 
   return { effectivePlan: query.data ?? null, isLoading: query.isLoading };
@@ -158,8 +141,18 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
 
 export function isPlanFeatureAvailable(
   planKey: string,
-  feature: "ai_coach" | "team_analytics" | "live_calls" | "coaching"
+  feature: "ai_coach" | "team_analytics" | "live_calls" | "coaching" | "deal_rooms" | "objection_detection"
 ): boolean {
-  if (planKey === "free") return false;
-  return true;
+  const ORDER = ["free", "starter", "growth", "scale"];
+  const idx   = ORDER.indexOf(planKey);
+
+  switch (feature) {
+    case "live_calls":           return idx >= 0; // all plans
+    case "ai_coach":             return idx >= 1; // starter+
+    case "coaching":             return idx >= 2; // growth+
+    case "team_analytics":       return idx >= 2; // growth+
+    case "deal_rooms":           return idx >= 2; // growth+
+    case "objection_detection":  return idx >= 2; // growth+
+    default:                     return false;
+  }
 }
