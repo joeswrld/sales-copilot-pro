@@ -9,7 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
-import { useMinuteUsage } from "@/hooks/useMinuteUsage";
+import { TeamUsageSidebarPill } from "@/components/TeamMinuteUsageComponents";
 import { formatMinutes } from "@/config/plans";
 import { cn } from "@/lib/utils";
 
@@ -129,7 +129,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </Link>
       </div>
       <div className="mx-4 mb-1 h-px bg-[rgba(255,255,255,0.06)]" />
-      <MinuteUsagePill />
+      <TeamUsageSidebarPill />
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         <SectionLabel>Main</SectionLabel>
         {primaryNav.map(item => <NavLink key={item.href} item={item} />)}
