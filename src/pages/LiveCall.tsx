@@ -21,9 +21,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
-import { useMeetingUsage } from "@/hooks/useMeetingUsage";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
+// ✅ CHANGED: Use useTeamMinuteUsage instead of useMeetingUsage
+import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
+// ✅ CHANGED: Import TeamUsageBanner
+import { TeamUsageBanner } from "@/components/TeamMinuteUsageComponents";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -433,7 +436,9 @@ export default function LiveCall() {
   const navigate = useNavigate();
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
-  const { usage } = useMeetingUsage();
+
+  // ✅ CHANGED: Use team-aware usage hook
+  const { usage: teamUsage } = useTeamMinuteUsage();
 
   const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
@@ -486,13 +491,18 @@ export default function LiveCall() {
     }
   }, [callId, endCall]);
 
+  // ✅ CHANGED: Check team/personal pool limit via teamUsage
   const checkLimit = useCallback(() => {
-    if (usage?.isAtLimit) {
-      toast.error("Monthly meeting limit reached. Upgrade to continue.");
+    if (teamUsage?.isAtLimit) {
+      toast.error(
+        teamUsage.isTeamPlan
+          ? "Team minute pool exhausted. Ask your admin to upgrade the plan."
+          : "Monthly minute limit reached. Upgrade to continue."
+      );
       return false;
     }
     return true;
-  }, [usage]);
+  }, [teamUsage]);
 
   // ── Load 100ms SDK ────────────────────────────────────────────────────────
   const loadHMSSDK = useCallback(async () => {
@@ -638,6 +648,9 @@ export default function LiveCall() {
           </p>
         </div>
 
+        {/* ✅ CHANGED: TeamUsageBanner replaces the old inline limit banner */}
+        <TeamUsageBanner onUpgrade={() => navigate("/dashboard/billing")} />
+
         {/* Zombie banner */}
         {zombieDetected && (
           <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-start gap-3">
@@ -663,19 +676,6 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* Limit banner */}
-        {usage && !usage.isUnlimited && usage.isAtLimit && (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex items-center gap-3">
-            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
-            <p className="text-sm font-medium text-destructive flex-1">
-              Monthly limit reached — {usage.used}/{usage.limit} meetings used
-            </p>
-            <Button size="sm" variant="destructive" onClick={() => navigate("/dashboard/billing")}>
-              Upgrade
-            </Button>
-          </div>
-        )}
-
         {/* Create meeting CTA */}
         {!hasActiveSession && !roomInfo && !zombieDetected && (
           <div className="glass rounded-2xl border border-border p-6 space-y-5">
@@ -692,7 +692,7 @@ export default function LiveCall() {
 
             <button
               onClick={handleCreateMeeting}
-              disabled={isCreating || isStarting || (usage?.isAtLimit ?? false)}
+              disabled={isCreating || isStarting || (teamUsage?.isAtLimit ?? false)}
               className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isCreating || isStarting ? (
