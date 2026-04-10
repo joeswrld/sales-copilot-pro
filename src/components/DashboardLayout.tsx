@@ -10,7 +10,6 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
 import { TeamUsageSidebarPill } from "@/components/TeamMinuteUsageComponents";
-import { formatMinutes } from "@/config/plans";
 import { cn } from "@/lib/utils";
 
 function FixsenseLogo({ size = 28 }: { size?: number }) {
@@ -46,52 +45,6 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.1em] uppercase text-[rgba(255,255,255,0.22)] select-none">{children}</p>;
 }
 
-function MinuteUsagePill() {
-  const navigate = useNavigate();
-  const { usage } = useMinuteUsage();
-  if (!usage) return null;
-
-  if (usage.isUnlimited) {
-    return (
-      <div className="mx-3 mt-3 mb-1 px-3 py-1.5 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
-        style={{ background: "rgba(26,240,196,0.08)", border: "1px solid rgba(26,240,196,0.15)" }}
-        onClick={() => navigate("/dashboard/billing")}>
-        <span className="text-[10px] font-semibold text-[#1af0c4] tracking-wide">∞ Unlimited minutes</span>
-      </div>
-    );
-  }
-
-  const hoursUsed  = (usage.minutesUsed / 60).toFixed(1);
-  const hoursLimit = (usage.minuteLimit / 60).toFixed(0);
-  const minsLeft   = Math.max(0, usage.minutesRemaining as number);
-  const hoursLeft  = (minsLeft / 60).toFixed(1);
-
-  return (
-    <div className="mx-3 mt-3 mb-1 px-3 py-2 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
-      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-      onClick={() => navigate("/dashboard/billing")}>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] text-[rgba(255,255,255,0.38)] font-medium tracking-wide uppercase flex items-center gap-1">
-          <Timer style={{ width: 9, height: 9 }} /> Minutes
-        </span>
-        <span className={cn("text-[11px] font-semibold tabular-nums",
-          usage.isAtLimit ? "text-red-400" : usage.isNearLimit ? "text-amber-400" : "text-[rgba(255,255,255,0.55)]")}>
-          {hoursUsed}h / {hoursLimit}h
-        </span>
-      </div>
-      <div className="h-[3px] rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-500",
-          usage.isAtLimit ? "bg-red-500" : usage.isNearLimit ? "bg-amber-400" : "bg-[#1af0c4]")}
-          style={{ width: `${Math.min(usage.pct, 100)}%` }} />
-      </div>
-      <p className={cn("text-[9.5px] mt-1",
-        usage.isAtLimit ? "text-red-400 font-medium" : usage.isNearLimit ? "text-amber-400" : "text-[rgba(255,255,255,0.22)]")}>
-        {usage.isAtLimit ? "Limit reached · Upgrade" : `${hoursLeft}h remaining`}
-      </p>
-    </div>
-  );
-}
-
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -105,12 +58,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const messagesUnread = totalUnread + unreadCount;
 
   const primaryNav: NavItem[] = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-  { label: "Live Call", icon: Radio, href: "/dashboard/live" },
-  { label: "Calls", icon: Phone, href: "/dashboard/calls" },
-  { label: "Deals", icon: Building2, href: "/dashboard/deals" },
-  { label: "AI Coach", icon: Bot, href: "/dashboard/coach" },
-];
+    { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+    { label: "Live Call", icon: Radio, href: "/dashboard/live" },
+    { label: "Calls", icon: Phone, href: "/dashboard/calls" },
+    { label: "Deals", icon: Building2, href: "/dashboard/deals" },
+    { label: "AI Coach", icon: Bot, href: "/dashboard/coach" },
+  ];
   const workspaceNav: NavItem[] = [
     { label: "Team",     icon: Users,         href: "/dashboard/team" },
     { label: "Messages", icon: MessageSquare, href: "/dashboard/messages", badge: messagesUnread > 0 ? messagesUnread : null },
@@ -129,7 +82,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </Link>
       </div>
       <div className="mx-4 mb-1 h-px bg-[rgba(255,255,255,0.06)]" />
+
+      {/* ✅ CHANGED: TeamUsageSidebarPill replaces the old MinuteUsagePill */}
       <TeamUsageSidebarPill />
+
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         <SectionLabel>Main</SectionLabel>
         {primaryNav.map(item => <NavLink key={item.href} item={item} />)}
