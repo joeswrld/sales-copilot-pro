@@ -1,21 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/use-toast";
 
 export interface TeamMember {
   id: string;
   team_id: string;
   user_id: string;
-  role: "admin" | "manager" | "member";
-  status: "active" | "invited";
+  role: string;
+  status: string;
   invited_email: string | null;
   created_at: string;
   profile?: {
     full_name: string | null;
     email: string | null;
     avatar_url: string | null;
-  };
+  } | null;
 }
 
 export interface Team {
@@ -30,270 +30,301 @@ export interface PendingInvitation {
   team_id: string;
   email: string;
   role: string;
+  invited_by: string;
+  status: string;
   created_at: string;
-  /** true when the email belongs to an existing Fixsense account */
   isExistingUser?: boolean;
+  teams?: { name: string } | null;
+}
+
+// ─── Helper: fetch the team_id for the current user ─────────────────────────
+// Uses .maybeSingle() so it returns null instead of throwing 406 when no row
+async function fetchMyTeamId(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("team_id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle(); // ← was .single() — that caused PGRST116 406 when user has no team
+
+  if (error) throw error;
+  return data?.team_id ?? null;
 }
 
 export function useTeam() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
+  const userId = user?.id;
 
-  // ── Helper: bust all plan-related caches instantly ─────────────────────────
-  const invalidatePlanCaches = () => {
-    queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
-    queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
-    queryClient.invalidateQueries({ queryKey: ["team-usage"] });
-  };
+  // ── Fetch current user's team_id ──────────────────────────────────────
+  const teamIdQuery = useQuery({
+    queryKey: ["my-team-id", userId],
+    queryFn: () => (userId ? fetchMyTeamId(userId) : null),
+    enabled: !!userId,
+    staleTime: 30_000,
+  });
 
-  // ── Team membership query ───────────────────────────────────────────────────
+  const teamId = teamIdQuery.data ?? null;
+
+  // ── Fetch team details ────────────────────────────────────────────────
   const teamQuery = useQuery({
-    queryKey: ["team", user?.id],
+    queryKey: ["team", teamId],
     queryFn: async () => {
-      const { data: membership } = await supabase
-        .from("team_members")
-        .select("team_id")
-        .eq("user_id", user!.id)
-        .eq("status", "active")
-        .limit(1)
-        .single();
-
-      if (!membership) return null;
-
-      const { data: team } = await supabase
+      if (!teamId) return null;
+      const { data, error } = await supabase
         .from("teams")
         .select("*")
-        .eq("id", membership.team_id)
-        .single();
-
-      return team as Team | null;
+        .eq("id", teamId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as Team | null;
     },
-    enabled: !!user,
+    enabled: !!teamId,
+    staleTime: 30_000,
   });
 
-  // ── Role query ──────────────────────────────────────────────────────────────
+  // ── Fetch current user's role ─────────────────────────────────────────
   const roleQuery = useQuery({
-    queryKey: ["team-role", user?.id, teamQuery.data?.id],
+    queryKey: ["my-team-role", teamId, userId],
     queryFn: async () => {
-      const { data } = await supabase
+      if (!teamId || !userId) return "member";
+      const { data, error } = await supabase
         .from("team_members")
         .select("role")
-        .eq("user_id", user!.id)
-        .eq("team_id", teamQuery.data!.id)
+        .eq("team_id", teamId)
+        .eq("user_id", userId)
         .eq("status", "active")
-        .single();
-      return (data?.role as "admin" | "manager" | "member") ?? "member";
-    },
-    enabled: !!user && !!teamQuery.data?.id,
-  });
-
-  // ── Members with profiles ───────────────────────────────────────────────────
-  const membersQuery = useQuery({
-    queryKey: ["team-members", teamQuery.data?.id],
-    queryFn: async () => {
-      const { data: members } = await supabase
-        .from("team_members")
-        .select("*")
-        .eq("team_id", teamQuery.data!.id)
-        .order("created_at", { ascending: true });
-
-      if (!members) return [];
-
-      const activeUserIds = members.filter(m => m.user_id).map(m => m.user_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, avatar_url")
-        .in("id", activeUserIds);
-
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
-
-      return members.map(m => ({
-        ...m,
-        role:   m.role   as "admin" | "manager" | "member",
-        status: m.status as "active" | "invited",
-        profile: profileMap.get(m.user_id) ?? null,
-      })) as TeamMember[];
-    },
-    enabled: !!teamQuery.data?.id,
-  });
-
-  // ── Create team ─────────────────────────────────────────────────────────────
-  const createTeam = useMutation({
-    mutationFn: async (name: string) => {
-      const { data: team, error } = await (supabase as any).rpc(
-        "create_team_with_owner",
-        { team_name: name }
-      );
+        .maybeSingle();
       if (error) throw error;
-      return team as Team;
+      return data?.role ?? "member";
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["team"] });
-      queryClient.invalidateQueries({ queryKey: ["team-role"] });
-      queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      invalidatePlanCaches();
-      toast({ title: "Team created successfully" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to create team", description: err.message, variant: "destructive" });
-    },
+    enabled: !!teamId && !!userId,
+    staleTime: 30_000,
   });
 
-  // ── Pending invitations ─────────────────────────────────────────────────────
-  const invitationsQuery = useQuery({
-    queryKey: ["team-invitations", teamQuery.data?.id],
+  // ── Fetch team members ────────────────────────────────────────────────
+  const membersQuery = useQuery({
+    queryKey: ["team-members", teamId],
     queryFn: async () => {
-      const { data } = await supabase
+      if (!teamId) return [];
+      const { data, error } = await supabase
+        .from("team_members")
+        .select(`
+          id, team_id, user_id, role, status, invited_email, created_at,
+          profile:profiles(full_name, email, avatar_url)
+        `)
+        .eq("team_id", teamId)
+        .eq("status", "active")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as TeamMember[];
+    },
+    enabled: !!teamId,
+    staleTime: 30_000,
+  });
+
+  // ── Fetch pending invitations (admin only) ────────────────────────────
+  const invitationsQuery = useQuery({
+    queryKey: ["team-invitations", teamId],
+    queryFn: async () => {
+      if (!teamId) return [];
+      const { data, error } = await supabase
         .from("team_invitations")
         .select("*")
-        .eq("team_id", teamQuery.data!.id)
+        .eq("team_id", teamId)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
-
-      if (!data?.length) return [] as PendingInvitation[];
-
-      // Enrich with whether the email belongs to an existing user
-      const emails = data.map(i => i.email.toLowerCase());
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("email")
-        .in("email", emails);
-
-      const existingEmails = new Set(profiles?.map(p => p.email?.toLowerCase()) ?? []);
-
-      return data.map(inv => ({
-        ...inv,
-        isExistingUser: existingEmails.has(inv.email.toLowerCase()),
-      })) as PendingInvitation[];
+      if (error) {
+        // Non-admins will get RLS-blocked — treat as empty
+        console.warn("team invitations fetch:", error.message);
+        return [];
+      }
+      return (data ?? []) as PendingInvitation[];
     },
-    enabled: !!teamQuery.data?.id,
+    enabled: !!teamId,
+    staleTime: 15_000,
   });
 
-  // ── My pending invitations (invitations sent TO the current user) ───────────
-  const myPendingInvitationsQuery = useQuery({
-    queryKey: ["my-team-invitations", user?.id],
+  // ── Fetch MY pending invitations (invitations sent to my email) ───────
+  const myInvitationsQuery = useQuery({
+    queryKey: ["my-pending-invitations", userId],
     queryFn: async () => {
+      if (!userId) return [];
+      // Get the current user's email from profiles
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
-        .eq("id", user!.id)
-        .single();
+        .eq("id", userId)
+        .maybeSingle();
 
       if (!profile?.email) return [];
 
-      const { data: invitations } = await supabase
+      const { data, error } = await supabase
         .from("team_invitations")
         .select("*, teams(name)")
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .ilike("email", profile.email);
 
-      // Filter to those matching this user's email (RLS already filters server-side)
-      return (invitations ?? []).filter(
-        inv => inv.email?.toLowerCase() === profile.email?.toLowerCase()
-      ) as Array<{
-        id: string;
-        team_id: string;
-        email: string;
-        role: string;
-        created_at: string;
-        teams: { name: string } | null;
-      }>;
+      if (error) {
+        console.warn("my invitations fetch:", error.message);
+        return [];
+      }
+      return (data ?? []) as PendingInvitation[];
     },
-    enabled: !!user,
+    enabled: !!userId,
+    staleTime: 15_000,
   });
 
-  // ── Invite member ───────────────────────────────────────────────────────────
-  // Always creates a pending invitation (even for existing users).
-  // Existing users see a notification and can accept/decline from the UI.
-  // New users receive an email invite and are auto-added when they sign up.
-  const inviteMember = useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      const teamId = teamQuery.data!.id;
-      const normalizedEmail = email.trim().toLowerCase();
-
-      // Prevent double-adding an already active member
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id")
-        .ilike("email", normalizedEmail)
-        .maybeSingle();
-
-      if (profile) {
-        const { data: existingMember } = await supabase
-          .from("team_members")
-          .select("id")
-          .eq("team_id", teamId)
-          .eq("user_id", profile.id)
-          .eq("status", "active")
-          .maybeSingle();
-
-        if (existingMember) throw new Error("This user is already an active team member.");
-      }
-
-      // Check for duplicate pending invitation
-      const { data: existingInvite } = await supabase
-        .from("team_invitations")
-        .select("id, status")
+  // ── Admin plan key (for limits) ───────────────────────────────────────
+  const adminPlanQuery = useQuery({
+    queryKey: ["team-admin-plan", teamId],
+    queryFn: async () => {
+      if (!teamId) return "free";
+      // Find the admin of this team
+      const { data: adminMember } = await supabase
+        .from("team_members")
+        .select("user_id")
         .eq("team_id", teamId)
-        .ilike("email", normalizedEmail)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .limit(1)
         .maybeSingle();
 
-      if (existingInvite?.status === "pending") {
-        throw new Error("A pending invitation already exists for this email.");
-      }
+      if (!adminMember?.user_id) return "free";
 
-      // Clean up any stale accepted/declined rows so the unique index doesn't block re-invites
-      if (existingInvite) {
-        await supabase
-          .from("team_invitations")
-          .delete()
-          .eq("id", existingInvite.id);
-      }
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("plan_name, status")
+        .eq("user_id", adminMember.user_id)
+        .eq("status", "active")
+        .maybeSingle();
 
-      // Create the invitation (DB trigger fires notification to existing users automatically)
-      const { error: inviteError } = await supabase
-        .from("team_invitations")
-        .insert({
-          team_id:    teamId,
-          email:      normalizedEmail,
-          role,
-          invited_by: user!.id,
-        });
-
-      if (inviteError) throw inviteError;
-
-      // For non-existing users: also send an email invite via edge function
-      if (!profile) {
-        const inviterName = user?.user_metadata?.full_name || user?.email || "A team admin";
-        supabase.functions.invoke("send-invite-email", {
-          body: {
-            email:       normalizedEmail,
-            teamName:    teamQuery.data!.name,
-            inviterName,
-            role,
-            signupUrl:   `${window.location.origin}/login`,
-          },
-        }).catch(err => console.warn("Invite email failed:", err));
-      }
-
-      return { isExistingUser: !!profile };
+      if (!sub?.plan_name) return "free";
+      const name = sub.plan_name.toLowerCase();
+      if (name.includes("scale")) return "scale";
+      if (name.includes("growth")) return "growth";
+      if (name.includes("starter")) return "starter";
+      return "free";
     },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
-      toast({
-        title: result.isExistingUser ? "Invitation sent" : "Invitation sent",
-        description: result.isExistingUser
-          ? "They'll see a notification and can accept from their Team page."
-          : "They'll be added automatically after they sign up with this email.",
+    enabled: !!teamId,
+    staleTime: 60_000,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-team-id", userId] });
+    queryClient.invalidateQueries({ queryKey: ["team", teamId] });
+    queryClient.invalidateQueries({ queryKey: ["team-members", teamId] });
+    queryClient.invalidateQueries({ queryKey: ["team-invitations", teamId] });
+    queryClient.invalidateQueries({ queryKey: ["my-pending-invitations", userId] });
+  };
+
+  // ── CREATE TEAM ───────────────────────────────────────────────────────
+  const createTeam = useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase.rpc("create_team_with_owner", {
+        team_name: name || "My Team",
       });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Team created!", description: "Your team is ready." });
+      invalidate();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to invite member", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to create team",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
-  // ── Cancel invitation ───────────────────────────────────────────────────────
+  // ── INVITE MEMBER ─────────────────────────────────────────────────────
+  const inviteMember = useMutation({
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      if (!teamId) throw new Error("No team");
+
+      // Check if user already has a Fixsense account
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isExistingUser = !!existingProfile;
+
+      // Insert invitation record
+      const { error: invErr } = await supabase
+        .from("team_invitations")
+        .insert({ team_id: teamId, email, role, invited_by: userId! })
+        .select()
+        .single();
+
+      if (invErr) {
+        if (invErr.code === "23505") {
+          throw new Error("This email has already been invited.");
+        }
+        throw invErr;
+      }
+
+      if (isExistingUser) {
+        // Existing user: add them directly as invited member
+        const { error: memErr } = await supabase
+          .from("team_members")
+          .insert({
+            team_id: teamId,
+            user_id: existingProfile.id,
+            role,
+            status: "invited",
+            invited_email: email,
+          })
+          .select()
+          .maybeSingle();
+
+        if (memErr && memErr.code !== "23505") throw memErr;
+
+        // Send in-app notification
+        await supabase.from("notifications").insert({
+          user_id: existingProfile.id,
+          type: "system",
+          message: `You've been invited to join a team as ${role}. Go to Team page to accept.`,
+        });
+      } else {
+        // New user: send invite email via edge function
+        await supabase.functions.invoke("send-invite-email", {
+          body: {
+            email,
+            teamName: teamQuery.data?.name ?? "a team",
+            inviterName: user?.user_metadata?.full_name ?? user?.email,
+            role,
+            signupUrl: `${window.location.origin}/login`,
+          },
+        });
+      }
+
+      return { isExistingUser };
+    },
+    onSuccess: ({ isExistingUser }) => {
+      toast({
+        title: "Invitation sent!",
+        description: isExistingUser
+          ? "The user has been notified in-app."
+          : "An email invite has been sent.",
+      });
+      invalidate();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to invite",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ── CANCEL INVITATION ─────────────────────────────────────────────────
   const cancelInvitation = useMutation({
     mutationFn: async (invitationId: string) => {
       const { error } = await supabase
@@ -303,55 +334,27 @@ export function useTeam() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["team-invitations"] });
       toast({ title: "Invitation cancelled" });
+      invalidate();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to cancel invitation", description: err.message, variant: "destructive" });
-    },
-  });
-
-  // ── Accept invitation (current user accepts an invite sent to them) ─────────
-  const acceptInvitation = useMutation({
-    mutationFn: async (teamId: string) => {
-      const { error } = await (supabase as any).rpc("accept_team_invitation", {
-        p_team_id: teamId,
+      toast({
+        title: "Failed to cancel invitation",
+        description: err.message,
+        variant: "destructive",
       });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["team"] });
-      queryClient.invalidateQueries({ queryKey: ["team-role"] });
-      queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      queryClient.invalidateQueries({ queryKey: ["my-team-invitations"] });
-      invalidatePlanCaches();
-      toast({ title: "You've joined the team!" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to accept invitation", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── Decline invitation ──────────────────────────────────────────────────────
-  const declineInvitation = useMutation({
-    mutationFn: async (teamId: string) => {
-      const { error } = await (supabase as any).rpc("decline_team_invitation", {
-        p_team_id: teamId,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["my-team-invitations"] });
-      toast({ title: "Invitation declined" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to decline invitation", description: err.message, variant: "destructive" });
-    },
-  });
-
-  // ── Update role ─────────────────────────────────────────────────────────────
+  // ── UPDATE ROLE ───────────────────────────────────────────────────────
   const updateRole = useMutation({
-    mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
+    mutationFn: async ({
+      memberId,
+      role,
+    }: {
+      memberId: string;
+      role: string;
+    }) => {
       const { error } = await supabase
         .from("team_members")
         .update({ role })
@@ -359,16 +362,19 @@ export function useTeam() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      invalidatePlanCaches();
       toast({ title: "Role updated" });
+      invalidate();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to update role",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
-  // ── Remove member ───────────────────────────────────────────────────────────
+  // ── REMOVE MEMBER ─────────────────────────────────────────────────────
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
       const { error } = await supabase
@@ -378,58 +384,113 @@ export function useTeam() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["team-members"] });
-      invalidatePlanCaches();
       toast({ title: "Member removed" });
+      invalidate();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to remove member", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to remove member",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
-  // ── Admin plan key (for UI components that need it) ─────────────────────────
-  const adminPlanQuery = useQuery({
-    queryKey: ["team-admin-plan", teamQuery.data?.id],
-    queryFn: async () => {
-      const teamId = teamQuery.data!.id;
-      const { data: adminMember } = await supabase
+  // ── ACCEPT INVITATION ─────────────────────────────────────────────────
+  const acceptInvitation = useMutation({
+    mutationFn: async (inviteTeamId: string) => {
+      if (!userId) throw new Error("Not authenticated");
+
+      // Update invitation status
+      await supabase
+        .from("team_invitations")
+        .update({ status: "accepted" })
+        .eq("team_id", inviteTeamId)
+        .eq("status", "pending")
+        .ilike("email", (await supabase.from("profiles").select("email").eq("id", userId).maybeSingle()).data?.email ?? "");
+
+      // Upsert into team_members as active
+      const { error } = await supabase
         .from("team_members")
-        .select("user_id")
-        .eq("team_id", teamId)
-        .eq("role", "admin")
-        .eq("status", "active")
-        .limit(1)
-        .single();
+        .upsert(
+          { team_id: inviteTeamId, user_id: userId, role: "member", status: "active" },
+          { onConflict: "team_id,user_id" }
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Joined team!", description: "Welcome to the team." });
+      invalidate();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to accept invitation",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
 
-      if (!adminMember) return "free";
-
+  // ── DECLINE INVITATION ────────────────────────────────────────────────
+  const declineInvitation = useMutation({
+    mutationFn: async (inviteTeamId: string) => {
+      if (!userId) throw new Error("Not authenticated");
       const { data: profile } = await supabase
         .from("profiles")
-        .select("plan_type")
-        .eq("id", adminMember.user_id)
-        .single();
+        .select("email")
+        .eq("id", userId)
+        .maybeSingle();
 
-      return profile?.plan_type || "free";
+      await supabase
+        .from("team_invitations")
+        .update({ status: "declined" })
+        .eq("team_id", inviteTeamId)
+        .ilike("email", profile?.email ?? "");
+
+      // Also remove invited team_member row if it exists
+      await supabase
+        .from("team_members")
+        .delete()
+        .eq("team_id", inviteTeamId)
+        .eq("user_id", userId)
+        .eq("status", "invited");
     },
-    enabled: !!teamQuery.data?.id,
-    staleTime: 30_000,
+    onSuccess: () => {
+      toast({ title: "Invitation declined" });
+      invalidate();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to decline invitation",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 
   return {
-    team:                    teamQuery.data,
-    teamLoading:             teamQuery.isLoading,
-    role:                    roleQuery.data ?? "member",
-    members:                 membersQuery.data ?? [],
-    membersLoading:          membersQuery.isLoading,
-    pendingInvitations:      invitationsQuery.data ?? [],
-    myPendingInvitations:    myPendingInvitationsQuery.data ?? [],
-    adminPlanKey:            adminPlanQuery.data ?? "free",
+    // Data
+    team: teamQuery.data ?? null,
+    teamId,
+    role: (roleQuery.data ?? "member") as string,
+    members: membersQuery.data ?? [],
+    pendingInvitations: invitationsQuery.data ?? [],
+    myPendingInvitations: myInvitationsQuery.data ?? [],
+    adminPlanKey: adminPlanQuery.data ?? "free",
+
+    // Loading states
+    teamLoading:
+      teamIdQuery.isLoading ||
+      (!!teamId && teamQuery.isLoading),
+    membersLoading: membersQuery.isLoading,
+
+    // Mutations
     createTeam,
     inviteMember,
     cancelInvitation,
-    acceptInvitation,
-    declineInvitation,
     updateRole,
     removeMember,
+    acceptInvitation,
+    declineInvitation,
   };
 }
