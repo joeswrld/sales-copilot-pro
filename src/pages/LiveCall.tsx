@@ -16,26 +16,24 @@ import {
   Loader2, ExternalLink, CheckCircle2, ChevronRight,
   AlertTriangle, Shield, StopCircle, VideoIcon, Copy,
   Check, Plus, Sparkles, Radio, Eye, RefreshCw, Link2, Mic,
-  MicOff, Video, VideoOff, PhoneOff, Users,
+  MicOff, Video, VideoOff, PhoneOff, Users, Trash2, WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
-// ✅ CHANGED: Use useTeamMinuteUsage instead of useMeetingUsage
 import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
-// ✅ CHANGED: Import TeamUsageBanner
 import { TeamUsageBanner } from "@/components/TeamMinuteUsageComponents";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// ─── 100ms types ───────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────
 declare global {
-  interface Window {
-    HMS: any;
-  }
+  interface Window { HMS: any; }
 }
+
+type ClearState = "idle" | "clearing" | "done" | "failed";
 
 // ─── Audio chunk processor ─────────────────────────────────────────────────────
 class AudioChunkProcessor {
@@ -52,8 +50,7 @@ class AudioChunkProcessor {
 
   start() {
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
+      ? "audio/webm;codecs=opus" : "audio/webm";
     this.mediaRecorder = new MediaRecorder(this.stream, { mimeType });
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.chunks.push(e.data);
@@ -84,10 +81,7 @@ class AudioChunkProcessor {
 // ─── Hook: HMS room management ─────────────────────────────────────────────────
 function useHMSRoom() {
   const [roomInfo, setRoomInfo] = useState<{
-    room_id: string;
-    room_name: string;
-    share_link: string;
-    mgmt_token: string;
+    room_id: string; room_name: string; share_link: string; mgmt_token: string;
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -98,11 +92,7 @@ function useHMSRoom() {
       if (!session?.access_token) throw new Error("Not authenticated");
       const { data, error } = await supabase.functions.invoke("create-hms-room", {
         headers: { Authorization: `Bearer ${session.access_token}` },
-        body: {
-          call_id: callId,
-          title,
-          app_origin: window.location.origin,
-        },
+        body: { call_id: callId, title, app_origin: window.location.origin },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -116,55 +106,39 @@ function useHMSRoom() {
   return { roomInfo, isCreating, createRoom, setRoomInfo };
 }
 
-// ─── Hook: audio streaming to transcribe-stream ────────────────────────────────
+// ─── Hook: audio streaming ──────────────────────────────────────────────────────
 function useHMSAudioStreaming(callId: string | null) {
   const processorsRef = useRef<Map<string, AudioChunkProcessor>>(new Map());
   const [chunksSent, setChunksSent] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const sendChunk = useCallback(
-    async (blob: Blob, index: number, peerId: string, isLocal: boolean) => {
-      if (!callId || blob.size < 100) return;
-      try {
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((res, rej) => {
-          reader.onloadend = () => res((reader.result as string).split(",")[1] ?? "");
-          reader.onerror = rej;
-          reader.readAsDataURL(blob);
-        });
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) return;
-        await supabase.functions.invoke("transcribe-stream", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: {
-            call_id: callId,
-            audio_base64: base64,
-            chunk_index: index,
-            speaker_id: peerId,
-            speaker_label: isLocal ? "You" : "Prospect",
-          },
-        });
-        setChunksSent((n) => n + 1);
-      } catch (e) {
-        console.warn("sendChunk error:", e);
-      }
-    },
-    [callId],
-  );
+  const sendChunk = useCallback(async (blob: Blob, index: number, peerId: string, isLocal: boolean) => {
+    if (!callId || blob.size < 100) return;
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((res, rej) => {
+        reader.onloadend = () => res((reader.result as string).split(",")[1] ?? "");
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      await supabase.functions.invoke("transcribe-stream", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: { call_id: callId, audio_base64: base64, chunk_index: index, speaker_id: peerId, speaker_label: isLocal ? "You" : "Prospect" },
+      });
+      setChunksSent((n) => n + 1);
+    } catch (e) { console.warn("sendChunk error:", e); }
+  }, [callId]);
 
-  const startPeerAudio = useCallback(
-    (peerId: string, track: MediaStreamTrack, isLocal: boolean) => {
-      if (processorsRef.current.has(peerId)) return;
-      const stream = new MediaStream([track]);
-      const proc = new AudioChunkProcessor(stream, (blob, idx) =>
-        sendChunk(blob, idx, peerId, isLocal),
-      );
-      proc.start();
-      processorsRef.current.set(peerId, proc);
-      setIsStreaming(true);
-    },
-    [sendChunk],
-  );
+  const startPeerAudio = useCallback((peerId: string, track: MediaStreamTrack, isLocal: boolean) => {
+    if (processorsRef.current.has(peerId)) return;
+    const stream = new MediaStream([track]);
+    const proc = new AudioChunkProcessor(stream, (blob, idx) => sendChunk(blob, idx, peerId, isLocal));
+    proc.start();
+    processorsRef.current.set(peerId, proc);
+    setIsStreaming(true);
+  }, [sendChunk]);
 
   const stopPeerAudio = useCallback((peerId: string) => {
     processorsRef.current.get(peerId)?.stop();
@@ -181,15 +155,197 @@ function useHMSAudioStreaming(callId: string | null) {
   return { chunksSent, isStreaming, startPeerAudio, stopPeerAudio, stopAll };
 }
 
+// ─── Zombie banner with robust clear ──────────────────────────────────────────
+function ZombieBanner({
+  callId,
+  onCleared,
+}: {
+  callId: string | null | undefined;
+  onCleared: () => void;
+}) {
+  const [clearState, setClearState] = useState<ClearState>("idle");
+  const [attempt, setAttempt] = useState(0);
+
+  const doClear = useCallback(async () => {
+    setClearState("clearing");
+    let success = false;
+
+    // ── Strategy 1: force-clear-session edge function ──────────────────
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
+      const { data, error } = await supabase.functions.invoke("force-clear-session", {
+        headers,
+        body: { call_id: callId ?? null, clear_all: true },
+      });
+      if (!error && data?.success) {
+        success = true;
+        console.log("[ZombieBanner] Cleared via force-clear-session, count:", data.cleared);
+      }
+    } catch (e) {
+      console.warn("[ZombieBanner] force-clear-session threw:", e);
+    }
+
+    // ── Strategy 2: direct Supabase update (if edge fn failed) ─────────
+    if (!success) {
+      try {
+        const { error } = await supabase
+          .from("calls")
+          .update({
+            status: "completed",
+            end_time: new Date().toISOString(),
+            duration_minutes: 0,
+          })
+          .eq("status", "live");
+
+        if (!error) {
+          success = true;
+          console.log("[ZombieBanner] Cleared via direct update");
+        }
+      } catch (e) {
+        console.warn("[ZombieBanner] direct update threw:", e);
+      }
+    }
+
+    // ── Strategy 3: clear specific call ID if known ────────────────────
+    if (!success && callId) {
+      try {
+        const { error } = await supabase
+          .from("calls")
+          .update({
+            status: "completed",
+            end_time: new Date().toISOString(),
+            duration_minutes: 0,
+          })
+          .eq("id", callId);
+
+        if (!error) {
+          success = true;
+          console.log("[ZombieBanner] Cleared specific callId:", callId);
+        }
+      } catch (e) {
+        console.warn("[ZombieBanner] specific call update threw:", e);
+      }
+    }
+
+    if (success) {
+      setClearState("done");
+      toast.success("Previous session cleared — you can start fresh!");
+      // Small delay so the user sees the success state, then notify parent
+      setTimeout(() => onCleared(), 600);
+    } else {
+      setClearState("failed");
+      setAttempt((a) => a + 1);
+      toast.error("Could not clear session automatically. Try the manual clear below.");
+    }
+  }, [callId, onCleared]);
+
+  // Auto-retry once after a short delay if first attempt failed
+  useEffect(() => {
+    if (clearState === "failed" && attempt === 1) {
+      const t = setTimeout(() => doClear(), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [clearState, attempt, doClear]);
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-4 transition-all duration-300",
+        clearState === "done"
+          ? "border-green-500/30 bg-green-500/5"
+          : clearState === "failed"
+          ? "border-red-500/30 bg-red-500/5"
+          : "border-yellow-500/30 bg-yellow-500/5"
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {/* Icon */}
+        <div className="shrink-0 mt-0.5">
+          {clearState === "clearing" && <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />}
+          {clearState === "done"     && <CheckCircle2 className="w-4 h-4 text-green-400" />}
+          {clearState === "failed"   && <WifiOff className="w-4 h-4 text-red-400" />}
+          {clearState === "idle"     && <AlertTriangle className="w-4 h-4 text-yellow-400" />}
+        </div>
+
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <p className={cn(
+            "text-sm font-semibold",
+            clearState === "done"   ? "text-green-400"
+            : clearState === "failed" ? "text-red-400"
+            : "text-yellow-400"
+          )}>
+            {clearState === "idle"     && "Previous session didn't complete"}
+            {clearState === "clearing" && "Clearing previous session…"}
+            {clearState === "done"     && "Session cleared — ready to start!"}
+            {clearState === "failed"   && "Auto-clear failed — try manual clear"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {clearState === "idle"     && "Clear it to start a new meeting."}
+            {clearState === "clearing" && "Please wait a moment…"}
+            {clearState === "done"     && "Starting fresh now."}
+            {clearState === "failed"   && "Your previous call may still be marked live. Use manual clear below."}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {(clearState === "idle" || clearState === "failed") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn(
+                "gap-1.5 h-8 text-xs",
+                clearState === "failed"
+                  ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
+                  : "border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+              )}
+              onClick={doClear}
+              disabled={clearState === "clearing"}
+            >
+              <RefreshCw className="w-3 h-3" />
+              {clearState === "failed" ? "Retry Clear" : "Clear & Retry"}
+            </Button>
+          )}
+
+          {clearState === "failed" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+              onClick={() => {
+                // Force-navigate away and back to reset all state
+                toast.info("Reloading page for a fresh start…");
+                setTimeout(() => window.location.reload(), 500);
+              }}
+            >
+              <Trash2 className="w-3 h-3" />
+              Force Reload
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Manual SQL fallback instructions — only shown after multiple failures */}
+      {clearState === "failed" && attempt >= 2 && (
+        <div className="mt-3 pt-3 border-t border-red-500/20">
+          <p className="text-xs text-red-300/70">
+            If the problem persists, reload the page — your previous session will be auto-cleaned within a few minutes.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Share link panel ──────────────────────────────────────────────────────────
 function ShareLinkPanel({
-  shareLink,
-  callId,
-  onJoinAsHost,
+  shareLink, callId, onJoinAsHost,
 }: {
-  shareLink: string;
-  callId: string;
-  onJoinAsHost: () => void;
+  shareLink: string; callId: string; onJoinAsHost: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
@@ -213,9 +369,7 @@ function ShareLinkPanel({
         </div>
         <div>
           <p className="font-semibold text-sm text-primary">Meeting room ready!</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Share this link with your prospect — no account needed.
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Share this link with your prospect — no account needed.</p>
         </div>
       </div>
 
@@ -238,29 +392,20 @@ function ShareLinkPanel({
 
       <div className="flex items-center gap-2 flex-wrap">
         <Button size="sm" onClick={onJoinAsHost} className="gap-1.5">
-          <VideoIcon className="w-3.5 h-3.5" />
-          Join as Host
+          <VideoIcon className="w-3.5 h-3.5" />Join as Host
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5"
-          onClick={() => navigate(`/dashboard/live/${callId}`)}
-        >
-          <Eye className="w-3.5 h-3.5" />
-          Live Insights
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate(`/dashboard/live/${callId}`)}>
+          <Eye className="w-3.5 h-3.5" />Live Insights
         </Button>
         <a href={shareLink} target="_blank" rel="noopener noreferrer">
           <Button size="sm" variant="outline" className="gap-1.5">
-            <ExternalLink className="w-3.5 h-3.5" />
-            Open in Tab
+            <ExternalLink className="w-3.5 h-3.5" />Open in Tab
           </Button>
         </a>
       </div>
 
       <p className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
-        <Shield className="w-3 h-3" />
-        Powered by 100ms · AI transcription active when you join
+        <Shield className="w-3 h-3" />Powered by 100ms · AI transcription active when you join
       </p>
     </div>
   );
@@ -268,27 +413,13 @@ function ShareLinkPanel({
 
 // ─── In-meeting controls ───────────────────────────────────────────────────────
 function MeetingControls({
-  callId,
-  shareLink,
-  isStreaming,
-  chunksSent,
-  isAudioOn,
-  isVideoOn,
-  onToggleAudio,
-  onToggleVideo,
-  onEnd,
-  isEnding,
+  callId, shareLink, isStreaming, chunksSent,
+  isAudioOn, isVideoOn, onToggleAudio, onToggleVideo, onEnd, isEnding,
 }: {
-  callId: string;
-  shareLink?: string;
-  isStreaming: boolean;
-  chunksSent: number;
-  isAudioOn: boolean;
-  isVideoOn: boolean;
-  onToggleAudio: () => void;
-  onToggleVideo: () => void;
-  onEnd: () => void;
-  isEnding: boolean;
+  callId: string; shareLink?: string; isStreaming: boolean; chunksSent: number;
+  isAudioOn: boolean; isVideoOn: boolean;
+  onToggleAudio: () => void; onToggleVideo: () => void;
+  onEnd: () => void; isEnding: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
@@ -296,8 +427,7 @@ function MeetingControls({
   const copyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
     });
   };
 
@@ -309,69 +439,47 @@ function MeetingControls({
           <div>
             <p className="font-semibold text-sm text-green-400">Meeting in progress</p>
             <p className="text-xs text-muted-foreground">
-              {isStreaming
-                ? `AI transcribing · ${chunksSent} chunks`
-                : "Waiting for audio…"}
+              {isStreaming ? `AI transcribing · ${chunksSent} chunks` : "Waiting for audio…"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {shareLink && (
-            <button
-              onClick={copyLink}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg px-2.5 py-1.5 transition-colors"
-            >
+            <button onClick={copyLink}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg px-2.5 py-1.5 transition-colors">
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               {copied ? "Copied!" : "Copy invite"}
             </button>
           )}
-          <Link
-            to={`/dashboard/live/${callId}`}
-            className="flex items-center gap-1.5 text-xs text-primary border border-primary/30 bg-primary/10 rounded-lg px-2.5 py-1.5 hover:bg-primary/20 transition-colors"
-          >
-            <Eye className="w-3 h-3" />
-            Transcript
+          <Link to={`/dashboard/live/${callId}`}
+            className="flex items-center gap-1.5 text-xs text-primary border border-primary/30 bg-primary/10 rounded-lg px-2.5 py-1.5 hover:bg-primary/20 transition-colors">
+            <Eye className="w-3 h-3" />Transcript
           </Link>
         </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={onToggleAudio}
+        <button onClick={onToggleAudio}
           className={cn(
             "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors",
-            isAudioOn
-              ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
+            isAudioOn ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
               : "bg-red-500/15 border-red-500/30 text-red-400",
-          )}
-        >
+          )}>
           {isAudioOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
           {isAudioOn ? "Mute" : "Unmute"}
         </button>
-        <button
-          onClick={onToggleVideo}
+        <button onClick={onToggleVideo}
           className={cn(
             "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors",
-            isVideoOn
-              ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
+            isVideoOn ? "bg-secondary/60 border-border text-foreground hover:bg-secondary"
               : "bg-red-500/15 border-red-500/30 text-red-400",
-          )}
-        >
+          )}>
           {isVideoOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
           {isVideoOn ? "Stop Video" : "Start Video"}
         </button>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="h-8 px-3 text-xs gap-1.5 ml-auto"
-          onClick={onEnd}
-          disabled={isEnding}
-        >
-          {isEnding ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <PhoneOff className="w-3 h-3" />
-          )}
+        <Button variant="destructive" size="sm" className="h-8 px-3 text-xs gap-1.5 ml-auto"
+          onClick={onEnd} disabled={isEnding}>
+          {isEnding ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneOff className="w-3 h-3" />}
           End Call
         </Button>
       </div>
@@ -394,36 +502,20 @@ function MeetingControls({
 }
 
 // ─── Video tile ────────────────────────────────────────────────────────────────
-function VideoTile({
-  peerId,
-  isLocal,
-  peerName,
-  hmsActions,
-}: {
-  peerId: string;
-  isLocal: boolean;
-  peerName: string;
-  hmsActions: any;
+function VideoTile({ peerId, isLocal, peerName, hmsActions }: {
+  peerId: string; isLocal: boolean; peerName: string; hmsActions: any;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!hmsActions || !videoRef.current) return;
     hmsActions.attachVideo(peerId, videoRef.current).catch(() => {});
-    return () => {
-      hmsActions.detachVideo(peerId, videoRef.current!).catch(() => {});
-    };
+    return () => { hmsActions.detachVideo(peerId, videoRef.current!).catch(() => {}); };
   }, [peerId, hmsActions]);
 
   return (
     <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-video">
-      <video
-        ref={videoRef}
-        autoPlay
-        muted={isLocal}
-        playsInline
-        className="w-full h-full object-cover"
-      />
+      <video ref={videoRef} autoPlay muted={isLocal} playsInline className="w-full h-full object-cover" />
       <div className="absolute bottom-2 left-2 text-[11px] font-medium bg-black/50 text-white px-2 py-0.5 rounded-full">
         {isLocal ? "You" : peerName || "Prospect"}
       </div>
@@ -436,62 +528,48 @@ export default function LiveCall() {
   const navigate = useNavigate();
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
-
-  // ✅ CHANGED: Use team-aware usage hook
   const { usage: teamUsage } = useTeamMinuteUsage();
 
   const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
-    onCallEnded: () => setStatus("available"),
+    onCallEnded:   () => setStatus("available"),
   });
 
   const { roomInfo, isCreating, createRoom } = useHMSRoom();
-  const { chunksSent, isStreaming, startPeerAudio, stopPeerAudio, stopAll } =
-    useHMSAudioStreaming(callId ?? null);
+  const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
 
-  const [isStarting, setIsStarting] = useState(false);
-  const [hostJoined, setHostJoined] = useState(false);
-  const [zombieDetected, setZombieDetected] = useState(false);
-  const [isAbandoningZombie, setIsAbandoningZombie] = useState(false);
-  const [isAudioOn, setIsAudioOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(true);
-  const [peers, setPeers] = useState<any[]>([]);
+  const [isStarting, setIsStarting]     = useState(false);
+  const [hostJoined, setHostJoined]     = useState(false);
+  const [isZombie, setIsZombie]         = useState(false);
+  const [isAudioOn, setIsAudioOn]       = useState(true);
+  const [isVideoOn, setIsVideoOn]       = useState(true);
+  const [peers, setPeers]               = useState<any[]>([]);
 
   const hmsActionsRef = useRef<any>(null);
-  const hmsStoreRef = useRef<any>(null);
-  const unsubRef = useRef<(() => void) | null>(null);
+  const hmsStoreRef   = useRef<any>(null);
+  const unsubRef      = useRef<(() => void) | null>(null);
 
-  // Zombie detection
+  // ── Zombie detection ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isLive && liveCall && !(liveCall as any).meeting_url && !roomInfo) {
-      setZombieDetected(true);
-    } else {
-      setZombieDetected(false);
+    if (isLive && liveCall && !(liveCall as any).meeting_url && !roomInfo && !hostJoined) {
+      setIsZombie(true);
+    } else if (!isLive) {
+      setIsZombie(false);
     }
-  }, [isLive, liveCall, roomInfo]);
+  }, [isLive, liveCall, roomInfo, hostJoined]);
 
-  const hasActiveSession = isLive && !!callId && !zombieDetected;
+  // Handle zombie cleared — reset all state and invalidate queries
+  const handleZombieCleared = useCallback(() => {
+    setIsZombie(false);
+    setIsStarting(false);
+    setHostJoined(false);
+    setPeers([]);
+    // The liveCall query will auto-refetch (it polls every 5s)
+  }, []);
 
-  const handleAbandonZombie = useCallback(async () => {
-    if (!callId) return;
-    setIsAbandoningZombie(true);
-    try {
-      await endCall.mutateAsync();
-      setZombieDetected(false);
-      toast.success("Cleared stuck session.");
-    } catch {
-      await supabase.from("calls").update({
-        status: "completed",
-        end_time: new Date().toISOString(),
-        duration_minutes: 0,
-      }).eq("id", callId);
-      setZombieDetected(false);
-    } finally {
-      setIsAbandoningZombie(false);
-    }
-  }, [callId, endCall]);
+  const hasActiveSession = isLive && !!callId && !isZombie;
 
-  // ✅ CHANGED: Check team/personal pool limit via teamUsage
+  // ── Limit check ─────────────────────────────────────────────────────────────
   const checkLimit = useCallback(() => {
     if (teamUsage?.isAtLimit) {
       toast.error(
@@ -504,7 +582,7 @@ export default function LiveCall() {
     return true;
   }, [teamUsage]);
 
-  // ── Load 100ms SDK ────────────────────────────────────────────────────────
+  // ── Load HMS SDK ─────────────────────────────────────────────────────────────
   const loadHMSSDK = useCallback(async () => {
     if (window.HMS) return window.HMS;
     await new Promise<void>((resolve, reject) => {
@@ -518,22 +596,18 @@ export default function LiveCall() {
     return window.HMS;
   }, []);
 
-  // ── Join as host ──────────────────────────────────────────────────────────
+  // ── Join as host ─────────────────────────────────────────────────────────────
   const handleJoinAsHost = useCallback(async () => {
     if (!roomInfo || !callId) return;
     try {
       const HMS = await loadHMSSDK();
       hmsActionsRef.current = new HMS.HMSActions();
-      hmsStoreRef.current = new HMS.HMSStore();
+      hmsStoreRef.current   = new HMS.HMSStore();
+      const hmsActions      = hmsActionsRef.current;
 
-      const hmsActions = hmsActionsRef.current;
-
-      // Subscribe to peers
       const unsub = hmsStoreRef.current.subscribe((store: any) => {
         const allPeers = Object.values(store.peers || {}) as any[];
         setPeers(allPeers);
-
-        // Attach audio tracks for streaming
         allPeers.forEach((peer: any) => {
           const audioTrackId = peer.audioTrack;
           if (audioTrackId) {
@@ -550,10 +624,7 @@ export default function LiveCall() {
       await hmsActions.join({
         userName: "Host",
         authToken: roomInfo.mgmt_token,
-        settings: {
-          isAudioMuted: false,
-          isVideoMuted: false,
-        },
+        settings: { isAudioMuted: false, isVideoMuted: false },
         rememberDeviceSelection: true,
         captureNetworkQualityInPreview: false,
       });
@@ -566,7 +637,7 @@ export default function LiveCall() {
     }
   }, [roomInfo, callId, loadHMSSDK, startPeerAudio, navigate]);
 
-  // ── Create meeting ────────────────────────────────────────────────────────
+  // ── Create meeting ───────────────────────────────────────────────────────────
   const handleCreateMeeting = useCallback(async () => {
     if (!checkLimit()) return;
     setIsStarting(true);
@@ -597,7 +668,7 @@ export default function LiveCall() {
     }
   }, [checkLimit, startCall, createRoom]);
 
-  // ── Toggle audio/video ────────────────────────────────────────────────────
+  // ── Toggle audio/video ───────────────────────────────────────────────────────
   const handleToggleAudio = useCallback(async () => {
     if (!hmsActionsRef.current) return;
     await hmsActionsRef.current.setLocalAudioEnabled(!isAudioOn);
@@ -610,7 +681,7 @@ export default function LiveCall() {
     setIsVideoOn((v) => !v);
   }, [isVideoOn]);
 
-  // ── End call ──────────────────────────────────────────────────────────────
+  // ── End call ─────────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
     stopAll();
     if (unsubRef.current) unsubRef.current();
@@ -648,36 +719,19 @@ export default function LiveCall() {
           </p>
         </div>
 
-        {/* ✅ CHANGED: TeamUsageBanner replaces the old inline limit banner */}
+        {/* Usage banner */}
         <TeamUsageBanner onUpgrade={() => navigate("/dashboard/billing")} />
 
-        {/* Zombie banner */}
-        {zombieDetected && (
-          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-start gap-3">
-            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-yellow-400">Previous session didn't complete</p>
-              <p className="text-xs text-muted-foreground mt-1">Clear it to start a new meeting.</p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5 shrink-0 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
-              onClick={handleAbandonZombie}
-              disabled={isAbandoningZombie}
-            >
-              {isAbandoningZombie ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3 h-3" />
-              )}
-              Clear & Retry
-            </Button>
-          </div>
+        {/* ── Zombie / stuck session banner ───────────────────────────────── */}
+        {isZombie && (
+          <ZombieBanner
+            callId={callId}
+            onCleared={handleZombieCleared}
+          />
         )}
 
-        {/* Create meeting CTA */}
-        {!hasActiveSession && !roomInfo && !zombieDetected && (
+        {/* ── Create meeting CTA (only when no active/zombie session) ─────── */}
+        {!hasActiveSession && !roomInfo && !isZombie && (
           <div className="glass rounded-2xl border border-border p-6 space-y-5">
             <div className="text-center space-y-1.5">
               <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-3">
@@ -696,28 +750,21 @@ export default function LiveCall() {
               className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isCreating || isStarting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />Creating room…
-                </>
+                <><Loader2 className="w-4 h-4 animate-spin" />Creating room…</>
               ) : (
-                <>
-                  <Plus className="w-4 h-4" />Create Meeting Room
-                </>
+                <><Plus className="w-4 h-4" />Create Meeting Room</>
               )}
             </button>
 
             <div className="flex flex-wrap justify-center gap-2">
               {[
-                { icon: Shield, text: "No login for guests" },
-                { icon: Radio, text: "Real-time transcription" },
+                { icon: Shield,   text: "No login for guests" },
+                { icon: Radio,    text: "Real-time transcription" },
                 { icon: Sparkles, text: "AI coaching insights" },
               ].map(({ icon: Icon, text }) => (
-                <span
-                  key={text}
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1"
-                >
-                  <Icon className="w-3 h-3 text-primary" />
-                  {text}
+                <span key={text}
+                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1">
+                  <Icon className="w-3 h-3 text-primary" />{text}
                 </span>
               ))}
             </div>
@@ -764,18 +811,10 @@ export default function LiveCall() {
 
         {/* Video grid */}
         {hostJoined && peers.length > 0 && (
-          <div className={cn(
-            "grid gap-3",
-            peers.length === 1 ? "grid-cols-1" : "grid-cols-2",
-          )}>
+          <div className={cn("grid gap-3", peers.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {peers.map((peer) => (
-              <VideoTile
-                key={peer.id}
-                peerId={peer.id}
-                isLocal={peer.isLocal}
-                peerName={peer.name}
-                hmsActions={hmsActionsRef.current}
-              />
+              <VideoTile key={peer.id} peerId={peer.id} isLocal={peer.isLocal}
+                peerName={peer.name} hmsActions={hmsActionsRef.current} />
             ))}
           </div>
         )}
@@ -789,13 +828,11 @@ export default function LiveCall() {
         )}
 
         {/* Past calls link */}
-        {!hasActiveSession && !isStarting && !zombieDetected && (
+        {!hasActiveSession && !isStarting && !isZombie && (
           <div className="flex items-center justify-between pt-2 border-t border-border/30 text-xs">
             <span className="text-muted-foreground">Past recordings and AI summaries</span>
-            <Link
-              to="/dashboard/calls"
-              className="text-primary hover:underline flex items-center gap-1 font-medium"
-            >
+            <Link to="/dashboard/calls"
+              className="text-primary hover:underline flex items-center gap-1 font-medium">
               All calls <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
