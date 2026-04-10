@@ -1,13 +1,11 @@
 /**
- * MessagesPage.tsx — v5
+ * MessagesPage.tsx — v6
  *
- * Improvements:
- *  1. Full mobile responsiveness — single-panel navigation on small screens
- *  2. Auto-status based on route + idle detection (no manual status needed but still supported)
- *  3. Deal rooms fully wired to real DB (useDealRooms)
- *  4. Deal Room panel shows deal metadata + chat in same view
- *  5. Status indicator shows "auto" badge when automatically managed
- *  6. Better deal room UX: stage badges, sentiment indicators, next-step editing inline
+ * Enterprise Sales Hub — Full Improvements:
+ *  1. New Conversation dialog — searchable, status dots, role badges, checkmark UX
+ *  2. Mobile composer — floating glass surface, always visible, large tap targets
+ *  3. Status picker — colored dots (no emoji), readable contrast, glass panel
+ *  4. General enterprise polish throughout
  */
 
 import {
@@ -145,7 +143,7 @@ function usePresence(teamId?: string, uid?: string) {
   return useCallback((id:string) => online.has(id), [online]);
 }
 
-// ─── Status Badge ─────────────────────────────────────────────────────────────
+// ─── Status Dot ──────────────────────────────────────────────────────────────
 
 function StatusDot({ status, size = 8 }: { status: UserStatus; size?: number }) {
   const cfg = STATUS_CONFIG[status];
@@ -179,19 +177,20 @@ function StatusPicker({
     <div ref={ref} className="status-picker">
       <div className="sp-header">
         <span className="sp-title">Your Status</span>
-        {!isManual && (
+        {!isManual ? (
           <span className="sp-auto-badge">
-            <Radio style={{width:9,height:9}}/> Auto
+            <Radio style={{width:9,height:9}}/> Auto-tracking
           </span>
-        )}
-        {isManual && (
+        ) : (
           <span className="sp-manual-badge">
-            <Settings style={{width:9,height:9}}/> Manual (30m)
+            <Settings style={{width:9,height:9}}/> Manual · 30 min
           </span>
         )}
       </div>
       <p className="sp-hint">
-        {isManual ? "Status is manually set for 30 minutes." : "Status updates automatically based on your activity."}
+        {isManual
+          ? "Manually set — reverts to auto in 30 minutes."
+          : "Status updates automatically based on your route and activity."}
       </p>
       {(Object.entries(STATUS_CONFIG) as [UserStatus, typeof STATUS_CONFIG[UserStatus]][]).map(([key, cfg]) => (
         <button
@@ -199,12 +198,12 @@ function StatusPicker({
           className={cn("sp-item", current === key && "sp-item--active")}
           onClick={() => { onSelect(key); onClose(); }}
         >
-          <span className="sp-emoji">{cfg.emoji}</span>
-          <div>
+          <span style={{display:"inline-block",width:9,height:9,borderRadius:"50%",background:cfg.color,flexShrink:0}}/>
+          <div style={{flex:1}}>
             <span className="sp-label">{cfg.label}</span>
             <span className="sp-desc">{cfg.description}</span>
           </div>
-          {current === key && <Check style={{width:12,height:12,color:cfg.color,marginLeft:"auto"}}/>}
+          {current === key && <Check style={{width:12,height:12,color:cfg.color,marginLeft:"auto",flexShrink:0}}/>}
         </button>
       ))}
     </div>
@@ -604,13 +603,13 @@ function GlobalSearch({ onClose, onNavigate }: {
       <div className="gs-panel">
         <div className="gs-row">
           <Search style={{width:16,height:16,color:"rgba(255,255,255,.3)"}}/>
-          <input ref={inputRef} className="gs-input" placeholder="Search messages…" value={query} onChange={e=>setQuery(e.target.value)}/>
+          <input ref={inputRef} className="gs-input" placeholder="Search messages, deals, calls…" value={query} onChange={e=>setQuery(e.target.value)}/>
           {loading && <Loader2 style={{width:14,height:14,color:"#7c3aed",animation:"spin 1s linear infinite"}}/>}
           <button className="gs-close" onClick={onClose}><X style={{width:13,height:13}}/></button>
         </div>
         <div className="gs-results">
           {!query.trim() ? (
-            <div className="gs-empty"><Search style={{width:28,height:28,opacity:.15}}/><p>Search across messages</p></div>
+            <div className="gs-empty"><Search style={{width:28,height:28,opacity:.15}}/><p>Search across all messages and deals</p></div>
           ) : results.length===0 && !loading ? (
             <div className="gs-empty"><p>No results for "{query}"</p></div>
           ) : results.map(r=>(
@@ -671,12 +670,6 @@ function Composer({ value, onChange, onSend, onFile, members, myId, placeholder,
 
   return (
     <div className="cmp">
-      <div className="cmp-fmt">
-        <button className="cmp-fmt-btn" onClick={()=>wrapSel("**")} title="Bold"><Bold style={{width:12,height:12}}/></button>
-        <button className="cmp-fmt-btn" onClick={()=>wrapSel("*")} title="Italic"><Italic style={{width:12,height:12}}/></button>
-        <button className="cmp-fmt-btn" onClick={()=>wrapSel("`")} title="Code"><Code style={{width:12,height:12}}/></button>
-        <button className="cmp-fmt-btn" onClick={()=>{onChange(value+"@");setTimeout(()=>taRef.current?.focus(),0);}} title="Mention"><AtSign style={{width:12,height:12}}/></button>
-      </div>
       {mentions.length>0&&(
         <div className="cmp-mentions">
           {mentions.map(m=>(
@@ -687,22 +680,37 @@ function Composer({ value, onChange, onSend, onFile, members, myId, placeholder,
           ))}
         </div>
       )}
-      <div className="cmp-row">
-        <button className="cmp-icon" onClick={onFile} disabled={!!busy} title="Attach"><Paperclip style={{width:16,height:16}}/></button>
-        <textarea
-          ref={taRef} className="cmp-ta" placeholder={placeholder||"Message…"} value={value}
-          onChange={handleChange} disabled={!!disabled||!!busy} rows={1}
-          onKeyDown={e=>{
-            if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(canSend)onSend();}
-            if(e.key==="Escape")setMentions([]);
-            if(e.key==="Tab"&&mentions.length>0){e.preventDefault();insertMention(mentions[0]);}
-          }}
-        />
-        <button className={cn("cmp-send",canSend&&"cmp-send--on")} onClick={onSend} disabled={!canSend}>
-          <Send style={{width:15,height:15}}/>
-        </button>
+      <div className="cmp-inner">
+        <div className="cmp-fmt">
+          <button className="cmp-fmt-btn" onClick={()=>wrapSel("**")} title="Bold"><Bold style={{width:13,height:13}}/></button>
+          <button className="cmp-fmt-btn" onClick={()=>wrapSel("*")} title="Italic"><Italic style={{width:13,height:13}}/></button>
+          <button className="cmp-fmt-btn" onClick={()=>wrapSel("`")} title="Code"><Code style={{width:13,height:13}}/></button>
+          <button className="cmp-fmt-btn" onClick={()=>{onChange(value+"@");setTimeout(()=>taRef.current?.focus(),0);}} title="Mention"><AtSign style={{width:13,height:13}}/></button>
+        </div>
+        <div className="cmp-row">
+          <button className="cmp-icon" onClick={onFile} disabled={!!busy} title="Attach">
+            <Paperclip style={{width:17,height:17}}/>
+          </button>
+          <textarea
+            ref={taRef}
+            className="cmp-ta"
+            placeholder={placeholder||"Message… (@ to mention)"}
+            value={value}
+            onChange={handleChange}
+            disabled={!!disabled||!!busy}
+            rows={1}
+            onKeyDown={e=>{
+              if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(canSend)onSend();}
+              if(e.key==="Escape")setMentions([]);
+              if(e.key==="Tab"&&mentions.length>0){e.preventDefault();insertMention(mentions[0]);}
+            }}
+          />
+          <button className={cn("cmp-send",canSend&&"cmp-send--on")} onClick={onSend} disabled={!canSend}>
+            <Send style={{width:15,height:15}}/>
+          </button>
+        </div>
+        <p className="cmp-hint">Enter to send · Shift+Enter for new line · **bold** · @mention</p>
       </div>
-      <p className="cmp-hint">Enter to send · Shift+Enter newline · **bold** · @mention</p>
     </div>
   );
 }
@@ -857,7 +865,8 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
             ? <p className="chat-typing">{typingUsers.map(u=>u.name).join(", ")} typing…</p>
             : !isGrp && otherId
             ? <p className="chat-sub" style={{color: otherOn ? otherStatusCfg.color : "rgba(255,255,255,.28)"}}>
-                {otherOn ? `${otherStatusCfg.emoji} ${otherStatusCfg.label}` : "○ Offline"}
+                <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:otherOn?otherStatusCfg.color:"rgba(255,255,255,.2)",marginRight:4,verticalAlign:"middle"}}/>
+                {otherOn ? otherStatusCfg.label : "Offline"}
               </p>
             : isGrp ? <p className="chat-sub">{(conv?.participants.length??0)+1} members</p> : null}
         </div>
@@ -884,7 +893,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
                 {dealRoom ? <Building2 style={{width:20,height:20,color:"#60a5fa"}}/> : <MessageSquare style={{width:20,height:20,color:"#7c3aed"}}/>}
               </div>
               <p className="empty-title">{dealRoom ? `${dealRoom.deal_name} Deal Room` : "No messages yet"}</p>
-              <p className="empty-sub">{dealRoom ? "Discuss this deal and track next steps" : "Start the conversation"}</p>
+              <p className="empty-sub">{dealRoom ? "Discuss this deal and track next steps" : "Start the conversation below"}</p>
             </div>
           ) : grouped.map(grp=>(
             <div key={grp.label}>
@@ -999,7 +1008,7 @@ function ChatThread({ convId, convs, onBack, isOnline, members, myId, dealRoom, 
 
       <Composer value={input} onChange={handleInput} onSend={handleSend}
         onFile={()=>fileRef.current?.click()} members={members} myId={myId} busy={busy}
-        placeholder={dealRoom?`Message ${dealRoom.deal_name}…`:"Message… (@ to mention)"}
+        placeholder={dealRoom?`Message ${dealRoom.deal_name}…`:"Message the team… (@ to mention)"}
       />
     </div>
   );
@@ -1045,7 +1054,7 @@ function NotifsPanel() {
   );
 }
 
-// ─── New Conversation Dialog ──────────────────────────────────────────────────
+// ─── New Conversation Dialog — IMPROVED ──────────────────────────────────────
 
 function NewConvDialog({ open, onClose, members, myId, teamId, convs, refetch, onCreate, getStatus }: {
   open:boolean; onClose:()=>void; members:TeamMember[]; myId:string; teamId:string;
@@ -1054,56 +1063,186 @@ function NewConvDialog({ open, onClose, members, myId, teamId, convs, refetch, o
 }) {
   const { startConversation }=useConversationMessages(null);
   const [sel,setSel]=useState<string[]>([]);
+  const [search,setSearch]=useState("");
+  const searchRef=useRef<HTMLInputElement>(null);
+
+  useEffect(()=>{ if(open) { setSel([]); setSearch(""); setTimeout(()=>searchRef.current?.focus(),80); } },[open]);
+
   const others=members.filter(m=>m.user_id!==myId&&m.status==="active");
+  const filtered=search.trim()
+    ? others.filter(m=>(m.profile?.full_name||m.invited_email||"").toLowerCase().includes(search.toLowerCase()))
+    : others;
+
   const tog=(uid:string)=>setSel(p=>p.includes(uid)?p.filter(x=>x!==uid):[...p,uid]);
+
   const go=async()=>{
     if(!sel.length) return;
     try {
       if(sel.length===1){
         const ex=convs.find(c=>!c.is_group&&c.participants.length===1&&c.participants.some(p=>p.user_id===sel[0]));
-        if(ex){setSel([]);onCreate(ex.id);return;}
+        if(ex){setSel([]);setSearch("");onCreate(ex.id);return;}
       }
       const id=await startConversation.mutateAsync({teamId,memberIds:sel});
-      refetch();setSel([]);onCreate(id);toast({title:"Conversation started"});
+      refetch();setSel([]);setSearch("");onCreate(id);toast({title:"Conversation started"});
     } catch(e:any){toast({title:"Could not start chat",description:e?.message,variant:"destructive"});}
   };
+
+  const footerLabel = sel.length === 0
+    ? "Select a teammate to message"
+    : sel.length === 1
+    ? "1 selected — direct message"
+    : `${sel.length} selected — group chat`;
+
   return (
-    <Dialog open={open} onOpenChange={v=>{if(!v){setSel([]);onClose();}}}>
-      <DialogContent style={{background:"#0d1117",border:"1px solid rgba(255,255,255,.08)",borderRadius:16}}>
-        <DialogHeader><DialogTitle style={{color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>New Conversation</DialogTitle></DialogHeader>
-        {sel.length>1&&<p style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>Group · {sel.length} members</p>}
-        <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-          {others.length===0?<p style={{fontSize:12,color:"rgba(255,255,255,.3)",padding:"20px 0",textAlign:"center"}}>No other members</p>
-            :others.map(m=>{
-              const nm=m.profile?.full_name||m.invited_email||"Unknown";
-              const chk=sel.includes(m.user_id);
-              const status=getStatus(m.user_id);
-              const stCfg=STATUS_CONFIG[status];
-              return(
-                <div key={m.id} onClick={()=>tog(m.user_id)} style={{
-                  display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,cursor:"pointer",
-                  border:"1px solid",borderColor:chk?"rgba(124,58,237,.4)":"transparent",
-                  background:chk?"rgba(124,58,237,.1)":"transparent",transition:"all .13s",
+    <Dialog open={open} onOpenChange={v=>{if(!v){setSel([]);setSearch("");onClose();}}}>
+      <DialogContent style={{
+        background:"#0a0d16",border:"1px solid rgba(255,255,255,.1)",
+        borderRadius:18,padding:0,overflow:"hidden",maxWidth:440,
+        boxShadow:"0 24px 80px rgba(0,0,0,.7)",
+      }}>
+        {/* Header */}
+        <div style={{padding:"18px 20px 14px",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:3}}>
+            <div style={{
+              width:34,height:34,borderRadius:10,flexShrink:0,
+              background:"rgba(124,58,237,.18)",border:"1px solid rgba(124,58,237,.3)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+            }}>
+              <MessageCircle style={{width:15,height:15,color:"#a78bfa"}}/>
+            </div>
+            <div>
+              <p style={{margin:0,fontSize:15,fontWeight:600,color:"#f0f6fc",fontFamily:"'Bricolage Grotesque',sans-serif"}}>New Conversation</p>
+              <p style={{margin:0,fontSize:11,color:"rgba(255,255,255,.35)"}}>Select teammates to message</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div style={{padding:"12px 16px 8px"}}>
+          <div style={{position:"relative"}}>
+            <Search style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",width:13,height:13,color:"rgba(255,255,255,.3)"}}/>
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              placeholder="Search teammates…"
+              style={{
+                width:"100%",paddingLeft:32,paddingRight:10,paddingTop:9,paddingBottom:9,
+                background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",
+                borderRadius:10,color:"rgba(255,255,255,.85)",fontSize:13,
+                fontFamily:"'DM Sans',sans-serif",outline:"none",boxSizing:"border-box",
+              }}
+            />
+            {search && (
+              <button onClick={()=>setSearch("")} style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.3)",padding:2}}>
+                <X style={{width:12,height:12}}/>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Member list */}
+        <div style={{
+          maxHeight:280,overflowY:"auto",padding:"4px 12px 8px",
+          scrollbarWidth:"thin",scrollbarColor:"rgba(124,58,237,.2) transparent",
+        }}>
+          {filtered.length === 0 ? (
+            <div style={{padding:"28px 16px",textAlign:"center",color:"rgba(255,255,255,.25)",fontSize:13}}>
+              {search ? `No results for "${search}"` : "No teammates available"}
+            </div>
+          ) : filtered.map(m=>{
+            const nm=m.profile?.full_name||m.invited_email||"Unknown";
+            const chk=sel.includes(m.user_id);
+            const status=getStatus(m.user_id);
+            const stCfg=STATUS_CONFIG[status];
+            return(
+              <div key={m.id} onClick={()=>tog(m.user_id)} style={{
+                display:"flex",alignItems:"center",gap:11,padding:"9px 11px",
+                borderRadius:11,cursor:"pointer",marginBottom:3,
+                border:"1px solid",
+                borderColor:chk?"rgba(124,58,237,.4)":"transparent",
+                background:chk?"rgba(124,58,237,.1)":"rgba(255,255,255,.02)",
+                transition:"all .12s",
+              }}>
+                {/* Custom checkbox */}
+                <div style={{
+                  width:19,height:19,borderRadius:6,flexShrink:0,
+                  background:chk?"#7c3aed":"rgba(255,255,255,.07)",
+                  border:`1.5px solid ${chk?"#7c3aed":"rgba(255,255,255,.14)"}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  transition:"all .12s",
                 }}>
-                  <Checkbox checked={chk} className="pointer-events-none"/>
-                  <div style={{position:"relative",flexShrink:0}}>
-                    <Avatar className="h-8 w-8"><AvatarFallback className="bg-violet-500/20 text-violet-400 text-xs font-bold">{initials(nm)}</AvatarFallback></Avatar>
-                    <StatusDot status={status} size={8}/>
+                  {chk && <Check style={{width:11,height:11,color:"#fff"}}/>}
+                </div>
+                {/* Avatar with status dot */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <div style={{
+                    width:36,height:36,borderRadius:10,
+                    background:chk?"rgba(124,58,237,.25)":"rgba(124,58,237,.15)",
+                    border:`1px solid ${chk?"rgba(124,58,237,.4)":"rgba(124,58,237,.2)"}`,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:12,fontWeight:700,color:chk?"#c4b5fd":"#a78bfa",
+                    transition:"all .12s",
+                  }}>
+                    {initials(nm)}
                   </div>
-                  <div>
-                    <p style={{fontSize:13,fontWeight:500,color:"#e2e8f0",margin:0}}>{nm}</p>
-                    <p style={{fontSize:10,fontWeight:600,color:stCfg.color,margin:0}}>{stCfg.emoji} {stCfg.label}</p>
+                  <span style={{
+                    position:"absolute",bottom:-1,right:-1,
+                    width:9,height:9,borderRadius:"50%",
+                    background:stCfg.color,border:"2px solid #0a0d16",
+                    display:"inline-block",
+                  }}/>
+                </div>
+                {/* Info */}
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{margin:0,fontSize:13,fontWeight:chk?600:500,color:chk?"#e2e8f0":"rgba(255,255,255,.75)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</p>
+                  <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                    <span style={{fontSize:10,fontWeight:500,color:stCfg.color}}>{stCfg.label}</span>
+                    <span style={{color:"rgba(255,255,255,.15)",fontSize:10}}>·</span>
+                    <span style={{fontSize:10,color:"rgba(255,255,255,.3)",textTransform:"capitalize"}}>{m.role}</span>
                   </div>
                 </div>
-              );
-            })}
+                {chk && (
+                  <span style={{fontSize:10,background:"rgba(124,58,237,.2)",color:"#a78bfa",padding:"2px 8px",borderRadius:20,flexShrink:0,fontWeight:600}}>
+                    Added
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
-        <DialogFooter>
-          <button style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:9,padding:"8px 16px",color:"rgba(255,255,255,.6)",fontSize:13,cursor:"pointer"}} onClick={()=>{setSel([]);onClose();}}>Cancel</button>
-          <button style={{display:"flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,#7c3aed,#6d28d9)",border:"none",borderRadius:9,padding:"8px 18px",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",opacity:!sel.length?0.5:1}} disabled={!sel.length||startConversation.isPending} onClick={go}>
-            {sel.length>1?"Create Group":"Start Chat"}
-          </button>
-        </DialogFooter>
+
+        {/* Footer */}
+        <div style={{
+          padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,.06)",
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+          background:"rgba(255,255,255,.02)",
+        }}>
+          <span style={{fontSize:11,color:"rgba(255,255,255,.3)",fontFamily:"'DM Sans',sans-serif"}}>{footerLabel}</span>
+          <div style={{display:"flex",gap:7,flexShrink:0}}>
+            <button
+              style={{padding:"7px 14px",borderRadius:9,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.6)",fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:500}}
+              onClick={()=>{setSel([]);setSearch("");onClose();}}
+            >
+              Cancel
+            </button>
+            <button
+              style={{
+                padding:"7px 18px",borderRadius:9,
+                background:sel.length?"linear-gradient(135deg,#7c3aed,#6d28d9)":"rgba(124,58,237,.3)",
+                border:"none",color:sel.length?"#fff":"rgba(255,255,255,.35)",
+                fontSize:12,fontWeight:600,cursor:sel.length?"pointer":"default",
+                fontFamily:"'DM Sans',sans-serif",transition:"all .13s",
+              }}
+              disabled={!sel.length||startConversation.isPending}
+              onClick={go}
+            >
+              {startConversation.isPending
+                ? <Loader2 style={{width:13,height:13,display:"inline",animation:"spin 1s linear infinite"}}/>
+                : sel.length > 1 ? "Create Group" : "Start Chat"}
+            </button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1126,7 +1265,6 @@ export default function MessagesPage() {
   const [showSearch, setShowSearch]     = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [activeDealRoom, setActiveDealRoom]     = useState<DealRoom|null>(null);
-  // Mobile: "list" = show sidebar, "chat" = show chat
   const [mobileView, setMobileView]     = useState<"list"|"chat">("list");
 
   const atRiskDeals = dealRooms.filter(d=>d.stage==="at_risk").length;
@@ -1174,10 +1312,8 @@ export default function MessagesPage() {
         }
 
         @keyframes spin{to{transform:rotate(360deg);}}
-        @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-4px)}}
-        @keyframes pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
-        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 
         /* ── TOP BAR ── */
         .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:52px;flex-shrink:0;background:rgba(11,15,28,.97);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);gap:8px;overflow:hidden;}
@@ -1187,38 +1323,41 @@ export default function MessagesPage() {
         .topbar-badge{font-size:10px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;padding:2px 7px;border-radius:20px;flex-shrink:0;}
         .topbar-risk{display:flex;align-items:center;gap:5px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2);border-radius:20px;padding:2px 10px 2px 7px;font-size:11px;font-weight:600;color:#f97316;flex-shrink:0;}
         .topbar-r{display:flex;align-items:center;gap:6px;flex-shrink:0;}
-        .search-btn{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:5px 10px;color:var(--t3);font-size:12px;cursor:pointer;transition:.13s;}
-        .search-btn:hover{background:rgba(255,255,255,.07);color:var(--t2);}
-        .search-shortcut{font-size:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:1px 5px;color:var(--t4);font-family:monospace;}
+
+        .search-btn{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:5px 11px;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer;transition:.13s;font-family:'DM Sans',sans-serif;}
+        .search-btn:hover{background:rgba(255,255,255,.08);color:var(--t2);}
+        .search-shortcut{font-size:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:1px 5px;color:rgba(255,255,255,.3);font-family:monospace;}
         @media(max-width:480px){.search-btn span,.search-shortcut{display:none;}}
-        .status-btn{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:8px;padding:5px 9px;cursor:pointer;font-size:12px;color:var(--t2);transition:.13s;position:relative;}
-        .status-btn:hover{background:rgba(255,255,255,.08);}
-        .status-emoji{font-size:14px;}
+
+        /* ── STATUS BUTTON — improved ── */
+        .status-btn{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:6px 12px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.88);transition:.13s;position:relative;font-family:'DM Sans',sans-serif;font-weight:500;}
+        .status-btn:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.2);}
         .status-label{display:none;}
         @media(min-width:900px){.status-label{display:inline;}}
-        .auto-indicator{display:inline-flex;align-items:center;gap:2px;font-size:9px;color:rgba(34,197,94,.7);background:rgba(34,197,94,.08);border-radius:20px;padding:1px 6px;font-weight:600;}
-        .new-btn{display:flex;align-items:center;gap:5px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:8px;padding:6px 12px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        .auto-indicator{display:inline-flex;align-items:center;gap:3px;font-size:9px;color:rgba(34,197,94,.85);background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:20px;padding:1px 7px;font-weight:600;letter-spacing:.02em;}
+
+        /* ── STATUS PICKER — improved ── */
+        .status-picker{position:absolute;top:calc(100% + 8px);right:0;z-index:9999;background:rgba(8,11,22,.99);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;width:252px;box-shadow:0 20px 60px rgba(0,0,0,.8);animation:fadeUp .15s ease;}
+        .sp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+        .sp-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.88);}
+        .sp-auto-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:rgba(34,197,94,.9);background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:20px;padding:2px 8px;font-weight:600;}
+        .sp-manual-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:rgba(245,158,11,.9);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:20px;padding:2px 8px;font-weight:600;}
+        .sp-hint{font-size:10px;color:rgba(255,255,255,.35);margin:0 0 10px;line-height:1.5;padding:0 2px;}
+        .sp-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:9px;background:transparent;border:1px solid transparent;cursor:pointer;transition:.12s;font-family:'DM Sans',sans-serif;text-align:left;}
+        .sp-item:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.07);}
+        .sp-item--active{background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.2);}
+        .sp-label{font-size:13px;font-weight:500;color:rgba(255,255,255,.88);display:block;}
+        .sp-desc{font-size:10px;color:rgba(255,255,255,.35);display:block;}
+
+        .new-btn{display:flex;align-items:center;gap:5px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:9px;padding:7px 13px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;box-shadow:0 2px 12px rgba(124,58,237,.3);transition:all .13s;}
+        .new-btn:hover{box-shadow:0 2px 16px rgba(124,58,237,.5);}
         @media(max-width:480px){.new-btn span{display:none;}}
 
-        /* ── STATUS PICKER ── */
-        .status-picker{position:absolute;top:calc(100% + 8px);right:0;z-index:9999;background:rgba(10,13,22,.98);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:10px;width:240px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:fadeUp .15s ease;}
-        .sp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
-        .sp-title{font-size:12px;font-weight:700;color:var(--t1);}
-        .sp-auto-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#22c55e;background:rgba(34,197,94,.1);border-radius:20px;padding:2px 8px;font-weight:600;}
-        .sp-manual-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#f59e0b;background:rgba(245,158,11,.1);border-radius:20px;padding:2px 8px;font-weight:600;}
-        .sp-hint{font-size:10px;color:var(--t4);margin:0 0 8px;line-height:1.4;}
-        .sp-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:8px;background:transparent;border:none;cursor:pointer;transition:.12s;font-family:'DM Sans',sans-serif;text-align:left;}
-        .sp-item:hover{background:rgba(255,255,255,.06);}
-        .sp-item--active{background:rgba(124,58,237,.1);}
-        .sp-emoji{font-size:16px;flex-shrink:0;}
-        .sp-label{font-size:12px;font-weight:500;color:var(--t1);display:block;}
-        .sp-desc{font-size:10px;color:var(--t4);display:block;}
-
-        /* ── BODY LAYOUT ── */
+        /* ── BODY ── */
         .mp-body{display:flex;flex:1;min-height:0;}
 
         /* ── SIDEBAR ── */
-        .sidebar{width:280px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--bdr);background:var(--bg1);overflow:hidden;}
+        .sidebar{width:282px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--bdr);background:var(--bg1);overflow:hidden;}
         @media(max-width:767px){
           .sidebar{width:100%;border-right:none;}
           .sidebar--hidden{display:none;}
@@ -1229,14 +1368,14 @@ export default function MessagesPage() {
         .tab--on{background:var(--acs);border-color:rgba(124,58,237,.25);color:#a78bfa;}
         .tab-badge{background:var(--ac);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;}
 
-        /* ── DEALS PANEL ── */
+        /* ── DEALS ── */
         .deals-panel{flex:1;overflow-y:auto;padding:6px 8px 12px;}
         .deal-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;padding:6px 8px;margin-bottom:3px;}
         .deal-stat{background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:9px;padding:7px 8px;text-align:center;}
         .deal-stat-val{font-size:17px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;line-height:1;}
         .deal-stat-lbl{font-size:9px;color:var(--t4);text-transform:uppercase;letter-spacing:.05em;}
         .dr-card{width:100%;text-align:left;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 11px;margin-bottom:4px;cursor:pointer;transition:all .13s;font-family:'DM Sans',sans-serif;}
-        .dr-card:hover{background:rgba(255,255,255,.04);}
+        .dr-card:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.09);}
         .dr-card--active{background:rgba(96,165,250,.07)!important;border-color:rgba(96,165,250,.3)!important;}
         .dr-card-row1{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
         .dr-icon{width:26px;height:26px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;}
@@ -1251,7 +1390,7 @@ export default function MessagesPage() {
         .dr-next{display:flex;align-items:center;gap:4px;font-size:10px;color:#60a5fa;background:rgba(96,165,250,.08);border-radius:6px;padding:3px 7px;overflow:hidden;}
         .dr-next span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-        /* ── DEAL ROOM HEADER (above chat) ── */
+        /* ── DEAL ROOM HEADER ── */
         .drh{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(96,165,250,.04);border-bottom:1px solid rgba(96,165,250,.12);flex-shrink:0;flex-wrap:wrap;min-width:0;}
         .drh-icon{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
         .drh-content{flex:1;min-width:0;}
@@ -1264,8 +1403,7 @@ export default function MessagesPage() {
 
         /* ── SECTION HEADERS ── */
         .sb-sec{margin-bottom:2px;}
-        .sb-sec-hdr{display:flex;align-items:center;gap:6px;width:100%;padding:5px 10px 3px;background:transparent;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;}
-        .sb-sec-hdr:hover{background:rgba(255,255,255,.02);}
+        .sb-sec-hdr{display:flex;align-items:center;gap:6px;width:100%;padding:5px 10px 3px;background:transparent;border:none;cursor:default;font-family:'DM Sans',sans-serif;}
         .sb-sec-label{font-size:9px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.08em;flex:1;text-align:left;}
         .sb-sec-ct{background:var(--acs);color:#a78bfa;font-size:9px;padding:1px 6px;border-radius:10px;}
 
@@ -1283,6 +1421,7 @@ export default function MessagesPage() {
         .conv-name{font-size:12px;font-weight:500;color:rgba(255,255,255,.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .conv-name--bold{font-weight:700;color:var(--t1);}
         .conv-preview{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0 0;}
+        .pres-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg1);position:absolute;bottom:-1px;right:-1px;flex-shrink:0;}
 
         /* ── RIGHT PANEL ── */
         .right{flex:1;display:flex;flex-direction:column;min-width:0;background:rgba(6,9,18,.7);}
@@ -1293,30 +1432,29 @@ export default function MessagesPage() {
         .right-empty h3{font-size:17px;font-weight:700;color:#64748b;font-family:'Bricolage Grotesque',sans-serif;margin:0 0 8px;}
         .right-empty p{font-size:12px;color:var(--t4);max-width:260px;line-height:1.65;margin:0 0 20px;}
         .re-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
-        .re-btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;}
-        .re-btn-sec{display:inline-flex;align-items:center;gap:6px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:10px;padding:8px 16px;color:#60a5fa;font-size:12px;font-weight:600;cursor:pointer;}
-        .re-risk-alert{margin-top:20px;padding:10px 14px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.2);border-radius:11px;display:flex;align-items:center;gap:8px;font-size:12px;color:#f97316;}
+        .re-btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        .re-btn-sec{display:inline-flex;align-items:center;gap:6px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:10px;padding:9px 18px;color:#60a5fa;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+        .re-risk-alert{margin-top:16px;padding:10px 14px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.2);border-radius:11px;display:flex;align-items:center;gap:8px;font-size:12px;color:#f97316;font-family:'DM Sans',sans-serif;}
 
         /* ── CHAT THREAD ── */
         .chat-thread{display:flex;flex-direction:column;height:100%;position:relative;}
-        .chat-hdr{display:flex;align-items:center;gap:8px;padding:9px 12px;flex-shrink:0;background:rgba(11,15,28,.93);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);flex-wrap:nowrap;min-width:0;}
-        .back-btn{background:rgba(255,255,255,.05);border:1px solid var(--bdr);border-radius:7px;width:28px;height:28px;min-width:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;}
+        .chat-hdr{display:flex;align-items:center;gap:8px;padding:9px 14px;flex-shrink:0;background:rgba(11,15,28,.95);border-bottom:1px solid var(--bdr);backdrop-filter:blur(20px);}
+        .back-btn{background:rgba(255,255,255,.06);border:1px solid var(--bdr);border-radius:8px;width:30px;height:30px;min-width:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2);flex-shrink:0;}
         @media(min-width:768px){.back-btn{display:none;}}
         .chat-av-wrap{position:relative;flex-shrink:0;}
         .chat-av{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(109,40,217,.25));border:1px solid rgba(124,58,237,.28);display:flex;align-items:center;justify-content:center;}
         .chat-info{flex:1;min-width:0;}
         .chat-name{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .chat-sub{font-size:10px;margin:0;}
-        .chat-typing{font-size:10px;margin:0;color:#a78bfa;font-style:italic;}
+        .chat-sub{font-size:11px;margin:0;display:flex;align-items:center;gap:4px;}
+        .chat-typing{font-size:11px;margin:0;color:#a78bfa;font-style:italic;}
         .hdr-acts{display:flex;align-items:center;gap:2px;flex-shrink:0;}
-        .hdr-btn{width:26px;height:26px;border-radius:6px;background:transparent;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
-        .hdr-btn:hover{background:rgba(255,255,255,.06);color:var(--t1);}
+        .hdr-btn{width:28px;height:28px;border-radius:7px;background:transparent;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);transition:.12s;}
+        .hdr-btn:hover{background:rgba(255,255,255,.07);color:var(--t1);}
         .hdr-btn--on{background:var(--acs);border-color:rgba(124,58,237,.3);color:#a78bfa;}
         .hdr-btn--muted{color:#f59e0b;}
-        .pres-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg1);position:absolute;bottom:-1px;right:-1px;flex-shrink:0;}
 
         /* ── MESSAGES ── */
-        .msgs-area{flex:1;overflow-y:auto;padding:12px 14px;}
+        .msgs-area{flex:1;overflow-y:auto;padding:12px 14px;overscroll-behavior:contain;}
         @media(max-width:767px){.msgs-area{padding:10px;}}
         .center-spin{display:flex;justify-content:center;padding:40px 0;}
         .spin{width:18px;height:18px;color:#7c3aed;animation:spin 1s linear infinite;}
@@ -1338,12 +1476,12 @@ export default function MessagesPage() {
         @media(max-width:480px){.msg-body{max-width:85%;}}
         .body-me{align-items:flex-end;}.body-them{align-items:flex-start;}
         .msg-sender{font-size:10px;color:var(--t3);margin:0 0 2px 2px;font-weight:500;}
-        .bubble{padding:8px 12px;line-height:1.55;cursor:context-menu;word-break:break-word;}
+        .bubble{padding:9px 13px;line-height:1.55;cursor:context-menu;word-break:break-word;}
         .bubble.me{background:linear-gradient(135deg,#7c3aed,#6d28d9);border:1px solid rgba(124,58,237,.4);border-radius:14px 14px 4px 14px;box-shadow:0 2px 12px rgba(124,58,237,.25);}
-        .bubble.them{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);border-radius:14px 14px 14px 4px;}
+        .bubble.them{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);border-radius:14px 14px 14px 4px;}
         .bubble-txt{font-size:13px;color:#fff;margin:0;font-family:'DM Sans',sans-serif;line-height:1.6;}
-        .bubble.them .bubble-txt{color:rgba(255,255,255,.83);}
-        @media(max-width:767px){.bubble-txt{font-size:14px;}.bubble{padding:9px 13px;}}
+        .bubble.them .bubble-txt{color:rgba(255,255,255,.85);}
+        @media(max-width:767px){.bubble-txt{font-size:15px;}.bubble{padding:10px 14px;}}
         .md-code{background:rgba(0,0,0,.35);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:11px;}
         .md-pre{background:rgba(0,0,0,.4);border-radius:8px;padding:9px 12px;font-family:monospace;font-size:11px;overflow-x:auto;margin:4px 0 0;white-space:pre;}
         .md-mention{color:#c084fc;font-weight:700;background:rgba(192,132,252,.1);border-radius:4px;padding:0 3px;}
@@ -1360,7 +1498,7 @@ export default function MessagesPage() {
         .ep-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
         .ep-btn{padding:4px;border:none;background:transparent;cursor:pointer;font-size:16px;border-radius:5px;transition:.1s;}
         .ep-btn:hover{background:rgba(255,255,255,.1);}
-        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.96);border:1px solid var(--bdr);border-radius:8px;padding:2px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:1px;align-items:center;}
+        .ha-row{display:none;position:absolute;top:4px;background:rgba(11,15,28,.97);border:1px solid var(--bdr);border-radius:8px;padding:2px;box-shadow:0 8px 24px rgba(0,0,0,.5);gap:1px;align-items:center;z-index:10;}
         .ha-row--me{right:calc(100% + 6px);}
         .ha-row--them{left:calc(100% + 6px);}
         @media(min-width:768px){.msg-row:hover .ha-row{display:flex;}}
@@ -1379,25 +1517,27 @@ export default function MessagesPage() {
         .file-prev{display:flex;align-items:center;gap:7px;margin:0 12px 4px;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:9px;padding:6px 11px;}
         .fp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94a3b8;}
 
-        /* ── COMPOSER ── */
-        .cmp{border-top:1px solid var(--bdr2);background:rgba(11,15,28,.85);backdrop-filter:blur(12px);flex-shrink:0;}
-        .cmp-fmt{display:flex;align-items:center;gap:1px;padding:5px 10px 0;border-top:1px solid var(--bdr2);}
-        .cmp-fmt-btn{background:transparent;border:none;color:var(--t3);padding:4px 6px;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;}
-        .cmp-fmt-btn:hover{background:rgba(255,255,255,.07);color:var(--t1);}
-        .cmp-mentions{background:rgba(10,13,22,.98);border:1px solid rgba(255,255,255,.1);border-bottom:none;animation:fadeUp .13s ease;}
-        .cmp-mention-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 13px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;font-family:'DM Sans',sans-serif;transition:.1s;color:var(--t1);}
+        /* ── COMPOSER — fully improved for mobile ── */
+        .cmp{border-top:1.5px solid rgba(124,58,237,.2);background:rgba(9,12,22,.98);backdrop-filter:blur(24px);flex-shrink:0;box-shadow:0 -6px 28px rgba(0,0,0,.45);padding:10px 12px 10px;}
+        @media(max-width:767px){.cmp{padding:10px 10px 14px;box-shadow:0 -8px 32px rgba(0,0,0,.6);}}
+        .cmp-inner{display:flex;flex-direction:column;gap:0;}
+        .cmp-mentions{background:rgba(8,11,22,.99);border:1px solid rgba(255,255,255,.1);border-bottom:none;border-radius:10px 10px 0 0;animation:fadeUp .13s ease;}
+        .cmp-mention-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 13px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;font-family:'DM Sans',sans-serif;transition:.1s;color:var(--t1);}
         .cmp-mention-item:hover{background:var(--acs);}
         .cmp-mention-av{width:24px;height:24px;border-radius:6px;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#a78bfa;flex-shrink:0;}
-        .cmp-row{display:flex;align-items:flex-end;gap:6px;padding:7px 10px;}
-        .cmp-icon{background:none;border:none;cursor:pointer;color:var(--t3);display:flex;align-items:center;padding:5px;border-radius:6px;transition:.12s;flex-shrink:0;}
-        .cmp-icon:hover{color:var(--t1);background:rgba(255,255,255,.06);}
-        .cmp-ta{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:8px 11px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;line-height:1.55;transition:border-color .13s;min-height:36px;max-height:140px;}
-        .cmp-ta::placeholder{color:var(--t4);}
-        .cmp-ta:focus{border-color:rgba(124,58,237,.4);}
-        @media(max-width:767px){.cmp-ta{font-size:16px;}}
-        .cmp-send{width:33px;height:33px;border-radius:9px;border:none;background:rgba(124,58,237,.3);color:rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .13s;align-self:flex-end;}
-        .cmp-send--on{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 2px 10px var(--acg);}
-        .cmp-hint{font-size:10px;color:var(--t4);text-align:center;padding:0 0 7px;margin:0;}
+        .cmp-fmt{display:flex;align-items:center;gap:1px;padding:0 2px 7px;}
+        .cmp-fmt-btn{background:transparent;border:none;color:rgba(255,255,255,.3);padding:5px 7px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;}
+        .cmp-fmt-btn:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);}
+        .cmp-row{display:flex;align-items:flex-end;gap:8px;background:rgba(255,255,255,.06);border:1.5px solid rgba(124,58,237,.25);border-radius:13px;padding:8px 10px;transition:border-color .15s;}
+        .cmp-row:focus-within{border-color:rgba(124,58,237,.5);}
+        .cmp-icon{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.3);display:flex;align-items:center;padding:4px;border-radius:7px;transition:.12s;flex-shrink:0;}
+        .cmp-icon:hover{color:rgba(255,255,255,.7);background:rgba(255,255,255,.07);}
+        .cmp-ta{flex:1;background:transparent;border:none;padding:3px 0;color:rgba(255,255,255,.92);font-size:15px;font-family:'DM Sans',sans-serif;resize:none;outline:none;line-height:1.55;min-height:26px;max-height:140px;}
+        .cmp-ta::placeholder{color:rgba(255,255,255,.28);}
+        @media(max-width:767px){.cmp-ta{font-size:16px;}.cmp-ta::placeholder{color:rgba(255,255,255,.35);}}
+        .cmp-send{width:35px;height:35px;border-radius:10px;border:none;background:rgba(124,58,237,.25);color:rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .13s;align-self:flex-end;}
+        .cmp-send--on{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 2px 12px rgba(124,58,237,.4);}
+        .cmp-hint{font-size:10px;color:rgba(255,255,255,.18);text-align:center;padding:5px 0 0;margin:0;}
         @media(max-width:767px){.cmp-hint{display:none;}}
 
         /* ── SIDE PANELS ── */
@@ -1408,9 +1548,9 @@ export default function MessagesPage() {
         .panel-close-btn{background:rgba(255,255,255,.06);border:1px solid var(--bdr);border-radius:6px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);}
         .panel-body{flex:1;overflow-y:auto;padding:10px;}
         .panel-composer{padding:8px 10px;border-top:1px solid var(--bdr2);display:flex;gap:6px;}
-        .pc-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:7px 11px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;}
+        .pc-input{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:9px;padding:8px 11px;color:var(--t1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .13s;}
         .pc-input:focus{border-color:rgba(124,58,237,.4);}
-        .pc-send{width:31px;height:31px;border-radius:8px;border:none;background:rgba(124,58,237,.3);color:rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;align-self:flex-end;}
+        .pc-send{width:33px;height:33px;border-radius:9px;border:none;background:rgba(124,58,237,.25);color:rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;align-self:flex-end;transition:all .13s;}
         .pc-send--on{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;}
         .panel-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 16px;text-align:center;color:var(--t3);font-size:12px;}
         .thread-parent{display:flex;gap:8px;padding:10px;background:rgba(255,255,255,.03);border-radius:9px;margin-bottom:9px;border-left:3px solid #7c3aed;}
@@ -1418,33 +1558,33 @@ export default function MessagesPage() {
         .pin-txt{font-size:12px;color:rgba(255,255,255,.7);margin:0 0 3px;line-height:1.4;}
 
         /* ── CONTEXT MENU ── */
-        .ctx-menu{background:rgba(10,13,22,.97);border:1px solid rgba(255,255,255,.08);border-radius:11px;box-shadow:0 20px 60px rgba(0,0,0,.7);overflow:hidden;width:180px;animation:fadeUp .12s ease;}
-        .ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 13px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
+        .ctx-menu{background:rgba(8,11,22,.99);border:1px solid rgba(255,255,255,.1);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.8);overflow:hidden;width:180px;animation:fadeUp .12s ease;}
+        .ctx-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 14px;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:.12s;}
         .ctx-item:last-child{border-bottom:none;}
         .ctx-item:hover{background:rgba(255,255,255,.06);color:#fff;}
         .ctx-item--danger{color:#f87171;}
         .ctx-item--danger:hover{background:rgba(239,68,68,.12);}
 
         /* ── GLOBAL SEARCH ── */
-        .gs-overlay{position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding-top:70px;animation:fadeUp .14s ease;}
-        .gs-panel{width:100%;max-width:600px;margin:0 14px;background:rgba(10,13,22,.99);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.8);max-height:calc(100dvh - 100px);display:flex;flex-direction:column;}
+        .gs-overlay{position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,.75);backdrop-filter:blur(10px);display:flex;align-items:flex-start;justify-content:center;padding-top:70px;animation:fadeUp .14s ease;}
+        .gs-panel{width:100%;max-width:600px;margin:0 14px;background:rgba(8,11,22,.99);border:1px solid rgba(255,255,255,.12);border-radius:16px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.85);max-height:calc(100dvh - 100px);display:flex;flex-direction:column;}
         .gs-row{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr);}
         .gs-input{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:15px;font-family:'DM Sans',sans-serif;}
-        .gs-input::placeholder{color:var(--t4);}
-        .gs-close{background:rgba(255,255,255,.07);border:1px solid var(--bdr);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);}
+        .gs-input::placeholder{color:rgba(255,255,255,.25);}
+        .gs-close{background:rgba(255,255,255,.07);border:1px solid var(--bdr);border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t3);}
         .gs-results{flex:1;overflow-y:auto;padding:6px 0;}
-        .gs-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;text-align:center;color:var(--t3);font-size:12px;}
-        .gs-result{display:flex;align-items:center;gap:10px;width:100%;padding:10px 18px;background:transparent;border:none;cursor:pointer;text-align:left;transition:.12s;border-bottom:1px solid var(--bdr2);font-family:'DM Sans',sans-serif;}
+        .gs-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;text-align:center;color:var(--t3);font-size:13px;}
+        .gs-result{display:flex;align-items:center;gap:10px;width:100%;padding:11px 18px;background:transparent;border:none;cursor:pointer;text-align:left;transition:.12s;border-bottom:1px solid var(--bdr2);font-family:'DM Sans',sans-serif;}
         .gs-result:hover{background:rgba(255,255,255,.03);}
-        .gs-preview{font-size:12px;color:rgba(255,255,255,.65);margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .gs-preview{font-size:13px;color:rgba(255,255,255,.65);margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
         /* ── NOTIFICATIONS ── */
         .notif-panel{display:flex;flex-direction:column;height:100%;}
         .notif-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0;flex-wrap:wrap;gap:6px;}
         .notif-title{font-size:13px;font-weight:600;color:var(--t1);font-family:'Bricolage Grotesque',sans-serif;}
         .notif-badge{background:var(--acs);color:#a78bfa;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;}
-        .filter-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 9px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:3px;}
-        .filter-btn:hover{background:rgba(255,255,255,.08);color:var(--t1);}
+        .filter-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:4px 10px;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:4px;transition:.13s;}
+        .filter-btn:hover{background:rgba(255,255,255,.09);color:var(--t1);}
         .notif-list{flex:1;overflow-y:auto;}
         .notif-item{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--bdr2);cursor:pointer;transition:.12s;}
         .notif-item:hover{background:rgba(255,255,255,.02);}
@@ -1455,12 +1595,12 @@ export default function MessagesPage() {
         .notif-dot{width:6px;height:6px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:5px;}
 
         /* ── MOBILE BOTTOM NAV ── */
-        .bnav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(11,15,28,.98);backdrop-filter:blur(20px);border-top:1px solid var(--bdr);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
+        .bnav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(9,12,22,.99);backdrop-filter:blur(24px);border-top:1px solid rgba(255,255,255,.08);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
         @media(max-width:767px){.bnav{display:flex;}}
-        .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .13s;}
+        .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10px 0;background:transparent;border:none;cursor:pointer;color:rgba(255,255,255,.3);font-size:10px;font-weight:600;font-family:'DM Sans',sans-serif;transition:color .13s;}
         .bnav-btn--on{color:#a78bfa;}
         .bnav-icon{position:relative;}
-        .bnav-badge{position:absolute;top:-4px;right:-6px;width:13px;height:13px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;}
+        .bnav-badge{position:absolute;top:-4px;right:-6px;width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#6d28d9);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;}
 
         /* ── SCROLLBARS ── */
         .msgs-area::-webkit-scrollbar,.conv-list::-webkit-scrollbar,.notif-list::-webkit-scrollbar,.panel-body::-webkit-scrollbar,.deals-panel::-webkit-scrollbar,.gs-results::-webkit-scrollbar{width:3px;}
@@ -1487,13 +1627,17 @@ export default function MessagesPage() {
                 <span className="search-shortcut">⌘K</span>
               </button>
 
-              {/* Status button — shows auto/manual state */}
+              {/* Status button */}
               <div style={{position:"relative"}}>
                 <button className="status-btn" onClick={()=>setShowStatusPicker(p=>!p)}>
-                  <span className="status-emoji">{myStatusCfg.emoji}</span>
+                  <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:myStatusCfg.color,flexShrink:0}}/>
                   <span className="status-label">{myStatusCfg.label}</span>
-                  {!isManual && <span className="auto-indicator"><Radio style={{width:8,height:8}}/>Auto</span>}
-                  <ChevronDown style={{width:9,height:9,color:"rgba(255,255,255,.3)"}}/>
+                  {!isManual && (
+                    <span className="auto-indicator">
+                      <Radio style={{width:8,height:8}}/> Auto
+                    </span>
+                  )}
+                  <ChevronDown style={{width:10,height:10,color:"rgba(255,255,255,.3)"}}/>
                 </button>
                 {showStatusPicker&&(
                   <StatusPicker
@@ -1603,7 +1747,11 @@ export default function MessagesPage() {
                 <div className="conv-list">
                   {conversationsLoading ? <div className="center-spin"><Loader2 className="spin"/></div>
                     : conversations.length===0 ? (
-                      <div className="panel-empty"><MessageSquare style={{width:24,height:24,opacity:.2}}/><p>No conversations</p></div>
+                      <div className="panel-empty">
+                        <MessageSquare style={{width:24,height:24,opacity:.2}}/>
+                        <p>No conversations yet</p>
+                        <p style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>Start a new message above</p>
+                      </div>
                     ) : (
                       <>
                         {groupConvs.length>0&&(
@@ -1641,15 +1789,15 @@ export default function MessagesPage() {
                             </div>
                             {dmConvs.map(c=>{
                               const nm=getConversationName(c);
-                              const otherId=c.participants[0]?.user_id;
-                              const otherOn=otherId?isOnline(otherId):false;
-                              const status=otherId?getStatus(otherId):"available";
-                              const stCfg=STATUS_CONFIG[status];
+                              const otherIdDm=c.participants[0]?.user_id;
+                              const otherOnDm=otherIdDm?isOnline(otherIdDm):false;
+                              const statusDm=otherIdDm?getStatus(otherIdDm):"available";
+                              const stCfgDm=STATUS_CONFIG[statusDm];
                               return (
                                 <button key={c.id} className={cn("conv-item",sel===c.id&&"conv-item--active")} onClick={()=>pick(c.id)}>
                                   <div className="conv-av-wrap">
                                     <div className="conv-av">{initials(nm)}</div>
-                                    <span className="pres-dot" style={{position:"absolute",bottom:-1,right:-1,background:otherOn?stCfg.color:"rgba(255,255,255,.12)"}}/>
+                                    <span className="pres-dot" style={{background:otherOnDm?stCfgDm.color:"rgba(255,255,255,.12)"}}/>
                                     {c.unread_count>0&&<div className="conv-unread">{c.unread_count>9?"9+":c.unread_count}</div>}
                                   </div>
                                   <div className="conv-info">
@@ -1658,7 +1806,7 @@ export default function MessagesPage() {
                                       {c.last_message&&<span className="meta-time">{fmtTime(c.last_message.created_at)}</span>}
                                     </div>
                                     <p className="conv-preview">
-                                      {otherOn?`${stCfg.emoji} ${stCfg.label}`:c.last_message?.message_text||"No messages yet"}
+                                      {otherOnDm?`${stCfgDm.label}`:c.last_message?.message_text||"No messages yet"}
                                     </p>
                                   </div>
                                   <ChevronRight style={{width:12,height:12,color:"rgba(255,255,255,.15)"}}/>
@@ -1706,15 +1854,14 @@ export default function MessagesPage() {
                     <div className="re-risk-alert">
                       <AlertTriangle style={{width:13,height:13}}/>
                       <span><strong>{atRiskDeals}</strong> deal{atRiskDeals!==1?"s":""} need attention</span>
-                      <button onClick={()=>setTab("deals")} style={{marginLeft:"auto",background:"none",border:"none",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:600}}>
+                      <button onClick={()=>setTab("deals")} style={{marginLeft:"auto",background:"none",border:"none",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>
                         Review →
                       </button>
                     </div>
                   )}
-                  {/* Auto-status info card */}
-                  <div style={{marginTop:16,padding:"10px 14px",background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.15)",borderRadius:11,display:"flex",alignItems:"center",gap:8,fontSize:11,color:"rgba(34,197,94,.8)"}}>
-                    <Radio style={{width:12,height:12,flexShrink:0}}/>
-                    <span>Status auto-tracks your activity — {myStatusCfg.emoji} {myStatusCfg.label}</span>
+                  <div style={{marginTop:16,padding:"10px 14px",background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.15)",borderRadius:11,display:"flex",alignItems:"center",gap:8,fontSize:11,color:"rgba(34,197,94,.8)",fontFamily:"'DM Sans',sans-serif"}}>
+                    <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:myStatusCfg.color,flexShrink:0}}/>
+                    <span>Status auto-tracks your activity — {myStatusCfg.label}</span>
                   </div>
                 </div>
               )}
