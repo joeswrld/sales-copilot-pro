@@ -5,6 +5,8 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useMinuteUsage } from "@/hooks/useMinuteUsage";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
+// ✅ CHANGED: Import TeamUsageBillingCard
+import { TeamUsageBillingCard } from "@/components/TeamMinuteUsageComponents";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -125,6 +127,9 @@ export default function BillingPage() {
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
+            {/* ✅ CHANGED: TeamUsageBillingCard shown prominently at top of content */}
+            <TeamUsageBillingCard className="mb-2" />
+
             {/* Incomplete checkout banner */}
             {showPending && (
               <Card className="border-amber-500/40 bg-amber-500/5">
