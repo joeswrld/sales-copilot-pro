@@ -2,11 +2,12 @@
  * LiveCall.tsx — 100ms Edition
  *
  * Flow:
- *  1. Create 100ms room via create-hms-room edge function
- *  2. Share invite link with prospect
- *  3. Join as host via 100ms React SDK
- *  4. Audio tracks captured per peer → transcribe-stream edge fn
- *  5. End call → AI summary → redirect to call detail
+ *  1. User enters meeting title (required) + reason/description
+ *  2. Create 100ms room via create-hms-room edge function
+ *  3. Share invite link with prospect
+ *  4. Join as host via 100ms React SDK
+ *  5. Audio tracks captured per peer → transcribe-stream edge fn
+ *  6. End call → AI summary → redirect to call detail
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -17,6 +18,7 @@ import {
   AlertTriangle, Shield, StopCircle, VideoIcon, Copy,
   Check, Plus, Sparkles, Radio, Eye, RefreshCw, Link2, Mic,
   MicOff, Video, VideoOff, PhoneOff, Users, Trash2, WifiOff,
+  FileText, Tag, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,17 @@ declare global {
 }
 
 type ClearState = "idle" | "clearing" | "done" | "failed";
+
+// Meeting type options for the reason selector
+const MEETING_REASONS = [
+  { value: "discovery", label: "🔍 Discovery Call", hint: "First meeting to understand the prospect" },
+  { value: "demo", label: "🎯 Product Demo", hint: "Showing your product in action" },
+  { value: "follow_up", label: "📞 Follow-up", hint: "Continuing from a previous conversation" },
+  { value: "negotiation", label: "🤝 Negotiation", hint: "Discussing terms and pricing" },
+  { value: "onboarding", label: "🚀 Onboarding", hint: "Getting a new client started" },
+  { value: "check_in", label: "💬 Check-in", hint: "Regular relationship touchpoint" },
+  { value: "other", label: "📋 Other", hint: "Something else" },
+];
 
 // ─── Audio chunk processor ─────────────────────────────────────────────────────
 class AudioChunkProcessor {
@@ -85,14 +98,19 @@ function useHMSRoom() {
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  const createRoom = useCallback(async (callId: string, title: string) => {
+  const createRoom = useCallback(async (callId: string, title: string, description?: string) => {
     setIsCreating(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Not authenticated");
       const { data, error } = await supabase.functions.invoke("create-hms-room", {
         headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { call_id: callId, title, app_origin: window.location.origin },
+        body: {
+          call_id: callId,
+          title,
+          description: description || null,
+          app_origin: window.location.origin,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -155,7 +173,164 @@ function useHMSAudioStreaming(callId: string | null) {
   return { chunksSent, isStreaming, startPeerAudio, stopPeerAudio, stopAll };
 }
 
-// ─── Zombie banner with robust clear ──────────────────────────────────────────
+// ─── Meeting Setup Form ────────────────────────────────────────────────────────
+function MeetingSetupForm({
+  onSubmit,
+  isDisabled,
+}: {
+  onSubmit: (title: string, description: string, meetingType: string) => void;
+  isDisabled: boolean;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [meetingType, setMeetingType] = useState("discovery");
+  const [touched, setTouched] = useState(false);
+
+  const titleError = touched && !title.trim();
+  const selectedReason = MEETING_REASONS.find(r => r.value === meetingType);
+
+  const handleSubmit = () => {
+    setTouched(true);
+    if (!title.trim()) {
+      toast.error("Please enter a meeting title");
+      return;
+    }
+    onSubmit(title.trim(), description.trim(), meetingType);
+  };
+
+  return (
+    <div className="glass rounded-2xl border border-border p-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <VideoIcon className="w-5 h-5 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-base">Set up your meeting</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Give your meeting a title and purpose so you can tell them apart later
+          </p>
+        </div>
+      </div>
+
+      {/* Title field — required */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-foreground/80 flex items-center gap-1.5">
+          Meeting Title
+          <span className="text-destructive text-xs">*</span>
+        </label>
+        <div className="relative">
+          <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="e.g. Acme Corp — Product Demo"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => setTouched(true)}
+            maxLength={100}
+            className={cn(
+              "w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-secondary/60 border transition-colors outline-none",
+              titleError
+                ? "border-destructive/60 focus:border-destructive"
+                : "border-border focus:border-primary/60",
+            )}
+          />
+          {title && (
+            <button
+              onClick={() => setTitle("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {titleError && (
+          <p className="text-xs text-destructive flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> Meeting title is required
+          </p>
+        )}
+      </div>
+
+      {/* Meeting reason selector */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-foreground/80 flex items-center gap-1.5">
+          <Tag className="w-3 h-3" /> Meeting Type
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {MEETING_REASONS.map((reason) => (
+            <button
+              key={reason.value}
+              onClick={() => setMeetingType(reason.value)}
+              className={cn(
+                "flex flex-col items-start gap-0.5 p-2.5 rounded-xl border text-left transition-all text-xs",
+                meetingType === reason.value
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              <span className="font-semibold leading-tight">{reason.label}</span>
+              <span className="text-[10px] opacity-70 leading-tight line-clamp-1">{reason.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Description / notes — optional */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-foreground/80">
+          Notes / Agenda <span className="text-muted-foreground font-normal">(optional)</span>
+        </label>
+        <textarea
+          placeholder="e.g. Follow up on pricing objection from last call, show new enterprise features..."
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          maxLength={500}
+          className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none resize-none transition-colors placeholder:text-muted-foreground/60"
+        />
+        {description && (
+          <p className="text-[10px] text-muted-foreground text-right">{description.length}/500</p>
+        )}
+      </div>
+
+      {/* Submit */}
+      <button
+        onClick={handleSubmit}
+        disabled={isDisabled}
+        className={cn(
+          "w-full flex items-center justify-center gap-2.5 h-12 rounded-xl text-sm font-semibold transition-all",
+          isDisabled
+            ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+            : "bg-primary text-primary-foreground hover:opacity-90 active:opacity-80",
+        )}
+      >
+        {isDisabled ? (
+          <><Loader2 className="w-4 h-4 animate-spin" />Creating room…</>
+        ) : (
+          <><Plus className="w-4 h-4" />Create Meeting Room</>
+        )}
+      </button>
+
+      {/* Feature pills */}
+      <div className="flex flex-wrap justify-center gap-2">
+        {[
+          { icon: Shield, text: "No login for guests" },
+          { icon: Radio, text: "Real-time transcription" },
+          { icon: Sparkles, text: "AI coaching insights" },
+        ].map(({ icon: Icon, text }) => (
+          <span
+            key={text}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1"
+          >
+            <Icon className="w-3 h-3 text-primary" />{text}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Zombie banner ─────────────────────────────────────────────────────────────
 function ZombieBanner({
   callId,
   onCleared,
@@ -170,79 +345,50 @@ function ZombieBanner({
     setClearState("clearing");
     let success = false;
 
-    // ── Strategy 1: force-clear-session edge function ──────────────────
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = {};
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-
       const { data, error } = await supabase.functions.invoke("force-clear-session", {
         headers,
         body: { call_id: callId ?? null, clear_all: true },
       });
-      if (!error && data?.success) {
-        success = true;
-        console.log("[ZombieBanner] Cleared via force-clear-session, count:", data.cleared);
-      }
-    } catch (e) {
-      console.warn("[ZombieBanner] force-clear-session threw:", e);
-    }
+      if (!error && data?.success) { success = true; }
+    } catch (e) { console.warn("[ZombieBanner] force-clear-session threw:", e); }
 
-    // ── Strategy 2: direct Supabase update (if edge fn failed) ─────────
     if (!success) {
       try {
-        const { error } = await supabase
-          .from("calls")
-          .update({
-            status: "completed",
-            end_time: new Date().toISOString(),
-            duration_minutes: 0,
-          })
-          .eq("status", "live");
-
-        if (!error) {
-          success = true;
-          console.log("[ZombieBanner] Cleared via direct update");
-        }
-      } catch (e) {
-        console.warn("[ZombieBanner] direct update threw:", e);
-      }
+        const { error } = await supabase.from("calls").update({
+          status: "completed",
+          end_time: new Date().toISOString(),
+          duration_minutes: 0,
+        }).eq("status", "live");
+        if (!error) success = true;
+      } catch (e) { console.warn("[ZombieBanner] direct update threw:", e); }
     }
 
-    // ── Strategy 3: clear specific call ID if known ────────────────────
     if (!success && callId) {
       try {
-        const { error } = await supabase
-          .from("calls")
-          .update({
-            status: "completed",
-            end_time: new Date().toISOString(),
-            duration_minutes: 0,
-          })
-          .eq("id", callId);
-
-        if (!error) {
-          success = true;
-          console.log("[ZombieBanner] Cleared specific callId:", callId);
-        }
-      } catch (e) {
-        console.warn("[ZombieBanner] specific call update threw:", e);
-      }
+        const { error } = await supabase.from("calls").update({
+          status: "completed",
+          end_time: new Date().toISOString(),
+          duration_minutes: 0,
+        }).eq("id", callId);
+        if (!error) success = true;
+      } catch (e) { console.warn("[ZombieBanner] specific call update threw:", e); }
     }
 
     if (success) {
       setClearState("done");
       toast.success("Previous session cleared — you can start fresh!");
-      // Small delay so the user sees the success state, then notify parent
       setTimeout(() => onCleared(), 600);
     } else {
       setClearState("failed");
       setAttempt((a) => a + 1);
-      toast.error("Could not clear session automatically. Try the manual clear below.");
+      toast.error("Could not clear session automatically.");
     }
   }, [callId, onCleared]);
 
-  // Auto-retry once after a short delay if first attempt failed
   useEffect(() => {
     if (clearState === "failed" && attempt === 1) {
       const t = setTimeout(() => doClear(), 2000);
@@ -251,30 +397,22 @@ function ZombieBanner({
   }, [clearState, attempt, doClear]);
 
   return (
-    <div
-      className={cn(
-        "rounded-xl border p-4 transition-all duration-300",
-        clearState === "done"
-          ? "border-green-500/30 bg-green-500/5"
-          : clearState === "failed"
-          ? "border-red-500/30 bg-red-500/5"
-          : "border-yellow-500/30 bg-yellow-500/5"
-      )}
-    >
+    <div className={cn(
+      "rounded-xl border p-4 transition-all duration-300",
+      clearState === "done" ? "border-green-500/30 bg-green-500/5"
+      : clearState === "failed" ? "border-red-500/30 bg-red-500/5"
+      : "border-yellow-500/30 bg-yellow-500/5"
+    )}>
       <div className="flex items-start gap-3">
-        {/* Icon */}
         <div className="shrink-0 mt-0.5">
           {clearState === "clearing" && <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />}
           {clearState === "done"     && <CheckCircle2 className="w-4 h-4 text-green-400" />}
           {clearState === "failed"   && <WifiOff className="w-4 h-4 text-red-400" />}
           {clearState === "idle"     && <AlertTriangle className="w-4 h-4 text-yellow-400" />}
         </div>
-
-        {/* Text */}
         <div className="flex-1 min-w-0">
-          <p className={cn(
-            "text-sm font-semibold",
-            clearState === "done"   ? "text-green-400"
+          <p className={cn("text-sm font-semibold",
+            clearState === "done" ? "text-green-400"
             : clearState === "failed" ? "text-red-400"
             : "text-yellow-400"
           )}>
@@ -284,21 +422,17 @@ function ZombieBanner({
             {clearState === "failed"   && "Auto-clear failed — try manual clear"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {clearState === "idle"     && "Clear it to start a new meeting."}
+            {clearState === "idle"   && "Clear it to start a new meeting."}
             {clearState === "clearing" && "Please wait a moment…"}
-            {clearState === "done"     && "Starting fresh now."}
-            {clearState === "failed"   && "Your previous call may still be marked live. Use manual clear below."}
+            {clearState === "done"   && "Starting fresh now."}
+            {clearState === "failed" && "Your previous call may still be marked live."}
           </p>
         </div>
-
-        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
           {(clearState === "idle" || clearState === "failed") && (
             <Button
-              size="sm"
-              variant="outline"
-              className={cn(
-                "gap-1.5 h-8 text-xs",
+              size="sm" variant="outline"
+              className={cn("gap-1.5 h-8 text-xs",
                 clearState === "failed"
                   ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
                   : "border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
@@ -310,30 +444,21 @@ function ZombieBanner({
               {clearState === "failed" ? "Retry Clear" : "Clear & Retry"}
             </Button>
           )}
-
           {clearState === "failed" && (
             <Button
-              size="sm"
-              variant="outline"
+              size="sm" variant="outline"
               className="gap-1.5 h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
-              onClick={() => {
-                // Force-navigate away and back to reset all state
-                toast.info("Reloading page for a fresh start…");
-                setTimeout(() => window.location.reload(), 500);
-              }}
+              onClick={() => { toast.info("Reloading…"); setTimeout(() => window.location.reload(), 500); }}
             >
-              <Trash2 className="w-3 h-3" />
-              Force Reload
+              <Trash2 className="w-3 h-3" />Force Reload
             </Button>
           )}
         </div>
       </div>
-
-      {/* Manual SQL fallback instructions — only shown after multiple failures */}
       {clearState === "failed" && attempt >= 2 && (
         <div className="mt-3 pt-3 border-t border-red-500/20">
           <p className="text-xs text-red-300/70">
-            If the problem persists, reload the page — your previous session will be auto-cleaned within a few minutes.
+            If the problem persists, reload — your previous session will be cleaned up within a few minutes.
           </p>
         </div>
       )}
@@ -343,9 +468,9 @@ function ZombieBanner({
 
 // ─── Share link panel ──────────────────────────────────────────────────────────
 function ShareLinkPanel({
-  shareLink, callId, onJoinAsHost,
+  shareLink, callId, meetingTitle, onJoinAsHost,
 }: {
-  shareLink: string; callId: string; onJoinAsHost: () => void;
+  shareLink: string; callId: string; meetingTitle: string; onJoinAsHost: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
@@ -369,7 +494,9 @@ function ShareLinkPanel({
         </div>
         <div>
           <p className="font-semibold text-sm text-primary">Meeting room ready!</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Share this link with your prospect — no account needed.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            <span className="text-foreground/70 font-medium">{meetingTitle}</span> — share this link with your prospect, no account needed.
+          </p>
         </div>
       </div>
 
@@ -413,10 +540,10 @@ function ShareLinkPanel({
 
 // ─── In-meeting controls ───────────────────────────────────────────────────────
 function MeetingControls({
-  callId, shareLink, isStreaming, chunksSent,
+  callId, shareLink, isStreaming, chunksSent, meetingTitle,
   isAudioOn, isVideoOn, onToggleAudio, onToggleVideo, onEnd, isEnding,
 }: {
-  callId: string; shareLink?: string; isStreaming: boolean; chunksSent: number;
+  callId: string; shareLink?: string; isStreaming: boolean; chunksSent: number; meetingTitle: string;
   isAudioOn: boolean; isVideoOn: boolean;
   onToggleAudio: () => void; onToggleVideo: () => void;
   onEnd: () => void; isEnding: boolean;
@@ -437,7 +564,9 @@ function MeetingControls({
         <div className="flex items-center gap-2.5">
           <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
           <div>
-            <p className="font-semibold text-sm text-green-400">Meeting in progress</p>
+            <p className="font-semibold text-sm text-green-400">
+              {meetingTitle || "Meeting"} · in progress
+            </p>
             <p className="text-xs text-muted-foreground">
               {isStreaming ? `AI transcribing · ${chunksSent} chunks` : "Waiting for audio…"}
             </p>
@@ -538,12 +667,13 @@ export default function LiveCall() {
   const { roomInfo, isCreating, createRoom } = useHMSRoom();
   const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
 
-  const [isStarting, setIsStarting]     = useState(false);
-  const [hostJoined, setHostJoined]     = useState(false);
-  const [isZombie, setIsZombie]         = useState(false);
-  const [isAudioOn, setIsAudioOn]       = useState(true);
-  const [isVideoOn, setIsVideoOn]       = useState(true);
-  const [peers, setPeers]               = useState<any[]>([]);
+  const [isStarting, setIsStarting]         = useState(false);
+  const [hostJoined, setHostJoined]         = useState(false);
+  const [isZombie, setIsZombie]             = useState(false);
+  const [isAudioOn, setIsAudioOn]           = useState(true);
+  const [isVideoOn, setIsVideoOn]           = useState(true);
+  const [peers, setPeers]                   = useState<any[]>([]);
+  const [activeMeetingTitle, setActiveMeetingTitle] = useState("");
 
   const hmsActionsRef = useRef<any>(null);
   const hmsStoreRef   = useRef<any>(null);
@@ -558,13 +688,11 @@ export default function LiveCall() {
     }
   }, [isLive, liveCall, roomInfo, hostJoined]);
 
-  // Handle zombie cleared — reset all state and invalidate queries
   const handleZombieCleared = useCallback(() => {
     setIsZombie(false);
     setIsStarting(false);
     setHostJoined(false);
     setPeers([]);
-    // The liveCall query will auto-refetch (it polls every 5s)
   }, []);
 
   const hasActiveSession = isLive && !!callId && !isZombie;
@@ -637,18 +765,25 @@ export default function LiveCall() {
     }
   }, [roomInfo, callId, loadHMSSDK, startPeerAudio, navigate]);
 
-  // ── Create meeting ───────────────────────────────────────────────────────────
-  const handleCreateMeeting = useCallback(async () => {
+  // ── Create meeting (called from the setup form) ───────────────────────────
+  const handleCreateMeeting = useCallback(async (
+    title: string,
+    description: string,
+    meetingType: string,
+  ) => {
     if (!checkLimit()) return;
     setIsStarting(true);
+    setActiveMeetingTitle(title);
     let callRow: any = null;
     try {
       callRow = await startCall.mutateAsync({
         platform: "100ms",
-        name: "Fixsense Meeting",
+        name: title,
+        meeting_type: meetingType,
         participants: [],
+        description,
       } as any);
-      await createRoom(callRow.id, "Fixsense Meeting");
+      await createRoom(callRow.id, title, description);
       toast.success("Room ready — share the link with your prospect!");
     } catch (err: any) {
       if (callRow?.id) {
@@ -663,6 +798,7 @@ export default function LiveCall() {
       } else {
         toast.error("Could not create meeting room. Please try again.");
       }
+      setActiveMeetingTitle("");
     } finally {
       setIsStarting(false);
     }
@@ -692,6 +828,7 @@ export default function LiveCall() {
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
       setHostJoined(false);
+      setActiveMeetingTitle("");
       if (callId) navigate(`/dashboard/calls/${callId}`);
     } catch {
       toast.error("Failed to end call. Please try again.");
@@ -715,63 +852,27 @@ export default function LiveCall() {
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold font-display">Live Call</h1>
           <p className="text-sm text-muted-foreground">
-            Create a room, share the link — AI transcribes both sides in real-time via 100ms
+            Name your meeting, share the link — AI transcribes both sides in real-time
           </p>
         </div>
 
         {/* Usage banner */}
         <TeamUsageBanner onUpgrade={() => navigate("/dashboard/billing")} />
 
-        {/* ── Zombie / stuck session banner ───────────────────────────────── */}
+        {/* Zombie / stuck session banner */}
         {isZombie && (
-          <ZombieBanner
-            callId={callId}
-            onCleared={handleZombieCleared}
+          <ZombieBanner callId={callId} onCleared={handleZombieCleared} />
+        )}
+
+        {/* Meeting setup form — shown when no active session */}
+        {!hasActiveSession && !roomInfo && !isZombie && (
+          <MeetingSetupForm
+            onSubmit={handleCreateMeeting}
+            isDisabled={isCreating || isStarting || (teamUsage?.isAtLimit ?? false)}
           />
         )}
 
-        {/* ── Create meeting CTA (only when no active/zombie session) ─────── */}
-        {!hasActiveSession && !roomInfo && !isZombie && (
-          <div className="glass rounded-2xl border border-border p-6 space-y-5">
-            <div className="text-center space-y-1.5">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-3">
-                <VideoIcon className="w-7 h-7 text-primary" />
-              </div>
-              <h2 className="font-semibold text-base">Create a Meeting Room</h2>
-              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                Instant 100ms room — one link, no login for your prospect.
-                AI transcribes both sides directly from your browser.
-              </p>
-            </div>
-
-            <button
-              onClick={handleCreateMeeting}
-              disabled={isCreating || isStarting || (teamUsage?.isAtLimit ?? false)}
-              className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isCreating || isStarting ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Creating room…</>
-              ) : (
-                <><Plus className="w-4 h-4" />Create Meeting Room</>
-              )}
-            </button>
-
-            <div className="flex flex-wrap justify-center gap-2">
-              {[
-                { icon: Shield,   text: "No login for guests" },
-                { icon: Radio,    text: "Real-time transcription" },
-                { icon: Sparkles, text: "AI coaching insights" },
-              ].map(({ icon: Icon, text }) => (
-                <span key={text}
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-secondary/50 border border-border/60 rounded-full px-2.5 py-1">
-                  <Icon className="w-3 h-3 text-primary" />{text}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Loading */}
+        {/* Loading state while creating */}
         {(isStarting || isCreating) && !roomInfo && (
           <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
@@ -779,7 +880,9 @@ export default function LiveCall() {
             </div>
             <div>
               <p className="font-semibold text-sm text-primary">Preparing Meeting Room</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Creating your 100ms room…</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {activeMeetingTitle ? `Setting up "${activeMeetingTitle}"…` : "Creating your 100ms room…"}
+              </p>
             </div>
           </div>
         )}
@@ -789,6 +892,7 @@ export default function LiveCall() {
           <ShareLinkPanel
             shareLink={roomInfo.share_link}
             callId={callId}
+            meetingTitle={activeMeetingTitle || (liveCall?.name ?? "Meeting")}
             onJoinAsHost={handleJoinAsHost}
           />
         )}
@@ -800,6 +904,7 @@ export default function LiveCall() {
             shareLink={roomInfo?.share_link}
             isStreaming={isStreaming}
             chunksSent={chunksSent}
+            meetingTitle={activeMeetingTitle || (liveCall?.name ?? "Meeting")}
             isAudioOn={isAudioOn}
             isVideoOn={isVideoOn}
             onToggleAudio={handleToggleAudio}
@@ -813,8 +918,13 @@ export default function LiveCall() {
         {hostJoined && peers.length > 0 && (
           <div className={cn("grid gap-3", peers.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {peers.map((peer) => (
-              <VideoTile key={peer.id} peerId={peer.id} isLocal={peer.isLocal}
-                peerName={peer.name} hmsActions={hmsActionsRef.current} />
+              <VideoTile
+                key={peer.id}
+                peerId={peer.id}
+                isLocal={peer.isLocal}
+                peerName={peer.name}
+                hmsActions={hmsActionsRef.current}
+              />
             ))}
           </div>
         )}
