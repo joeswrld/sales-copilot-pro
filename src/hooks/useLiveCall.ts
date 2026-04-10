@@ -210,6 +210,19 @@ export function useLiveCall(options?: {
       }).eq("id", callId);
       if (error) throw error;
 
+      // ✅ CHANGED: Fire update-usage to log minutes consumed (non-fatal)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          await supabase.functions.invoke("update-usage", {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: { call_id: callId },
+          });
+        }
+      } catch (e) {
+        console.warn("update-usage non-fatal error:", e);
+      }
+
       // Generate AI summary
       let summaryData: any = null;
       try {
@@ -290,6 +303,8 @@ export function useLiveCall(options?: {
       queryClient.invalidateQueries({ queryKey: ["call-stats"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["team-minute-usage"] });
       queryClient.invalidateQueries({ queryKey: ["deal-rooms"] });
       options?.onCallEnded?.();
     },
