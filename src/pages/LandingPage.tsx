@@ -718,12 +718,7 @@ export default function LandingPage() {
         <div className="hero-grid" />
         <div className="hero-orb" />
         <div className="hero-inner">
-          <FadeIn delay={60}>
-            <div className="hero-tag">
-              <div className="hero-tag-dot" />
-              The real reason your team is losing winnable deals
-            </div>
-          </FadeIn>
+        
           <FadeIn delay={120}>
             <h1 className="hero-h">
               Your reps are flying <span className="loss">blind</span> on every call.<br />
