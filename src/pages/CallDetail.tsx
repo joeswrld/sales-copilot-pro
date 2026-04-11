@@ -44,10 +44,10 @@ function parseTimeToSeconds(time?: string) {
 function statusColor(status?: string | null) {
   switch (status) {
     case "completed": return "bg-green-500/10 text-green-400 border-green-500/20";
-    case "Won": return "bg-green-500/10 text-green-400 border-green-500/20";
+    case "Won":       return "bg-green-500/10 text-green-400 border-green-500/20";
     case "In Progress": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-    case "At Risk": return "bg-red-500/10 text-red-400 border-red-500/20";
-    default: return "bg-muted text-muted-foreground";
+    case "At Risk":   return "bg-red-500/10 text-red-400 border-red-500/20";
+    default:          return "bg-muted text-muted-foreground";
   }
 }
 
@@ -56,28 +56,34 @@ export default function CallDetail() {
   const navigate = useNavigate();
 
   const { call, summary } = useCallDetail(id);
-  const { useCallClips } = useCoachingClips();
+  const { useCallClips }  = useCoachingClips();
   const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
 
-  const { action, isLoading: actionLoading, generate: generateAction, toggleComplete, markCrmPushed } = useCallAction(id);
+  const {
+    action,
+    isLoading: actionLoading,
+    generate: generateAction,
+    toggleComplete,
+    markCrmPushed,
+  } = useCallAction(id);
 
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing]   = useState(false);
   const [editName, setEditName] = useState("");
 
-  const callData = call.data;
+  const callData    = call.data;
   const summaryData = summary.data;
 
-  const objections = (summaryData?.objections as unknown as Objection[]) || [];
+  const objections  = (summaryData?.objections as unknown as Objection[]) || [];
   const rawTranscript = (summaryData?.transcript as unknown as TranscriptLine[]) || [];
-  const topics = summaryData?.topics || [];
-  const nextSteps = summaryData?.next_steps || [];
-  const actionItems = summaryData?.action_items || [];
-  const keyDecisions = summaryData?.key_decisions || [];
+  const topics        = summaryData?.topics       || [];
+  const nextSteps     = summaryData?.next_steps   || [];
+  const actionItems   = summaryData?.action_items || [];
+  const keyDecisions  = summaryData?.key_decisions || [];
   const buyingSignals = summaryData?.buying_signals || [];
-  const summaryText = summaryData?.summary || "";
-  const meetingScore = summaryData?.meeting_score;
-  const talkRatio = summaryData?.talk_ratio as Record<string, number> | null;
+  const summaryText   = summaryData?.summary || "";
+  const meetingScore  = summaryData?.meeting_score;
+  const talkRatio     = summaryData?.talk_ratio as Record<string, number> | null;
 
   const normalizedTranscript = useMemo(() => {
     if (!Array.isArray(rawTranscript)) return [];
@@ -87,12 +93,7 @@ export default function CallDetail() {
       const end = nextLine
         ? parseTimeToSeconds(nextLine.time || nextLine.timestamp)
         : start + 5;
-      return {
-        ...line,
-        timestamp: line.timestamp || line.time || "0:00",
-        start,
-        end,
-      };
+      return { ...line, timestamp: line.timestamp || line.time || "0:00", start, end };
     });
   }, [rawTranscript]);
 
@@ -125,7 +126,7 @@ export default function CallDetail() {
     <DashboardLayout>
       <div className="space-y-6 max-w-4xl mx-auto">
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="flex items-center gap-3">
           <Link to="/dashboard/calls">
             <Button variant="ghost" size="icon">
@@ -149,8 +150,10 @@ export default function CallDetail() {
             ) : (
               <div className="flex gap-2 items-center">
                 <h1 className="text-xl font-bold">{callData.name}</h1>
-                <button onClick={() => { setEditing(true); setEditName(callData.name); }}
-                  className="text-muted-foreground hover:text-foreground transition-colors">
+                <button
+                  onClick={() => { setEditing(true); setEditName(callData.name); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -159,7 +162,7 @@ export default function CallDetail() {
           <Badge className={statusColor(callData.status)}>{callData.status || "Unknown"}</Badge>
         </div>
 
-        {/* Meta info cards */}
+        {/* ── Meta info cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetaCard icon={<Calendar className="w-4 h-4" />} label="Date"
             value={format(new Date(callData.date), "MMM d, yyyy")} />
@@ -171,7 +174,7 @@ export default function CallDetail() {
             value={meetingScore != null ? `${meetingScore}/100` : "N/A"} />
         </div>
 
-        {/* Recording player */}
+        {/* ── Recording player ── */}
         {recordingUrl && (
           <div className="rounded-xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -193,7 +196,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* AI Action Layer */}
+        {/* ── AI Action Layer ── */}
         {callData.status === "completed" && summaryData && (
           <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -208,11 +211,9 @@ export default function CallDetail() {
                   onClick={() => generateAction.mutate(callData.id)}
                   disabled={generateAction.isPending}
                 >
-                  {generateAction.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3 h-3" />
-                  )}
+                  {generateAction.isPending
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Sparkles className="w-3 h-3" />}
                   Generate
                 </Button>
               )}
@@ -226,7 +227,7 @@ export default function CallDetail() {
 
             {action && (
               <div className="space-y-3">
-                {/* Priority action */}
+                {/* Priority action checkbox */}
                 <div className="flex items-start gap-3">
                   <button
                     onClick={() => toggleComplete.mutate({ actionId: action.id, completed: !action.is_completed })}
@@ -247,7 +248,9 @@ export default function CallDetail() {
                 {action.draft_email_subject && (
                   <div className="rounded-lg bg-card border border-border p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Draft Follow-up Email</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Draft Follow-up Email
+                      </p>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -268,55 +271,62 @@ export default function CallDetail() {
                   </div>
                 )}
 
-                {/* CRM push */}
-<div className="flex items-center gap-2">
-  {action.crm_pushed ? (
-    <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
-      <CheckCircle className="w-3 h-3 mr-1" />
-      Pushed to {action.crm_provider || "CRM"}
-    </Badge>
-  ) : (
-    <>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 text-xs gap-1"
-        onClick={() =>
-          markCrmPushed.mutate({
-            actionId: action.id,
-            provider: "hubspot",
-          })
-        }
-      >
-        Push to HubSpot
-      </Button>
+                {/* ── CRM push ── */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {action.crm_pushed ? (
+                    <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Pushed to {action.crm_provider || "CRM"}
+                    </Badge>
+                  ) : (
+                    <>
+                      {/* HubSpot — live */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}
+                        disabled={markCrmPushed.isPending}
+                      >
+                        {markCrmPushed.isPending
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : null}
+                        Push to HubSpot
+                      </Button>
 
-      <div className="relative group">
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs gap-1 opacity-50 cursor-not-allowed border-dashed"
-          disabled
-        >
-          Salesforce
-          <span className="text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/20 rounded-full px-1.5 py-0.5 ml-0.5">
-            Soon
-          </span>
-        </Button>
-      </div>
-    </>
-  )}
-</div>
+                      {/* Salesforce — coming soon */}
+                      <div className="relative group">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled
+                          className="h-7 text-xs gap-1.5 opacity-50 cursor-not-allowed border-dashed select-none"
+                        >
+                          Salesforce
+                          <span className="inline-flex items-center text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/25 rounded-full px-1.5 py-0.5 leading-none">
+                            Soon
+                          </span>
+                        </Button>
+                        {/* Tooltip */}
+                        <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center gap-1.5 whitespace-nowrap bg-popover border border-border rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg z-20">
+                          🚧 Salesforce sync is coming soon
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
-{/* Loading state */}
-{generateAction.isPending && (
-  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-    <Loader2 className="w-4 h-4 animate-spin" />
-    Generating your next action...
-  </div>
-)}
+            {generateAction.isPending && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating your next action…
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* Talk ratio */}
+        {/* ── Talk ratio ── */}
         {talkRatio && Object.keys(talkRatio).length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -327,7 +337,10 @@ export default function CallDetail() {
                 <div key={speaker} className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground w-16 truncate">{speaker}</span>
                   <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Number(pct))}%` }} />
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.min(100, Number(pct))}%` }}
+                    />
                   </div>
                   <span className="text-xs font-medium w-10 text-right">{Number(pct).toFixed(0)}%</span>
                 </div>
@@ -336,7 +349,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Summary */}
+        {/* ── Summary ── */}
         {summaryText && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -346,7 +359,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Topics */}
+        {/* ── Topics ── */}
         {topics.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -360,7 +373,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Objections */}
+        {/* ── Objections ── */}
         {objections.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -370,17 +383,19 @@ export default function CallDetail() {
               {objections.map((obj, i) => (
                 <div key={i} className="rounded-lg bg-muted/50 p-3 space-y-1">
                   <div className="flex items-center gap-2">
-                    {obj.handled ? (
-                      <CheckCircle className="w-3.5 h-3.5 text-green-400" />
-                    ) : (
-                      <AlertCircle className="w-3.5 h-3.5 text-destructive" />
-                    )}
+                    {obj.handled
+                      ? <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                      : <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
                     <span className="text-sm font-medium">{obj.type || obj.text || "Objection"}</span>
                     {obj.confidence != null && (
-                      <span className="text-[10px] text-muted-foreground ml-auto">{(obj.confidence * 100).toFixed(0)}%</span>
+                      <span className="text-[10px] text-muted-foreground ml-auto">
+                        {(obj.confidence * 100).toFixed(0)}%
+                      </span>
                     )}
                   </div>
-                  {obj.text && obj.type && <p className="text-xs text-muted-foreground">{obj.text}</p>}
+                  {obj.text && obj.type && (
+                    <p className="text-xs text-muted-foreground">{obj.text}</p>
+                  )}
                   {obj.suggestion && (
                     <p className="text-xs text-primary/80 flex items-start gap-1">
                       <Lightbulb className="w-3 h-3 mt-0.5 shrink-0" /> {obj.suggestion}
@@ -392,7 +407,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Buying signals */}
+        {/* ── Buying signals ── */}
         {buyingSignals.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -408,7 +423,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Next steps & Action items */}
+        {/* ── Next steps & Action items ── */}
         {(nextSteps.length > 0 || actionItems.length > 0) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {nextSteps.length > 0 && (
@@ -438,7 +453,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Key decisions */}
+        {/* ── Key decisions ── */}
         {keyDecisions.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -452,7 +467,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* Transcript + Clip Selector */}
+        {/* ── Transcript + Clip Selector ── */}
         {Array.isArray(normalizedTranscript) && normalizedTranscript.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-5">
             <h2 className="font-semibold mb-3 flex items-center gap-2">
@@ -469,7 +484,7 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* No summary yet */}
+        {/* ── No summary yet ── */}
         {!summary.isLoading && !summaryData && (
           <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
             <Bot className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
