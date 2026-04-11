@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Loader2, Shield, XCircle, RefreshCw, Users, Timer,
   Calendar, TrendingUp, ArrowUpRight, Clock, Zap, Link2,
+  Info, ExternalLink, AlertTriangle,
 } from "lucide-react";
 import { usePreferences, useUserProfile } from "@/hooks/useSettings";
 import { useTeamUsage } from "@/hooks/useTeamUsage";
@@ -18,7 +19,7 @@ import { PushNotificationToggle } from "@/components/PWABanner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface Integration {
   id: string;
@@ -51,7 +52,9 @@ const INTEGRATIONS = [
     accentBg: "rgba(66,133,244,.08)",
     accentBorder: "rgba(66,133,244,.18)",
     features: ["Sync events → calls", "Auto-join meetings", "Attach meet links"],
+    comingSoon: false,
     setupNote: null as string | null,
+    helpContent: null as React.ReactNode | null,
   },
   {
     id: "hubspot",
@@ -67,7 +70,11 @@ const INTEGRATIONS = [
     accentBg: "rgba(255,122,89,.08)",
     accentBorder: "rgba(255,122,89,.18)",
     features: ["Contact + deal sync", "Auto-log calls", "Push summaries"],
+    comingSoon: false,
     setupNote: null as string | null,
+    helpContent: (
+      <HubSpotHelpPanel />
+    ),
   },
   {
     id: "salesforce",
@@ -86,9 +93,55 @@ const INTEGRATIONS = [
     accentBg: "rgba(0,161,224,.08)",
     accentBorder: "rgba(0,161,224,.18)",
     features: ["Log Tasks on calls", "Sync Contacts & Leads", "Update Opportunities"],
-    setupNote: "Requires SALESFORCE_CLIENT_ID + SALESFORCE_CLIENT_SECRET in Supabase edge function secrets." as string | null,
+    comingSoon: true,
+    setupNote: null as string | null,
+    helpContent: null as React.ReactNode | null,
   },
 ];
+
+// ─── HubSpot Help Panel ─────────────────────────────────────────────────────
+
+function HubSpotHelpPanel() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#FF7A59", background: "rgba(255,122,89,.08)", border: "1px solid rgba(255,122,89,.2)", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}
+      >
+        <Info style={{ width: 11, height: 11 }} />
+        How to get your HubSpot API credentials
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 8, padding: "12px 14px", background: "rgba(255,122,89,.04)", border: "1px solid rgba(255,122,89,.15)", borderRadius: 10 }}>
+          <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#FF7A59" }}>Setting up HubSpot OAuth</p>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "rgba(255,255,255,.5)", lineHeight: 1.7 }}>
+            <li>Go to <strong style={{ color: "rgba(255,255,255,.7)" }}>developers.hubspot.com</strong> and log in with your HubSpot account.</li>
+            <li>Click <strong style={{ color: "rgba(255,255,255,.7)" }}>Create an app</strong> → fill in the app name (e.g. "Fixsense").</li>
+            <li>Under <strong style={{ color: "rgba(255,255,255,.7)" }}>Auth</strong>, copy your <strong style={{ color: "#FF7A59" }}>Client ID</strong> and <strong style={{ color: "#FF7A59" }}>Client Secret</strong>.</li>
+            <li>Add this redirect URI: <code style={{ color: "#fbbf24", fontSize: 10, background: "rgba(255,255,255,.05)", padding: "1px 5px", borderRadius: 4 }}>https://dkvtufanmaiclmsnpyae.supabase.co/functions/v1/oauth-callback</code></li>
+            <li>Set scopes: <code style={{ color: "#a5b4fc", fontSize: 10 }}>crm.objects.contacts.read crm.objects.deals.read crm.objects.deals.write</code></li>
+            <li>In your Supabase dashboard → <strong style={{ color: "rgba(255,255,255,.7)" }}>Edge Functions → Secrets</strong>, add:
+              <ul style={{ marginTop: 4, listStyle: "disc" }}>
+                <li><code style={{ color: "#fbbf24", fontSize: 10 }}>HUBSPOT_CLIENT_ID</code> = your Client ID</li>
+                <li><code style={{ color: "#fbbf24", fontSize: 10 }}>HUBSPOT_CLIENT_SECRET</code> = your Client Secret</li>
+              </ul>
+            </li>
+          </ol>
+          <a
+            href="https://developers.hubspot.com/docs/api/oauth-quickstart-guide"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 11, color: "#FF7A59", textDecoration: "underline" }}
+          >
+            HubSpot OAuth Quickstart Guide <ExternalLink style={{ width: 10, height: 10 }} />
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Integration Card ───────────────────────────────────────────────────────
 
@@ -105,23 +158,29 @@ function IntegrationCard({
   onDisconnect: (id: string) => void;
   isPending: boolean;
 }) {
-  const isConnected  = integration?.status === "connected";
-  const isExpired    = !!integration?.expires_at && new Date(integration.expires_at) < new Date();
+  const isConnected    = integration?.status === "connected";
+  const isExpired      = !!integration?.expires_at && new Date(integration.expires_at) < new Date();
   const needsReconnect = isExpired && isConnected;
-  const accountLabel = integration?.account_email || integration?.account_name;
+  const accountLabel   = integration?.account_email || integration?.account_name;
+  const { comingSoon } = provider;
 
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 16,
+        display: "flex", alignItems: "flex-start", gap: 16,
         padding: "16px 20px", borderRadius: 14,
-        background: isConnected ? provider.accentBg : "rgba(255,255,255,.025)",
-        border: `1px solid ${isConnected ? provider.accentBorder : "rgba(255,255,255,.07)"}`,
+        background: comingSoon
+          ? "rgba(255,255,255,.015)"
+          : isConnected
+            ? provider.accentBg
+            : "rgba(255,255,255,.025)",
+        border: `1px solid ${comingSoon ? "rgba(255,255,255,.05)" : isConnected ? provider.accentBorder : "rgba(255,255,255,.07)"}`,
         transition: "all .18s ease",
+        opacity: comingSoon ? 0.7 : 1,
       }}
     >
       {/* Logo */}
-      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.09)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.09)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
         {provider.logo}
       </div>
 
@@ -132,18 +191,27 @@ function IntegrationCard({
           <span style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque', sans-serif" }}>
             {provider.name}
           </span>
-          {isConnected && !needsReconnect && (
+
+          {/* Coming Soon badge */}
+          {comingSoon && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a78bfa", background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.25)", borderRadius: 20, padding: "2px 8px" }}>
+              🚧 Coming Soon
+            </span>
+          )}
+
+          {/* Connected badge */}
+          {!comingSoon && isConnected && !needsReconnect && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#22c55e", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.22)", borderRadius: 20, padding: "2px 8px" }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
               Connected
             </span>
           )}
-          {needsReconnect && (
+          {!comingSoon && needsReconnect && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 20, padding: "2px 8px" }}>
               Token expired
             </span>
           )}
-          {isConnected && accountLabel && (
+          {!comingSoon && isConnected && accountLabel && (
             <span style={{ fontSize: 10, color: "rgba(255,255,255,.45)", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "2px 8px", fontFamily: "monospace" }}>
               {accountLabel}
             </span>
@@ -151,7 +219,9 @@ function IntegrationCard({
         </div>
 
         <p style={{ margin: "0 0 8px", fontSize: 12, color: "rgba(255,255,255,.42)", lineHeight: 1.5 }}>
-          {provider.description}
+          {comingSoon
+            ? "Full Salesforce integration is under development. You'll be able to log Tasks, sync Contacts & Leads, and update Opportunities directly from Fixsense."
+            : provider.description}
         </p>
 
         {/* Feature pills */}
@@ -159,33 +229,52 @@ function IntegrationCard({
           {provider.features.map((f) => (
             <span
               key={f}
-              style={{ fontSize: 10, color: isConnected ? provider.accentColor : "rgba(255,255,255,.3)", background: isConnected ? provider.accentBg : "rgba(255,255,255,.03)", border: `1px solid ${isConnected ? provider.accentBorder : "rgba(255,255,255,.06)"}`, borderRadius: 20, padding: "2px 8px" }}
+              style={{
+                fontSize: 10,
+                color: comingSoon ? "rgba(167,139,250,.5)" : isConnected ? provider.accentColor : "rgba(255,255,255,.3)",
+                background: comingSoon ? "rgba(167,139,250,.05)" : isConnected ? provider.accentBg : "rgba(255,255,255,.03)",
+                border: `1px solid ${comingSoon ? "rgba(167,139,250,.1)" : isConnected ? provider.accentBorder : "rgba(255,255,255,.06)"}`,
+                borderRadius: 20,
+                padding: "2px 8px",
+              }}
             >
               {f}
             </span>
           ))}
         </div>
 
-        {/* Setup note */}
-        {!isConnected && provider.setupNote && (
-          <p style={{ margin: "7px 0 0", fontSize: 10, color: "rgba(255,255,255,.25)", lineHeight: 1.5 }}>
-            ⚙️ {provider.setupNote}
-          </p>
-        )}
+        {/* Help content (e.g. HubSpot guide) */}
+        {!comingSoon && provider.helpContent}
       </div>
 
-      {/* Action */}
-      <div style={{ flexShrink: 0 }}>
-        {isConnected && !needsReconnect ? (
-          <button onClick={() => onDisconnect(provider.id)} disabled={isPending} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", background: "transparent", border: "1px solid rgba(239,68,68,.3)", borderRadius: 9, color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: isPending ? 0.5 : 1 }}>
+      {/* Action button */}
+      <div style={{ flexShrink: 0, alignSelf: "center" }}>
+        {comingSoon ? (
+          <span style={{ fontSize: 11, color: "rgba(167,139,250,.5)", background: "rgba(167,139,250,.05)", border: "1px solid rgba(167,139,250,.1)", borderRadius: 9, padding: "7px 14px", display: "inline-block" }}>
+            Soon™
+          </span>
+        ) : isConnected && !needsReconnect ? (
+          <button
+            onClick={() => onDisconnect(provider.id)}
+            disabled={isPending}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", background: "transparent", border: "1px solid rgba(239,68,68,.3)", borderRadius: 9, color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: isPending ? 0.5 : 1 }}
+          >
             <XCircle style={{ width: 12, height: 12 }} /> Disconnect
           </button>
         ) : needsReconnect ? (
-          <button onClick={() => onConnect(provider.id)} disabled={isPending} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 9, color: "#fbbf24", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: isPending ? 0.5 : 1 }}>
+          <button
+            onClick={() => onConnect(provider.id)}
+            disabled={isPending}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 9, color: "#fbbf24", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: isPending ? 0.5 : 1 }}
+          >
             <RefreshCw style={{ width: 12, height: 12 }} /> Reconnect
           </button>
         ) : (
-          <button onClick={() => onConnect(provider.id)} disabled={isPending} style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 16px", background: `linear-gradient(135deg, ${provider.accentColor}, ${provider.accentColor}cc)`, border: "none", borderRadius: 9, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 14px ${provider.accentColor}30`, opacity: isPending ? 0.5 : 1 }}>
+          <button
+            onClick={() => onConnect(provider.id)}
+            disabled={isPending}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 16px", background: `linear-gradient(135deg, ${provider.accentColor}, ${provider.accentColor}cc)`, border: "none", borderRadius: 9, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 14px ${provider.accentColor}30`, opacity: isPending ? 0.5 : 1 }}
+          >
             <Link2 style={{ width: 12, height: 12 }} /> Connect
           </button>
         )}
@@ -202,7 +291,7 @@ export default function SettingsPage() {
   const qc        = useQueryClient();
   const { preferences, isLoading: prefLoading, updatePreference } = usePreferences();
   const { profile, isLoading: profileLoading, updateProfile }     = useUserProfile();
-  const { teamUsage }                  = useTeamUsage();
+  const { teamUsage }                      = useTeamUsage();
   const { usage, isLoading: usageLoading } = useMinuteUsage();
 
   // ── Fetch all 3 integration rows ──────────────────────────────────
@@ -210,6 +299,7 @@ export default function SettingsPage() {
     queryKey: ["settings-integrations", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
+      // Ensure rows exist
       await supabase.from("integrations").upsert(
         [
           { user_id: user.id, provider: "google_calendar", status: "disconnected" },
@@ -226,17 +316,22 @@ export default function SettingsPage() {
       return (data || []) as Integration[];
     },
     enabled: !!user?.id,
-    staleTime: 15_000,
+    staleTime: 10_000,
+    refetchInterval: 15_000, // poll so status updates after OAuth popup closes
   });
 
-  const intMap        = new Map(integrations.map((i) => [i.provider, i]));
+  const intMap         = new Map(integrations.map((i) => [i.provider, i]));
   const connectedCount = integrations.filter((i) => i.status === "connected").length;
 
   // ── Connect ───────────────────────────────────────────────────────
   const connectMutation = useMutation({
     mutationFn: async (provider: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Not authenticated");
+
       const { data, error } = await supabase.functions.invoke("oauth-connect", {
         body: { provider, redirect_uri: `${window.location.origin}/dashboard/settings` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -244,7 +339,11 @@ export default function SettingsPage() {
     },
     onSuccess: (data) => {
       const w = 560, h = 700;
-      window.open(data.url, "oauth-popup", `width=${w},height=${h},left=${Math.round((window.innerWidth-w)/2)},top=${Math.round((window.innerHeight-h)/2)},popup=1`);
+      window.open(
+        data.url,
+        "oauth-popup",
+        `width=${w},height=${h},left=${Math.round((window.innerWidth - w) / 2)},top=${Math.round((window.innerHeight - h) / 2)},popup=1`
+      );
     },
     onError: (e: Error) => toast.error(e.message || "Failed to start OAuth flow"),
   });
@@ -257,23 +356,45 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings-integrations"] });
+      qc.invalidateQueries({ queryKey: ["calendar-integration"] });
       toast.success("Integration disconnected");
     },
     onError: (e: Error) => toast.error(e.message || "Failed to disconnect"),
   });
 
-  // ── OAuth popup → postMessage ──────────────────────────────────────
+  // ── OAuth popup → postMessage listener ────────────────────────────
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "oauth-success") {
+        // Invalidate all relevant query keys
         qc.invalidateQueries({ queryKey: ["settings-integrations"] });
-        const name  = INTEGRATIONS.find((p) => p.id === event.data.provider)?.name ?? event.data.provider;
+        qc.invalidateQueries({ queryKey: ["calendar-integration"] });
+        qc.invalidateQueries({ queryKey: ["integrations"] });
+        qc.invalidateQueries({ queryKey: ["upcoming-meetings"] });
+
+        const providerConfig = INTEGRATIONS.find(p => p.id === event.data.provider);
+        const name  = providerConfig?.name ?? event.data.provider;
         const email = event.data.email ? ` as ${event.data.email}` : "";
-        toast.success(`${name} connected${email}!`);
+        toast.success(`${name} connected${email}! 🎉`);
+      }
+      if (event.data?.type === "oauth-error") {
+        toast.error(`Connection failed: ${event.data.error}`);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
+  }, [qc]);
+
+  // ── Check URL params (redirect flow fallback) ─────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    if (connected) {
+      qc.invalidateQueries({ queryKey: ["settings-integrations"] });
+      const name = INTEGRATIONS.find(p => p.id === connected)?.name ?? connected;
+      toast.success(`${name} connected successfully!`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, [qc]);
 
   // ── Preferences ───────────────────────────────────────────────────
@@ -283,7 +404,7 @@ export default function SettingsPage() {
 
   const handleTogglePref = (key: string, value: boolean) => {
     if (key === "crm_auto_sync" && value && !anyCrmConnected) {
-      toast.error("Connect HubSpot or Salesforce first");
+      toast.error("Connect HubSpot first to enable CRM auto-sync");
       return;
     }
     updatePreference.mutate({ [key]: value } as Parameters<typeof updatePreference.mutate>[0]);
@@ -300,13 +421,15 @@ export default function SettingsPage() {
 
   const hoursUsed  = usage ? (usage.minutesUsed / 60).toFixed(1) : "0.0";
   const hoursLimit = usage && !usage.isUnlimited ? (usage.minuteLimit / 60).toFixed(0) : null;
-  const hoursLeft  = usage && !usage.isUnlimited ? Math.max(0, (usage.minutesRemaining as number) / 60).toFixed(1) : null;
+  const hoursLeft  = usage && !usage.isUnlimited
+    ? Math.max(0, (usage.minutesRemaining as number) / 60).toFixed(1)
+    : null;
 
   const prefItems = [
     { key: "auto_join_meetings",         label: "Auto-join meetings",         desc: "AI bot automatically joins scheduled meetings",                            value: preferences?.auto_join_meetings         ?? false },
     { key: "real_time_objection_alerts", label: "Real-time objection alerts", desc: "Get notified when objections are detected during a call",                 value: preferences?.real_time_objection_alerts ?? true  },
     { key: "post_call_email_summary",    label: "Post-call email summary",    desc: "Receive an AI-generated summary via email after each call",               value: preferences?.post_call_email_summary    ?? true  },
-    { key: "crm_auto_sync",             label: "CRM auto-sync",               desc: "Automatically log calls and update deal stages in HubSpot or Salesforce", value: preferences?.crm_auto_sync             ?? false, disabled: !anyCrmConnected },
+    { key: "crm_auto_sync",             label: "CRM auto-sync",               desc: "Automatically log calls and update deal stages in HubSpot",               value: preferences?.crm_auto_sync             ?? false, disabled: !anyCrmConnected },
   ];
 
   const isPending = connectMutation.isPending || disconnectMutation.isPending;
@@ -416,11 +539,11 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display font-semibold">Integrations</h2>
             <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,.3)", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "2px 10px" }}>
-              {connectedCount} / {INTEGRATIONS.length} connected
+              {connectedCount} connected
             </span>
           </div>
           <p className="text-xs text-muted-foreground mb-4">
-            Connect Google Calendar, HubSpot, or Salesforce to unlock automatic sync and AI-powered call intelligence.
+            Connect Google Calendar and HubSpot to unlock automatic sync and AI-powered call intelligence.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -439,9 +562,9 @@ export default function SettingsPage() {
           <div style={{ marginTop: 14, padding: "14px 16px", borderRadius: 12, background: "rgba(59,130,246,.04)", border: "1px solid rgba(59,130,246,.12)", display: "flex", gap: 10, alignItems: "flex-start" }}>
             <Zap style={{ width: 14, height: 14, color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
             <div>
-              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#60a5fa" }}>When CRM is connected</p>
+              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#60a5fa" }}>When integrations are connected</p>
               <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.38)", lineHeight: 1.55 }}>
-                Calendar events auto-become calls. AI summaries are logged as Salesforce Tasks or HubSpot Notes against matching Contacts, Leads and Opportunities. CRM auto-sync keeps your pipeline updated hands-free.
+                Calendar events auto-become calls with AI transcription. HubSpot contacts and deals sync automatically, and AI summaries are logged as Notes against matching Contacts and Deals.
               </p>
             </div>
           </div>
@@ -457,7 +580,9 @@ export default function SettingsPage() {
                   <p className="text-sm font-medium">{pref.label}</p>
                   <p className="text-xs text-muted-foreground">{pref.desc}</p>
                   {"disabled" in pref && pref.disabled && (
-                    <p className="text-xs text-destructive mt-1">Requires HubSpot or Salesforce connection</p>
+                    <p className="text-xs text-amber-500 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Connect HubSpot first
+                    </p>
                   )}
                 </div>
                 <Switch
