@@ -3,8 +3,8 @@
  *
  * Free:    30 min  · $0
  * Starter: 300 min · $18
- * Growth:  1500 min · $49  (Most Popular)
- * Scale:   5000 min · $99
+ * Growth:  1500 min · $60  (Most Popular)
+ * Scale:   5000 min · $120
  */
 
 export const USD_TO_NGN = 1500;
@@ -55,7 +55,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
   growth: {
     key: "growth",
     name: "Growth",
-    price_usd: 49,
+    price_usd: 60,
     minute_quota: 1500,
     team_members_limit: 10,
     calls_limit: 300,
@@ -74,7 +74,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
   scale: {
     key: "scale",
     name: "Scale",
-    price_usd: 99,
+    price_usd: 120,
     minute_quota: 5000,
     team_members_limit: -1,
     calls_limit: -1,
