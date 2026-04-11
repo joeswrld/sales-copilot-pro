@@ -93,37 +93,70 @@ export default function LandingPage() {
     { q: "Can I use it without a team?", a: "Absolutely. Free and Starter plans are built for individual reps. Upgrade to Growth when you're ready to coach teammates and manage deals collaboratively." },
   ];
 
+  // Live demo state
+  const [demoLines, setDemoLines] = useState<{speaker: string; text: string; color: string}[]>([]);
+  const [demoInsights, setDemoInsights] = useState<{tag: string; body: string; bg: string; color: string}[]>([]);
+  const [demoTyping, setDemoTyping] = useState<{speaker: string; color: string} | null>(null);
+  const [talkRep, setTalkRep] = useState(60);
+  const [sentiment, setSentiment] = useState(72);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+
+  const DEMO_SCRIPT = [
+    { speaker: "Rep", color: "#818cf8", text: "Hi Alex, thanks for making time. What's your current process for tracking sales calls?" },
+    { speaker: "Alex", color: "#2dd4bf", text: "Honestly? We're still using spreadsheets and reps update them manually. It's a mess." },
+    { speaker: "Rep", color: "#818cf8", text: "How many calls does your team do per week, and how many do you actually review?" },
+    { speaker: "Alex", color: "#2dd4bf", text: "About 60 calls a week. We review maybe 3 or 4. We just don't have the bandwidth." },
+    { speaker: "Rep", color: "#818cf8", text: "What's it costing you — in deals, in coaching time?" },
+    { speaker: "Alex", color: "#2dd4bf", text: "We lost a $200k deal last quarter because of a pricing objection nobody flagged. That's what finally got me looking at tools like this." },
+  ];
+
+  const DEMO_INSIGHTS = [
+    { tag: "⚡ Pain Confirmed", body: "Manual tracking + zero review coverage = clear need. Strong qualification signal.", bg: "rgba(245,158,11,.08)", color: "#fbbf24" },
+    { tag: "✓ Buying Signal", body: "$200k deal lost to unhandled objection. Budget exists. High urgency.", bg: "rgba(14,245,212,.06)", color: "#0ef5d4" },
+    { tag: "→ Next Action", body: "Prospect is decision-ready. Transition to pricing and ROI calculation now.", bg: "rgba(139,92,246,.08)", color: "#a78bfa" },
+  ];
+
+  useEffect(() => {
+    let i = 0;
+    function scheduleNext() {
+      if (i >= DEMO_SCRIPT.length) return;
+      const line = DEMO_SCRIPT[i];
+      setTimeout(() => {
+        setDemoTyping({ speaker: line.speaker, color: line.color });
+        setTimeout(() => {
+          setDemoTyping(null);
+          setDemoLines(prev => [...prev, line]);
+          setTalkRep(prev => line.speaker === "Rep" ? Math.max(45, prev - 2) : Math.min(68, prev + 3));
+          setSentiment(prev => Math.min(90, prev + (Math.random() > 0.5 ? 2 : -1)));
+          i++;
+          if (i === 3) { setDemoInsights(prev => [...prev, DEMO_INSIGHTS[0]]); }
+          if (i === 5) { setDemoInsights(prev => [...prev, DEMO_INSIGHTS[1], DEMO_INSIGHTS[2]]); }
+          scheduleNext();
+        }, 1400 + Math.random() * 400);
+      }, 1000 + Math.random() * 500);
+    }
+    scheduleNext();
+  }, []);
+
+  useEffect(() => {
+    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+  }, [demoLines, demoTyping]);
+
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Syne+Mono&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     .lp {
-      --bg: #050810;
-      --bg2: #0a0d18;
-      --bg3: #0f1220;
-      --card: rgba(255,255,255,0.03);
-      --card-border: rgba(255,255,255,0.07);
-      --card-hover: rgba(255,255,255,0.06);
-      --ink: #f0f2f8;
-      --ink2: rgba(240,242,248,0.65);
-      --ink3: rgba(240,242,248,0.38);
-      --ink4: rgba(240,242,248,0.18);
-      --cyan: #0ef5d4;
-      --cyan2: rgba(14,245,212,0.15);
-      --cyan3: rgba(14,245,212,0.07);
-      --purple: #8b5cf6;
-      --amber: #f59e0b;
-      --green: #10b981;
-      --blue: #3b82f6;
-      --red: #f43f5e;
-      --font: 'DM Sans', system-ui, sans-serif;
-      --fd: 'Syne', system-ui, sans-serif;
-      --fm: 'Syne Mono', monospace;
+      --bg: #050810; --bg2: #0a0d18; --bg3: #0f1220;
+      --card: rgba(255,255,255,0.03); --card-border: rgba(255,255,255,0.07); --card-hover: rgba(255,255,255,0.06);
+      --ink: #f0f2f8; --ink2: rgba(240,242,248,0.65); --ink3: rgba(240,242,248,0.38); --ink4: rgba(240,242,248,0.18);
+      --cyan: #0ef5d4; --cyan2: rgba(14,245,212,0.15); --cyan3: rgba(14,245,212,0.07);
+      --purple: #8b5cf6; --amber: #f59e0b; --green: #10b981; --blue: #3b82f6; --red: #f43f5e;
+      --font: 'DM Sans', system-ui, sans-serif; --fd: 'Syne', system-ui, sans-serif; --fm: 'Syne Mono', monospace;
       background: var(--bg); color: var(--ink); font-family: var(--font);
       -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6;
     }
 
-    /* NAV */
     .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 60px; display: flex; align-items: center; padding: 0 24px; transition: all 0.3s; }
     .nav.sc { background: rgba(5,8,16,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid var(--card-border); }
     .nav-i { max-width: 1140px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
@@ -139,7 +172,6 @@ export default function LandingPage() {
     .nav-cta:hover { opacity: 0.88; transform: translateY(-1px); }
     .burger { display: none; background: none; border: 1px solid var(--card-border); border-radius: 7px; width: 36px; height: 36px; cursor: pointer; color: var(--ink3); align-items: center; justify-content: center; }
 
-    /* DRAWER */
     .drw-ov { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
     .drw-ov.on { display: block; }
     .drw { position: fixed; top: 0; right: 0; bottom: 0; width: min(300px,88vw); z-index: 210; background: var(--bg2); border-left: 1px solid var(--card-border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.26s cubic-bezier(0.4,0,0.2,1); }
@@ -174,11 +206,11 @@ export default function LandingPage() {
     .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink3); font-weight: 500; }
     .trust-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--card-border); }
 
-    /* DEMO SCREEN */
-    .demo-section { padding: 0 24px 100px; position: relative; }
+    /* DEMO */
+    .demo-section { padding: 0 24px 80px; }
     .demo-label { text-align: center; font-family: var(--fm); font-size: 11px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; justify-content: center; }
     .demo-label-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.8s ease-in-out infinite; }
-    .demo-wrap { max-width: 980px; margin: 0 auto; background: var(--bg2); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04); }
+    .demo-wrap { max-width: 980px; margin: 0 auto; background: var(--bg2); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.6); }
     .demo-bar { height: 38px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 7px; padding: 0 14px; }
     .demo-dot { width: 10px; height: 10px; border-radius: 50%; }
     .demo-addr { flex: 1; max-width: 260px; margin: 0 auto; background: rgba(255,255,255,0.04); border-radius: 5px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--ink4); font-family: var(--fm); }
@@ -218,15 +250,13 @@ export default function LandingPage() {
     .demo-ratio { padding: 10px; border-top: 1px solid var(--card-border); flex-shrink: 0; }
     .demo-ratio-lbl { font-size: 9px; color: var(--ink4); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; }
     .demo-ratio-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); overflow: hidden; display: flex; }
-    .demo-ratio-rep { height: 100%; background: var(--cyan); border-radius: 3px; }
 
     /* LOGO STRIP */
     .logo-strip { border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); padding: 20px 24px; background: var(--bg2); }
     .logo-strip-i { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-    .logo-lbl { font-size: 11px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: .12em; white-space: nowrap; }
+    .logo-lbl { font-size: 11px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: .12em; }
     .logo-names { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
-    .logo-name { font-family: var(--fd); font-size: 13.5px; font-weight: 600; color: var(--ink4); transition: color 0.2s; }
-    .logo-name:hover { color: var(--ink3); }
+    .logo-name { font-family: var(--fd); font-size: 13.5px; font-weight: 600; color: var(--ink4); }
 
     /* METRICS */
     .metrics { padding: 90px 24px; background: var(--bg); }
@@ -250,12 +280,33 @@ export default function LandingPage() {
     .feat-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.65; }
     .feat-tag { display: inline-block; background: var(--cyan2); color: var(--cyan); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-top: 10px; font-family: var(--fm); letter-spacing: .04em; }
 
-    /* DEAL TIMELINE SHOWCASE */
+    /* FEATURE SHOWCASES */
     .showcase { padding: 100px 24px; background: var(--bg2); position: relative; overflow: hidden; }
     .showcase-orb { position: absolute; top: -100px; right: -100px; width: 500px; height: 500px; background: radial-gradient(ellipse, rgba(139,92,246,0.06) 0%, transparent 60%); pointer-events: none; }
     .showcase-i { max-width: 1120px; margin: 0 auto; }
     .showcase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-    .showcase-card { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
+
+    /* OBJECTION DETECTION DEMO */
+    .obj-demo { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
+    .obj-demo-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
+    .obj-demo-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
+    .obj-live { display: flex; align-items: center; gap: 5px; background: rgba(14,245,212,0.1); border: 1px solid rgba(14,245,212,0.2); border-radius: 20px; padding: 3px 10px; font-size: 10px; font-weight: 700; color: var(--cyan); margin-left: auto; font-family: var(--fm); }
+    .obj-body { padding: 14px 16px; }
+    .obj-line { display: flex; gap: 9px; padding: 7px 9px; border-radius: 8px; margin-bottom: 5px; }
+    .obj-speaker { font-size: 9.5px; font-weight: 700; min-width: 28px; margin-top: 1px; }
+    .obj-text { font-size: 11px; color: var(--ink3); line-height: 1.5; }
+    .obj-flag { margin: 8px 0; padding: 10px 13px; background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.2); border-left: 3px solid #ef4444; border-radius: 0 9px 9px 0; }
+    .obj-flag-label { font-size: 10px; font-weight: 700; color: #f87171; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; font-family: var(--fm); }
+    .obj-flag-text { font-size: 11px; color: var(--ink2); }
+    .obj-flag-tip { font-size: 10.5px; color: var(--cyan); margin-top: 5px; }
+    .obj-sentiment-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--card-border); }
+    .obj-sent-label { font-size: 10px; color: var(--ink4); }
+    .obj-sent-bar { flex: 1; height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
+    .obj-sent-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); transition: width 0.8s ease; }
+    .obj-sent-val { font-size: 12px; font-weight: 700; font-family: var(--fd); }
+
+    /* DEAL TIMELINE */
+    .sc-card { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
     .sc-header { padding: 16px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
     .sc-h-icon { width: 32px; height: 32px; border-radius: 9px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; }
     .sc-h-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
@@ -287,6 +338,56 @@ export default function LandingPage() {
     .clip-sel-info { font-size: 11px; color: #a78bfa; flex: 1; }
     .clip-btn { background: linear-gradient(135deg,#7c3aed,#6d28d9); border: none; border-radius: 8px; padding: 7px 14px; color: #fff; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: var(--font); display: flex; align-items: center; gap: 5px; }
 
+    /* ACTION LAYER DEMO */
+    .action-section { padding: 100px 24px; background: var(--bg2); }
+    .action-i { max-width: 1120px; margin: 0 auto; }
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+    .action-demo { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; padding: 0; overflow: hidden; }
+    .action-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
+    .action-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
+    .action-body { padding: 16px; }
+    .action-priority { display: flex; align-items: flex-start; gap: 12px; padding: 13px; background: rgba(14,245,212,.05); border: 1px solid rgba(14,245,212,.15); border-radius: 12px; margin-bottom: 12px; }
+    .action-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(14,245,212,.4); flex-shrink: 0; margin-top: 1px; }
+    .action-priority-text { font-size: 12.5px; color: var(--ink); font-weight: 600; line-height: 1.5; }
+    .action-email { background: var(--card); border: 1px solid var(--card-border); border-radius: 11px; padding: 12px 14px; margin-bottom: 12px; }
+    .action-email-label { font-size: 9px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; font-family: var(--fm); }
+    .action-email-subject { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 5px; }
+    .action-email-body { font-size: 11px; color: var(--ink3); line-height: 1.55; }
+    .action-crm-row { display: flex; align-items: center; gap: 8px; }
+    .action-crm-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--card-border); background: transparent; color: var(--ink3); font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font); }
+    .action-crm-btn.hs { border-color: rgba(255,122,89,.3); color: #FF7A59; }
+    .action-crm-btn.sf { border-color: rgba(0,161,224,.3); color: #00A1E0; }
+
+    /* ANALYTICS DEMO */
+    .analytics-section { padding: 100px 24px; background: var(--bg); }
+    .analytics-i { max-width: 1120px; margin: 0 auto; }
+    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+    .analytics-demo { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
+    .analytics-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); }
+    .analytics-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--card-border); }
+    .analytics-stat { text-align: center; }
+    .analytics-stat-n { font-family: var(--fd); font-size: 20px; font-weight: 800; }
+    .analytics-stat-l { font-size: 10px; color: var(--ink4); }
+    .analytics-body { padding: 14px 16px; }
+    .rep-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
+    .rep-row:last-child { border-bottom: none; }
+    .rep-av { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .rep-name { font-size: 12px; font-weight: 600; color: var(--ink); flex: 1; }
+    .rep-bar-wrap { width: 80px; height: 5px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
+    .rep-bar { height: 100%; border-radius: 3px; }
+    .rep-pct { font-size: 11px; font-weight: 700; font-family: var(--fd); min-width: 36px; text-align: right; }
+    .rep-calls { font-size: 10px; color: var(--ink4); min-width: 40px; text-align: right; }
+
+    /* HOW IT WORKS */
+    .how { padding: 100px 24px; background: var(--bg2); }
+    .how-i { max-width: 1060px; margin: 0 auto; }
+    .how-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; position: relative; margin-top: 60px; }
+    .how-connector { position: absolute; top: 24px; left: calc(33.3% + 20px); right: calc(33.3% + 20px); height: 1px; background: linear-gradient(90deg, var(--cyan), rgba(14,245,212,0.2), var(--cyan)); }
+    .how-step-num { width: 48px; height: 48px; border-radius: 12px; background: rgba(14,245,212,0.08); border: 1px solid rgba(14,245,212,0.2); display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 16px; font-weight: 800; color: var(--cyan); margin-bottom: 20px; position: relative; z-index: 1; }
+    .how-step-num.done { background: var(--cyan); color: var(--bg); }
+    .how-step-title { font-family: var(--fd); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 10px; }
+    .how-step-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.68; }
+
     /* TESTIMONIALS */
     .testimonials { padding: 100px 24px; background: var(--bg2); }
     .testimonials-i { max-width: 1100px; margin: 0 auto; }
@@ -304,10 +405,8 @@ export default function LandingPage() {
     .plans { padding: 100px 24px; background: var(--bg); }
     .plans-i { max-width: 1120px; margin: 0 auto; }
     .plans-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; align-items: start; margin-top: 60px; }
-    .plan-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px 20px 20px; transition: border-color 0.2s, transform 0.2s; }
-    .plan-card:hover { border-color: rgba(255,255,255,0.12); }
+    .plan-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px 20px 20px; transition: border-color 0.2s; }
     .plan-card.hot { border: 1.5px solid var(--cyan); background: rgba(14,245,212,0.04); transform: translateY(-6px); box-shadow: 0 20px 60px rgba(14,245,212,0.08); }
-    .plan-card.hot:hover { transform: translateY(-8px); }
     .plan-badge { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; border-radius: 4px; padding: 3px 9px; margin-bottom: 12px; }
     .plan-badge-hot { background: var(--cyan); color: var(--bg); }
     .plan-badge-gray { background: var(--card-hover); color: var(--ink3); }
@@ -319,32 +418,17 @@ export default function LandingPage() {
     .plan-div { height: 1px; background: var(--card-border); margin-bottom: 18px; }
     .plan-feats { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
     .plan-feat { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--ink2); line-height: 1.45; }
-    .plan-feat-dot { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; }
-    .plan-feat-dot.on { background: rgba(14,245,212,0.12); }
-    .plan-feat-dot.off { background: var(--card); }
     .plan-cta { display: block; width: 100%; text-align: center; padding: 12px; border-radius: 10px; font-size: 13.5px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.18s; border: 1px solid; }
     .plan-cta-hot { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
     .plan-cta-hot:hover { opacity: 0.88; transform: translateY(-1px); }
     .plan-cta-out { background: transparent; color: var(--cyan); border-color: rgba(14,245,212,0.3); }
     .plan-cta-out:hover { background: var(--cyan2); }
     .plan-cta-ghost { background: transparent; color: var(--ink3); border-color: var(--card-border); }
-    .plan-cta-ghost:hover { border-color: rgba(255,255,255,0.15); color: var(--ink); }
-
-    /* HOW IT WORKS */
-    .how { padding: 100px 24px; background: var(--bg2); }
-    .how-i { max-width: 1060px; margin: 0 auto; }
-    .how-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; position: relative; margin-top: 60px; }
-    .how-connector { position: absolute; top: 24px; left: calc(33.3% + 20px); right: calc(33.3% + 20px); height: 1px; background: linear-gradient(90deg, var(--cyan), rgba(14,245,212,0.2), var(--cyan)); }
-    .how-step-num { width: 48px; height: 48px; border-radius: 12px; background: rgba(14,245,212,0.08); border: 1px solid rgba(14,245,212,0.2); display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 16px; font-weight: 800; color: var(--cyan); margin-bottom: 20px; position: relative; z-index: 1; }
-    .how-step-num.done { background: var(--cyan); color: var(--bg); }
-    .how-step-title { font-family: var(--fd); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 10px; }
-    .how-step-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.68; }
 
     /* FAQ */
     .faq { padding: 100px 24px; background: var(--bg); }
     .faq-i { max-width: 720px; margin: 0 auto; }
-    .faq-item { border: 1px solid var(--card-border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; transition: border-color 0.15s; }
-    .faq-item:hover { border-color: rgba(255,255,255,0.12); }
+    .faq-item { border: 1px solid var(--card-border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
     .faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 17px 20px; background: transparent; border: none; cursor: pointer; text-align: left; font-size: 14px; font-weight: 600; color: var(--ink); font-family: var(--font); gap: 16px; transition: background .15s; }
     .faq-q:hover { background: var(--card); }
     .faq-chevron { flex-shrink: 0; transition: transform 0.22s; color: var(--ink3); }
@@ -384,12 +468,10 @@ export default function LandingPage() {
       .footer-top{grid-template-columns:1fr 1fr}
     }
     @media(max-width:900px){
-      .demo-inner{grid-template-columns:1fr;height:auto}
-      .demo-sidebar{display:none}
-      .demo-right{display:none}
       .demo-inner{grid-template-columns:1fr}
+      .demo-sidebar,.demo-right{display:none}
       .features-grid{grid-template-columns:1fr 1fr}
-      .showcase-grid,.clips-grid{grid-template-columns:1fr;gap:32px}
+      .showcase-grid,.clips-grid,.action-grid,.analytics-grid{grid-template-columns:1fr;gap:32px}
       .testi-grid{grid-template-columns:1fr}
       .how-steps{grid-template-columns:1fr;gap:24px}
       .how-connector{display:none}
@@ -398,7 +480,6 @@ export default function LandingPage() {
       .burger{display:flex}
       .nav-links,.nav-acts{display:none}
       .hero{padding:110px 18px 64px}
-      .demo-section{padding:0 16px 72px}
       .metrics-grid{grid-template-columns:repeat(2,1fr)}
       .features-grid{grid-template-columns:1fr}
       .plans-grid{grid-template-columns:1fr}
@@ -416,10 +497,10 @@ export default function LandingPage() {
 
   const FEATURES = [
     { icon: "🎙", title: "Live Call Rooms", desc: "Create a meeting room in one click. Share the link — prospects join without any account. AI records and transcribes both sides in real time, automatically.", tag: "100ms powered" },
-    { icon: "🧠", title: "AI Call Intelligence", desc: "Every call gets automatic objection detection, sentiment scoring, talk ratio analysis, buying signal identification, and a structured AI summary — ready before your next meeting.", tag: "Claude AI" },
-    { icon: "📈", title: "Deal Timeline", desc: "Link calls to deals and build a living prospect thread. The AI compares calls over time to show exactly what changed — new objections, sentiment shifts, momentum.", tag: "Deal Intelligence" },
+    { icon: "🚨", title: "Real-Time Objection Detection", desc: "AI flags pricing objections, timeline pushbacks, and competitor mentions the moment they happen — with suggested responses shown live during the call.", tag: "Live AI coaching" },
+    { icon: "📈", title: "Deal Timeline & AI Intel", desc: "Link calls to deals and build a living prospect thread. The AI compares calls over time to show exactly what changed — new objections, sentiment shifts, momentum.", tag: "Deal Intelligence" },
     { icon: "✂️", title: "Coaching Clips", desc: "Select any moment from a transcript, add a coaching note, tag it, and share a public clip page with your team. Asynchronous coaching at scale.", tag: "Team Coaching" },
-    { icon: "⚡", title: "Priority Action Layer", desc: "After each call, AI generates your single most important next action, drafts the follow-up email, and readies it for HubSpot or Salesforce — one click to push.", tag: "CRM Ready" },
+    { icon: "⚡", title: "Priority Action Layer", desc: "After each call, AI generates your single most important next action, drafts the follow-up email, and readies it for HubSpot or Salesforce.", tag: "CRM Ready" },
     { icon: "👥", title: "Team Analytics", desc: "Rep leaderboards, win rate trends, sentiment patterns, talk ratio benchmarks. Managers get full visibility without sitting on every call.", tag: "Performance" },
   ];
 
@@ -427,67 +508,21 @@ export default function LandingPage() {
     { key: "free", name: "Free", price: "$0", mins: "30 min/month", desc: "Try without a card", badge: "", badgeType: "plan-badge-gray", ctaText: "Start Free", ctaClass: "plan-cta-ghost", feats: ["Live call rooms", "Basic transcription", "1 AI summary/month", "Solo use"] },
     { key: "starter", name: "Starter", price: "$18", mins: "300 min/month (5h)", desc: "Individual reps", badge: "", badgeType: "plan-badge-gray", ctaText: "Get Starter", ctaClass: "plan-cta-out", feats: ["Everything in Free", "Full AI summaries", "Objection detection", "Up to 3 members"] },
     { key: "growth", name: "Growth", price: "$49", mins: "1,500 min/month (25h)", desc: "Best for growing teams", badge: "Most Popular", badgeType: "plan-badge-hot", ctaText: "Start Free Trial", ctaClass: "plan-cta-hot", hot: true, feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"] },
-    { key: "scale", name: "Scale", price: "$99", mins: "5,000 min/month (83h)", desc: "Enterprise sales orgs", badge: "", badgeType: "plan-badge-gray", ctaText: "Get Scale", ctaClass: "plan-cta-out", feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "API access", "Unlimited members", "Dedicated CSM"] },
+    { key: "scale", name: "Scale", price: "$99", mins: "5,000 min/month (83h)", desc: "Enterprise sales orgs", badge: "", badgeType: "plan-badge-gray", ctaText: "Get Scale", ctaClass: "plan-cta-out", feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "API access", "Unlimited members"] },
   ];
 
   const TESTIMONIALS = [
-    { metric: "+30% close rate", quote: "Fixsense helped our team increase close rates by 30%. The Deal Timeline alone changed how we track complex opportunities — we finally understand the full context of every deal.", name: "Sarah Mitchell", role: "Head of Sales, Vantex Technologies", initials: "SM" },
-    { metric: "3× faster ramp", quote: "We replaced our entire post-call review process. Managers now have full visibility across every rep without listening to recordings. New reps ramp in half the time using Coaching Clips.", name: "James Okafor", role: "VP Sales, Launchflow", initials: "JO" },
-    { metric: "90 → 45 day ramp", quote: "The objection detection is genuinely game-changing. We see the exact moments deals stall and can coach around them systematically. Our close rate has stayed 30% higher for two quarters running.", name: "Priya Nair", role: "CRO, Cloudpath", initials: "PN" },
+    { metric: "+30% close rate", quote: "Fixsense helped our team increase close rates by 30%. The Deal Timeline alone changed how we track complex opportunities.", name: "Sarah Mitchell", role: "Head of Sales, Vantex Technologies", initials: "SM" },
+    { metric: "3× faster ramp", quote: "We replaced our entire post-call review process. Managers now have full visibility across every rep without listening to recordings.", name: "James Okafor", role: "VP Sales, Launchflow", initials: "JO" },
+    { metric: "90 → 45 day ramp", quote: "The objection detection is genuinely game-changing. We see the exact moments deals stall and can coach around them systematically.", name: "Priya Nair", role: "CRO, Cloudpath", initials: "PN" },
   ];
 
-  // Demo state
-  const [demoStep, setDemoStep] = useState(0);
-  const [demoTyping, setDemoTyping] = useState<{speaker: string; color: string} | null>(null);
-  const [demoLines, setDemoLines] = useState<{speaker: string; text: string; color: string}[]>([]);
-  const [demoInsights, setDemoInsights] = useState<{tag: string; body: string; bg: string; color: string}[]>([]);
-  const [talkRep, setTalkRep] = useState(60);
-  const transcriptRef = useRef<HTMLDivElement>(null);
-
-  const DEMO_SCRIPT = [
-    { speaker: "Rep", color: "#818cf8", text: "Hi Alex, thanks for making time. What's your current process for tracking sales calls?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "Honestly? We're still using spreadsheets and reps update them manually. It's a mess." },
-    { speaker: "Rep", color: "#818cf8", text: "How many calls does your team do per week, and how many do you actually review?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "About 60 calls a week. We review maybe 3 or 4. We just don't have the bandwidth." },
-    { speaker: "Rep", color: "#818cf8", text: "What's it costing you — in deals, in coaching time?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "We lost a $200k deal last quarter because of a pricing objection nobody flagged. That's what finally got me looking at tools like this." },
+  const repData = [
+    { initials: "SA", name: "Sarah A.", winRate: 78, calls: 24, color: "#0ef5d4", bg: "rgba(14,245,212,.15)" },
+    { initials: "MJ", name: "Marcus J.", winRate: 65, calls: 19, color: "#818cf8", bg: "rgba(129,140,248,.15)" },
+    { initials: "TK", name: "Tunde K.", winRate: 58, calls: 31, color: "#f59e0b", bg: "rgba(245,158,11,.15)" },
+    { initials: "AL", name: "Aisha L.", winRate: 51, calls: 16, color: "#f87171", bg: "rgba(248,113,113,.15)" },
   ];
-
-  const DEMO_INSIGHTS = [
-    { tag: "⚡ Pain Confirmed", body: "Manual tracking + zero review coverage = clear need. Strong qualification signal.", bg: "rgba(245,158,11,.08)", color: "#fbbf24" },
-    { tag: "✓ Buying Signal", body: "$200k deal lost to unhandled objection. Budget exists. High urgency.", bg: "rgba(14,245,212,.06)", color: "#0ef5d4" },
-    { tag: "→ Next Action", body: "Prospect is decision-ready. Transition to pricing and ROI calculation now.", bg: "rgba(139,92,246,.08)", color: "#a78bfa" },
-  ];
-
-  useEffect(() => {
-    let i = 0;
-    function scheduleNext() {
-      if (i >= DEMO_SCRIPT.length) return;
-      const line = DEMO_SCRIPT[i];
-      setTimeout(() => {
-        setDemoTyping({ speaker: line.speaker, color: line.color });
-        setTimeout(() => {
-          setDemoTyping(null);
-          setDemoLines(prev => [...prev, line]);
-          setTalkRep(prev => line.speaker === "Rep" ? Math.max(45, prev - 2) : Math.min(68, prev + 3));
-          i++;
-          if (i < 3) scheduleNext();
-          else if (i === 3) {
-            setDemoInsights(prev => [...prev, DEMO_INSIGHTS[0]]);
-            scheduleNext();
-          } else if (i === 5) {
-            setDemoInsights(prev => [...prev, DEMO_INSIGHTS[1], DEMO_INSIGHTS[2]]);
-            scheduleNext();
-          } else { scheduleNext(); }
-        }, 1400 + Math.random() * 400);
-      }, 1000 + Math.random() * 500);
-    }
-    scheduleNext();
-  }, []);
-
-  useEffect(() => {
-    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
-  }, [demoLines, demoTyping]);
 
   return (
     <div className="lp">
@@ -563,7 +598,6 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-orb1" />
         <div className="hero-orb2" />
-        
         <FadeIn delay={90}>
           <h1 className="hero-h">
             Every sales call.<br />
@@ -573,7 +607,7 @@ export default function LandingPage() {
         </FadeIn>
         <FadeIn delay={140}>
           <p className="hero-sub">
-            Fixsense records both sides of your sales calls, detects objections and buying signals in real time, builds deal intelligence across every touchpoint, and coaches your team — without any manual work.
+            Fixsense records both sides of your sales calls, detects objections in real time, builds deal intelligence across every touchpoint, and coaches your entire team — without any manual work.
           </p>
         </FadeIn>
         <FadeIn delay={190}>
@@ -618,19 +652,12 @@ export default function LandingPage() {
               <div className="demo-addr">fixsense.com.ng/dashboard/live</div>
             </div>
             <div className="demo-inner">
-              {/* Sidebar */}
               <div className="demo-sidebar">
-                <div className="demo-s-logo">
-                  <Logo size={22} />
-                  <span className="demo-s-name">Fixsense</span>
-                </div>
+                <div className="demo-s-logo"><Logo size={22} /><span className="demo-s-name">Fixsense</span></div>
                 {["Dashboard","Live Call","Calls","Deals","AI Coach","Team"].map((l,i) => (
-                  <div key={l} className={`demo-nav-item ${i===1?"active":""}`}>
-                    <div className="demo-nav-dot" />{l}
-                  </div>
+                  <div key={l} className={`demo-nav-item ${i===1?"active":""}`}><div className="demo-nav-dot" />{l}</div>
                 ))}
               </div>
-              {/* Main */}
               <div className="demo-main">
                 <div className="demo-topbar">
                   <div className="demo-title">Acme Corp — Discovery Call</div>
@@ -638,7 +665,7 @@ export default function LandingPage() {
                 </div>
                 <div className="demo-stats">
                   {[
-                    { lbl: "Sentiment", val: "78%", color: "#0ef5d4" },
+                    { lbl: "Sentiment", val: `${sentiment}%`, color: "#0ef5d4" },
                     { lbl: "Engagement", val: "84%", color: "#a78bfa" },
                     { lbl: "Objections", val: demoInsights.length > 0 ? "1" : "0", color: demoInsights.length > 0 ? "#fbbf24" : "#475569" },
                     { lbl: "Duration", val: `${demoLines.length}:${String(demoLines.length * 18 % 60).padStart(2,"0")}`, color: "#60a5fa" },
@@ -670,19 +697,17 @@ export default function LandingPage() {
                     <div style={{ textAlign:"center", padding:"20px 0", color:"var(--ink4)", fontSize:12 }}>Transcript will appear here as you speak…</div>
                   )}
                 </div>
-                {/* Talk ratio */}
                 <div className="demo-ratio">
                   <div className="demo-ratio-lbl">
                     <span style={{ color:"#818cf8" }}>Rep {100-talkRep}%</span>
                     <span style={{ color:"#2dd4bf" }}>Prospect {talkRep}%</span>
                   </div>
                   <div className="demo-ratio-bar">
-                    <div className="demo-ratio-rep" style={{ width:`${100-talkRep}%`, background:"#818cf8" }} />
+                    <div style={{ height:"100%", background:"#818cf8", width:`${100-talkRep}%` }} />
                     <div style={{ height:"100%", background:"#2dd4bf", flex:1 }} />
                   </div>
                 </div>
               </div>
-              {/* Right panel */}
               <div className="demo-right">
                 <div className="demo-r-hdr">
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="var(--cyan)" strokeWidth="1.2"/><path d="M3.5 5l1 1 2-2" stroke="var(--cyan)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -691,8 +716,7 @@ export default function LandingPage() {
                 <div className="demo-insights">
                   {demoInsights.length === 0 && (
                     <div style={{ textAlign:"center", padding:"20px 0", color:"var(--ink4)", fontSize:11 }}>
-                      <div style={{ marginBottom:8, fontSize:16 }}>👂</div>
-                      Listening for signals…
+                      <div style={{ marginBottom:8, fontSize:16 }}>👂</div>Listening for signals…
                     </div>
                   )}
                   {demoInsights.map((ins, i) => (
@@ -748,7 +772,7 @@ export default function LandingPage() {
             <div style={{ marginBottom: 60 }}>
               <div className="sec-kicker">Platform Capabilities</div>
               <h2 className="sec-title">Everything your revenue team needs</h2>
-              <p className="sec-sub">From the moment a call starts to the moment the deal closes — Fixsense has every touchpoint covered.</p>
+              <p className="sec-sub">From the moment a call starts to the moment the deal closes — every touchpoint covered.</p>
             </div>
           </FadeIn>
           <div className="features-grid">
@@ -766,33 +790,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* DEAL TIMELINE SHOWCASE */}
+      {/* FEATURE SHOWCASE 1 — Objection Detection */}
       <section className="showcase">
         <div className="showcase-orb" />
         <div className="showcase-i">
           <div className="showcase-grid">
             <FadeIn>
               <div>
-                <div className="sec-kicker">Deal Intelligence</div>
-                <h2 className="sec-title">Your entire deal, in one thread.</h2>
+                <div className="sec-kicker">Real-Time AI Coaching</div>
+                <h2 className="sec-title">Never miss an objection again.</h2>
                 <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  Stop losing context between calls. Link every call to a deal and Fixsense builds a living timeline — objections, buying signals, sentiment trend, and a running AI analysis of where the deal stands.
+                  The moment a prospect says "that's too expensive" or "we're already using a competitor," Fixsense flags it live — with a suggested response right in front of the rep.
                 </p>
                 <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:28 }}>
-                  Click "What Changed?" and the AI compares your last two calls to tell you exactly how the deal momentum shifted and what your next best action is.
+                  Sentiment is tracked second-by-second so you know exactly when the conversation shifted — and what caused it.
                 </p>
                 <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {[
-                    "Complete call history linked to every deal",
-                    "'What Changed?' AI analysis between calls",
-                    "Sentiment trend: improving, declining, or stable",
-                    "Recommended next best actions after each call",
-                  ].map((t, i) => (
+                  {["Pricing, timeline, and competitor objections flagged instantly","Suggested counter-responses shown during the live call","Sentiment score updates in real time as the conversation evolves","All objections logged automatically in the call summary"].map((t, i) => (
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}>
-                        <circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/>
-                        <path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {t}
                     </div>
                   ))}
@@ -800,29 +816,75 @@ export default function LandingPage() {
               </div>
             </FadeIn>
             <FadeIn delay={100}>
-              <div className="showcase-card">
+              <div className="obj-demo">
+                <div className="obj-demo-hdr">
+                  <div style={{ width:28,height:28,borderRadius:8,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>🚨</div>
+                  <div className="obj-demo-title">Live Objection Monitor</div>
+                  <div className="obj-live"><span style={{ width:5,height:5,borderRadius:"50%",background:"var(--cyan)",display:"inline-block" }}/>LIVE</div>
+                </div>
+                <div className="obj-body">
+                  {[
+                    { sp:"Rep", color:"#818cf8", text:"So your plan includes a $90k budget for tooling this quarter?" },
+                    { sp:"Alex", color:"#2dd4bf", text:"That's the target but honestly the CFO might push back. It feels expensive for what we're getting." },
+                  ].map((l,i) => (
+                    <div key={i} className="obj-line" style={{ background:i===1?"rgba(239,68,68,.04)":undefined, borderLeft:i===1?"2px solid rgba(239,68,68,.3)":"2px solid transparent" }}>
+                      <div className="obj-speaker" style={{ color:l.color }}>{l.sp}</div>
+                      <div className="obj-text">{l.text}</div>
+                    </div>
+                  ))}
+                  <div className="obj-flag">
+                    <div className="obj-flag-label">⚠ Pricing Objection Detected · 94% confidence</div>
+                    <div className="obj-flag-text">"feels expensive for what we're getting" — classic value gap signal</div>
+                    <div className="obj-flag-tip">💡 Suggested: Anchor on ROI — "Teams like yours typically close 2-3 more deals per month using Fixsense…"</div>
+                  </div>
+                  {[
+                    { sp:"Rep", color:"#818cf8", text:"Totally fair. Let me show you the ROI calculation — teams our size typically see payback in 6 weeks." },
+                    { sp:"Alex", color:"#2dd4bf", text:"Oh that's actually helpful, can you send me the breakdown?" },
+                  ].map((l,i) => (
+                    <div key={i} className="obj-line" style={{ background:i===1?"rgba(14,245,212,.04)":undefined }}>
+                      <div className="obj-speaker" style={{ color:l.color }}>{l.sp}</div>
+                      <div className="obj-text">{l.text}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="obj-sentiment-row">
+                  <div className="obj-sent-label">Sentiment</div>
+                  <div className="obj-sent-bar">
+                    <div className="obj-sent-fill" style={{ width:`${sentiment}%` }}/>
+                  </div>
+                  <div className="obj-sent-val" style={{ color:"#10b981" }}>{sentiment}%</div>
+                </div>
+              </div>
+            </FadeIn>
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURE SHOWCASE 2 — Deal Timeline */}
+      <section style={{ padding:"100px 24px", background:"var(--bg)" }}>
+        <div style={{ maxWidth:1120, margin:"0 auto" }}>
+          <div className="showcase-grid">
+            <FadeIn delay={100}>
+              <div className="sc-card">
                 <div className="sc-header">
                   <div className="sc-h-icon">🏢</div>
                   <div>
                     <div className="sc-h-title">Acme Corp — Enterprise Deal</div>
                     <div style={{ fontSize:10, color:"var(--ink4)" }}>3 calls · $85,000</div>
                   </div>
-                  <div className="sc-h-badge">
-                    <div style={{ width:5, height:5, borderRadius:"50%", background:"var(--green)" }} />
-                    Improving
-                  </div>
+                  <div className="sc-h-badge"><div style={{ width:5,height:5,borderRadius:"50%",background:"var(--green)" }}/>Improving</div>
                 </div>
                 <div className="sc-body">
                   {[
                     { name:"Discovery Call", date:"Mar 3", score:72, color:"#f59e0b", dotColor:"rgba(245,158,11,.4)" },
                     { name:"Product Demo", date:"Mar 10", score:84, color:"#22c55e", dotColor:"rgba(34,197,94,.4)" },
-                    { name:"Negotiation", date:"Mar 17", score:91, color:"#0ef5d4", dotColor:"rgba(14,245,212,.4)", active:true },
+                    { name:"Negotiation", date:"Mar 17", score:91, color:"#0ef5d4", dotColor:"rgba(14,245,212,.4)" },
                   ].map((c, i) => (
                     <div key={i} className="sc-call" style={{ borderBottom: i < 2 ? "1px solid var(--card-border)" : "none" }}>
                       <div className="sc-call-dot" style={{ background: c.dotColor }} />
                       <div>
                         <div className="sc-call-name">{c.name}</div>
-                        <div className="sc-call-meta">{c.date} · {c.active ? "Latest" : "Completed"}</div>
+                        <div className="sc-call-meta">{c.date} · {i===2?"Latest":"Completed"}</div>
                       </div>
                       <div className="sc-call-score">
                         <div className="sc-call-score-n" style={{ color: c.color }}>{c.score}</div>
@@ -832,16 +894,30 @@ export default function LandingPage() {
                   ))}
                   <div className="sc-intel">
                     <div className="sc-intel-hdr">✨ What Changed — AI Analysis</div>
-                    {[
-                      "Pricing objection from demo fully resolved",
-                      "New stakeholder: CFO joining next call",
-                      "Sentiment improved 7pts — strong momentum",
-                    ].map((t, i) => (
-                      <div key={i} className="sc-intel-item">
-                        <span style={{ color:"#a78bfa", flexShrink:0 }}>·</span>{t}
-                      </div>
+                    {["Pricing objection from demo fully resolved","New stakeholder: CFO joining next call","Sentiment improved 7pts — strong momentum"].map((t, i) => (
+                      <div key={i} className="sc-intel-item"><span style={{ color:"#a78bfa", flexShrink:0 }}>·</span>{t}</div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </FadeIn>
+            <FadeIn>
+              <div>
+                <div className="sec-kicker">Deal Intelligence</div>
+                <h2 className="sec-title">Your entire deal, in one thread.</h2>
+                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
+                  Stop losing context between calls. Link every call to a deal and Fixsense builds a living timeline — objections, buying signals, sentiment trend, and a running AI analysis.
+                </p>
+                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:28 }}>
+                  Click "What Changed?" and the AI compares your last two calls to tell you exactly how deal momentum shifted and what your next best action is.
+                </p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {["Complete call history linked to every deal","'What Changed?' AI analysis between calls","Sentiment trend: improving, declining, or stable","Recommended next best actions after each call"].map((t, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {t}
+                    </div>
+                  ))}
                 </div>
               </div>
             </FadeIn>
@@ -849,14 +925,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* COACHING CLIPS */}
+      {/* FEATURE SHOWCASE 3 — Coaching Clips */}
       <section className="clips-section">
         <div className="clips-i">
           <div className="clips-grid">
             <FadeIn>
               <div className="clip-demo">
                 <div style={{ padding:"12px 14px", borderBottom:"1px solid var(--card-border)", display:"flex", alignItems:"center", gap:9 }}>
-                  <div style={{ width:28, height:28, borderRadius:7, background:"rgba(139,92,246,.15)", border:"1px solid rgba(139,92,246,.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>✂️</div>
+                  <div style={{ width:28,height:28,borderRadius:7,background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>✂️</div>
                   <div style={{ fontFamily:"var(--fd)", fontSize:12, fontWeight:700, color:"var(--ink)" }}>Transcript · Select lines to clip</div>
                 </div>
                 <div className="clip-transcript">
@@ -870,16 +946,13 @@ export default function LandingPage() {
                     <div key={i} className={`clip-line${l.sel?" sel":""}`}>
                       <div className="clip-speaker" style={{ color: l.c }}>{l.sp}</div>
                       <div className="clip-text">{l.t}</div>
-                      {l.sel && <div style={{ width:6, height:6, borderRadius:"50%", background:"#a78bfa", flexShrink:0, margin:"auto 0" }} />}
+                      {l.sel && <div style={{ width:6,height:6,borderRadius:"50%",background:"#a78bfa",flexShrink:0,margin:"auto 0" }}/>}
                     </div>
                   ))}
                 </div>
                 <div className="clip-action">
                   <div className="clip-sel-info">3 lines · 0:28 selected</div>
-                  <div className="clip-btn">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M2 10l8-8" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                    Create Clip
-                  </div>
+                  <div className="clip-btn">✂ Create Clip</div>
                 </div>
               </div>
             </FadeIn>
@@ -888,23 +961,122 @@ export default function LandingPage() {
                 <div className="sec-kicker">Coaching Clips</div>
                 <h2 className="sec-title">Clip moments.<br />Coach at scale.</h2>
                 <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  Select any lines from a call transcript, add a coaching note, tag it (Objection, Pricing, Discovery, Best Practice…), and Fixsense creates a shareable clip page instantly.
-                </p>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:28 }}>
-                  No video editing. No meeting to sit through. Share a 30-second clip with your whole team and move on.
+                  Select any lines from a call transcript, add a coaching note, tag it, and Fixsense creates a shareable clip page instantly. No video editing. No meeting to sit through.
                 </p>
                 <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {[
-                    "Select transcript lines and clip in seconds",
-                    "Add coaching notes, tags, and share links",
-                    "Public clip pages — no Fixsense account needed",
-                    "React with emoji, thread replies, view counts",
-                  ].map((t, i) => (
+                  {["Select transcript lines and clip in seconds","Add coaching notes, tags, and share links","Public clip pages — no Fixsense account needed","React with emoji, thread replies, view counts"].map((t, i) => (
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}>
-                        <circle cx="7.5" cy="7.5" r="7" fill="rgba(139,92,246,0.12)"/>
-                        <path d="M4.5 7.5l2 2 4-4" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(139,92,246,0.12)"/><path d="M4.5 7.5l2 2 4-4" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {t}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeIn>
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURE SHOWCASE 4 — Priority Action Layer */}
+      <section className="action-section">
+        <div className="action-i">
+          <div className="action-grid">
+            <FadeIn>
+              <div>
+                <div className="sec-kicker">Priority Action Layer</div>
+                <h2 className="sec-title">Know exactly what to do next.</h2>
+                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
+                  After every call, Fixsense generates your single most important next action — and drafts the follow-up email automatically. Push it to HubSpot or Salesforce in one click.
+                </p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {["AI-generated priority next action per call","Draft follow-up email ready to send or edit","One-click push to HubSpot or Salesforce","Action completion tracked across your pipeline"].map((t, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {t}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeIn>
+            <FadeIn delay={100}>
+              <div className="action-demo">
+                <div className="action-hdr">
+                  <div style={{ width:28,height:28,borderRadius:8,background:"rgba(14,245,212,.1)",border:"1px solid rgba(14,245,212,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>⚡</div>
+                  <div className="action-title">Priority Next Action</div>
+                  <div style={{ marginLeft:"auto", fontSize:10, color:"#22c55e", fontWeight:700, background:"rgba(34,197,94,.1)", border:"1px solid rgba(34,197,94,.2)", borderRadius:20, padding:"2px 9px" }}>Acme Corp · Discovery</div>
+                </div>
+                <div className="action-body">
+                  <div className="action-priority">
+                    <div className="action-check" />
+                    <div className="action-priority-text">Send ROI breakdown + CFO briefing doc within 24 hours — prospect signaled urgency on the budget timeline</div>
+                  </div>
+                  <div className="action-email">
+                    <div className="action-email-label">Draft Follow-Up Email</div>
+                    <div className="action-email-subject">Re: Acme Corp — ROI breakdown as promised</div>
+                    <div className="action-email-body">Hi Alex, great call today. As promised, I've attached the ROI breakdown tailored to your team's 60 calls/week. Based on our data, teams your size typically see a 28% close rate improvement in 90 days…</div>
+                  </div>
+                  <div className="action-crm-row">
+                    <div className="action-crm-btn hs">Push to HubSpot</div>
+                    <div className="action-crm-btn sf">Push to Salesforce</div>
+                  </div>
+                </div>
+              </div>
+            </FadeIn>
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURE SHOWCASE 5 — Team Analytics */}
+      <section className="analytics-section">
+        <div className="analytics-i">
+          <div className="analytics-grid">
+            <FadeIn delay={100}>
+              <div className="analytics-demo">
+                <div className="analytics-hdr">
+                  <div style={{ fontFamily:"var(--fd)", fontSize:13, fontWeight:700, color:"var(--ink)", padding:"0 2px 10px", borderBottom:"1px solid var(--card-border)", marginBottom:0 }}>Team Leaderboard</div>
+                </div>
+                <div className="analytics-stats">
+                  <div className="analytics-stat">
+                    <div className="analytics-stat-n" style={{ color:"#0ef5d4" }}>4</div>
+                    <div className="analytics-stat-l">Active reps</div>
+                  </div>
+                  <div className="analytics-stat">
+                    <div className="analytics-stat-n" style={{ color:"#a78bfa" }}>63%</div>
+                    <div className="analytics-stat-l">Team win rate</div>
+                  </div>
+                  <div className="analytics-stat">
+                    <div className="analytics-stat-n" style={{ color:"#fbbf24" }}>78%</div>
+                    <div className="analytics-stat-l">Avg sentiment</div>
+                  </div>
+                </div>
+                <div className="analytics-body">
+                  {repData.map((rep, i) => (
+                    <div key={i} className="rep-row">
+                      <div style={{ width:24,height:24,borderRadius:6,background:`${rep.bg}`,border:`1px solid ${rep.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:rep.color,flexShrink:0 }}>{rep.initials}</div>
+                      <div className="rep-name">{rep.name}</div>
+                      <div className="rep-bar-wrap"><div className="rep-bar" style={{ width:`${rep.winRate}%`, background:rep.color }} /></div>
+                      <div className="rep-pct" style={{ color:rep.color }}>{rep.winRate}%</div>
+                      <div className="rep-calls">{rep.calls} calls</div>
+                    </div>
+                  ))}
+                  <div style={{ marginTop:12, padding:"10px 12px", background:"rgba(139,92,246,.06)", border:"1px solid rgba(139,92,246,.15)", borderRadius:9 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:"#a78bfa", marginBottom:5, textTransform:"uppercase", letterSpacing:".06em", fontFamily:"var(--fm)" }}>📊 AI Insight</div>
+                    <div style={{ fontSize:11.5, color:"var(--ink2)", lineHeight:1.55 }}>Tunde's win rate dropped 12pts this month. His talk ratio is 68% — above team average. Recommend coaching on active listening.</div>
+                  </div>
+                </div>
+              </div>
+            </FadeIn>
+            <FadeIn>
+              <div>
+                <div className="sec-kicker">Team Analytics</div>
+                <h2 className="sec-title">Full visibility.<br />Zero extra meetings.</h2>
+                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
+                  Managers get rep leaderboards, win rate trends, and sentiment benchmarks — without listening to a single recording. The AI surfaces exactly which rep needs coaching on what.
+                </p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {["Rep leaderboard with win rate, talk ratio, and sentiment","Weekly team digest with AI coaching recommendations","Compare any two reps side by side","Identify patterns across your top performers and replicate them"].map((t, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       {t}
                     </div>
                   ))}
@@ -928,9 +1100,9 @@ export default function LandingPage() {
           <div className="how-steps">
             <div className="how-connector" />
             {[
-              { n:"01", title:"Create a meeting room", desc:"Click 'New Meeting', enter a title and purpose. Fixsense generates a private room link in under 3 seconds.", active:true },
-              { n:"02", title:"Share the link & join", desc:"Send the link to your prospect — no account needed. Join as host and AI starts transcribing both sides immediately.", active:false },
-              { n:"03", title:"Get insights, close more", desc:"Receive real-time objection flags, a full AI summary, coaching clips, and your next best action the moment the call ends.", active:false },
+              { n:"01", title:"Create a meeting room", desc:"Click 'New Meeting', enter a title. Fixsense generates a private room link in under 3 seconds. Share it with your prospect — no account needed.", active:true },
+              { n:"02", title:"Share the link & join", desc:"Your prospect joins without any setup. Join as host and AI starts transcribing both sides immediately — objections flagged live as they happen.", active:false },
+              { n:"03", title:"Get insights, close more", desc:"Full AI summary, coaching clips, priority next action, and deal intelligence ready the moment the call ends. Push to CRM in one click.", active:false },
             ].map((s, i) => (
               <FadeIn key={i} delay={i * 100}>
                 <div>
@@ -980,11 +1152,7 @@ export default function LandingPage() {
             <div style={{ textAlign:"center" }}>
               <div className="sec-kicker">Pricing</div>
               <h2 className="sec-title">Minute-based. Transparent.</h2>
-              <p style={{ fontSize:16, color:"var(--ink2)", lineHeight:1.7, maxWidth:480, margin:"0 auto 12px" }}>Pay for exactly how long you record. Start free. Upgrade when you're ready. Cancel anytime.</p>
-              <p style={{ fontSize:12, color:"var(--ink4)", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="var(--ink4)" strokeWidth="1"/><path d="M6 4v3" stroke="var(--ink4)" strokeWidth="1" strokeLinecap="round"/><circle cx="6" cy="8.5" r=".5" fill="var(--ink4)"/></svg>
-                Billed in NGN via Paystack · ₦1,500/$1
-              </p>
+              <p style={{ fontSize:16, color:"var(--ink2)", lineHeight:1.7, maxWidth:480, margin:"0 auto 12px" }}>Pay for exactly how long you record. Start free. Upgrade when you're ready.</p>
             </div>
           </FadeIn>
           <div className="plans-grid">
@@ -1003,7 +1171,7 @@ export default function LandingPage() {
                   <ul className="plan-feats">
                     {p.feats.map(f => (
                       <li key={f} className="plan-feat">
-                        <div className={`plan-feat-dot on`}>
+                        <div style={{ width:15,height:15,borderRadius:"50%",background:p.hot?"rgba(14,245,212,.12)":"rgba(167,139,250,.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1 }}>
                           <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                             <path d="M1.5 4l1.5 1.5 3.5-3" stroke={p.hot?"#0ef5d4":"#a78bfa"} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
@@ -1012,8 +1180,7 @@ export default function LandingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link to={user ? "/dashboard/billing" : "/login"} className={`plan-cta ${p.ctaClass}`}
-                    onClick={() => !user && undefined}>
+                  <Link to={user ? "/dashboard/billing" : "/login"} className={`plan-cta ${p.ctaClass}`}>
                     {p.ctaText}
                   </Link>
                   {p.hot && <div style={{ textAlign:"center", marginTop:8, fontSize:11, color:"var(--ink3)" }}>No credit card required</div>}
@@ -1042,9 +1209,7 @@ export default function LandingPage() {
                     <path d="M3.5 5.5l3.5 3.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-                <div className={`faq-a ${activeFaq===i?"open":""}`}>
-                  <p>{f.a}</p>
-                </div>
+                <div className={`faq-a ${activeFaq===i?"open":""}`}><p>{f.a}</p></div>
               </div>
             ))}
           </FadeIn>
@@ -1056,12 +1221,8 @@ export default function LandingPage() {
         <div className="final-orb" />
         <div className="final-i">
           <FadeIn>
-            <h2 className="final-h">
-              Start closing more deals<br /><span className="c">today.</span>
-            </h2>
-            <p className="final-p">
-              Every call you run without Fixsense is a call you'll never fully understand. Start free — no credit card, no setup, just insights.
-            </p>
+            <h2 className="final-h">Start closing more deals<br /><span className="c">today.</span></h2>
+            <p className="final-p">Every call you run without Fixsense is a call you'll never fully understand. Start free — no credit card, no setup, just insights.</p>
             <div className="final-btns">
               <Link to={user ? "/dashboard" : "/login"} className="btn-main">
                 {user ? "Open Dashboard" : "Start for free"}
@@ -1079,11 +1240,8 @@ export default function LandingPage() {
         <div className="footer-i">
           <div className="footer-top">
             <div>
-              <div className="footer-brand-logo">
-                <Logo size={22} />
-                <span className="footer-brand-name">Fixsense</span>
-              </div>
-              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. </p>
+              <div className="footer-brand-logo"><Logo size={22} /><span className="footer-brand-name">Fixsense</span></div>
+              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
