@@ -269,32 +269,52 @@ export default function CallDetail() {
                 )}
 
                 {/* CRM push */}
-                <div className="flex items-center gap-2">
-                  {action.crm_pushed ? (
-                    <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
-                      <CheckCircle className="w-3 h-3 mr-1" /> Pushed to {action.crm_provider || "CRM"}
-                    </Badge>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
-  onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}>
-  Push to HubSpot
-</Button>
-<div className="relative group">
-  <Button size="sm" variant="outline"
-    className="h-7 text-xs gap-1 opacity-50 cursor-not-allowed border-dashed" disabled>
-    Salesforce
-    <span className="text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/20 rounded-full px-1.5 py-0.5 ml-0.5">Soon</span>
-  </Button>
+<div className="flex items-center gap-2">
+  {action.crm_pushed ? (
+    <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
+      <CheckCircle className="w-3 h-3 mr-1" />
+      Pushed to {action.crm_provider || "CRM"}
+    </Badge>
+  ) : (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs gap-1"
+        onClick={() =>
+          markCrmPushed.mutate({
+            actionId: action.id,
+            provider: "hubspot",
+          })
+        }
+      >
+        Push to HubSpot
+      </Button>
+
+      <div className="relative group">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1 opacity-50 cursor-not-allowed border-dashed"
+          disabled
+        >
+          Salesforce
+          <span className="text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/20 rounded-full px-1.5 py-0.5 ml-0.5">
+            Soon
+          </span>
+        </Button>
+      </div>
+    </>
+  )}
 </div>
-             
-            {generateAction.isPending && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" /> Generating your next action...
-              </div>
-            )}
-          </div>
-        )}
+
+{/* Loading state */}
+{generateAction.isPending && (
+  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <Loader2 className="w-4 h-4 animate-spin" />
+    Generating your next action...
+  </div>
+)}
 
         {/* Talk ratio */}
         {talkRatio && Object.keys(talkRatio).length > 0 && (
