@@ -1083,7 +1083,7 @@ export default function LandingPage() {
                 <Logo size={22} />
                 <span className="footer-brand-name">Fixsense</span>
               </div>
-              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. Built in Benin City, Nigeria.</p>
+              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. </p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
