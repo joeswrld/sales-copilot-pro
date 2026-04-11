@@ -347,12 +347,6 @@ export default function PricingPage() {
       {/* HERO */}
       <section className="hero">
         <div className="hero-orb" />
-        <FadeIn delay={40}>
-          <div className="hero-pill">
-            <div className="hero-dot" />
-            Minute-based · Transparent pricing
-          </div>
-        </FadeIn>
         <FadeIn delay={80}>
           <h1 className="hero-h">
             Pay for minutes,<br /><span className="c">unlock features</span> as you grow
