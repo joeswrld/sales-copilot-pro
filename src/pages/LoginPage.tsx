@@ -72,7 +72,6 @@ function TestimonialPanel() {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-      {/* Top: Brand + headline */}
       <div>
         <div style={{ marginBottom: "52px" }}>
           <div style={{
@@ -102,7 +101,6 @@ function TestimonialPanel() {
           </p>
         </div>
 
-        {/* Stats row */}
         <div style={{ display: "flex", gap: "0", marginBottom: "48px" }}>
           {[
             { val: "10k+", lbl: "Calls analyzed" },
@@ -120,7 +118,6 @@ function TestimonialPanel() {
         </div>
       </div>
 
-      {/* Testimonial card */}
       <div>
         <div style={{
           background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
@@ -128,7 +125,6 @@ function TestimonialPanel() {
           opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(10px)",
           transition: "opacity 0.35s ease, transform 0.35s ease",
         }}>
-          {/* Metric badge */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
             <div style={{
               display: "flex", alignItems: "baseline", gap: "8px",
@@ -165,7 +161,6 @@ function TestimonialPanel() {
           </div>
         </div>
 
-        {/* Pagination dots */}
         <div style={{ display: "flex", gap: "6px", marginTop: "16px", paddingLeft: "2px" }}>
           {testimonials.map((_, i) => (
             <button
@@ -183,7 +178,6 @@ function TestimonialPanel() {
         </div>
       </div>
 
-      {/* Bottom integration bar */}
       <div style={{ paddingTop: "32px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "32px" }}>
         <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>Integrates with</div>
         <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
@@ -207,6 +201,26 @@ export default function LoginPage() {
   const [termsError, setTermsError] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // ── FIX: Redirect already-authenticated users to dashboard ──────────────
+  useEffect(() => {
+    // Check existing session immediately on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        navigate("/dashboard", { replace: true });
+      }
+    });
+
+    // Also listen for auth state changes (e.g. token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        navigate("/dashboard", { replace: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+  // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -299,7 +313,6 @@ export default function LoginPage() {
           -webkit-font-smoothing: antialiased;
         }
 
-        /* ── Left: dark testimonial panel ── */
         .lp-left {
           flex: 0 0 480px;
           background: var(--bg-left);
@@ -324,7 +337,6 @@ export default function LoginPage() {
           opacity: 0.4;
         }
 
-        /* ── Right: auth form ── */
         .lp-right {
           flex: 1;
           background: #f8fafc;
@@ -358,7 +370,6 @@ export default function LoginPage() {
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Logo + wordmark */
         .auth-brand {
           display: flex; align-items: center; gap: 10px;
           margin-bottom: 36px; text-decoration: none;
@@ -369,7 +380,6 @@ export default function LoginPage() {
           font-family: var(--font-body);
         }
 
-        /* Mode tabs */
         .auth-tabs {
           display: flex;
           border-bottom: 1.5px solid #e2e8f0;
@@ -392,7 +402,6 @@ export default function LoginPage() {
         .auth-tab--active { color: var(--ink); }
         .auth-tab--active::after { transform: scaleX(1); }
 
-        /* Page title (forgot mode) */
         .auth-page-title {
           font-size: 21px; font-weight: 700; color: var(--ink);
           letter-spacing: -0.04em; margin-bottom: 6px;
@@ -402,7 +411,6 @@ export default function LoginPage() {
           font-size: 13px; color: var(--text-label); line-height: 1.55; margin-bottom: 24px;
         }
 
-        /* Google button */
         .google-btn {
           width: 100%; padding: 11px 16px;
           background: #fff; color: #1e293b;
@@ -417,14 +425,12 @@ export default function LoginPage() {
           box-shadow: 0 2px 8px rgba(15,23,42,0.08);
         }
 
-        /* Divider */
         .auth-divider {
           display: flex; align-items: center; gap: 12px; margin: 18px 0;
         }
         .auth-divider-line { flex: 1; height: 1px; background: #e2e8f0; }
         .auth-divider-text { font-size: 11px; color: #94a3b8; font-family: var(--font-mono); letter-spacing: 0.06em; }
 
-        /* Form fields */
         .form-field { margin-bottom: 14px; }
         .form-label {
           display: block; font-size: 12px; font-weight: 600; color: #475569;
@@ -456,7 +462,6 @@ export default function LoginPage() {
         }
         .eye-btn:hover { color: #64748b; }
 
-        /* Forgot link */
         .forgot-link {
           background: none; border: none; cursor: pointer; padding: 0;
           font-size: 12px; color: #64748b; font-family: var(--font-body);
@@ -464,7 +469,6 @@ export default function LoginPage() {
         }
         .forgot-link:hover { color: var(--ink); }
 
-        /* ── Terms Checkbox ── */
         .terms-wrap {
           display: flex; align-items: flex-start; gap: 11px;
           padding: 12px 14px;
@@ -536,7 +540,6 @@ export default function LoginPage() {
           padding-left: 2px;
         }
 
-        /* Submit button */
         .submit-btn {
           width: 100%; padding: 11px 20px;
           background: var(--ink); color: #fff;
@@ -555,7 +558,6 @@ export default function LoginPage() {
         }
         .submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-        /* Footer text */
         .auth-footer-text {
           text-align: center; margin-top: 22px;
           font-size: 13px; color: #64748b;
@@ -568,7 +570,6 @@ export default function LoginPage() {
         }
         .mode-link:hover { opacity: 0.65; }
 
-        /* Free trial perks */
         .auth-perks {
           margin-top: 20px; padding-top: 18px;
           border-top: 1px solid #f1f5f9;
@@ -584,7 +585,6 @@ export default function LoginPage() {
           display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         }
 
-        /* Security note */
         .auth-security {
           display: flex; align-items: center; gap: 6px;
           justify-content: center; margin-top: 14px;
@@ -592,7 +592,6 @@ export default function LoginPage() {
           letter-spacing: 0.04em;
         }
 
-        /* ── MOBILE ── */
         .lp-mobile {
           display: none;
           min-height: 100dvh;
@@ -686,23 +685,19 @@ export default function LoginPage() {
           DESKTOP (768px+)
       ══════════════════════════ */}
       <div className="lp-root">
-        {/* Left panel */}
         <div className="lp-left">
           <div style={{ position: "relative", zIndex: 1, height: "100%" }}>
             <TestimonialPanel />
           </div>
         </div>
 
-        {/* Right panel: form */}
         <div className="lp-right">
           <div className="auth-box">
-            {/* Brand */}
             <a href="/" className="auth-brand">
               <FixsenseLogo size={30} borderRadius={8} />
               <span className="auth-brand-wordmark">Fixsense</span>
             </a>
 
-            {/* Tabs or forgot title */}
             {mode === "forgot" ? (
               <>
                 <div className="auth-page-title">Reset your password</div>
@@ -715,7 +710,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Google OAuth */}
             {mode !== "forgot" && (
               <>
                 <button className="google-btn" onClick={handleGoogleSignIn} type="button">
@@ -730,7 +724,6 @@ export default function LoginPage() {
               </>
             )}
 
-            {/* Form */}
             <form onSubmit={handleEmailAuth}>
               {mode === "signup" && (
                 <div className="form-field">
@@ -776,7 +769,6 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* ── Terms & Conditions Checkbox (signup only) ── */}
               {mode === "signup" && (
                 <div style={{ marginBottom: "6px" }}>
                   <div
@@ -796,17 +788,11 @@ export default function LoginPage() {
                     </div>
                     <span className="terms-text">
                       I agree to Fixsense's{" "}
-                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Terms of Service
-                      </a>
+                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Terms of Service</a>
                       ,{" "}
-                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Privacy Policy
-                      </a>
+                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                       , and{" "}
-                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Cookie Policy
-                      </a>
+                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Cookie Policy</a>
                       . I understand my data will be processed to deliver the Fixsense service.
                     </span>
                   </div>
@@ -839,7 +825,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Footer nav */}
             <div className="auth-footer-text">
               {mode === "forgot" ? (
                 <><button className="mode-link" onClick={switchToLogin}>← Back to sign in</button></>
@@ -850,7 +835,6 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Signup perks */}
             {mode === "signup" && (
               <div className="auth-perks">
                 {["5 meetings/month free, no credit card", "AI transcription and summaries included", "Up and running in under 5 minutes"].map((p) => (
@@ -864,7 +848,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Security note */}
             <div className="auth-security">
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path d="M6 1L1.5 3v3c0 2.485 1.958 4.814 4.5 5.5C8.542 10.814 10.5 8.485 10.5 6V3L6 1z" stroke="#94a3b8" strokeWidth="1" strokeLinejoin="round" />
@@ -879,7 +862,6 @@ export default function LoginPage() {
           MOBILE (< 768px)
       ══════════════════════════ */}
       <div className="lp-mobile">
-        {/* Dark top strip */}
         <div className="mobile-top-bar">
           <a href="/" className="mobile-brand">
             <FixsenseLogo size={28} borderRadius={8} />
@@ -903,7 +885,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Form area */}
         <div className="mobile-form-area">
           <div style={{ position: "relative", zIndex: 1 }}>
             {mode !== "forgot" ? (
@@ -961,7 +942,6 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* ── Terms & Conditions Checkbox (mobile signup) ── */}
               {mode === "signup" && (
                 <div style={{ marginBottom: "12px" }}>
                   <div
@@ -981,17 +961,11 @@ export default function LoginPage() {
                     </div>
                     <span className="terms-text">
                       I agree to Fixsense's{" "}
-                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Terms of Service
-                      </a>
+                      <a href="/terms" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Terms of Service</a>
                       ,{" "}
-                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Privacy Policy
-                      </a>
+                      <a href="/privacy" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Privacy Policy</a>
                       , and{" "}
-                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                        Cookie Policy
-                      </a>
+                      <a href="/privacy#cookies" onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">Cookie Policy</a>
                       .
                     </span>
                   </div>
