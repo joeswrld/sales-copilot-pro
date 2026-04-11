@@ -287,9 +287,7 @@ export default function CallDetail() {
     <span className="text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/20 rounded-full px-1.5 py-0.5 ml-0.5">Soon</span>
   </Button>
 </div>
-              </div>
-            )}
-
+             
             {generateAction.isPending && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" /> Generating your next action...
