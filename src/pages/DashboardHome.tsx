@@ -1,12 +1,14 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity } from "lucide-react";
+import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo, useEffect } from "react";
+import { useEffect } from "react";
 import { useUserProfile } from "@/hooks/useSettings";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const statusColors: Record<string, string> = {
   "Won": "bg-success/10 text-success",
@@ -17,46 +19,75 @@ const statusColors: Record<string, string> = {
   "Follow-up": "bg-accent/10 text-accent",
 };
 
-function PipelineHealthCard({ calls }: { calls: any[] }) {
-  const score = useMemo(() => {
-    if (!calls || calls.length === 0) return null;
+// ── Real Pipeline Health Hook ────────────────────────────────────────────────
+function usePipelineHealth() {
+  return useQuery({
+    queryKey: ["pipeline-health"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const res = await supabase.functions.invoke("pipeline-health");
+      if (res.error) throw res.error;
+      return res.data as {
+        score: number;
+        label: string;
+        trend: "up" | "down" | "stable";
+        breakdown: Record<string, { score: number; label: string; weight: number }>;
+        meta: Record<string, number>;
+      };
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
 
-    const activeCalls = calls.filter(c => c.status !== "Won" && c.status !== "Lost");
-    if (activeCalls.length === 0) return null;
+// ── Pipeline Health Card ────────────────────────────────────────────────────
+function PipelineHealthCard() {
+  const { data: health, isLoading } = usePipelineHealth();
 
-    const sentimentCalls = activeCalls.filter(c => c.sentiment_score);
-    const avgSentiment = sentimentCalls.length > 0
-      ? sentimentCalls.reduce((s, c) => s + (c.sentiment_score || 0), 0) / sentimentCalls.length
-      : 50;
+  if (isLoading) {
+    return (
+      <div className="glass rounded-xl p-4 border border-border">
+        <div className="flex items-center justify-between mb-2">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-4 w-4 rounded" />
+        </div>
+        <div className="flex items-center gap-3 mt-2">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-    const atRisk = activeCalls.filter(c => c.status === "At Risk").length;
-    const safeRatio = activeCalls.length > 0 ? ((activeCalls.length - atRisk) / activeCalls.length) * 100 : 100;
+  if (!health) return null;
 
-    const recentCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const recentCalls = activeCalls.filter(c => new Date(c.date).getTime() > recentCutoff).length;
-    const activityScore = Math.min((recentCalls / Math.max(activeCalls.length, 1)) * 100, 100);
+  const score = health.score;
+  const color = score >= 75 ? "text-success" : score >= 55 ? "text-primary" : score >= 35 ? "text-accent" : "text-destructive";
+  const strokeColor = score >= 75 ? "hsl(152, 60%, 48%)" : score >= 55 ? "hsl(217, 91%, 65%)" : score >= 35 ? "hsl(38, 92%, 55%)" : "hsl(0, 72%, 50%)";
+  const borderColor = score >= 75 ? "border-success/20" : score >= 55 ? "border-primary/20" : score >= 35 ? "border-accent/20" : "border-destructive/20";
 
-    const raw = (avgSentiment * 0.4) + (safeRatio * 0.4) + (activityScore * 0.2);
-    return Math.round(Math.min(Math.max(raw, 0), 100));
-  }, [calls]);
-
-  if (score === null) return null;
-
-  const color = score >= 70 ? "text-success" : score >= 40 ? "text-accent" : "text-destructive";
-  const label = score >= 70 ? "Healthy" : score >= 40 ? "Needs attention" : "At risk";
-  const strokeColor = score >= 70 ? "hsl(152, 60%, 48%)" : score >= 40 ? "hsl(38, 92%, 55%)" : "hsl(0, 72%, 50%)";
+  const TrendIcon = health.trend === "up" ? ArrowUp : health.trend === "down" ? ArrowDown : Minus;
+  const trendColor = health.trend === "up" ? "text-success" : health.trend === "down" ? "text-destructive" : "text-muted-foreground";
 
   const radius = 26;
   const circ = 2 * Math.PI * radius;
   const dash = (score / 100) * circ;
 
+  // Top 3 breakdown items sorted by score ASC (weakest first = most actionable)
+  const breakdownItems = Object.values(health.breakdown).sort((a, b) => a.score - b.score).slice(0, 3);
+
   return (
-    <div className={`glass rounded-xl p-4 border ${score < 40 ? "border-destructive/20" : "border-border"}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground">Pipeline Health</span>
+    <div className={`glass rounded-xl p-4 border ${borderColor} col-span-2 lg:col-span-1`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-muted-foreground font-medium">Pipeline Health</span>
         <Activity className={`w-4 h-4 ${color}`} />
       </div>
-      <div className="flex items-center gap-3">
+
+      <div className="flex items-center gap-3 mb-3">
         <div className="relative w-14 h-14 shrink-0">
           <svg viewBox="0 0 60 60" className="w-14 h-14 -rotate-90">
             <circle cx="30" cy="30" r={radius} fill="none" stroke="hsl(222, 30%, 18%)" strokeWidth="5" />
@@ -73,9 +104,28 @@ function PipelineHealthCard({ calls }: { calls: any[] }) {
           </span>
         </div>
         <div>
-          <div className={`text-base font-bold font-display ${color}`}>{label}</div>
+          <div className={`text-base font-bold font-display flex items-center gap-1 ${color}`}>
+            {health.label}
+            <TrendIcon className={`w-3.5 h-3.5 ${trendColor}`} />
+          </div>
           <div className="text-xs text-muted-foreground mt-0.5">out of 100</div>
         </div>
+      </div>
+
+      {/* Weakest areas */}
+      <div className="space-y-1.5 pt-2 border-t border-border">
+        {breakdownItems.map(item => {
+          const itemColor = item.score >= 70 ? "bg-success" : item.score >= 45 ? "bg-primary" : item.score >= 25 ? "bg-accent" : "bg-destructive";
+          return (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-28 truncate">{item.label}</span>
+              <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                <div className={`h-1 rounded-full ${itemColor}`} style={{ width: `${item.score}%`, transition: "width 0.5s ease" }} />
+              </div>
+              <span className="text-xs text-muted-foreground w-7 text-right">{item.score}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -88,10 +138,8 @@ export default function DashboardHome() {
   const { data: calls, isLoading: callsLoading } = useCalls();
   const { profile, isLoading: profileLoading } = useUserProfile();
 
-  // ── Redirect new users to onboarding ──────────────────────────────────────
   useEffect(() => {
     if (profileLoading || callsLoading) return;
-    // If onboarding_complete is false/null and they have no calls yet, send to onboarding
     if (profile && !profile.onboarding_complete && (!calls || calls.length === 0)) {
       navigate("/onboarding", { replace: true });
     }
@@ -107,7 +155,6 @@ export default function DashboardHome() {
     { label: "At-Risk Deals", value: stats?.atRisk ?? "—", icon: AlertTriangle, color: "text-destructive" },
   ];
 
-  // Show loader while we check onboarding status
   if (profileLoading) {
     return (
       <DashboardLayout>
@@ -149,13 +196,12 @@ export default function DashboardHome() {
                   <div className="text-2xl font-bold font-display">{s.value}</div>
                 </div>
               ))}
-              {calls && calls.length > 0 && (
-                <PipelineHealthCard calls={calls} />
-              )}
+              <PipelineHealthCard />
             </>
           )}
         </div>
 
+        {/* Recent Calls */}
         <div className="glass rounded-xl overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="font-display font-semibold">Recent Calls</h2>
