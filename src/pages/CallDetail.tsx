@@ -276,25 +276,17 @@ export default function CallDetail() {
                     </Badge>
                   ) : (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}
-                      >
-                        Push to HubSpot
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "salesforce" })}
-                      >
-                        Push to Salesforce
-                      </Button>
-                    </>
-                  )}
-                </div>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+  onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}>
+  Push to HubSpot
+</Button>
+<div className="relative group">
+  <Button size="sm" variant="outline"
+    className="h-7 text-xs gap-1 opacity-50 cursor-not-allowed border-dashed" disabled>
+    Salesforce
+    <span className="text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/20 rounded-full px-1.5 py-0.5 ml-0.5">Soon</span>
+  </Button>
+</div>
               </div>
             )}
 
