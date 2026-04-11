@@ -29,10 +29,11 @@ import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import { DebugInspector } from "./pages/debugInspector";
 import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
-import PWABanner from '@/components/PWABanner';
+import PWABanner from "@/components/PWABanner";
 import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
+
 import {
   PrivacyPage,
   TermsPage,
@@ -41,7 +42,7 @@ import {
 } from "./pages/LegalPages";
 
 import {
-  IntegrationsPage
+  IntegrationsPage,
   AboutPage,
   BlogPage,
   CareersPage,
@@ -57,19 +58,20 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+
           <BrowserRouter>
             <DebugInspector />
-             <PWABanner />
+            <PWABanner />
+
             <Routes>
-              
-              {/* Public Marketing */}
+              {/* Public */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/testimonials" element={<TestimonialsPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-              {/* Marketing Pages */}
+              {/* Marketing */}
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/changelog" element={<Changelogpage />} />
               <Route path="/about" element={<AboutPage />} />
@@ -83,8 +85,11 @@ const App = () => {
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/contact" element={<ContactPage />} />
 
-              {/* Google Calendar OAuth callback */}
-              <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+              {/* OAuth */}
+              <Route
+                path="/auth/google/callback"
+                element={<GoogleCalendarCallback />}
+              />
 
               {/* Protected */}
               <Route
@@ -95,6 +100,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard"
                 element={
@@ -103,6 +109,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/calls"
                 element={
@@ -111,6 +118,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/calls/:id"
                 element={
@@ -119,6 +127,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/live"
                 element={
@@ -127,6 +136,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/live/:id"
                 element={
@@ -135,12 +145,16 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route 
-path="/dashboard/deals" 
-element={
-    <ProtectedRoute>
+
+              <Route
+                path="/dashboard/deals"
+                element={
+                  <ProtectedRoute>
                     <DealsPage />
-                  </ProtectedRoute>} />
+                  </ProtectedRoute>
+                }
+              />
+
               <Route
                 path="/dashboard/analytics"
                 element={
@@ -149,6 +163,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/team"
                 element={
@@ -157,6 +172,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/messages"
                 element={
@@ -165,6 +181,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/settings"
                 element={
@@ -173,7 +190,16 @@ element={
                   </ProtectedRoute>
                 }
               />
-              <Route path="/dashboard/integrations" element={<ProtectedRoute><IntegrationsDashboardPage /></ProtectedRoute>} />
+
+              <Route
+                path="/dashboard/integrations"
+                element={
+                  <ProtectedRoute>
+                    <IntegrationsDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+
               <Route
                 path="/dashboard/profile"
                 element={
@@ -182,6 +208,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/billing"
                 element={
@@ -190,6 +217,7 @@ element={
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/dashboard/coach"
                 element={
@@ -199,9 +227,11 @@ element={
                 }
               />
 
-              {/* Catch-all */}
-<Route path="/clip/:shareToken" element={<ClipSharePage />} />
-<Route path="/meet/:roomName" element={<MeetingJoin />} />
+              {/* Public dynamic */}
+              <Route path="/clip/:shareToken" element={<ClipSharePage />} />
+              <Route path="/meet/:roomName" element={<MeetingJoin />} />
+
+              {/* Fallback */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
