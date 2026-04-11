@@ -24,8 +24,8 @@ function FadeIn({ children, delay = 0, className = "" }: {
   return (
     <div ref={ref} className={className} style={{
       opacity: inView ? 1 : 0,
-      transform: inView ? "translateY(0)" : "translateY(24px)",
-      transition: `opacity 0.65s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.65s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
+      transform: inView ? "translateY(0)" : "translateY(28px)",
+      transition: `opacity 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
     }}>
       {children}
     </div>
@@ -61,23 +61,10 @@ function Logo({ size = 30 }: { size?: number }) {
   );
 }
 
-const CheckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-    <circle cx="8" cy="8" r="8" fill="rgba(37,99,235,0.1)" />
-    <path d="M5 8l2 2 4-4" stroke="#2563EB" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const StarIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="#f59e0b" style={{ flexShrink: 0 }}>
-    <path d="M7 1l1.545 3.13 3.455.503-2.5 2.437.59 3.44L7 8.885l-3.09 1.625.59-3.44L2 4.633l3.455-.503z" />
-  </svg>
-);
-
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const FEATURED = {
-  quote: "Before Fixsense, every deal post-mortem was a guessing game. We'd sit in a room and speculate about why we lost. Now we have the data. We can see exactly where conversations stalled, which objections went unaddressed, and which reps need coaching on specific moments. Our close rate climbed 30% in the first quarter and it's stayed there.",
+  quote: "Before Fixsense, every deal post-mortem was a guessing game. We'd speculate about why we lost. Now we have the data — exactly where conversations stalled, which objections went unaddressed, which reps need coaching on specific moments. Our close rate climbed 30% in the first quarter and it's stayed there.",
   name: "Sarah Mitchell",
   role: "Head of Sales",
   company: "Vantex Technologies",
@@ -89,7 +76,7 @@ const FEATURED = {
 
 const TESTIMONIALS = [
   {
-    quote: "The objection detection alone changed how we train reps. We can now identify exactly which objections each rep struggles with and build targeted coaching around that. 3x faster ramp time for new hires.",
+    quote: "The objection detection alone changed how we train reps. We identify exactly which objections each rep struggles with and build targeted coaching around that. 3× faster ramp time for new hires.",
     name: "James Okafor",
     role: "Startup Founder",
     company: "Launchflow",
@@ -122,7 +109,7 @@ const TESTIMONIALS = [
     category: "revenue",
   },
   {
-    quote: "Our team is fully remote across 4 time zones. Managers can't sit on every call. Fixsense means nothing slips through the cracks — every call is analyzed, every action item is logged, every rep gets feedback.",
+    quote: "Our team is fully remote across 4 time zones. Managers can't sit on every call. Fixsense means nothing slips through the cracks — every call is analyzed, every action item logged, every rep gets feedback.",
     name: "Lena Hartmann",
     role: "Director of Sales",
     company: "Orbis Global",
@@ -166,7 +153,7 @@ const TESTIMONIALS = [
     category: "productivity",
   },
   {
-    quote: "We tried two other conversation intelligence tools. Both felt like they were built for companies 10x our size. Fixsense actually works for a scrappy 10-person team without a dedicated RevOps person.",
+    quote: "We tried two other conversation intelligence tools. Both felt built for companies 10× our size. Fixsense actually works for a scrappy 10-person team without a dedicated RevOps person.",
     name: "Isabelle Morel",
     role: "Founding Account Executive",
     company: "Breeze CX",
@@ -177,7 +164,7 @@ const TESTIMONIALS = [
     category: "revenue",
   },
   {
-    quote: "The sentiment analysis catches things you'd never notice manually. We found that deals where prospects went quiet after the pricing slide had a 71% churn rate. We redesigned the entire pricing conversation based on that one insight.",
+    quote: "The sentiment analysis catches things you'd never notice manually. We found deals where prospects went quiet after the pricing slide had a 71% churn rate. We redesigned the entire pricing conversation based on that one insight.",
     name: "Carlos Mendez",
     role: "Revenue Analytics Lead",
     company: "ScaleIQ",
@@ -189,22 +176,13 @@ const TESTIMONIALS = [
   },
 ];
 
-const METRICS = [
-  { value: 30, suffix: "%", label: "Avg. increase in close rate" },
-  { value: 10, suffix: "k+", label: "Sales meetings analyzed" },
-  { value: 50, suffix: "%", label: "Reduction in ramp time" },
-  { value: 99, suffix: "%", label: "Transcription accuracy" },
-];
-
 const CATEGORIES = [
   { id: "all", label: "All stories" },
   { id: "revenue", label: "Revenue impact" },
-  { id: "coaching", label: "Coaching & training" },
-  { id: "management", label: "Team management" },
+  { id: "coaching", label: "Coaching" },
+  { id: "management", label: "Management" },
   { id: "productivity", label: "Productivity" },
 ];
-
-const LOGOS = ["Zoom", "Google Meet", "Salesforce", "HubSpot", "Slack", "Microsoft Teams"];
 
 export default function TestimonialsPage() {
   const { user } = useAuth();
@@ -227,8 +205,8 @@ export default function TestimonialsPage() {
   }, [mobileOpen]);
 
   const NAV = [
-    { label: "Product", href: "/#features" },
-    { label: "How It Works", href: "/#how-it-works" },
+    { label: "Features", href: "/#features" },
+    { label: "How It Works", href: "/#how" },
     { label: "Pricing", href: "/pricing" },
     { label: "Testimonials", href: "/testimonials" },
   ];
@@ -237,260 +215,276 @@ export default function TestimonialsPage() {
     ? TESTIMONIALS
     : TESTIMONIALS.filter(t => t.category === activeCategory);
 
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=Syne+Mono&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    .tp {
+      --bg: #050810; --bg2: #0a0d18; --bg3: #0f1220;
+      --card: rgba(255,255,255,0.03); --card-border: rgba(255,255,255,0.07); --card-hover: rgba(255,255,255,0.06);
+      --ink: #f0f2f8; --ink2: rgba(240,242,248,0.65); --ink3: rgba(240,242,248,0.38); --ink4: rgba(240,242,248,0.18);
+      --cyan: #0ef5d4; --cyan2: rgba(14,245,212,0.15); --cyan3: rgba(14,245,212,0.07);
+      --purple: #8b5cf6; --amber: #f59e0b; --green: #10b981; --blue: #3b82f6;
+      --font: 'DM Sans', system-ui, sans-serif; --fd: 'Syne', system-ui, sans-serif; --fm: 'Syne Mono', monospace;
+      background: var(--bg); color: var(--ink); font-family: var(--font);
+      -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6; min-height: 100vh;
+    }
+
+    /* NAV */
+    .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 60px; display: flex; align-items: center; padding: 0 24px; transition: all 0.3s; }
+    .nav.sc { background: rgba(5,8,16,0.95); backdrop-filter: blur(20px); border-bottom: 1px solid var(--card-border); }
+    .nav-i { max-width: 1140px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+    .nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+    .nav-name { font-family: var(--fd); font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-link { font-size: 13.5px; font-weight: 500; color: var(--ink3); text-decoration: none; transition: color 0.2s; }
+    .nav-link:hover { color: var(--ink); }
+    .nav-link.act { color: var(--cyan); }
+    .nav-acts { display: flex; align-items: center; gap: 8px; }
+    .nav-ghost { font-size: 13px; font-weight: 500; color: var(--ink3); background: none; border: none; padding: 8px 14px; border-radius: 8px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: color 0.15s; }
+    .nav-ghost:hover { color: var(--ink); }
+    .nav-cta { font-size: 13px; font-weight: 600; color: var(--bg); background: var(--cyan); border: none; padding: 8px 20px; border-radius: 8px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.15s; white-space: nowrap; }
+    .nav-cta:hover { opacity: 0.88; transform: translateY(-1px); }
+    .burger { display: none; background: none; border: 1px solid var(--card-border); border-radius: 7px; width: 36px; height: 36px; cursor: pointer; color: var(--ink3); align-items: center; justify-content: center; }
+
+    .drw-ov { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
+    .drw-ov.on { display: block; }
+    .drw { position: fixed; top: 0; right: 0; bottom: 0; width: min(300px,88vw); z-index: 210; background: var(--bg2); border-left: 1px solid var(--card-border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.26s cubic-bezier(0.4,0,0.2,1); }
+    .drw.on { transform: translateX(0); }
+    .drw-hdr { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--card-border); }
+    .drw-close { background: var(--card); border: 1px solid var(--card-border); border-radius: 7px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink3); }
+    .drw-nav { padding: 12px 14px; flex: 1; }
+    .drw-link { display: block; padding: 13px 10px; font-size: 15px; font-weight: 500; color: var(--ink2); text-decoration: none; border-radius: 8px; transition: background 0.15s; }
+    .drw-link:hover { background: var(--card); }
+    .drw-foot { padding: 14px 20px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 8px; }
+    .btn-fw { display: block; width: 100%; padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font); text-align: center; text-decoration: none; border: none; }
+    .btn-fw-p { background: var(--cyan); color: var(--bg); }
+    .btn-fw-s { background: var(--card); color: var(--ink2); border: 1px solid var(--card-border); }
+
+    /* HERO */
+    .hero { padding: 130px 24px 80px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; }
+    .hero-orb1 { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 700px; height: 500px; background: radial-gradient(ellipse, rgba(14,245,212,0.06) 0%, transparent 65%); pointer-events: none; }
+    .hero-orb2 { position: absolute; top: 200px; right: -100px; width: 400px; height: 400px; background: radial-gradient(ellipse, rgba(139,92,246,0.04) 0%, transparent 65%); pointer-events: none; }
+    .hero-pill { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; background: rgba(14,245,212,0.08); border: 1px solid rgba(14,245,212,0.2); border-radius: 100px; padding: 6px 16px 6px 6px; font-size: 12px; font-weight: 600; color: var(--cyan); margin-bottom: 28px; }
+    .hero-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 2.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.85)} }
+    .hero-h { position: relative; z-index: 1; font-family: var(--fd); font-size: clamp(36px,6.5vw,70px); font-weight: 800; line-height: 1.04; letter-spacing: -0.05em; color: var(--ink); max-width: 820px; margin-bottom: 22px; }
+    .hero-h .c { color: var(--cyan); }
+    .hero-h .m { color: var(--ink3); font-style: italic; }
+    .hero-sub { position: relative; z-index: 1; font-size: clamp(15px,2vw,18px); color: var(--ink2); line-height: 1.72; max-width: 540px; margin-bottom: 38px; }
+    .hero-ctas { position: relative; z-index: 1; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-main { display: inline-flex; align-items: center; gap: 8px; background: var(--cyan); color: var(--bg); border: none; border-radius: 10px; padding: 14px 28px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
+    .btn-main:hover { opacity: 0.88; transform: translateY(-2px); box-shadow: 0 10px 28px rgba(14,245,212,0.22); }
+    .btn-sec { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: var(--ink2); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 26px; font-size: 15px; font-weight: 500; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
+    .btn-sec:hover { border-color: rgba(255,255,255,0.2); color: var(--ink); }
+
+    /* LOGO STRIP */
+    .logo-strip { border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); padding: 20px 24px; background: var(--bg2); }
+    .logo-strip-i { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .logo-lbl { font-size: 11px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: .12em; }
+    .logo-names { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+    .logo-name { font-family: var(--fd); font-size: 13.5px; font-weight: 600; color: var(--ink4); }
+
+    /* METRICS */
+    .metrics { padding: 90px 24px; background: var(--bg); }
+    .metrics-i { max-width: 960px; margin: 0 auto; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: var(--card-border); border-radius: 14px; overflow: hidden; border: 1px solid var(--card-border); }
+    .metric-card { background: var(--bg2); padding: 38px 26px; }
+    .metric-num { font-family: var(--fd); font-size: clamp(38px,5vw,54px); font-weight: 800; color: var(--cyan); letter-spacing: -0.04em; line-height: 1; margin-bottom: 8px; }
+    .metric-lbl { font-size: 13px; color: var(--ink3); line-height: 1.5; }
+
+    /* FEATURED */
+    .featured { padding: 80px 24px 0; background: var(--bg); }
+    .featured-i { max-width: 1100px; margin: 0 auto; }
+    .featured-card {
+      background: var(--bg2);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 60px;
+      position: relative; overflow: hidden;
+    }
+    .featured-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--cyan), rgba(14,245,212,0.4));
+    }
+    .featured-orb { position: absolute; top: -60px; right: -60px; width: 280px; height: 280px; border-radius: 50%; background: radial-gradient(circle, rgba(14,245,212,0.07) 0%, transparent 70%); pointer-events: none; }
+    .featured-orb2 { position: absolute; bottom: -60px; left: 40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 70%); pointer-events: none; }
+    .featured-quote-mark { font-family: var(--fd); font-size: 120px; line-height: 0.8; color: rgba(14,245,212,0.08); position: absolute; top: 40px; left: 52px; pointer-events: none; user-select: none; }
+    .featured-content { position: relative; z-index: 1; }
+    .featured-metric { display: inline-flex; align-items: center; gap: 6px; background: var(--cyan3); color: var(--cyan); border: 1px solid rgba(14,245,212,0.2); border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 700; letter-spacing: .06em; font-family: var(--fm); margin-bottom: 22px; }
+    .featured-stars { display: flex; gap: 3px; margin-bottom: 20px; }
+    .featured-text { font-size: clamp(16px,2.2vw,21px); color: var(--ink2); line-height: 1.68; font-weight: 400; margin-bottom: 36px; max-width: 800px; font-style: italic; }
+    .featured-author { display: flex; align-items: center; gap: 16px; }
+    .featured-av { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, rgba(14,245,212,0.3), rgba(59,130,246,0.3)); border: 1px solid rgba(14,245,212,0.3); display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 16px; font-weight: 700; color: var(--cyan); flex-shrink: 0; }
+    .featured-name { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); }
+    .featured-role { font-size: 13px; color: var(--ink3); margin-top: 2px; }
+    .featured-tags { display: flex; gap: 8px; margin-top: 10px; }
+    .featured-tag { background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: var(--ink3); font-family: var(--fm); }
+
+    /* FILTER + GRID */
+    .filter-section { padding: 80px 24px 0; background: var(--bg); }
+    .filter-i { max-width: 1100px; margin: 0 auto; }
+    .sec-kicker { font-family: var(--fm); font-size: 11px; font-weight: 600; color: var(--cyan); text-transform: uppercase; letter-spacing: .14em; margin-bottom: 12px; }
+    .sec-title { font-family: var(--fd); font-size: clamp(28px,4.5vw,46px); font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1.08; margin-bottom: 14px; }
+    .sec-sub { font-size: 16px; color: var(--ink2); line-height: 1.72; max-width: 520px; }
+    .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 32px; }
+    .filter-btn { background: transparent; border: 1px solid var(--card-border); border-radius: 100px; padding: 8px 20px; font-size: 13px; font-weight: 600; color: var(--ink3); cursor: pointer; font-family: var(--font); transition: all 0.18s; }
+    .filter-btn:hover { border-color: rgba(14,245,212,0.3); color: var(--ink); }
+    .filter-btn.act { background: var(--cyan); border-color: var(--cyan); color: var(--bg); }
+
+    .testi-section { padding: 48px 24px 100px; background: var(--bg); }
+    .testi-i { max-width: 1100px; margin: 0 auto; }
+    .testi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+
+    .testi-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px; padding: 28px;
+      display: flex; flex-direction: column;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    }
+    .testi-card:hover {
+      border-color: rgba(14,245,212,0.18);
+      box-shadow: 0 8px 32px rgba(14,245,212,0.06);
+      transform: translateY(-2px);
+    }
+    .testi-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .testi-metric { display: inline-flex; align-items: center; background: var(--cyan3); color: var(--cyan); border: 1px solid rgba(14,245,212,0.2); border-radius: 5px; padding: 3px 10px; font-size: 11px; font-weight: 700; font-family: var(--fm); }
+    .testi-stars { display: flex; gap: 2px; }
+    .testi-quote { font-size: 14px; color: var(--ink2); line-height: 1.72; flex: 1; margin-bottom: 22px; }
+    .testi-author { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--card-border); padding-top: 18px; }
+    .testi-av { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, rgba(14,245,212,0.15), rgba(139,92,246,0.15)); border: 1px solid rgba(14,245,212,0.2); display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--cyan); flex-shrink: 0; }
+    .testi-name { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
+    .testi-role { font-size: 12px; color: var(--ink3); margin-top: 1px; }
+    .testi-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .testi-tag { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 4px; padding: 2px 8px; font-size: 10px; color: var(--ink3); font-family: var(--fm); }
+
+    /* TRUST STRIP */
+    .trust { padding: 80px 24px; background: var(--bg2); border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); }
+    .trust-i { max-width: 960px; margin: 0 auto; text-align: center; }
+    .trust-title { font-family: var(--fd); font-size: 24px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 8px; }
+    .trust-sub { font-size: 15px; color: var(--ink3); margin-bottom: 36px; }
+    .trust-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+    .trust-badge { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 20px; font-size: 13px; font-weight: 500; color: var(--ink2); transition: border-color 0.2s; }
+    .trust-badge:hover { border-color: rgba(14,245,212,0.2); }
+    .trust-badge-icon { font-size: 16px; }
+
+    /* FINAL CTA */
+    .final { padding: 120px 24px; background: var(--bg); text-align: center; position: relative; overflow: hidden; }
+    .final-orb { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(14,245,212,0.05) 0%, transparent 65%); }
+    .final-i { position: relative; z-index: 1; max-width: 580px; margin: 0 auto; }
+    .final-h { font-family: var(--fd); font-size: clamp(34px,6vw,58px); font-weight: 800; color: var(--ink); letter-spacing: -0.05em; line-height: 1.06; margin-bottom: 16px; }
+    .final-h .c { color: var(--cyan); }
+    .final-p { font-size: 16px; color: var(--ink2); line-height: 1.72; margin-bottom: 36px; }
+    .final-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .final-note { margin-top: 14px; font-size: 12px; color: var(--ink4); }
+
+    /* FOOTER */
+    .footer { background: var(--bg2); padding: 56px 24px 28px; border-top: 1px solid var(--card-border); }
+    .footer-i { max-width: 1100px; margin: 0 auto; }
+    .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 44px; padding-bottom: 40px; border-bottom: 1px solid var(--card-border); }
+    .footer-brand-logo { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+    .footer-brand-name { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+    .footer-brand-desc { font-size: 13px; color: var(--ink3); line-height: 1.65; max-width: 230px; }
+    .footer-col-title { font-size: 10.5px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 14px; }
+    .footer-link { display: block; font-size: 13px; color: var(--ink3); text-decoration: none; margin-bottom: 9px; transition: color 0.2s; }
+    .footer-link:hover { color: var(--ink); }
+    .footer-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .footer-legal { font-size: 12px; color: var(--ink4); }
+    .footer-legal-links { display: flex; gap: 18px; }
+    .footer-ll { font-size: 12px; color: var(--ink4); text-decoration: none; transition: color 0.2s; }
+    .footer-ll:hover { color: var(--ink3); }
+
+    @media(max-width:1024px) { .footer-top { grid-template-columns: 1fr 1fr; } }
+    @media(max-width:900px) {
+      .testi-grid { grid-template-columns: repeat(2,1fr); }
+      .metrics-grid { grid-template-columns: repeat(2,1fr); }
+    }
+    @media(max-width:768px) {
+      .burger { display: flex; }
+      .nav-links, .nav-acts { display: none; }
+      .featured-card { padding: 36px 28px; }
+      .featured-quote-mark { display: none; }
+      .footer-top { grid-template-columns: 1fr 1fr; }
+      .footer-bottom { flex-direction: column; align-items: flex-start; }
+    }
+    @media(max-width:560px) {
+      .testi-grid { grid-template-columns: 1fr; }
+      .hero-ctas { flex-direction: column; align-items: center; }
+      .btn-main, .btn-sec { width: 100%; max-width: 320px; justify-content: center; }
+      .final-btns { flex-direction: column; align-items: center; }
+      .footer-top { grid-template-columns: 1fr; }
+    }
+  `;
+
+  const StarIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="#0ef5d4" opacity="0.7">
+      <path d="M6.5 1l1.4 2.83 3.12.455-2.26 2.2.533 3.105L6.5 7.895l-2.793 1.695.533-3.105L2.98 4.285l3.12-.455z"/>
+    </svg>
+  );
+
   return (
-    <div className="lp">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        .lp {
-          --bg: #ffffff; --bg-2: #f8fafc; --bg-3: #f1f5f9;
-          --ink: #0f172a; --ink-2: #1e293b;
-          --muted: #64748b; --muted-2: #94a3b8;
-          --border: #e2e8f0;
-          --blue: #2563eb; --blue-2: #1d4ed8;
-          --blue-light: rgba(37,99,235,0.08); --blue-glow: rgba(37,99,235,0.2);
-          --green: #10b981;
-          --font: 'Plus Jakarta Sans', sans-serif;
-          --font-display: 'Bricolage Grotesque', sans-serif;
-          background: var(--bg); color: var(--ink); font-family: var(--font);
-          -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6;
-        }
-
-        /* NAV */
-        .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 64px; display: flex; align-items: center; padding: 0 24px; transition: all 0.3s ease; border-bottom: 1px solid transparent; }
-        .nav.scrolled { background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); border-bottom-color: var(--border); box-shadow: 0 1px 16px rgba(15,23,42,0.06); }
-        .nav-inner { max-width: 1160px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
-        .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-        .nav-logo-text { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; }
-        .nav-links { display: flex; align-items: center; gap: 28px; }
-        .nav-link { font-size: 14px; font-weight: 500; color: var(--muted); text-decoration: none; transition: color 0.2s; }
-        .nav-link:hover, .nav-link.active { color: var(--ink); }
-        .nav-link.active { color: var(--blue); }
-        .nav-actions { display: flex; align-items: center; gap: 10px; }
-        .btn-ghost { font-size: 13.5px; font-weight: 500; color: var(--ink); background: none; border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; font-family: var(--font); text-decoration: none; transition: background 0.15s; }
-        .btn-ghost:hover { background: var(--bg-3); }
-        .btn-nav-primary { font-size: 13.5px; font-weight: 600; color: #fff; background: var(--blue); border: none; cursor: pointer; padding: 8px 20px; border-radius: 8px; font-family: var(--font); text-decoration: none; transition: background 0.15s, transform 0.15s; }
-        .btn-nav-primary:hover { background: var(--blue-2); transform: translateY(-1px); }
-        .nav-user { display: flex; align-items: center; gap: 8px; background: var(--bg-3); border-radius: 100px; padding: 5px 14px 5px 5px; text-decoration: none; }
-        .nav-user-av { width: 28px; height: 28px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
-        .nav-user-name { font-size: 13px; font-weight: 600; color: var(--ink); }
-        .hamburger { display: none; background: none; border: none; cursor: pointer; color: var(--ink); padding: 6px; }
-        .drawer-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(15,23,42,0.5); backdrop-filter: blur(4px); }
-        .drawer-overlay.open { display: block; }
-        .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(320px,90vw); z-index: 210; background: #fff; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); box-shadow: -20px 0 60px rgba(15,23,42,0.15); }
-        .drawer.open { transform: translateX(0); }
-        .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border); }
-        .drawer-close { background: var(--bg-3); border: none; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink); }
-        .drawer-nav { padding: 12px 16px; flex: 1; }
-        .drawer-link { display: block; padding: 13px 8px; font-size: 15px; font-weight: 500; color: var(--ink); text-decoration: none; border-radius: 8px; transition: background 0.15s; }
-        .drawer-link:hover { background: var(--bg-3); }
-        .drawer-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
-        .btn-full { width: 100%; padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font); text-align: center; text-decoration: none; display: block; }
-        .btn-full-primary { background: var(--blue); color: #fff; border: none; }
-        .btn-full-secondary { background: var(--bg-3); color: var(--ink); border: none; }
-
-        /* HERO */
-        .hero { padding: 140px 24px 80px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; background: linear-gradient(180deg, #f0f6ff 0%, #ffffff 60%); }
-        .hero-pattern { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #d1defe 1px, transparent 1px); background-size: 32px 32px; mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 100%); opacity: 0.5; }
-        .hero-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 100px; padding: 6px 16px 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 24px; box-shadow: 0 1px 8px rgba(15,23,42,0.06); }
-        .hero-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,0.2); }
-        .hero-title { position: relative; z-index: 1; font-family: var(--font-display); font-size: clamp(34px,6vw,66px); font-weight: 800; line-height: 1.05; letter-spacing: -0.04em; color: var(--ink); max-width: 800px; margin-bottom: 20px; }
-        .hero-title .blue { color: var(--blue); }
-        .hero-sub { position: relative; z-index: 1; font-size: clamp(15px,2vw,18px); color: var(--muted); line-height: 1.7; max-width: 540px; margin-bottom: 36px; }
-        .hero-ctas { position: relative; z-index: 1; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 0; }
-        .btn-hero-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 14px 28px; font-size: 15px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 16px var(--blue-glow); }
-        .btn-hero-primary:hover { background: var(--blue-2); transform: translateY(-2px); }
-        .btn-hero-secondary { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: var(--ink); border: 1.5px solid var(--border); border-radius: 10px; padding: 14px 28px; font-size: 15px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
-        .btn-hero-secondary:hover { border-color: var(--muted-2); transform: translateY(-2px); }
-
-        /* LOGO STRIP */
-        .logo-strip { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 24px; background: var(--bg-2); }
-        .logo-strip-inner { max-width: 960px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
-        .logo-strip-label { font-size: 11.5px; font-weight: 600; color: var(--muted-2); text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap; }
-        .logo-strip-logos { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
-        .logo-name { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--muted-2); transition: color 0.2s; cursor: default; }
-        .logo-name:hover { color: var(--ink-2); }
-
-        /* METRICS */
-        .metrics { padding: 90px 24px; background: var(--ink); }
-        .metrics-inner { max-width: 960px; margin: 0 auto; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); }
-        .metric-card { background: rgba(255,255,255,0.04); padding: 40px 28px; }
-        .metric-num { font-family: var(--font-display); font-size: clamp(40px,5vw,56px); font-weight: 800; color: var(--blue); letter-spacing: -0.04em; line-height: 1; margin-bottom: 10px; }
-        .metric-label { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.5; }
-
-        /* FEATURED TESTIMONIAL */
-        .featured { padding: 100px 24px 0; background: var(--bg); }
-        .featured-inner { max-width: 1100px; margin: 0 auto; }
-        .featured-card { background: var(--ink); border-radius: 24px; padding: 60px; position: relative; overflow: hidden; }
-        .featured-blob { position: absolute; top: -60px; right: -60px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(37,99,235,0.2) 0%, transparent 70%); pointer-events: none; }
-        .featured-blob-2 { position: absolute; bottom: -80px; left: 40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, transparent 70%); pointer-events: none; }
-        .featured-quote-mark { font-family: var(--font-display); font-size: 120px; line-height: 0.8; color: rgba(37,99,235,0.15); position: absolute; top: 40px; left: 52px; pointer-events: none; user-select: none; }
-        .featured-content { position: relative; z-index: 1; }
-        .featured-metric { display: inline-block; background: rgba(37,99,235,0.2); color: #93c5fd; border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; margin-bottom: 28px; }
-        .featured-stars { display: flex; gap: 3px; margin-bottom: 20px; }
-        .featured-text { font-size: clamp(17px,2vw,22px); color: rgba(255,255,255,0.85); line-height: 1.65; font-weight: 400; margin-bottom: 36px; max-width: 800px; font-style: italic; }
-        .featured-author { display: flex; align-items: center; gap: 16px; }
-        .featured-av { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), #10b981); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0; }
-        .featured-name { font-size: 15px; font-weight: 700; color: #fff; }
-        .featured-role { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 2px; }
-        .featured-tags { display: flex; gap: 8px; margin-top: 10px; }
-        .featured-tag { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.45); }
-
-        /* FILTER BAR */
-        .filter-section { padding: 60px 24px 0; background: var(--bg); }
-        .filter-inner { max-width: 1100px; margin: 0 auto; }
-        .section-kicker { font-size: 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
-        .section-title { font-family: var(--font-display); font-size: clamp(28px,4vw,44px); font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 16px; }
-        .section-sub { font-size: 16px; color: var(--muted); line-height: 1.7; max-width: 520px; }
-        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 32px; }
-        .filter-btn { background: var(--bg-2); border: 1.5px solid var(--border); border-radius: 100px; padding: 8px 20px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; font-family: var(--font); transition: all 0.2s; }
-        .filter-btn:hover { border-color: var(--muted-2); color: var(--ink); }
-        .filter-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
-
-        /* TESTIMONIALS GRID */
-        .testimonials-section { padding: 48px 24px 100px; background: var(--bg); }
-        .testimonials-inner { max-width: 1100px; margin: 0 auto; }
-        .testimonials-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
-        .testimonial-card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s; }
-        .testimonial-card:hover { border-color: #bfdbfe; box-shadow: 0 12px 40px rgba(37,99,235,0.1); transform: translateY(-2px); }
-        .testimonial-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
-        .testimonial-metric { display: inline-block; background: #eff6ff; color: var(--blue); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
-        .testimonial-stars { display: flex; gap: 2px; }
-        .testimonial-quote { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; flex: 1; margin-bottom: 24px; }
-        .testimonial-author { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding-top: 18px; }
-        .testimonial-av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--ink-2), var(--blue)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
-        .testimonial-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
-        .testimonial-role { font-size: 12px; color: var(--muted); margin-top: 1px; }
-        .testimonial-meta { display: flex; gap: 8px; margin-top: 8px; }
-        .testimonial-tag { background: var(--bg-3); border-radius: 4px; padding: 2px 8px; font-size: 10.5px; color: var(--muted); font-weight: 500; }
-        .empty-state { text-align: center; padding: 80px 24px; color: var(--muted); font-size: 15px; }
-
-        /* TRUST STRIP */
-        .trust-strip { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 60px 24px; }
-        .trust-strip-inner { max-width: 960px; margin: 0 auto; text-align: center; }
-        .trust-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 8px; }
-        .trust-sub { font-size: 15px; color: var(--muted); margin-bottom: 36px; }
-        .trust-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
-        .trust-badge { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 13px; font-weight: 600; color: var(--ink-2); box-shadow: 0 1px 4px rgba(15,23,42,0.04); }
-        .trust-badge-icon { font-size: 16px; }
-
-        /* FINAL CTA */
-        .final-cta { padding: 120px 24px; background: var(--ink); text-align: center; position: relative; overflow: hidden; }
-        .final-cta-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(37,99,235,0.12) 0%, transparent 65%); }
-        .final-cta-inner { position: relative; z-index: 1; max-width: 600px; margin: 0 auto; }
-        .final-cta-title { font-family: var(--font-display); font-size: clamp(34px,5.5vw,58px); font-weight: 800; color: #fff; letter-spacing: -0.04em; line-height: 1.06; margin-bottom: 18px; }
-        .final-cta-blue { color: #93c5fd; }
-        .final-cta-desc { font-size: 17px; color: rgba(255,255,255,0.45); line-height: 1.7; margin-bottom: 40px; }
-        .final-cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-        .btn-final-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 15px 30px; font-size: 15px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 16px rgba(37,99,235,0.4); }
-        .btn-final-primary:hover { background: var(--blue-2); transform: translateY(-2px); }
-        .btn-final-ghost { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 15px 30px; font-size: 15px; font-weight: 500; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
-        .btn-final-ghost:hover { background: rgba(255,255,255,0.12); color: #fff; }
-
-        /* FOOTER */
-        .footer { background: #0f172a; padding: 60px 24px 32px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .footer-inner { max-width: 1100px; margin: 0 auto; }
-        .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid rgba(255,255,255,0.07); }
-        .footer-brand-logo { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
-        .footer-brand-name { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.03em; }
-        .footer-brand-desc { font-size: 13px; color: rgba(255,255,255,0.35); line-height: 1.65; max-width: 240px; }
-        .footer-col-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
-        .footer-link { display: block; font-size: 13px; color: rgba(255,255,255,0.35); text-decoration: none; margin-bottom: 10px; transition: color 0.2s; }
-        .footer-link:hover { color: rgba(255,255,255,0.7); }
-        .footer-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .footer-legal { font-size: 12px; color: rgba(255,255,255,0.22); }
-        .footer-legal-links { display: flex; gap: 20px; }
-        .footer-legal-link { font-size: 12px; color: rgba(255,255,255,0.25); text-decoration: none; transition: color 0.2s; }
-        .footer-legal-link:hover { color: rgba(255,255,255,0.5); }
-
-        @media (max-width: 1024px) {
-          .footer-top { grid-template-columns: 1fr 1fr; }
-        }
-        @media (max-width: 768px) {
-          .hamburger { display: flex; }
-          .nav-links, .nav-actions { display: none; }
-          .hero { padding: 120px 20px 60px; }
-          .metrics-grid { grid-template-columns: repeat(2,1fr); }
-          .featured-card { padding: 36px 28px; }
-          .featured-text { font-size: 17px; }
-          .testimonials-grid { grid-template-columns: 1fr; }
-          .footer-top { grid-template-columns: 1fr 1fr; }
-          .footer-bottom { flex-direction: column; align-items: flex-start; }
-        }
-        @media (max-width: 640px) {
-          .testimonials-grid { grid-template-columns: 1fr; }
-          .hero-ctas { flex-direction: column; align-items: center; }
-          .btn-hero-primary, .btn-hero-secondary { width: 100%; max-width: 320px; justify-content: center; }
-          .final-cta-btns { flex-direction: column; align-items: center; }
-          .btn-final-primary, .btn-final-ghost { width: 100%; max-width: 320px; justify-content: center; }
-          .footer-top { grid-template-columns: 1fr; }
-          .featured-quote-mark { display: none; }
-        }
-      `}</style>
+    <div className="tp">
+      <style>{css}</style>
 
       {/* NAV */}
-      <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
-        <div className="nav-inner">
+      <nav className={`nav ${scrolled ? "sc" : ""}`}>
+        <div className="nav-i">
           <Link to="/" className="nav-logo">
-            <Logo size={28} />
-            <span className="nav-logo-text">Fixsense</span>
+            <Logo size={26} />
+            <span className="nav-name">Fixsense</span>
           </Link>
           <div className="nav-links">
             {NAV.map(l => (
-              <a key={l.label} href={l.href} className={`nav-link ${l.href === "/testimonials" ? "active" : ""}`}>{l.label}</a>
+              <a key={l.label} href={l.href} className={`nav-link ${l.href === "/testimonials" ? "act" : ""}`}>{l.label}</a>
             ))}
           </div>
-          <div className="nav-actions">
+          <div className="nav-acts">
             {user ? (
               <>
-                <Link to="/dashboard/profile" className="nav-user">
-                  <div className="nav-user-av">{emailInitial}</div>
-                  <span className="nav-user-name">{displayName}</span>
+                <Link to="/dashboard/profile" style={{ display:"flex",alignItems:"center",gap:7, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:100, padding:"5px 12px 5px 5px", textDecoration:"none" }}>
+                  <div style={{ width:26,height:26,borderRadius:"50%",background:"var(--cyan2)",border:"1px solid rgba(14,245,212,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--cyan)" }}>{emailInitial}</div>
+                  <span style={{ fontSize:12,fontWeight:600,color:"var(--ink2)" }}>{displayName}</span>
                 </Link>
-                <Link to="/dashboard" className="btn-nav-primary">Dashboard →</Link>
+                <Link to="/dashboard" className="nav-cta">Dashboard →</Link>
               </>
             ) : (
               <>
-                <Link to="/login" className="btn-ghost">Sign in</Link>
-                <Link to="/login" className="btn-nav-primary">Start Free Trial →</Link>
+                <Link to="/login" className="nav-ghost">Sign in</Link>
+                <Link to="/login" className="nav-cta">Start Free →</Link>
               </>
             )}
           </div>
-          <button className="hamburger" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            </svg>
+          <button className="burger" onClick={() => setMobileOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </button>
         </div>
       </nav>
 
       {/* MOBILE DRAWER */}
-      <div className={`drawer-overlay ${mobileOpen ? "open" : ""}`} onClick={() => setMobileOpen(false)} />
-      <div className={`drawer ${mobileOpen ? "open" : ""}`}>
-        <div className="drawer-header">
+      <div className={`drw-ov ${mobileOpen ? "on" : ""}`} onClick={() => setMobileOpen(false)} />
+      <div className={`drw ${mobileOpen ? "on" : ""}`}>
+        <div className="drw-hdr">
           <Link to="/" className="nav-logo" onClick={() => setMobileOpen(false)}>
-            <Logo size={26} />
-            <span className="nav-logo-text">Fixsense</span>
+            <Logo size={24} /><span className="nav-name">Fixsense</span>
           </Link>
-          <button className="drawer-close" onClick={() => setMobileOpen(false)}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            </svg>
+          <button className="drw-close" onClick={() => setMobileOpen(false)}>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </button>
         </div>
-        <nav className="drawer-nav">
+        <nav className="drw-nav">
           {NAV.map(l => (
-            <a key={l.label} href={l.href} className="drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
+            <a key={l.label} href={l.href} className="drw-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
           ))}
         </nav>
-        <div className="drawer-footer">
+        <div className="drw-foot">
           {user ? (
-            <Link to="/dashboard" className="btn-full btn-full-primary" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
+            <Link to="/dashboard" className="btn-fw btn-fw-p" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
           ) : (
             <>
-              <Link to="/login" className="btn-full btn-full-primary" onClick={() => setMobileOpen(false)}>Start Free Trial</Link>
-              <Link to="/login" className="btn-full btn-full-secondary" onClick={() => setMobileOpen(false)}>Sign in</Link>
+              <Link to="/login" className="btn-fw btn-fw-p" onClick={() => setMobileOpen(false)}>Start Free Trial</Link>
+              <Link to="/login" className="btn-fw btn-fw-s" onClick={() => setMobileOpen(false)}>Sign in</Link>
             </>
           )}
         </div>
@@ -498,53 +492,62 @@ export default function TestimonialsPage() {
 
       {/* HERO */}
       <section className="hero">
-        <div className="hero-pattern" />
-        <FadeIn delay={40}>
-          <div className="hero-badge">
-            <div className="hero-badge-dot" />
+        <div className="hero-orb1" />
+        <div className="hero-orb2" />
+        <FadeIn delay={60}>
+          <div className="hero-pill">
+            <div className="hero-pill-dot" />
             Real results from real sales teams
           </div>
         </FadeIn>
-        <FadeIn delay={80}>
-          <h1 className="hero-title">
-            Trusted by teams closing <span className="blue">more deals</span>
+        <FadeIn delay={100}>
+          <h1 className="hero-h">
+            Trusted by teams<br />
+            <span className="c">closing more deals</span>
           </h1>
         </FadeIn>
-        <FadeIn delay={130}>
+        <FadeIn delay={150}>
           <p className="hero-sub">
             From scrappy 6-person startups to enterprise revenue orgs — see how Fixsense is changing how teams sell, coach, and grow.
           </p>
         </FadeIn>
-        <FadeIn delay={180}>
+        <FadeIn delay={190}>
           <div className="hero-ctas">
-            <Link to="/login" className="btn-hero-primary">
+            <Link to={user ? "/dashboard" : "/login"} className="btn-main">
               Start Free Trial
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Link>
-            <Link to="/pricing" className="btn-hero-secondary">View Pricing</Link>
+            <Link to="/pricing" className="btn-sec">View Pricing</Link>
           </div>
         </FadeIn>
       </section>
 
       {/* LOGO STRIP */}
       <div className="logo-strip">
-        <div className="logo-strip-inner">
-          <span className="logo-strip-label">Integrates with</span>
-          <div className="logo-strip-logos">
-            {LOGOS.map(l => <span key={l} className="logo-name">{l}</span>)}
+        <div className="logo-strip-i">
+          <span className="logo-lbl">Integrates with</span>
+          <div className="logo-names">
+            {["Zoom", "Google Meet", "Salesforce", "HubSpot", "Slack", "100ms"].map(l => (
+              <span key={l} className="logo-name">{l}</span>
+            ))}
           </div>
         </div>
       </div>
 
       {/* METRICS */}
       <section className="metrics">
-        <div className="metrics-inner">
+        <div className="metrics-i">
           <FadeIn>
             <div className="metrics-grid">
-              {METRICS.map((m, i) => (
+              {[
+                { val: 30, suf: "%", lbl: "Avg. increase in close rate" },
+                { val: 10, suf: "k+", lbl: "Sales meetings analyzed" },
+                { val: 50, suf: "%", lbl: "Reduction in rep ramp time" },
+                { val: 99, suf: "%", lbl: "Transcription accuracy" },
+              ].map((m, i) => (
                 <div key={i} className="metric-card">
-                  <div className="metric-num"><Counter end={m.value} suffix={m.suffix} /></div>
-                  <div className="metric-label">{m.label}</div>
+                  <div className="metric-num"><Counter end={m.val} suffix={m.suf} /></div>
+                  <div className="metric-lbl">{m.lbl}</div>
                 </div>
               ))}
             </div>
@@ -554,15 +557,17 @@ export default function TestimonialsPage() {
 
       {/* FEATURED TESTIMONIAL */}
       <section className="featured">
-        <div className="featured-inner">
+        <div className="featured-i">
           <FadeIn>
-            <div className="section-kicker" style={{ marginBottom: 24 }}>Featured story</div>
+            <div style={{ marginBottom: 24 }}>
+              <div className="sec-kicker">Featured story</div>
+            </div>
             <div className="featured-card">
-              <div className="featured-blob" />
-              <div className="featured-blob-2" />
+              <div className="featured-orb" />
+              <div className="featured-orb2" />
               <div className="featured-quote-mark">"</div>
               <div className="featured-content">
-                <div className="featured-metric">{FEATURED.metric}</div>
+                <div className="featured-metric">⭐ {FEATURED.metric}</div>
                 <div className="featured-stars">
                   {[...Array(5)].map((_, i) => <StarIcon key={i} />)}
                 </div>
@@ -586,16 +591,16 @@ export default function TestimonialsPage() {
 
       {/* FILTER + GRID */}
       <section className="filter-section">
-        <div className="filter-inner">
+        <div className="filter-i">
           <FadeIn>
-            <div className="section-kicker">All Customer Stories</div>
-            <h2 className="section-title">Every team, every use case</h2>
-            <p className="section-sub">Filter by what matters most to you.</p>
+            <div className="sec-kicker">All Customer Stories</div>
+            <h2 className="sec-title">Every team, every use case</h2>
+            <p className="sec-sub">Filter by what matters most to you.</p>
             <div className="filter-bar">
               {CATEGORIES.map(cat => (
                 <button
                   key={cat.id}
-                  className={`filter-btn ${activeCategory === cat.id ? "active" : ""}`}
+                  className={`filter-btn ${activeCategory === cat.id ? "act" : ""}`}
                   onClick={() => setActiveCategory(cat.id)}
                 >
                   {cat.label}
@@ -606,44 +611,40 @@ export default function TestimonialsPage() {
         </div>
       </section>
 
-      <section className="testimonials-section">
-        <div className="testimonials-inner">
-          <div className="testimonials-grid">
-            {filtered.length === 0 ? (
-              <div className="empty-state">No stories in this category yet.</div>
-            ) : (
-              filtered.map((t, i) => (
-                <FadeIn key={`${t.name}-${activeCategory}`} delay={i * 60}>
-                  <div className="testimonial-card">
-                    <div className="testimonial-top">
-                      <div className="testimonial-metric">{t.metric}</div>
-                      <div className="testimonial-stars">
-                        {[...Array(5)].map((_, si) => <StarIcon key={si} />)}
-                      </div>
+      <section className="testi-section">
+        <div className="testi-i">
+          <div className="testi-grid">
+            {filtered.map((t, i) => (
+              <FadeIn key={`${t.name}-${activeCategory}`} delay={i * 55}>
+                <div className="testi-card">
+                  <div className="testi-top">
+                    <div className="testi-metric">{t.metric}</div>
+                    <div className="testi-stars">
+                      {[...Array(5)].map((_, si) => <StarIcon key={si} />)}
                     </div>
-                    <p className="testimonial-quote">"{t.quote}"</p>
-                    <div className="testimonial-author">
-                      <div className="testimonial-av">{t.initials}</div>
-                      <div>
-                        <div className="testimonial-name">{t.name}</div>
-                        <div className="testimonial-role">{t.role}, {t.company}</div>
-                        <div className="testimonial-meta">
-                          <span className="testimonial-tag">{t.industry}</span>
-                          <span className="testimonial-tag">{t.teamSize}</span>
-                        </div>
+                  </div>
+                  <p className="testi-quote">"{t.quote}"</p>
+                  <div className="testi-author">
+                    <div className="testi-av">{t.initials}</div>
+                    <div>
+                      <div className="testi-name">{t.name}</div>
+                      <div className="testi-role">{t.role}, {t.company}</div>
+                      <div className="testi-meta">
+                        <span className="testi-tag">{t.industry}</span>
+                        <span className="testi-tag">{t.teamSize}</span>
                       </div>
                     </div>
                   </div>
-                </FadeIn>
-              ))
-            )}
+                </div>
+              </FadeIn>
+            ))}
           </div>
         </div>
       </section>
 
       {/* TRUST STRIP */}
-      <section className="trust-strip">
-        <div className="trust-strip-inner">
+      <section className="trust">
+        <div className="trust-i">
           <FadeIn>
             <h3 className="trust-title">Built for security-conscious revenue teams</h3>
             <p className="trust-sub">Enterprise-grade compliance, out of the box.</p>
@@ -651,7 +652,7 @@ export default function TestimonialsPage() {
               {[
                 { icon: "🔒", label: "SOC 2 Type II Certified" },
                 { icon: "🔐", label: "End-to-end Encryption" },
-                { icon: "🌍", label: "GDPR Compliant" },
+                { icon: "🌍", label: "GDPR & NDPR Compliant" },
                 { icon: "⚡", label: "99.9% Uptime SLA" },
                 { icon: "🚫", label: "Zero data selling" },
               ].map((b, i) => (
@@ -666,63 +667,57 @@ export default function TestimonialsPage() {
       </section>
 
       {/* FINAL CTA */}
-      <section className="final-cta">
-        <div className="final-cta-glow" />
-        <div className="final-cta-inner">
+      <section className="final">
+        <div className="final-orb" />
+        <div className="final-i">
           <FadeIn>
-            <h2 className="final-cta-title">
-              <span>Your team's story<br /><span className="final-cta-blue">starts here</span></span>
-            </h2>
-            <p className="final-cta-desc">
-              Join hundreds of sales teams who stopped guessing and started winning with Fixsense.
-            </p>
-            <div className="final-cta-btns">
-              <Link to="/login" className="btn-final-primary">
+            <h2 className="final-h">Your team's story<br /><span className="c">starts here.</span></h2>
+            <p className="final-p">Join hundreds of sales teams who stopped guessing and started winning with Fixsense.</p>
+            <div className="final-btns">
+              <Link to={user ? "/dashboard" : "/login"} className="btn-main">
                 Start Free Trial
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </Link>
-              <Link to="/login" className="btn-final-ghost">Book a Demo</Link>
+              <Link to="/pricing" className="btn-sec">View pricing →</Link>
             </div>
+            <div className="final-note">Free plan · 30 min/month · No credit card required</div>
           </FadeIn>
         </div>
       </section>
 
       {/* FOOTER */}
       <footer className="footer">
-        <div className="footer-inner">
+        <div className="footer-i">
           <div className="footer-top">
             <div>
-              <div className="footer-brand-logo">
-                <Logo size={24} />
-                <span className="footer-brand-name">Fixsense</span>
-              </div>
-              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. Capture, analyze, and act on every conversation.</p>
+              <div className="footer-brand-logo"><Logo size={22} /><span className="footer-brand-name">Fixsense</span></div>
+              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[
-                { label: "Features", href: "/#features" },
-                { label: "Pricing", href: "/pricing" },
-                { label: "Integrations", href: "/integrations" },
-                { label: "Changelog", href: "/changelog" },
-              ].map(l => (
-                <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
+              {[["/#features","Features"],["/#pricing","Pricing"],["/integrations","Integrations"],["/changelog","Changelog"]].map(([h,l])=>(
+                <a key={h} href={h} className="footer-link">{l}</a>
+              ))}
+            </div>
+            <div>
+              <div className="footer-col-title">Company</div>
+              {[["/about","About"],["/blog","Blog"],["/careers","Careers"],["/testimonials","Stories"]].map(([h,l])=>(
+                <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
             <div>
               <div className="footer-col-title">Legal</div>
-              <Link to="/privacy" className="footer-link">Privacy Policy</Link>
-              <Link to="/terms" className="footer-link">Terms of Service</Link>
-              <Link to="/security" className="footer-link">Security</Link>
-              <Link to="/contact" className="footer-link">Contact</Link>
+              {[["/privacy","Privacy Policy"],["/terms","Terms of Service"],["/security","Security"],["/contact","Contact"]].map(([h,l])=>(
+                <Link key={h} to={h} className="footer-link">{l}</Link>
+              ))}
             </div>
           </div>
           <div className="footer-bottom">
             <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
             <div className="footer-legal-links">
-              <a href="/privacy" className="footer-legal-link">Privacy</a>
-              <a href="/terms" className="footer-legal-link">Terms</a>
-              <a href="/security" className="footer-legal-link">Security</a>
+              <Link to="/privacy" className="footer-ll">Privacy</Link>
+              <Link to="/terms" className="footer-ll">Terms</Link>
+              <Link to="/security" className="footer-ll">Security</Link>
             </div>
           </div>
         </div>
