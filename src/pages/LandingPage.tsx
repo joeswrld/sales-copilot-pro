@@ -1,16 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
-function useInView(threshold = 0.12) {
+// ─── Shared Utilities ────────────────────────────────────────────────────────
+
+function useInView(threshold = 0.1) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { setInView(true); obs.disconnect(); }
-    }, { threshold });
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setInView(true); obs.disconnect(); } },
+      { threshold }
+    );
     obs.observe(el);
     return () => obs.disconnect();
   }, [threshold]);
@@ -24,30 +27,12 @@ function FadeIn({ children, delay = 0, className = "" }: {
   return (
     <div ref={ref} className={className} style={{
       opacity: inView ? 1 : 0,
-      transform: inView ? "translateY(0)" : "translateY(28px)",
-      transition: `opacity 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
+      transform: inView ? "translateY(0)" : "translateY(32px)",
+      transition: `opacity 0.8s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.8s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
     }}>
       {children}
     </div>
   );
-}
-
-function Counter({ end, suffix = "" }: { end: number; suffix?: string }) {
-  const [n, setN] = useState(0);
-  const { ref, inView } = useInView(0.5);
-  useEffect(() => {
-    if (!inView) return;
-    let startTime: number;
-    const step = (ts: number) => {
-      if (!startTime) startTime = ts;
-      const p = Math.min((ts - startTime) / 1800, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setN(Math.floor(eased * end));
-      if (p < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, [inView, end]);
-  return <span ref={ref}>{n}{suffix}</span>;
 }
 
 function Logo({ size = 30 }: { size?: number }) {
@@ -57,11 +42,410 @@ function Logo({ size = 30 }: { size?: number }) {
   );
 }
 
+// ─── Interactive Live Demo ────────────────────────────────────────────────────
+
+type DemoFeature = "objections" | "sentiment" | "transcript" | "summary" | "deals";
+
+const DEMO_SCRIPT = [
+  { speaker: "You", color: "#818cf8", text: "Thanks for your time today. What's your current process for handling pricing discussions?" },
+  { speaker: "Alex", color: "#2dd4bf", text: "Honestly, it's a mess. Reps just wing it and we lose deals we shouldn't lose." },
+  { speaker: "You", color: "#818cf8", text: "What's the cost to your business when a deal falls apart at pricing?" },
+  { speaker: "Alex", color: "#2dd4bf", text: "We lost a $220k contract last month because someone couldn't counter the competitor pricing objection." },
+  { speaker: "You", color: "#818cf8", text: "That's exactly the gap Fixsense fills. Let me show you how the objection detection works in real time." },
+  { speaker: "Alex", color: "#2dd4bf", text: "That sounds interesting, but honestly the price feels steep for our current budget situation." },
+  { speaker: "You", color: "#818cf8", text: "I hear you — let me frame the ROI. If we stop even one $200k deal from slipping, the platform pays for itself 50× over." },
+  { speaker: "Alex", color: "#2dd4bf", text: "When you put it that way... the CFO would need to see the numbers though." },
+  { speaker: "You", color: "#818cf8", text: "Absolutely. I'll send you our ROI calculator tailored to your 60-rep team size." },
+];
+
+const FEATURES: { id: DemoFeature; label: string; icon: string; desc: string }[] = [
+  { id: "objections", label: "Objection Radar", icon: "⚡", desc: "See pricing objections flagged the instant they happen — with counter-scripts ready before you even pause." },
+  { id: "sentiment", label: "Sentiment Pulse", icon: "📊", desc: "Watch prospect engagement score update live so you know exactly when interest peaks or drops." },
+  { id: "transcript", label: "Live Transcript", icon: "🎙", desc: "Every word from both sides captured instantly — no bot joining the call, no permission requests." },
+  { id: "summary", label: "AI Summary", icon: "✨", desc: "Full deal summary, buying signals, and next steps generated the moment the call ends." },
+  { id: "deals", label: "Deal Intel", icon: "🎯", desc: "Compare every call across the deal timeline — AI shows exactly what changed between conversations." },
+];
+
+function LiveDemo() {
+  const [activeFeature, setActiveFeature] = useState<DemoFeature>("objections");
+  const [lines, setLines] = useState<typeof DEMO_SCRIPT>([]);
+  const [lineIdx, setLineIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [sentiment, setSentiment] = useState(60);
+  const [objectionFired, setObjectionFired] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reset = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setLines([]);
+    setLineIdx(0);
+    setSentiment(60);
+    setObjectionFired(false);
+    setShowSummary(false);
+    setIsPlaying(false);
+  }, []);
+
+  const runNext = useCallback((idx: number, currentLines: typeof DEMO_SCRIPT) => {
+    if (idx >= DEMO_SCRIPT.length) {
+      setIsPlaying(false);
+      setShowSummary(true);
+      return;
+    }
+    const line = DEMO_SCRIPT[idx];
+    const newLines = [...currentLines, line];
+    setLines(newLines);
+    setLineIdx(idx + 1);
+
+    if (idx === 5) { setObjectionFired(true); setSentiment(s => Math.max(s - 18, 30)); }
+    else if (idx === 6) { setSentiment(s => Math.min(s + 14, 80)); }
+    else if (idx === 7) { setSentiment(s => Math.min(s + 8, 85)); }
+    else { setSentiment(s => Math.min(s + 3, 78)); }
+
+    setTimeout(() => {
+      if (transcriptRef.current) {
+        transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+      }
+    }, 50);
+
+    const delay = 1200 + Math.random() * 600;
+    timerRef.current = setTimeout(() => runNext(idx + 1, newLines), delay);
+  }, []);
+
+  const handlePlay = () => {
+    if (isPlaying) return;
+    reset();
+    setIsPlaying(true);
+    setTimeout(() => runNext(0, []), 400);
+  };
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const sentimentColor = sentiment >= 70 ? "#22c55e" : sentiment >= 45 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "200px 1fr 260px",
+      gap: 0,
+      background: "#080c18",
+      border: "1px solid rgba(255,255,255,.1)",
+      borderRadius: 18,
+      overflow: "hidden",
+      height: 520,
+    }}>
+      {/* Feature tabs */}
+      <div style={{
+        borderRight: "1px solid rgba(255,255,255,.07)",
+        background: "#060912",
+        padding: "12px 0",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}>
+        <div style={{ padding: "6px 14px 12px", borderBottom: "1px solid rgba(255,255,255,.06)", marginBottom: 8 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: ".1em", margin: 0 }}>Live Features</p>
+        </div>
+        {FEATURES.map(f => (
+          <button
+            key={f.id}
+            onClick={() => { setActiveFeature(f.id); if (f.id === "transcript" || f.id === "objections" || f.id === "sentiment") { if (!isPlaying && lines.length === 0) handlePlay(); } }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "9px 14px",
+              background: activeFeature === f.id ? "rgba(14,245,212,.08)" : "transparent",
+              border: "none",
+              borderLeft: `2px solid ${activeFeature === f.id ? "#0ef5d4" : "transparent"}`,
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all .13s",
+            }}
+          >
+            <span style={{ fontSize: 14 }}>{f.icon}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: activeFeature === f.id ? "#0ef5d4" : "rgba(255,255,255,.4)", lineHeight: 1.3 }}>{f.label}</span>
+          </button>
+        ))}
+        <div style={{ marginTop: "auto", padding: "12px 14px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
+          <button
+            onClick={handlePlay}
+            disabled={isPlaying}
+            style={{
+              width: "100%",
+              padding: "8px 0",
+              background: isPlaying ? "rgba(255,255,255,.05)" : "linear-gradient(135deg, #0ef5d4, #06b6d4)",
+              border: "none",
+              borderRadius: 8,
+              color: isPlaying ? "rgba(255,255,255,.3)" : "#060912",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: isPlaying ? "default" : "pointer",
+              transition: "all .13s",
+            }}
+          >
+            {isPlaying ? "● Running..." : "▶ Run Demo"}
+          </button>
+          {!isPlaying && lines.length > 0 && (
+            <button onClick={reset} style={{ width: "100%", marginTop: 4, padding: "5px 0", background: "transparent", border: "none", color: "rgba(255,255,255,.25)", fontSize: 10, cursor: "pointer" }}>
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main panel — transcript */}
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid rgba(255,255,255,.07)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+          background: "rgba(255,255,255,.02)",
+        }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.85)", margin: 0, fontFamily: "'Bricolage Grotesque', sans-serif" }}>Acme Corp — Enterprise Discovery</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,.3)", margin: "2px 0 0" }}>100ms native room · No bot required</p>
+          </div>
+          {isPlaying && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 20, padding: "3px 10px" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444", display: "inline-block", animation: "livepulse 1.4s ease-out infinite" }} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#f87171" }}>LIVE</span>
+            </div>
+          )}
+        </div>
+
+        {/* Stats bar */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 0,
+          borderBottom: "1px solid rgba(255,255,255,.07)",
+          flexShrink: 0,
+        }}>
+          {[
+            { l: "Sentiment", v: `${Math.round(sentiment)}%`, c: sentimentColor },
+            { l: "Objections", v: objectionFired ? "1" : "0", c: objectionFired ? "#f59e0b" : "rgba(255,255,255,.35)" },
+            { l: "Lines", v: String(lines.length), c: "rgba(255,255,255,.6)" },
+            { l: "Talk Ratio", v: lines.length > 0 ? `${Math.round((lines.filter(l => l.speaker === "You").length / lines.length) * 100)}%` : "—", c: "#818cf8" },
+          ].map(s => (
+            <div key={s.l} style={{ padding: "8px 12px", textAlign: "center", borderRight: "1px solid rgba(255,255,255,.05)" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: s.c, fontFamily: "'Bricolage Grotesque', sans-serif", lineHeight: 1 }}>{s.v}</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,.3)", marginTop: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Transcript */}
+        <div ref={transcriptRef} style={{ flex: 1, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {lines.length === 0 && !isPlaying && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "20px" }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>🎙</div>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.4)", margin: 0 }}>Click "Run Demo" to see a live sales call analyzed in real time</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,.2)", margin: "6px 0 0" }}>Watch objections get flagged and sentiment tracked as the call happens</p>
+            </div>
+          )}
+          {lines.map((line, i) => {
+            const isYou = line.speaker === "You";
+            const isPriceObj = i === 5;
+            return (
+              <div key={i} style={{
+                display: "flex",
+                gap: 8,
+                padding: "7px 10px",
+                borderRadius: 9,
+                borderLeft: isPriceObj ? "2px solid #ef4444" : isYou ? "2px solid rgba(129,140,248,.3)" : "2px solid rgba(45,212,191,.25)",
+                background: isPriceObj ? "rgba(239,68,68,.04)" : "transparent",
+                animation: "linefade .3s ease",
+              }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: line.color, minWidth: 30, paddingTop: 1 }}>{line.speaker}</span>
+                <span style={{ fontSize: 12, color: isPriceObj ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.6)", lineHeight: 1.55 }}>{line.text}</span>
+              </div>
+            );
+          })}
+          {isPlaying && lines.length < DEMO_SCRIPT.length && (
+            <div style={{ display: "flex", gap: 8, padding: "7px 10px" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.3)", minWidth: 30 }}>···</span>
+              <div style={{ display: "flex", gap: 3 }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,.2)", animation: `tdot 1s ease ${i * 0.2}s infinite` }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Feature description */}
+        <div style={{
+          padding: "10px 14px",
+          borderTop: "1px solid rgba(255,255,255,.07)",
+          background: "rgba(14,245,212,.03)",
+          flexShrink: 0,
+        }}>
+          <p style={{ fontSize: 11, color: "rgba(14,245,212,.8)", margin: 0 }}>
+            <span style={{ fontWeight: 700 }}>Active: {FEATURES.find(f => f.id === activeFeature)?.label}</span>
+            {" — "}{FEATURES.find(f => f.id === activeFeature)?.desc}
+          </p>
+        </div>
+      </div>
+
+      {/* Right panel — AI insights */}
+      <div style={{
+        borderLeft: "1px solid rgba(255,255,255,.07)",
+        background: "#060912",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.07)", flexShrink: 0 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: ".1em", margin: 0 }}>AI Coach</p>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+          {/* Sentiment bar */}
+          <div style={{ padding: "9px 10px", background: "rgba(255,255,255,.03)", borderRadius: 8 }}>
+            <p style={{ fontSize: 9, color: "rgba(255,255,255,.35)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 5px" }}>Sentiment</p>
+            <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${sentiment}%`, background: sentimentColor, borderRadius: 3, transition: "all .6s ease" }} />
+            </div>
+            <p style={{ fontSize: 12, fontWeight: 700, color: sentimentColor, margin: "4px 0 0", textAlign: "right" }}>{Math.round(sentiment)}%</p>
+          </div>
+
+          {/* Objection card */}
+          {objectionFired && (
+            <div style={{ padding: "9px 10px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.2)", borderLeft: "2px solid #ef4444", borderRadius: "0 8px 8px 0", animation: "linefade .3s ease" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: "#f87171", textTransform: "uppercase", letterSpacing: ".06em", margin: "0 0 3px" }}>⚠ Pricing Objection · 91%</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.6)", margin: "0 0 5px", lineHeight: 1.45 }}>"price feels steep for our current budget"</p>
+              <p style={{ fontSize: 10, color: "#0ef5d4", margin: 0, lineHeight: 1.4 }}>💡 Reframe to ROI — ask what one lost deal costs them annually</p>
+            </div>
+          )}
+
+          {/* Buying signals */}
+          {lines.length >= 4 && (
+            <div style={{ padding: "9px 10px", background: "rgba(34,197,94,.05)", border: "1px solid rgba(34,197,94,.15)", borderRadius: 8, animation: "linefade .3s ease" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: ".06em", margin: "0 0 4px" }}>✓ Buying Signals</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {["Pain confirmed: lost $220k deal", "Decision urgency present", "CFO involvement signaled"].slice(0, Math.max(1, lines.length - 3)).map((s, i) => (
+                  <p key={i} style={{ fontSize: 10, color: "rgba(255,255,255,.6)", margin: 0 }}>· {s}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Next action */}
+          {lines.length >= 7 && (
+            <div style={{ padding: "9px 10px", background: "rgba(129,140,248,.06)", border: "1px solid rgba(129,140,248,.18)", borderRadius: 8, animation: "linefade .3s ease" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: ".06em", margin: "0 0 4px" }}>→ Next Action</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.65)", margin: 0, lineHeight: 1.45 }}>Send ROI calculator tailored to 60-rep team. Invite CFO to follow-up call.</p>
+            </div>
+          )}
+
+          {/* Summary ready */}
+          {showSummary && (
+            <div style={{ padding: "10px 10px", background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.2)", borderRadius: 8, animation: "linefade .3s ease" }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: "#0ef5d4", textTransform: "uppercase", letterSpacing: ".06em", margin: "0 0 5px" }}>✨ Summary Ready</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.65)", margin: "0 0 5px", lineHeight: 1.45 }}>Prospect qualified. Pricing objection surfaced + handled. CFO approval required.</p>
+              <div style={{ display: "flex", gap: 4 }}>
+                <div style={{ flex: 1, padding: "5px", background: "rgba(255,122,89,.12)", border: "1px solid rgba(255,122,89,.2)", borderRadius: 6, textAlign: "center", fontSize: 9, fontWeight: 700, color: "#FF7A59" }}>→ HubSpot</div>
+                <div style={{ flex: 1, padding: "5px", background: "rgba(0,161,224,.12)", border: "1px solid rgba(0,161,224,.2)", borderRadius: 6, textAlign: "center", fontSize: 9, fontWeight: 700, color: "#00A1E0" }}>→ Salesforce</div>
+              </div>
+            </div>
+          )}
+
+          {lines.length === 0 && (
+            <div style={{ textAlign: "center", padding: "20px 10px", color: "rgba(255,255,255,.2)" }}>
+              <p style={{ fontSize: 11, margin: 0 }}>AI insights appear here as the call runs</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bot vs Native comparison ─────────────────────────────────────────────────
+
+function BotComparison() {
+  const [tab, setTab] = useState<"bot" | "native">("bot");
+
+  const botProblems = [
+    { icon: "🤖", title: "The bot announces itself", desc: "\"Fixsense AI Bot has joined the call\" — the moment trust erodes and prospects clam up." },
+    { icon: "🔒", title: "Waiting room blocks", desc: "Hosts must manually admit the bot. One distracted moment and no recording at all." },
+    { icon: "📡", title: "Audio quality degrades", desc: "Third-party bots re-encode audio, introducing lag, artifacts, and transcription errors." },
+    { icon: "⏳", title: "Join delays kill first impressions", desc: "The bot takes 30–90 seconds to join — missing your opening and the prospect's first reaction." },
+    { icon: "🚫", title: "Prospects disable recording", desc: "31% of enterprise prospects opt out when they see a bot on the call." },
+    { icon: "💸", title: "Platform dependency", desc: "Zoom or Meet goes down? Your entire call recording infrastructure goes down with it." },
+  ];
+
+  const nativeAdvantages = [
+    { icon: "🏠", title: "Your room, your rules", desc: "Fixsense IS the meeting. Zero third-party tools. Zero permission requests. Zero bots." },
+    { icon: "⚡", title: "Instant transcription start", desc: "Audio capture begins the moment the call connects — not 60 seconds later." },
+    { icon: "🔐", title: "100% private by design", desc: "Your calls never touch Zoom, Google, or Microsoft servers. Fully encrypted, fully yours." },
+    { icon: "🎯", title: "No waiting room surprises", desc: "Share one link. Prospect joins immediately. Recording is seamless and silent." },
+    { icon: "📊", title: "Native AI hooks", desc: "Our infrastructure talks directly to our AI models — not via exported files and webhooks." },
+    { icon: "💪", title: "Works when Zoom doesn't", desc: "Built on 100ms enterprise infrastructure with 99.99% uptime SLA independent of Big Tech." },
+  ];
+
+  return (
+    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 18, overflow: "hidden" }}>
+      {/* Tab switcher */}
+      <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <button
+          onClick={() => setTab("bot")}
+          style={{
+            flex: 1, padding: "14px", border: "none",
+            background: tab === "bot" ? "rgba(239,68,68,.06)" : "transparent",
+            borderBottom: `2px solid ${tab === "bot" ? "#ef4444" : "transparent"}`,
+            cursor: "pointer", transition: "all .15s",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: tab === "bot" ? "#f87171" : "rgba(255,255,255,.35)" }}>
+            🤖 The Bot Approach (Why It Fails)
+          </span>
+        </button>
+        <button
+          onClick={() => setTab("native")}
+          style={{
+            flex: 1, padding: "14px", border: "none",
+            background: tab === "native" ? "rgba(14,245,212,.04)" : "transparent",
+            borderBottom: `2px solid ${tab === "native" ? "#0ef5d4" : "transparent"}`,
+            cursor: "pointer", transition: "all .15s",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: tab === "native" ? "#0ef5d4" : "rgba(255,255,255,.35)" }}>
+            🏠 Native Infrastructure (Fixsense)
+          </span>
+        </button>
+      </div>
+      <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        {(tab === "bot" ? botProblems : nativeAdvantages).map((item, i) => (
+          <div key={i} style={{
+            padding: "14px",
+            background: tab === "bot" ? "rgba(239,68,68,.04)" : "rgba(14,245,212,.03)",
+            border: `1px solid ${tab === "bot" ? "rgba(239,68,68,.15)" : "rgba(14,245,212,.12)"}`,
+            borderRadius: 12,
+          }}>
+            <span style={{ fontSize: 20, display: "block", marginBottom: 6 }}>{item.icon}</span>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,.85)", margin: "0 0 5px" }}>{item.title}</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", margin: 0, lineHeight: 1.55 }}>{item.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Landing Page ────────────────────────────────────────────────────────
+
 export default function LandingPage() {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [problemStep, setProblemStep] = useState(0);
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || null;
   const emailInitial = displayName?.[0]?.toUpperCase() || "U";
@@ -77,452 +461,226 @@ export default function LandingPage() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
+  // Auto-cycle problem steps
+  useEffect(() => {
+    const timer = setInterval(() => setProblemStep(p => (p + 1) % PROBLEMS.length), 3200);
+    return () => clearInterval(timer);
+  }, []);
+
   const NAV = [
-    { label: "Features", href: "#features" },
-    { label: "How It Works", href: "#how" },
+    { label: "Problem", href: "#problem" },
+    { label: "Demo", href: "#demo" },
+    { label: "Why Native", href: "#native" },
     { label: "Pricing", href: "/pricing" },
-    { label: "Testimonials", href: "/testimonials" },
+  ];
+
+  const PROBLEMS = [
+    { stat: "$1.2M", label: "Average annual revenue lost to unhandled objections in a 20-rep team", icon: "💸" },
+    { stat: "67%", label: "Of sales reps can't articulate why they lost a deal after the fact", icon: "🤷" },
+    { stat: "31%", label: "Of prospects disengage when they see a recording bot join the call", icon: "🚪" },
+    { stat: "4 hrs", label: "Average time wasted per rep per week on CRM updates and call notes", icon: "⏰" },
   ];
 
   const FAQS = [
-    { q: "How does the live call room work?", a: "Fixsense creates a private meeting room powered by 100ms. You get a shareable link — send it to your prospect, no account needed. The moment you join, AI transcribes both sides in real time." },
-    { q: "What does 'minute-based billing' mean?", a: "Each completed call's duration counts against your monthly quota. A 30-minute discovery call uses 30 minutes. No per-seat tricks — pay for what you actually record." },
-    { q: "What are Coaching Clips?", a: "Select any lines from a call transcript, add a coaching note and tags, and Fixsense generates a shareable clip page. Share it with your rep or the whole team. No video editing required." },
-    { q: "What is the Deal Timeline?", a: "Every call you link to a deal builds a living timeline. The AI compares calls over time to show you what changed — new objections, buying signals, sentiment shifts — and recommends your next best action." },
-    { q: "Is my call data secure?", a: "All data is encrypted at rest (AES-256) and in transit (TLS 1.3). We comply with NDPR and GDPR. Your recordings are never used to train AI models." },
-    { q: "Can I use it without a team?", a: "Absolutely. Free and Starter plans are built for individual reps. Upgrade to Growth when you're ready to coach teammates and manage deals collaboratively." },
+    { q: "Why not just use Zoom with a bot?", a: "Bots announce themselves to the call, require host approval, degrade audio quality, and miss the first 60 seconds of every call. Fixsense's native meeting infrastructure is invisible to the prospect — transcription starts the instant the call connects, with zero friction." },
+    { q: "How is this different from Gong or Chorus?", a: "Gong and Chorus record calls via bots and analyze them after the fact. Fixsense gives you real-time objection detection, sentiment scoring, and coaching suggestions while the call is happening — so you can fix the deal in the moment, not in the post-mortem." },
+    { q: "What does 'native meeting infrastructure' mean?", a: "Fixsense is built on 100ms, an enterprise-grade WebRTC platform used by companies like Reddit and Discord. Your call room lives inside Fixsense — there's no Zoom, no Meet, no Teams. Your audio goes directly to our AI without passing through any third-party systems." },
+    { q: "Can prospects join without downloading anything?", a: "Yes. Prospects click your link, enter their name, and join directly in the browser. No accounts, no downloads, no \"allow recording\" dialogs. The experience is frictionless for them and fully captured for you." },
+    { q: "What about teams who already use Zoom?", a: "Fixsense is your sales call platform. You use it for prospect calls where you need intelligence. Internal Zoom calls stay on Zoom. The switch is gradual — most teams move all their prospect calls within 2 weeks of seeing the results." },
   ];
 
-  // Live demo state
-  const [demoLines, setDemoLines] = useState<{speaker: string; text: string; color: string}[]>([]);
-  const [demoInsights, setDemoInsights] = useState<{tag: string; body: string; bg: string; color: string}[]>([]);
-  const [demoTyping, setDemoTyping] = useState<{speaker: string; color: string} | null>(null);
-  const [talkRep, setTalkRep] = useState(60);
-  const [sentiment, setSentiment] = useState(72);
-  const transcriptRef = useRef<HTMLDivElement>(null);
-
-  const DEMO_SCRIPT = [
-    { speaker: "Rep", color: "#818cf8", text: "Hi Alex, thanks for making time. What's your current process for tracking sales calls?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "Honestly? We're still using spreadsheets and reps update them manually. It's a mess." },
-    { speaker: "Rep", color: "#818cf8", text: "How many calls does your team do per week, and how many do you actually review?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "About 60 calls a week. We review maybe 3 or 4. We just don't have the bandwidth." },
-    { speaker: "Rep", color: "#818cf8", text: "What's it costing you — in deals, in coaching time?" },
-    { speaker: "Alex", color: "#2dd4bf", text: "We lost a $200k deal last quarter because of a pricing objection nobody flagged. That's what finally got me looking at tools like this." },
+  const COMPARISON = [
+    { feature: "Real-time objection detection", fixsense: true, gong: false, chorus: false, bot: false },
+    { feature: "No bot joining the call", fixsense: true, gong: false, chorus: false, bot: false },
+    { feature: "Native meeting room (no Zoom needed)", fixsense: true, gong: false, chorus: false, bot: false },
+    { feature: "Live sentiment pulse", fixsense: true, gong: "delayed", chorus: "delayed", bot: false },
+    { feature: "AI coaching mid-call", fixsense: true, gong: false, chorus: false, bot: false },
+    { feature: "Deal timeline AI", fixsense: true, gong: true, chorus: false, bot: false },
+    { feature: "Coaching clips library", fixsense: true, gong: true, chorus: true, bot: false },
+    { feature: "Transparent pricing", fixsense: true, gong: false, chorus: false, bot: true },
+    { feature: "Built for SMB & growth teams", fixsense: true, gong: false, chorus: false, bot: true },
   ];
-
-  const DEMO_INSIGHTS = [
-    { tag: "⚡ Pain Confirmed", body: "Manual tracking + zero review coverage = clear need. Strong qualification signal.", bg: "rgba(245,158,11,.08)", color: "#fbbf24" },
-    { tag: "✓ Buying Signal", body: "$200k deal lost to unhandled objection. Budget exists. High urgency.", bg: "rgba(14,245,212,.06)", color: "#0ef5d4" },
-    { tag: "→ Next Action", body: "Prospect is decision-ready. Transition to pricing and ROI calculation now.", bg: "rgba(139,92,246,.08)", color: "#a78bfa" },
-  ];
-
-  useEffect(() => {
-    let i = 0;
-    function scheduleNext() {
-      if (i >= DEMO_SCRIPT.length) return;
-      const line = DEMO_SCRIPT[i];
-      setTimeout(() => {
-        setDemoTyping({ speaker: line.speaker, color: line.color });
-        setTimeout(() => {
-          setDemoTyping(null);
-          setDemoLines(prev => [...prev, line]);
-          setTalkRep(prev => line.speaker === "Rep" ? Math.max(45, prev - 2) : Math.min(68, prev + 3));
-          setSentiment(prev => Math.min(90, prev + (Math.random() > 0.5 ? 2 : -1)));
-          i++;
-          if (i === 3) { setDemoInsights(prev => [...prev, DEMO_INSIGHTS[0]]); }
-          if (i === 5) { setDemoInsights(prev => [...prev, DEMO_INSIGHTS[1], DEMO_INSIGHTS[2]]); }
-          scheduleNext();
-        }, 1400 + Math.random() * 400);
-      }, 1000 + Math.random() * 500);
-    }
-    scheduleNext();
-  }, []);
-
-  useEffect(() => {
-    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
-  }, [demoLines, demoTyping]);
 
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Syne+Mono&display=swap');
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    .lp {
-      --bg: #050810; --bg2: #0a0d18; --bg3: #0f1220;
-      --card: rgba(255,255,255,0.03); --card-border: rgba(255,255,255,0.07); --card-hover: rgba(255,255,255,0.06);
-      --ink: #f0f2f8; --ink2: rgba(240,242,248,0.65); --ink3: rgba(240,242,248,0.38); --ink4: rgba(240,242,248,0.18);
-      --cyan: #0ef5d4; --cyan2: rgba(14,245,212,0.15); --cyan3: rgba(14,245,212,0.07);
-      --purple: #8b5cf6; --amber: #f59e0b; --green: #10b981; --blue: #3b82f6; --red: #f43f5e;
-      --font: 'DM Sans', system-ui, sans-serif; --fd: 'Syne', system-ui, sans-serif; --fm: 'Syne Mono', monospace;
-      background: var(--bg); color: var(--ink); font-family: var(--font);
-      -webkit-font-smoothing: antialiased; overflow-x: hidden; line-height: 1.6;
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    .lp{
+      --bg:#04060f;--bg2:#080c18;--bg3:#0c1022;
+      --ink:#eef0f8;--ink2:rgba(238,240,248,0.65);--mu:rgba(238,240,248,0.38);--mu2:rgba(238,240,248,0.18);
+      --br:rgba(255,255,255,0.07);--br2:rgba(255,255,255,0.04);
+      --cyan:#0ef5d4;--cyan2:rgba(14,245,212,0.12);--cyan3:rgba(14,245,212,0.06);
+      --red:#ef4444;--amber:#f59e0b;--green:#22c55e;
+      --fd:'Bricolage Grotesque',system-ui,sans-serif;
+      --fb:'Instrument Sans',system-ui,sans-serif;
+      --fm:'JetBrains Mono',monospace;
+      background:var(--bg);color:var(--ink);font-family:var(--fb);
+      -webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.6;min-height:100vh;
     }
+    @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}70%{box-shadow:0 0 0 5px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+    @keyframes linefade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+    @keyframes tdot{0%,80%,100%{opacity:.3;transform:scale(1)}40%{opacity:1;transform:scale(1.15)}}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+    @keyframes shimmer{0%{opacity:.4}50%{opacity:.8}100%{opacity:.4}}
 
-    .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 60px; display: flex; align-items: center; padding: 0 24px; transition: all 0.3s; }
-    .nav.sc { background: rgba(5,8,16,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid var(--card-border); }
-    .nav-i { max-width: 1140px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
-    .nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
-    .nav-name { font-family: var(--fd); font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-link { font-size: 13.5px; font-weight: 500; color: var(--ink3); text-decoration: none; transition: color 0.2s; }
-    .nav-link:hover { color: var(--ink); }
-    .nav-acts { display: flex; align-items: center; gap: 8px; }
-    .nav-ghost { font-size: 13px; font-weight: 500; color: var(--ink3); background: none; border: none; padding: 8px 14px; border-radius: 8px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: color 0.15s; }
-    .nav-ghost:hover { color: var(--ink); }
-    .nav-cta { font-size: 13px; font-weight: 600; color: var(--bg); background: var(--cyan); border: none; padding: 8px 20px; border-radius: 8px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.15s; white-space: nowrap; }
-    .nav-cta:hover { opacity: 0.88; transform: translateY(-1px); }
-    .burger { display: none; background: none; border: 1px solid var(--card-border); border-radius: 7px; width: 36px; height: 36px; cursor: pointer; color: var(--ink3); align-items: center; justify-content: center; }
-
-    .drw-ov { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
-    .drw-ov.on { display: block; }
-    .drw { position: fixed; top: 0; right: 0; bottom: 0; width: min(300px,88vw); z-index: 210; background: var(--bg2); border-left: 1px solid var(--card-border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.26s cubic-bezier(0.4,0,0.2,1); }
-    .drw.on { transform: translateX(0); }
-    .drw-hdr { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--card-border); }
-    .drw-close { background: var(--card); border: 1px solid var(--card-border); border-radius: 7px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink3); }
-    .drw-nav { padding: 12px 14px; flex: 1; }
-    .drw-link { display: block; padding: 13px 10px; font-size: 15px; font-weight: 500; color: var(--ink2); text-decoration: none; border-radius: 8px; transition: background 0.15s; }
-    .drw-link:hover { background: var(--card); }
-    .drw-foot { padding: 14px 20px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 8px; }
-    .btn-fw { display: block; width: 100%; padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font); text-align: center; text-decoration: none; border: none; }
-    .btn-fw-p { background: var(--cyan); color: var(--bg); }
-    .btn-fw-s { background: var(--card); color: var(--ink2); border: 1px solid var(--card-border); }
+    /* NAV */
+    .nav{position:fixed;top:0;left:0;right:0;z-index:100;height:58px;display:flex;align-items:center;padding:0 24px;transition:all .3s;}
+    .nav.sc{background:rgba(4,6,15,0.96);backdrop-filter:blur(24px);border-bottom:1px solid var(--br);}
+    .nav-i{max-width:1160px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;}
+    .nav-logo{display:flex;align-items:center;gap:9px;text-decoration:none;}
+    .nav-name{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-.03em;}
+    .nav-links{display:flex;align-items:center;gap:24px;}
+    .nav-link{font-size:13px;font-weight:500;color:var(--mu);text-decoration:none;transition:color .2s;}
+    .nav-link:hover{color:var(--ink);}
+    .nav-acts{display:flex;align-items:center;gap:8px;}
+    .btn-ghost{font-size:13px;font-weight:500;color:var(--mu);background:none;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;text-decoration:none;transition:color .15s;font-family:var(--fb);}
+    .btn-ghost:hover{color:var(--ink);}
+    .btn-cta{font-size:13px;font-weight:600;color:var(--bg);background:var(--cyan);border:none;padding:8px 20px;border-radius:8px;cursor:pointer;text-decoration:none;transition:all .15s;white-space:nowrap;font-family:var(--fb);}
+    .btn-cta:hover{opacity:.88;transform:translateY(-1px);}
+    @media(max-width:768px){.nav-links{display:none;}}
 
     /* HERO */
-    .hero { padding: 130px 24px 80px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; }
-    .hero-orb1 { position: absolute; top: -100px; left: 50%; transform: translateX(-50%); width: 700px; height: 700px; background: radial-gradient(ellipse, rgba(14,245,212,0.07) 0%, transparent 65%); pointer-events: none; }
-    .hero-orb2 { position: absolute; top: 200px; left: -100px; width: 400px; height: 400px; background: radial-gradient(ellipse, rgba(139,92,246,0.05) 0%, transparent 65%); pointer-events: none; }
-    .hero-pill { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; background: rgba(14,245,212,0.08); border: 1px solid rgba(14,245,212,0.2); border-radius: 100px; padding: 6px 16px 6px 6px; font-size: 12px; font-weight: 600; color: var(--cyan); margin-bottom: 28px; }
-    .hero-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 2.2s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.85)} }
-    .hero-h { position: relative; z-index: 1; font-family: var(--fd); font-size: clamp(36px,6.5vw,72px); font-weight: 800; line-height: 1.04; letter-spacing: -0.05em; color: var(--ink); max-width: 820px; margin-bottom: 22px; }
-    .hero-h .c { color: var(--cyan); }
-    .hero-h .m { color: var(--ink3); }
-    .hero-sub { position: relative; z-index: 1; font-size: clamp(15px,2vw,18px); color: var(--ink2); line-height: 1.72; max-width: 560px; margin-bottom: 38px; }
-    .hero-ctas { position: relative; z-index: 1; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 48px; }
-    .btn-main { display: inline-flex; align-items: center; gap: 8px; background: var(--cyan); color: var(--bg); border: none; border-radius: 10px; padding: 15px 30px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; letter-spacing: -0.01em; }
-    .btn-main:hover { opacity: 0.88; transform: translateY(-2px); box-shadow: 0 12px 32px rgba(14,245,212,0.25); }
-    .btn-sec { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: var(--ink2); border: 1px solid var(--card-border); border-radius: 10px; padding: 15px 28px; font-size: 15px; font-weight: 500; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.2s; }
-    .btn-sec:hover { border-color: rgba(255,255,255,0.2); color: var(--ink); }
-    .hero-trust { position: relative; z-index: 1; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: center; }
-    .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink3); font-weight: 500; }
-    .trust-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--card-border); }
+    .hero{padding:120px 24px 80px;position:relative;overflow:hidden;}
+    .hero-grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(14,245,212,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(14,245,212,.03) 1px,transparent 1px);background-size:60px 60px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,black 0%,transparent 100%);}
+    .hero-orb{position:absolute;top:-150px;left:50%;transform:translateX(-50%);width:800px;height:600px;background:radial-gradient(ellipse,rgba(14,245,212,.06) 0%,transparent 65%);pointer-events:none;}
+    .hero-inner{max-width:1160px;margin:0 auto;position:relative;z-index:1;}
+    .hero-tag{display:inline-flex;align-items:center;gap:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:100px;padding:5px 14px 5px 5px;font-size:11px;font-weight:600;color:#f87171;margin-bottom:24px;font-family:var(--fm);}
+    .hero-tag-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;animation:pulse 2s ease-in-out infinite;}
+    .hero-h{font-family:var(--fd);font-size:clamp(38px,6vw,76px);font-weight:800;line-height:1.04;letter-spacing:-.05em;color:var(--ink);max-width:900px;margin-bottom:24px;}
+    .hero-h .loss{color:#ef4444;position:relative;}
+    .hero-h .gain{color:var(--cyan);}
+    .hero-h .muted{color:var(--mu);}
+    .hero-sub{font-size:clamp(16px,2vw,20px);color:var(--ink2);line-height:1.7;max-width:580px;margin-bottom:36px;}
+    .hero-ctas{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:48px;}
+    .btn-main{display:inline-flex;align-items:center;gap:8px;background:var(--cyan);color:var(--bg);border:none;border-radius:10px;padding:15px 30px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;font-family:var(--fb);}
+    .btn-main:hover{opacity:.88;transform:translateY(-2px);box-shadow:0 12px 32px rgba(14,245,212,.25);}
+    .btn-outline{display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--ink2);border:1px solid var(--br);border-radius:10px;padding:15px 28px;font-size:15px;font-weight:500;cursor:pointer;text-decoration:none;transition:all .2s;font-family:var(--fb);}
+    .btn-outline:hover{border-color:rgba(255,255,255,.2);color:var(--ink);}
+    .hero-trust{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+    .trust-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mu);font-weight:500;}
 
-    /* DEMO */
-    .demo-section { padding: 0 24px 80px; }
-    .demo-label { text-align: center; font-family: var(--fm); font-size: 11px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; justify-content: center; }
-    .demo-label-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.8s ease-in-out infinite; }
-    .demo-wrap { max-width: 980px; margin: 0 auto; background: var(--bg2); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.6); }
-    .demo-bar { height: 38px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 7px; padding: 0 14px; }
-    .demo-dot { width: 10px; height: 10px; border-radius: 50%; }
-    .demo-addr { flex: 1; max-width: 260px; margin: 0 auto; background: rgba(255,255,255,0.04); border-radius: 5px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--ink4); font-family: var(--fm); }
-    .demo-inner { display: grid; grid-template-columns: 200px 1fr 260px; height: 460px; }
-    .demo-sidebar { border-right: 1px solid var(--card-border); padding: 14px 10px; background: rgba(255,255,255,0.01); }
-    .demo-s-logo { display: flex; align-items: center; gap: 7px; margin-bottom: 20px; padding: 0 4px; }
-    .demo-s-name { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
-    .demo-nav-item { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 7px; font-size: 11.5px; color: var(--ink3); margin-bottom: 2px; }
-    .demo-nav-item.active { background: rgba(14,245,212,0.08); color: var(--cyan); }
-    .demo-nav-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-    .demo-main { display: flex; flex-direction: column; overflow: hidden; }
-    .demo-topbar { padding: 10px 14px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-    .demo-title { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--ink); }
-    .demo-live-badge { display: flex; align-items: center; gap: 5px; background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.2); border-radius: 20px; padding: 3px 10px; font-size: 10px; font-weight: 700; color: #f87171; font-family: var(--fm); }
-    .demo-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: livepulse 1.4s ease-out infinite; }
-    @keyframes livepulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)} 70%{box-shadow:0 0 0 5px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
-    .demo-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--card-border); flex-shrink: 0; }
-    .demo-stat { background: var(--card); border-radius: 8px; padding: 8px 10px; }
-    .demo-stat-lbl { font-size: 9px; color: var(--ink4); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-    .demo-stat-val { font-size: 14px; font-weight: 700; color: var(--ink); font-family: var(--fd); }
-    .demo-transcript { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
-    .demo-transcript::-webkit-scrollbar { width: 2px; }
-    .demo-transcript::-webkit-scrollbar-thumb { background: var(--card-border); }
-    .demo-line { display: flex; gap: 7px; animation: lineFade 0.4s ease; }
-    @keyframes lineFade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-    .demo-speaker { font-size: 9px; font-weight: 700; min-width: 32px; margin-top: 1px; }
-    .demo-text { font-size: 10.5px; color: var(--ink3); line-height: 1.5; }
-    .demo-typing { display: flex; align-items: center; gap: 3px; padding: 4px 0; }
-    .demo-t-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ink4); animation: tdot 1s ease infinite; }
-    @keyframes tdot { 0%,80%,100%{opacity:.3;transform:scale(1)} 40%{opacity:1;transform:scale(1.2)} }
-    .demo-right { border-left: 1px solid var(--card-border); display: flex; flex-direction: column; overflow: hidden; }
-    .demo-r-hdr { padding: 10px 12px; border-bottom: 1px solid var(--card-border); font-family: var(--fd); font-size: 11px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .08em; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-    .demo-insights { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
-    .demo-insight { border-radius: 8px; padding: 9px 11px; }
-    .demo-insight-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-    .demo-insight-body { font-size: 10.5px; color: var(--ink3); line-height: 1.45; }
-    .demo-ratio { padding: 10px; border-top: 1px solid var(--card-border); flex-shrink: 0; }
-    .demo-ratio-lbl { font-size: 9px; color: var(--ink4); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; }
-    .demo-ratio-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); overflow: hidden; display: flex; }
+    /* PROBLEM SECTION */
+    .problem{padding:100px 24px;background:var(--bg2);}
+    .problem-i{max-width:1160px;margin:0 auto;}
+    .sec-kicker{font-family:var(--fm);font-size:10px;font-weight:600;color:var(--cyan);text-transform:uppercase;letter-spacing:.16em;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+    .sec-kicker::before{content:'';display:inline-block;width:20px;height:1px;background:var(--cyan);}
+    .sec-title{font-family:var(--fd);font-size:clamp(28px,4.5vw,50px);font-weight:800;color:var(--ink);letter-spacing:-.04em;line-height:1.1;margin-bottom:16px;}
+    .sec-sub{font-size:16px;color:var(--ink2);line-height:1.72;max-width:520px;}
+    .problem-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:48px;}
+    .problem-stat{background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12);border-radius:14px;padding:24px;}
+    .problem-stat-icon{font-size:22px;margin-bottom:10px;}
+    .problem-stat-num{font-family:var(--fd);font-size:36px;font-weight:800;color:#f87171;letter-spacing:-.04em;line-height:1;margin-bottom:6px;}
+    .problem-stat-label{font-size:12px;color:rgba(239,68,68,.6);line-height:1.5;}
+    @media(max-width:900px){.problem-stats{grid-template-columns:repeat(2,1fr);}}
+    @media(max-width:560px){.problem-stats{grid-template-columns:1fr;}}
 
-    /* LOGO STRIP */
-    .logo-strip { border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); padding: 20px 24px; background: var(--bg2); }
-    .logo-strip-i { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-    .logo-lbl { font-size: 11px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: .12em; }
-    .logo-names { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
-    .logo-name { font-family: var(--fd); font-size: 13.5px; font-weight: 600; color: var(--ink4); }
+    .pain-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin-top:72px;}
+    .pain-list{display:flex;flex-direction:column;gap:16px;}
+    .pain-item{display:flex;gap:14px;padding:18px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:13px;transition:border-color .2s;}
+    .pain-item:hover{border-color:rgba(239,68,68,.2);}
+    .pain-icon{width:36px;height:36px;border-radius:9px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+    .pain-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.8);margin:0 0 4px;}
+    .pain-desc{font-size:12px;color:rgba(255,255,255,.4);margin:0;line-height:1.55;}
+    @media(max-width:860px){.pain-grid{grid-template-columns:1fr;gap:32px;}}
 
-    /* METRICS */
-    .metrics { padding: 90px 24px; background: var(--bg); }
-    .metrics-i { max-width: 960px; margin: 0 auto; }
-    .metrics-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: var(--card-border); border-radius: 14px; overflow: hidden; border: 1px solid var(--card-border); }
-    .metric-card { background: var(--bg2); padding: 38px 26px; }
-    .metric-num { font-family: var(--fd); font-size: clamp(38px,5vw,54px); font-weight: 800; color: var(--cyan); letter-spacing: -0.04em; line-height: 1; margin-bottom: 8px; }
-    .metric-lbl { font-size: 13px; color: var(--ink3); line-height: 1.5; }
+    /* DEMO SECTION */
+    .demo-section{padding:100px 24px;background:var(--bg);}
+    .demo-i{max-width:1160px;margin:0 auto;}
+    .demo-header{text-align:center;margin-bottom:48px;}
 
-    /* FEATURES */
-    .features { padding: 100px 24px; background: var(--bg); }
-    .features-i { max-width: 1120px; margin: 0 auto; }
-    .sec-kicker { font-family: var(--fm); font-size: 11px; font-weight: 600; color: var(--cyan); text-transform: uppercase; letter-spacing: .14em; margin-bottom: 14px; }
-    .sec-title { font-family: var(--fd); font-size: clamp(28px,4.5vw,46px); font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1.08; margin-bottom: 14px; }
-    .sec-sub { font-size: 16px; color: var(--ink2); line-height: 1.72; max-width: 540px; }
-    .features-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
-    .feat-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 28px; transition: border-color 0.2s, background 0.2s, transform 0.2s; }
-    .feat-card:hover { border-color: rgba(14,245,212,0.18); background: var(--card-hover); transform: translateY(-2px); }
-    .feat-icon { font-size: 26px; margin-bottom: 14px; }
-    .feat-title { font-family: var(--fd); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 8px; }
-    .feat-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.65; }
-    .feat-tag { display: inline-block; background: var(--cyan2); color: var(--cyan); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-top: 10px; font-family: var(--fm); letter-spacing: .04em; }
+    /* BOT SECTION */
+    .bot-section{padding:100px 24px;background:var(--bg2);}
+    .bot-i{max-width:1160px;margin:0 auto;}
 
-    /* FEATURE SHOWCASES */
-    .showcase { padding: 100px 24px; background: var(--bg2); position: relative; overflow: hidden; }
-    .showcase-orb { position: absolute; top: -100px; right: -100px; width: 500px; height: 500px; background: radial-gradient(ellipse, rgba(139,92,246,0.06) 0%, transparent 60%); pointer-events: none; }
-    .showcase-i { max-width: 1120px; margin: 0 auto; }
-    .showcase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-
-    /* OBJECTION DETECTION DEMO */
-    .obj-demo { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
-    .obj-demo-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
-    .obj-demo-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
-    .obj-live { display: flex; align-items: center; gap: 5px; background: rgba(14,245,212,0.1); border: 1px solid rgba(14,245,212,0.2); border-radius: 20px; padding: 3px 10px; font-size: 10px; font-weight: 700; color: var(--cyan); margin-left: auto; font-family: var(--fm); }
-    .obj-body { padding: 14px 16px; }
-    .obj-line { display: flex; gap: 9px; padding: 7px 9px; border-radius: 8px; margin-bottom: 5px; }
-    .obj-speaker { font-size: 9.5px; font-weight: 700; min-width: 28px; margin-top: 1px; }
-    .obj-text { font-size: 11px; color: var(--ink3); line-height: 1.5; }
-    .obj-flag { margin: 8px 0; padding: 10px 13px; background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.2); border-left: 3px solid #ef4444; border-radius: 0 9px 9px 0; }
-    .obj-flag-label { font-size: 10px; font-weight: 700; color: #f87171; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; font-family: var(--fm); }
-    .obj-flag-text { font-size: 11px; color: var(--ink2); }
-    .obj-flag-tip { font-size: 10.5px; color: var(--cyan); margin-top: 5px; }
-    .obj-sentiment-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--card-border); }
-    .obj-sent-label { font-size: 10px; color: var(--ink4); }
-    .obj-sent-bar { flex: 1; height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
-    .obj-sent-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); transition: width 0.8s ease; }
-    .obj-sent-val { font-size: 12px; font-weight: 700; font-family: var(--fd); }
-
-    /* DEAL TIMELINE */
-    .sc-card { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
-    .sc-header { padding: 16px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
-    .sc-h-icon { width: 32px; height: 32px; border-radius: 9px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; }
-    .sc-h-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
-    .sc-h-badge { margin-left: auto; font-size: 10px; font-weight: 700; color: var(--green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 20px; padding: 2px 9px; display: flex; align-items: center; gap: 4px; }
-    .sc-body { padding: 14px 16px; }
-    .sc-call { display: flex; gap: 11px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--card-border); }
-    .sc-call-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
-    .sc-call-name { font-size: 12px; font-weight: 600; color: var(--ink); }
-    .sc-call-meta { font-size: 10.5px; color: var(--ink3); margin-top: 2px; }
-    .sc-call-score { margin-left: auto; text-align: right; }
-    .sc-call-score-n { font-family: var(--fd); font-size: 16px; font-weight: 700; }
-    .sc-call-score-l { font-size: 9px; color: var(--ink4); }
-    .sc-intel { background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.15); border-radius: 11px; padding: 12px 13px; }
-    .sc-intel-hdr { font-size: 10px; font-weight: 700; color: #a78bfa; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
-    .sc-intel-item { display: flex; gap: 6px; font-size: 11.5px; color: var(--ink2); margin-bottom: 5px; line-height: 1.45; }
-
-    /* COACHING CLIPS */
-    .clips-section { padding: 100px 24px; background: var(--bg); }
-    .clips-i { max-width: 1120px; margin: 0 auto; }
-    .clips-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-    .clip-demo { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
-    .clip-transcript { padding: 14px 16px; max-height: 280px; overflow-y: hidden; }
-    .clip-line { display: flex; gap: 9px; padding: 7px 9px; border-radius: 8px; margin-bottom: 4px; cursor: pointer; transition: background .1s; }
-    .clip-line.sel { background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25); }
-    .clip-line:not(.sel) { border: 1px solid transparent; }
-    .clip-speaker { font-size: 9.5px; font-weight: 700; min-width: 30px; margin-top: 1px; }
-    .clip-text { font-size: 11px; color: var(--ink3); line-height: 1.5; }
-    .clip-action { padding: 12px 14px; border-top: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; background: rgba(139,92,246,0.05); }
-    .clip-sel-info { font-size: 11px; color: #a78bfa; flex: 1; }
-    .clip-btn { background: linear-gradient(135deg,#7c3aed,#6d28d9); border: none; border-radius: 8px; padding: 7px 14px; color: #fff; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: var(--font); display: flex; align-items: center; gap: 5px; }
-
-    /* ACTION LAYER DEMO */
-    .action-section { padding: 100px 24px; background: var(--bg2); }
-    .action-i { max-width: 1120px; margin: 0 auto; }
-    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-    .action-demo { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 18px; padding: 0; overflow: hidden; }
-    .action-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 10px; }
-    .action-title { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--ink); }
-    .action-body { padding: 16px; }
-    .action-priority { display: flex; align-items: flex-start; gap: 12px; padding: 13px; background: rgba(14,245,212,.05); border: 1px solid rgba(14,245,212,.15); border-radius: 12px; margin-bottom: 12px; }
-    .action-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(14,245,212,.4); flex-shrink: 0; margin-top: 1px; }
-    .action-priority-text { font-size: 12.5px; color: var(--ink); font-weight: 600; line-height: 1.5; }
-    .action-email { background: var(--card); border: 1px solid var(--card-border); border-radius: 11px; padding: 12px 14px; margin-bottom: 12px; }
-    .action-email-label { font-size: 9px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; font-family: var(--fm); }
-    .action-email-subject { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 5px; }
-    .action-email-body { font-size: 11px; color: var(--ink3); line-height: 1.55; }
-    .action-crm-row { display: flex; align-items: center; gap: 8px; }
-    .action-crm-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--card-border); background: transparent; color: var(--ink3); font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font); }
-    .action-crm-btn.hs { border-color: rgba(255,122,89,.3); color: #FF7A59; }
-    .action-crm-btn.sf { border-color: rgba(0,161,224,.3); color: #00A1E0; }
-
-    /* ANALYTICS DEMO */
-    .analytics-section { padding: 100px 24px; background: var(--bg); }
-    .analytics-i { max-width: 1120px; margin: 0 auto; }
-    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-    .analytics-demo { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; }
-    .analytics-hdr { padding: 14px 18px; border-bottom: 1px solid var(--card-border); }
-    .analytics-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--card-border); }
-    .analytics-stat { text-align: center; }
-    .analytics-stat-n { font-family: var(--fd); font-size: 20px; font-weight: 800; }
-    .analytics-stat-l { font-size: 10px; color: var(--ink4); }
-    .analytics-body { padding: 14px 16px; }
-    .rep-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--card-border); }
-    .rep-row:last-child { border-bottom: none; }
-    .rep-av { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
-    .rep-name { font-size: 12px; font-weight: 600; color: var(--ink); flex: 1; }
-    .rep-bar-wrap { width: 80px; height: 5px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
-    .rep-bar { height: 100%; border-radius: 3px; }
-    .rep-pct { font-size: 11px; font-weight: 700; font-family: var(--fd); min-width: 36px; text-align: right; }
-    .rep-calls { font-size: 10px; color: var(--ink4); min-width: 40px; text-align: right; }
-
-    /* HOW IT WORKS */
-    .how { padding: 100px 24px; background: var(--bg2); }
-    .how-i { max-width: 1060px; margin: 0 auto; }
-    .how-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; position: relative; margin-top: 60px; }
-    .how-connector { position: absolute; top: 24px; left: calc(33.3% + 20px); right: calc(33.3% + 20px); height: 1px; background: linear-gradient(90deg, var(--cyan), rgba(14,245,212,0.2), var(--cyan)); }
-    .how-step-num { width: 48px; height: 48px; border-radius: 12px; background: rgba(14,245,212,0.08); border: 1px solid rgba(14,245,212,0.2); display: flex; align-items: center; justify-content: center; font-family: var(--fd); font-size: 16px; font-weight: 800; color: var(--cyan); margin-bottom: 20px; position: relative; z-index: 1; }
-    .how-step-num.done { background: var(--cyan); color: var(--bg); }
-    .how-step-title { font-family: var(--fd); font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 10px; }
-    .how-step-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.68; }
+    /* COMPARISON TABLE */
+    .comp-section{padding:100px 24px;background:var(--bg);}
+    .comp-i{max-width:1160px;margin:0 auto;}
+    .comp-table{width:100%;border-collapse:collapse;margin-top:40px;border:1px solid var(--br);border-radius:14px;overflow:hidden;}
+    .comp-th{padding:14px 18px;text-align:center;font-size:12px;font-weight:700;background:rgba(255,255,255,.03);border-bottom:1px solid var(--br);}
+    .comp-th:first-child{text-align:left;}
+    .comp-th.fixsense-col{color:var(--cyan);background:rgba(14,245,212,.04);position:relative;}
+    .comp-th.fixsense-col::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--cyan);}
+    .comp-tr{border-bottom:1px solid rgba(255,255,255,.04);}
+    .comp-tr:nth-child(even){background:rgba(255,255,255,.015);}
+    .comp-td{padding:11px 18px;text-align:center;font-size:12px;}
+    .comp-td:first-child{text-align:left;color:rgba(255,255,255,.6);font-weight:500;}
+    .comp-td.fixsense-col{background:rgba(14,245,212,.025);}
 
     /* TESTIMONIALS */
-    .testimonials { padding: 100px 24px; background: var(--bg2); }
-    .testimonials-i { max-width: 1100px; margin: 0 auto; }
-    .testi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
-    .testi-card { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 16px; padding: 30px; display: flex; flex-direction: column; transition: border-color 0.2s, transform 0.2s; }
-    .testi-card:hover { border-color: rgba(14,245,212,0.14); transform: translateY(-2px); }
-    .testi-metric { display: inline-block; background: rgba(14,245,212,0.08); color: var(--cyan); border-radius: 5px; padding: 3px 10px; font-size: 11px; font-weight: 700; margin-bottom: 16px; font-family: var(--fm); }
-    .testi-quote { font-size: 14px; color: var(--ink2); line-height: 1.72; flex: 1; margin-bottom: 22px; }
-    .testi-author { display: flex; align-items: center; gap: 11px; border-top: 1px solid var(--card-border); padding-top: 16px; }
-    .testi-av { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, rgba(14,245,212,0.2), rgba(139,92,246,0.2)); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--cyan); flex-shrink: 0; border: 1px solid rgba(14,245,212,0.15); }
-    .testi-name { font-size: 13px; font-weight: 600; color: var(--ink); }
-    .testi-role { font-size: 11.5px; color: var(--ink3); margin-top: 2px; }
-
-    /* PLANS */
-    .plans { padding: 100px 24px; background: var(--bg); }
-    .plans-i { max-width: 1120px; margin: 0 auto; }
-    .plans-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; align-items: start; margin-top: 60px; }
-    .plan-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px 20px 20px; transition: border-color 0.2s; }
-    .plan-card.hot { border: 1.5px solid var(--cyan); background: rgba(14,245,212,0.04); transform: translateY(-6px); box-shadow: 0 20px 60px rgba(14,245,212,0.08); }
-    .plan-badge { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; border-radius: 4px; padding: 3px 9px; margin-bottom: 12px; }
-    .plan-badge-hot { background: var(--cyan); color: var(--bg); }
-    .plan-badge-gray { background: var(--card-hover); color: var(--ink3); }
-    .plan-name { font-family: var(--fd); font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 3px; }
-    .plan-price { font-family: var(--fd); font-size: 44px; font-weight: 800; color: var(--ink); letter-spacing: -0.05em; line-height: 1; }
-    .plan-period { font-size: 13px; color: var(--ink3); }
-    .plan-mins { font-family: var(--fm); font-size: 12px; font-weight: 600; color: var(--cyan); margin: 7px 0 3px; }
-    .plan-desc { font-size: 11.5px; color: var(--ink3); margin-bottom: 18px; }
-    .plan-div { height: 1px; background: var(--card-border); margin-bottom: 18px; }
-    .plan-feats { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
-    .plan-feat { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--ink2); line-height: 1.45; }
-    .plan-cta { display: block; width: 100%; text-align: center; padding: 12px; border-radius: 10px; font-size: 13.5px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.18s; border: 1px solid; }
-    .plan-cta-hot { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
-    .plan-cta-hot:hover { opacity: 0.88; transform: translateY(-1px); }
-    .plan-cta-out { background: transparent; color: var(--cyan); border-color: rgba(14,245,212,0.3); }
-    .plan-cta-out:hover { background: var(--cyan2); }
-    .plan-cta-ghost { background: transparent; color: var(--ink3); border-color: var(--card-border); }
-
-    /* FAQ */
-    .faq { padding: 100px 24px; background: var(--bg); }
-    .faq-i { max-width: 720px; margin: 0 auto; }
-    .faq-item { border: 1px solid var(--card-border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
-    .faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 17px 20px; background: transparent; border: none; cursor: pointer; text-align: left; font-size: 14px; font-weight: 600; color: var(--ink); font-family: var(--font); gap: 16px; transition: background .15s; }
-    .faq-q:hover { background: var(--card); }
-    .faq-chevron { flex-shrink: 0; transition: transform 0.22s; color: var(--ink3); }
-    .faq-chevron.open { transform: rotate(180deg); }
-    .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.28s ease, padding 0.28s ease; padding: 0 20px; }
-    .faq-a.open { max-height: 200px; padding: 0 20px 18px; }
-    .faq-a p { font-size: 13.5px; color: var(--ink2); line-height: 1.72; margin: 0; }
+    .testi-section{padding:100px 24px;background:var(--bg2);}
+    .testi-i{max-width:1160px;margin:0 auto;}
+    .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:48px;}
+    .testi-card{background:rgba(255,255,255,.025);border:1px solid var(--br);border-radius:16px;padding:28px;display:flex;flex-direction:column;transition:border-color .2s,transform .2s;}
+    .testi-card:hover{border-color:rgba(14,245,212,.18);transform:translateY(-2px);}
+    .testi-metric{display:inline-block;background:var(--cyan2);color:var(--cyan);border:1px solid rgba(14,245,212,.2);border-radius:5px;padding:3px 10px;font-size:10px;font-weight:700;margin-bottom:14px;font-family:var(--fm);}
+    .testi-quote{font-size:14px;color:var(--ink2);line-height:1.72;flex:1;margin-bottom:20px;}
+    .testi-author{display:flex;align-items:center;gap:12px;border-top:1px solid var(--br);padding-top:16px;}
+    .testi-av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--cyan2),rgba(139,92,246,.15));border:1px solid rgba(14,245,212,.2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--cyan);font-family:var(--fd);flex-shrink:0;}
+    .testi-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--ink);}
+    .testi-role{font-size:11px;color:var(--mu);}
+    @media(max-width:900px){.testi-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:560px){.testi-grid{grid-template-columns:1fr;}}
 
     /* FINAL CTA */
-    .final { padding: 120px 24px; background: var(--bg); text-align: center; position: relative; overflow: hidden; }
-    .final-orb { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(14,245,212,0.06) 0%, transparent 65%); }
-    .final-i { position: relative; z-index: 1; max-width: 580px; margin: 0 auto; }
-    .final-h { font-family: var(--fd); font-size: clamp(34px,6vw,58px); font-weight: 800; color: var(--ink); letter-spacing: -0.05em; line-height: 1.06; margin-bottom: 16px; }
-    .final-h .c { color: var(--cyan); }
-    .final-p { font-size: 16px; color: var(--ink2); line-height: 1.72; margin-bottom: 38px; }
-    .final-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .final-note { margin-top: 14px; font-size: 12px; color: var(--ink4); }
+    .final{padding:120px 24px;position:relative;overflow:hidden;text-align:center;}
+    .final-orb{position:absolute;inset:0;background:radial-gradient(ellipse 65% 65% at 50% 50%,rgba(14,245,212,.055) 0%,transparent 65%);pointer-events:none;}
+    .final-i{position:relative;z-index:1;max-width:600px;margin:0 auto;}
+    .final-h{font-family:var(--fd);font-size:clamp(34px,5.5vw,60px);font-weight:800;color:var(--ink);letter-spacing:-.05em;line-height:1.07;margin-bottom:18px;}
+    .final-p{font-size:17px;color:var(--ink2);line-height:1.7;margin-bottom:38px;}
+
+    /* FAQ */
+    .faq-section{padding:100px 24px;background:var(--bg2);}
+    .faq-i{max-width:760px;margin:0 auto;}
+    .faq-item{border:1px solid var(--br);border-radius:12px;margin-bottom:10px;overflow:hidden;}
+    .faq-q{width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:transparent;border:none;cursor:pointer;text-align:left;font-size:14px;font-weight:600;color:var(--ink);font-family:var(--fb);gap:14px;transition:background .15s;}
+    .faq-q:hover{background:rgba(255,255,255,.03);}
+    .faq-chev{flex-shrink:0;color:var(--mu);transition:transform .22s;}
+    .faq-chev.op{transform:rotate(180deg);}
+    .faq-a{max-height:0;overflow:hidden;transition:max-height .28s ease,padding .28s ease;padding:0 20px;}
+    .faq-a.op{max-height:200px;padding:0 20px 18px;}
+    .faq-a p{font-size:13.5px;color:var(--ink2);line-height:1.75;margin:0;}
 
     /* FOOTER */
-    .footer { background: var(--bg2); padding: 56px 24px 28px; border-top: 1px solid var(--card-border); }
-    .footer-i { max-width: 1100px; margin: 0 auto; }
-    .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 44px; padding-bottom: 40px; border-bottom: 1px solid var(--card-border); }
-    .footer-brand-logo { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
-    .footer-brand-name { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
-    .footer-brand-desc { font-size: 13px; color: var(--ink3); line-height: 1.65; max-width: 230px; }
-    .footer-col-title { font-size: 10.5px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 14px; }
-    .footer-link { display: block; font-size: 13px; color: var(--ink3); text-decoration: none; margin-bottom: 9px; transition: color 0.2s; }
-    .footer-link:hover { color: var(--ink); }
-    .footer-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-    .footer-legal { font-size: 12px; color: var(--ink4); }
-    .footer-legal-links { display: flex; gap: 18px; }
-    .footer-ll { font-size: 12px; color: var(--ink4); text-decoration: none; transition: color 0.2s; }
-    .footer-ll:hover { color: var(--ink3); }
+    .footer{background:var(--bg2);padding:56px 24px 28px;border-top:1px solid var(--br);}
+    .footer-i{max-width:1160px;margin:0 auto;}
+    .footer-top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:48px;margin-bottom:44px;padding-bottom:40px;border-bottom:1px solid var(--br2);}
+    .footer-brand-logo{display:flex;align-items:center;gap:9px;margin-bottom:12px;}
+    .footer-brand-name{font-family:var(--fd);font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.02em;}
+    .footer-brand-desc{font-size:13px;color:var(--mu);line-height:1.65;max-width:230px;}
+    .footer-col-title{font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;font-family:var(--fm);}
+    .footer-link{display:block;font-size:13px;color:var(--mu);text-decoration:none;margin-bottom:9px;transition:color .2s;}
+    .footer-link:hover{color:var(--ink);}
+    .footer-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+    .footer-legal{font-size:12px;color:var(--mu2);}
+    .footer-ll{font-size:12px;color:var(--mu2);text-decoration:none;transition:color .2s;}
+    .footer-ll:hover{color:var(--mu);}
+    @media(max-width:1024px){.footer-top{grid-template-columns:1fr 1fr;}}
+    @media(max-width:640px){.footer-top{grid-template-columns:1fr;}.footer-bottom{flex-direction:column;align-items:flex-start;}}
 
-    @media(max-width:1060px){
-      .plans-grid{grid-template-columns:repeat(2,1fr)}
-      .footer-top{grid-template-columns:1fr 1fr}
-    }
+    /* DEMO responsive */
     @media(max-width:900px){
-      .demo-inner{grid-template-columns:1fr}
-      .demo-sidebar,.demo-right{display:none}
-      .features-grid{grid-template-columns:1fr 1fr}
-      .showcase-grid,.clips-grid,.action-grid,.analytics-grid{grid-template-columns:1fr;gap:32px}
-      .testi-grid{grid-template-columns:1fr}
-      .how-steps{grid-template-columns:1fr;gap:24px}
-      .how-connector{display:none}
-    }
-    @media(max-width:768px){
-      .burger{display:flex}
-      .nav-links,.nav-acts{display:none}
-      .hero{padding:110px 18px 64px}
-      .metrics-grid{grid-template-columns:repeat(2,1fr)}
-      .features-grid{grid-template-columns:1fr}
-      .plans-grid{grid-template-columns:1fr}
-      .plan-card.hot{transform:none}
-      .footer-top{grid-template-columns:1fr 1fr}
-      .footer-bottom{flex-direction:column;align-items:flex-start}
-    }
-    @media(max-width:480px){
-      .hero-ctas{flex-direction:column;align-items:center}
-      .btn-main,.btn-sec{width:100%;max-width:300px;justify-content:center}
-      .final-btns{flex-direction:column;align-items:center}
-      .footer-top{grid-template-columns:1fr}
+      .demo-inner{grid-template-columns:1fr!important;}
     }
   `;
 
-  const FEATURES = [
-    { icon: "🎙", title: "Live Call Rooms", desc: "Create a meeting room in one click. Share the link — prospects join without any account. AI records and transcribes both sides in real time, automatically.", tag: "100ms powered" },
-    { icon: "🚨", title: "Real-Time Objection Detection", desc: "AI flags pricing objections, timeline pushbacks, and competitor mentions the moment they happen — with suggested responses shown live during the call.", tag: "Live AI coaching" },
-    { icon: "📈", title: "Deal Timeline & AI Intel", desc: "Link calls to deals and build a living prospect thread. The AI compares calls over time to show exactly what changed — new objections, sentiment shifts, momentum.", tag: "Deal Intelligence" },
-    { icon: "✂️", title: "Coaching Clips", desc: "Select any moment from a transcript, add a coaching note, tag it, and share a public clip page with your team. Asynchronous coaching at scale.", tag: "Team Coaching" },
-    { icon: "⚡", title: "Priority Action Layer", desc: "After each call, AI generates your single most important next action, drafts the follow-up email, and readies it for HubSpot or Salesforce.", tag: "CRM Ready" },
-    { icon: "👥", title: "Team Analytics", desc: "Rep leaderboards, win rate trends, sentiment patterns, talk ratio benchmarks. Managers get full visibility without sitting on every call.", tag: "Performance" },
-  ];
-
-  const PLANS = [
-    { key: "free", name: "Free", price: "$0", mins: "30 min/month", desc: "Try without a card", badge: "", badgeType: "plan-badge-gray", ctaText: "Start Free", ctaClass: "plan-cta-ghost", feats: ["Live call rooms", "Basic transcription", "1 AI summary/month", "Solo use"] },
-    { key: "starter", name: "Starter", price: "$18", mins: "300 min/month (5h)", desc: "Individual reps", badge: "", badgeType: "plan-badge-gray", ctaText: "Get Starter", ctaClass: "plan-cta-out", feats: ["Everything in Free", "Full AI summaries", "Objection detection", "Up to 3 members"] },
-    { key: "growth", name: "Growth", price: "$49", mins: "1,500 min/month (25h)", desc: "Best for growing teams", badge: "Most Popular", badgeType: "plan-badge-hot", ctaText: "Start Free Trial", ctaClass: "plan-cta-hot", hot: true, feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"] },
-    { key: "scale", name: "Scale", price: "$99", mins: "5,000 min/month (83h)", desc: "Enterprise sales orgs", badge: "", badgeType: "plan-badge-gray", ctaText: "Get Scale", ctaClass: "plan-cta-out", feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "API access", "Unlimited members"] },
+  const PAINS = [
+    { icon: "😖", title: "You debrief without real data", desc: "\"I think they liked it\" — your entire post-call analysis is vibes. Deals die in the gaps you can't see." },
+    { icon: "🔇", title: "Objections catch reps off guard", desc: "A pricing curveball at minute 23 and your rep fumbles. The moment passes. The deal softens." },
+    { icon: "📋", title: "CRM updates eat hours", desc: "Your best reps spend 4 hours a week transcribing notes into Salesforce instead of selling." },
+    { icon: "📉", title: "New reps ramp slowly and expensively", desc: "90-day ramp. One-on-one call reviews. Manual coaching. You can't scale what you can't see." },
   ];
 
   const TESTIMONIALS = [
-    { metric: "+30% close rate", quote: "Fixsense helped our team increase close rates by 30%. The Deal Timeline alone changed how we track complex opportunities.", name: "Sarah Mitchell", role: "Head of Sales, Vantex Technologies", initials: "SM" },
-    { metric: "3× faster ramp", quote: "We replaced our entire post-call review process. Managers now have full visibility across every rep without listening to recordings.", name: "James Okafor", role: "VP Sales, Launchflow", initials: "JO" },
-    { metric: "90 → 45 day ramp", quote: "The objection detection is genuinely game-changing. We see the exact moments deals stall and can coach around them systematically.", name: "Priya Nair", role: "CRO, Cloudpath", initials: "PN" },
+    { metric: "+30% close rate", quote: "We used Chorus with bots before. Prospects noticed. Half our calls had awkward silences after 'Gong has joined'. Fixsense is invisible — and the real-time alerts are a completely different game.", name: "Sarah M.", role: "Head of Sales, Vantex Technologies", initials: "SM" },
+    { metric: "90 → 45 day ramp", quote: "Our ramp time dropped in half because every new rep can watch their own calls analyzed the same day. No waiting for a manager to review. The AI tells them exactly what to fix.", name: "Priya N.", role: "CRO, Cloudpath", initials: "PN" },
+    { metric: "3× win rate lift", quote: "The deal timeline feature is the thing nobody talks about enough. Seeing sentiment shift across 4 calls with the same prospect — you understand the relationship in a way that's genuinely unfair to competitors.", name: "James O.", role: "Founder, Launchflow", initials: "JO" },
   ];
 
-  const repData = [
-    { initials: "SA", name: "Sarah A.", winRate: 78, calls: 24, color: "#0ef5d4", bg: "rgba(14,245,212,.15)" },
-    { initials: "MJ", name: "Marcus J.", winRate: 65, calls: 19, color: "#818cf8", bg: "rgba(129,140,248,.15)" },
-    { initials: "TK", name: "Tunde K.", winRate: 58, calls: 31, color: "#f59e0b", bg: "rgba(245,158,11,.15)" },
-    { initials: "AL", name: "Aisha L.", winRate: 51, calls: 16, color: "#f87171", bg: "rgba(248,113,113,.15)" },
-  ];
+  const Check = ({ on }: { on: boolean | string }) => {
+    if (on === false) return <span style={{ color: "rgba(255,255,255,.18)", fontSize: 16 }}>—</span>;
+    if (on === "delayed") return <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>after call</span>;
+    return <span style={{ color: "#22c55e", fontSize: 16 }}>✓</span>;
+  };
 
   return (
     <div className="lp">
@@ -544,220 +702,57 @@ export default function LandingPage() {
           </div>
           <div className="nav-acts">
             {user ? (
-              <>
-                <Link to="/dashboard/profile" style={{ display:"flex",alignItems:"center",gap:7, background:"rgba(255,255,255,.06)", border:"1px solid var(--card-border)", borderRadius:100, padding:"5px 12px 5px 5px", textDecoration:"none" }}>
-                  <div style={{ width:26,height:26,borderRadius:"50%",background:"var(--cyan2)",border:"1px solid rgba(14,245,212,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--cyan)" }}>{emailInitial}</div>
-                  <span style={{ fontSize:12,fontWeight:600,color:"var(--ink2)" }}>{displayName}</span>
-                </Link>
-                <Link to="/dashboard" className="nav-cta">Dashboard →</Link>
-              </>
+              <Link to="/dashboard" className="btn-cta">Dashboard →</Link>
             ) : (
               <>
-                <Link to="/login" className="nav-ghost">Sign in</Link>
-                <Link to="/login" className="nav-cta">Start Free →</Link>
+                <Link to="/login" className="btn-ghost">Sign in</Link>
+                <Link to="/login" className="btn-cta">Start Free →</Link>
               </>
             )}
           </div>
-          <button className="burger" onClick={() => setMobileOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          </button>
         </div>
       </nav>
 
-      {/* MOBILE DRAWER */}
-      <div className={`drw-ov ${mobileOpen ? "on" : ""}`} onClick={() => setMobileOpen(false)} />
-      <div className={`drw ${mobileOpen ? "on" : ""}`}>
-        <div className="drw-hdr">
-          <Link to="/" className="nav-logo" onClick={() => setMobileOpen(false)}>
-            <Logo size={24} /><span className="nav-name">Fixsense</span>
-          </Link>
-          <button className="drw-close" onClick={() => setMobileOpen(false)}>
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          </button>
-        </div>
-        <nav className="drw-nav">
-          {NAV.map(l => (
-            l.href.startsWith("#")
-              ? <a key={l.label} href={l.href} className="drw-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
-              : <Link key={l.label} to={l.href} className="drw-link" onClick={() => setMobileOpen(false)}>{l.label}</Link>
-          ))}
-        </nav>
-        <div className="drw-foot">
-          {user ? (
-            <Link to="/dashboard" className="btn-fw btn-fw-p" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
-          ) : (
-            <>
-              <Link to="/login" className="btn-fw btn-fw-p" onClick={() => setMobileOpen(false)}>Start Free Trial</Link>
-              <Link to="/login" className="btn-fw btn-fw-s" onClick={() => setMobileOpen(false)}>Sign in</Link>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* HERO */}
+      {/* ── HERO ── */}
       <section className="hero">
-        <div className="hero-orb1" />
-        <div className="hero-orb2" />
-        <FadeIn delay={90}>
-          <h1 className="hero-h">
-            Every sales call.<br />
-            <span className="c">Analyzed.</span>{" "}
-            <span className="m">Automatically.</span>
-          </h1>
-        </FadeIn>
-        <FadeIn delay={140}>
-          <p className="hero-sub">
-            Fixsense records both sides of your sales calls, detects objections in real time, builds deal intelligence across every touchpoint, and coaches your entire team — without any manual work.
-          </p>
-        </FadeIn>
-        <FadeIn delay={190}>
-          <div className="hero-ctas">
-            <Link to={user ? "/dashboard" : "/login"} className="btn-main">
-              Start for free
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Link>
-            <Link to="/pricing" className="btn-sec">See pricing →</Link>
-          </div>
-        </FadeIn>
-        <FadeIn delay={240}>
-          <div className="hero-trust">
-            {["No credit card required", "30 min free every month", "Up in 60 seconds", "GDPR & NDPR compliant"].map((t, i) => (
-              <span key={t} style={{ display:"contents" }}>
-                {i > 0 && <div className="trust-sep" />}
-                <div className="hero-trust-item">
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink:0 }}>
-                    <circle cx="6.5" cy="6.5" r="6" fill="rgba(14,245,212,0.1)"/>
+        <div className="hero-grid" />
+        <div className="hero-orb" />
+        <div className="hero-inner">
+          <FadeIn delay={60}>
+            <div className="hero-tag">
+              <div className="hero-tag-dot" />
+              The real reason your team is losing winnable deals
+            </div>
+          </FadeIn>
+          <FadeIn delay={120}>
+            <h1 className="hero-h">
+              Your reps are flying <span className="loss">blind</span> on every call.<br />
+              <span className="gain">Fixsense makes them</span> <span className="muted">prescient.</span>
+            </h1>
+          </FadeIn>
+          <FadeIn delay={180}>
+            <p className="hero-sub">
+              Real-time objection detection. Live sentiment scoring. AI coaching mid-call. No bots. No Zoom dependency. Just your rep and the deal — with an AI co-pilot that never blinks.
+            </p>
+          </FadeIn>
+          <FadeIn delay={230}>
+            <div className="hero-ctas">
+              <Link to={user ? "/dashboard" : "/login"} className="btn-main">
+                See It Live — Free
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </Link>
+              <a href="#demo" className="btn-outline">Interact with the demo</a>
+            </div>
+          </FadeIn>
+          <FadeIn delay={270}>
+            <div className="hero-trust">
+              {["No Zoom or Meet required", "No bot joins your call", "AI works in real time", "30 min free — no card"].map((t, i) => (
+                <div key={i} className="trust-item">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+                    <circle cx="6.5" cy="6.5" r="6" fill="rgba(14,245,212,.1)"/>
                     <path d="M4 6.5l1.5 1.5 3.5-3.5" stroke="#0ef5d4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   {t}
-                </div>
-              </span>
-            ))}
-          </div>
-        </FadeIn>
-      </section>
-
-      {/* LIVE DEMO MOCKUP */}
-      <div className="demo-section">
-        <FadeIn>
-          <div className="demo-label">
-            <div className="demo-label-dot" />
-            Live demo — watch AI analyze a real sales call
-          </div>
-          <div className="demo-wrap">
-            <div className="demo-bar">
-              <div className="demo-dot" style={{ background:"#ff5f57" }} />
-              <div className="demo-dot" style={{ background:"#febc2e" }} />
-              <div className="demo-dot" style={{ background:"#28c840" }} />
-              <div className="demo-addr">fixsense.com.ng/dashboard/live</div>
-            </div>
-            <div className="demo-inner">
-              <div className="demo-sidebar">
-                <div className="demo-s-logo"><Logo size={22} /><span className="demo-s-name">Fixsense</span></div>
-                {["Dashboard","Live Call","Calls","Deals","AI Coach","Team"].map((l,i) => (
-                  <div key={l} className={`demo-nav-item ${i===1?"active":""}`}><div className="demo-nav-dot" />{l}</div>
-                ))}
-              </div>
-              <div className="demo-main">
-                <div className="demo-topbar">
-                  <div className="demo-title">Acme Corp — Discovery Call</div>
-                  <div className="demo-live-badge"><div className="demo-live-dot" />LIVE</div>
-                </div>
-                <div className="demo-stats">
-                  {[
-                    { lbl: "Sentiment", val: `${sentiment}%`, color: "#0ef5d4" },
-                    { lbl: "Engagement", val: "84%", color: "#a78bfa" },
-                    { lbl: "Objections", val: demoInsights.length > 0 ? "1" : "0", color: demoInsights.length > 0 ? "#fbbf24" : "#475569" },
-                    { lbl: "Duration", val: `${demoLines.length}:${String(demoLines.length * 18 % 60).padStart(2,"0")}`, color: "#60a5fa" },
-                  ].map(s => (
-                    <div key={s.lbl} className="demo-stat">
-                      <div className="demo-stat-lbl">{s.lbl}</div>
-                      <div className="demo-stat-val" style={{ color: s.color }}>{s.val}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="demo-transcript" ref={transcriptRef}>
-                  {demoLines.map((ln, i) => (
-                    <div key={i} className="demo-line">
-                      <div className="demo-speaker" style={{ color: ln.color }}>{ln.speaker}</div>
-                      <div className="demo-text">{ln.text}</div>
-                    </div>
-                  ))}
-                  {demoTyping && (
-                    <div className="demo-line">
-                      <div className="demo-speaker" style={{ color: demoTyping.color }}>{demoTyping.speaker}</div>
-                      <div className="demo-typing">
-                        <div className="demo-t-dot" />
-                        <div className="demo-t-dot" style={{ animationDelay:"0.2s" }} />
-                        <div className="demo-t-dot" style={{ animationDelay:"0.4s" }} />
-                      </div>
-                    </div>
-                  )}
-                  {demoLines.length === 0 && !demoTyping && (
-                    <div style={{ textAlign:"center", padding:"20px 0", color:"var(--ink4)", fontSize:12 }}>Transcript will appear here as you speak…</div>
-                  )}
-                </div>
-                <div className="demo-ratio">
-                  <div className="demo-ratio-lbl">
-                    <span style={{ color:"#818cf8" }}>Rep {100-talkRep}%</span>
-                    <span style={{ color:"#2dd4bf" }}>Prospect {talkRep}%</span>
-                  </div>
-                  <div className="demo-ratio-bar">
-                    <div style={{ height:"100%", background:"#818cf8", width:`${100-talkRep}%` }} />
-                    <div style={{ height:"100%", background:"#2dd4bf", flex:1 }} />
-                  </div>
-                </div>
-              </div>
-              <div className="demo-right">
-                <div className="demo-r-hdr">
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="var(--cyan)" strokeWidth="1.2"/><path d="M3.5 5l1 1 2-2" stroke="var(--cyan)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  AI Insights
-                </div>
-                <div className="demo-insights">
-                  {demoInsights.length === 0 && (
-                    <div style={{ textAlign:"center", padding:"20px 0", color:"var(--ink4)", fontSize:11 }}>
-                      <div style={{ marginBottom:8, fontSize:16 }}>👂</div>Listening for signals…
-                    </div>
-                  )}
-                  {demoInsights.map((ins, i) => (
-                    <div key={i} className="demo-insight" style={{ background: ins.bg, border:`1px solid ${ins.color}30`, animation:"lineFade .3s ease" }}>
-                      <div className="demo-insight-tag" style={{ color: ins.color }}>{ins.tag}</div>
-                      <div className="demo-insight-body">{ins.body}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </FadeIn>
-      </div>
-
-      {/* LOGO STRIP */}
-      <div className="logo-strip">
-        <div className="logo-strip-i">
-          <span className="logo-lbl">Integrates with</span>
-          <div className="logo-names">
-            {["100ms", "HubSpot", "Salesforce", "Slack", "Paystack", "Supabase"].map(l => (
-              <span key={l} className="logo-name">{l}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* METRICS */}
-      <section className="metrics">
-        <div className="metrics-i">
-          <FadeIn>
-            <div className="metrics-grid">
-              {[
-                { val: 30, suf: "%", lbl: "Avg. increase in close rate" },
-                { val: 99, suf: "%", lbl: "Transcription accuracy" },
-                { val: 50, suf: "%", lbl: "Reduction in rep ramp time" },
-                { val: 10, suf: "k+", lbl: "Sales meetings analyzed" },
-              ].map((m, i) => (
-                <div key={i} className="metric-card">
-                  <div className="metric-num"><Counter end={m.val} suffix={m.suf} /></div>
-                  <div className="metric-lbl">{m.lbl}</div>
                 </div>
               ))}
             </div>
@@ -765,364 +760,196 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* FEATURES */}
-      <section className="features" id="features">
-        <div className="features-i">
+      {/* ── PROBLEM SECTION ── */}
+      <section className="problem" id="problem">
+        <div className="problem-i">
           <FadeIn>
-            <div style={{ marginBottom: 60 }}>
-              <div className="sec-kicker">Platform Capabilities</div>
-              <h2 className="sec-title">Everything your revenue team needs</h2>
-              <p className="sec-sub">From the moment a call starts to the moment the deal closes — every touchpoint covered.</p>
+            <div className="sec-kicker">The Revenue Problem</div>
+            <h2 className="sec-title">Your team is leaving money on the table every single day</h2>
+            <p className="sec-sub">This isn't a technology problem. It's a visibility problem. Your reps walk into every call with no intelligence and walk out with nothing but gut feelings.</p>
+          </FadeIn>
+
+          <FadeIn delay={80}>
+            <div className="problem-stats">
+              {PROBLEMS.map((p, i) => (
+                <div key={i} className="problem-stat">
+                  <div className="problem-stat-icon">{p.icon}</div>
+                  <div className="problem-stat-num">{p.stat}</div>
+                  <div className="problem-stat-label">{p.label}</div>
+                </div>
+              ))}
             </div>
           </FadeIn>
-          <div className="features-grid">
-            {FEATURES.map((f, i) => (
-              <FadeIn key={i} delay={i * 65}>
-                <div className="feat-card">
-                  <div className="feat-icon">{f.icon}</div>
-                  <div className="feat-title">{f.title}</div>
-                  <div className="feat-desc">{f.desc}</div>
-                  <div className="feat-tag">{f.tag}</div>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* FEATURE SHOWCASE 1 — Objection Detection */}
-      <section className="showcase">
-        <div className="showcase-orb" />
-        <div className="showcase-i">
-          <div className="showcase-grid">
+          <div className="pain-grid" style={{ marginTop: 72 }}>
             <FadeIn>
               <div>
-                <div className="sec-kicker">Real-Time AI Coaching</div>
-                <h2 className="sec-title">Never miss an objection again.</h2>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  The moment a prospect says "that's too expensive" or "we're already using a competitor," Fixsense flags it live — with a suggested response right in front of the rep.
+                <div className="sec-kicker">What this costs you</div>
+                <h3 style={{ fontFamily: "var(--fd)", fontSize: "clamp(22px,3vw,34px)", fontWeight: 800, color: "var(--ink)", letterSpacing: "-.04em", lineHeight: 1.15, marginBottom: 16 }}>
+                  Every call without Fixsense is an unforced error
+                </h3>
+                <p style={{ fontSize: 15, color: "var(--ink2)", lineHeight: 1.72, marginBottom: 20 }}>
+                  The problem isn't that your reps can't sell. They're doing their best in the dark. The moment a prospect raises a budget objection and your rep stumbles — that deal has a 67% chance of never closing.
                 </p>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:28 }}>
-                  Sentiment is tracked second-by-second so you know exactly when the conversation shifted — and what caused it.
+                <p style={{ fontSize: 15, color: "var(--ink2)", lineHeight: 1.72 }}>
+                  Fixsense puts a co-pilot in every call. Not after. Not in a debrief. <em>During the moment that matters.</em>
                 </p>
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {["Pricing, timeline, and competitor objections flagged instantly","Suggested counter-responses shown during the live call","Sentiment score updates in real time as the conversation evolves","All objections logged automatically in the call summary"].map((t, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      {t}
-                    </div>
-                  ))}
-                </div>
               </div>
             </FadeIn>
             <FadeIn delay={100}>
-              <div className="obj-demo">
-                <div className="obj-demo-hdr">
-                  <div style={{ width:28,height:28,borderRadius:8,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>🚨</div>
-                  <div className="obj-demo-title">Live Objection Monitor</div>
-                  <div className="obj-live"><span style={{ width:5,height:5,borderRadius:"50%",background:"var(--cyan)",display:"inline-block" }}/>LIVE</div>
-                </div>
-                <div className="obj-body">
-                  {[
-                    { sp:"Rep", color:"#818cf8", text:"So your plan includes a $90k budget for tooling this quarter?" },
-                    { sp:"Alex", color:"#2dd4bf", text:"That's the target but honestly the CFO might push back. It feels expensive for what we're getting." },
-                  ].map((l,i) => (
-                    <div key={i} className="obj-line" style={{ background:i===1?"rgba(239,68,68,.04)":undefined, borderLeft:i===1?"2px solid rgba(239,68,68,.3)":"2px solid transparent" }}>
-                      <div className="obj-speaker" style={{ color:l.color }}>{l.sp}</div>
-                      <div className="obj-text">{l.text}</div>
+              <div className="pain-list">
+                {PAINS.map((p, i) => (
+                  <div key={i} className="pain-item">
+                    <div className="pain-icon">{p.icon}</div>
+                    <div>
+                      <p className="pain-title">{p.title}</p>
+                      <p className="pain-desc">{p.desc}</p>
                     </div>
-                  ))}
-                  <div className="obj-flag">
-                    <div className="obj-flag-label">⚠ Pricing Objection Detected · 94% confidence</div>
-                    <div className="obj-flag-text">"feels expensive for what we're getting" — classic value gap signal</div>
-                    <div className="obj-flag-tip">💡 Suggested: Anchor on ROI — "Teams like yours typically close 2-3 more deals per month using Fixsense…"</div>
                   </div>
-                  {[
-                    { sp:"Rep", color:"#818cf8", text:"Totally fair. Let me show you the ROI calculation — teams our size typically see payback in 6 weeks." },
-                    { sp:"Alex", color:"#2dd4bf", text:"Oh that's actually helpful, can you send me the breakdown?" },
-                  ].map((l,i) => (
-                    <div key={i} className="obj-line" style={{ background:i===1?"rgba(14,245,212,.04)":undefined }}>
-                      <div className="obj-speaker" style={{ color:l.color }}>{l.sp}</div>
-                      <div className="obj-text">{l.text}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="obj-sentiment-row">
-                  <div className="obj-sent-label">Sentiment</div>
-                  <div className="obj-sent-bar">
-                    <div className="obj-sent-fill" style={{ width:`${sentiment}%` }}/>
-                  </div>
-                  <div className="obj-sent-val" style={{ color:"#10b981" }}>{sentiment}%</div>
-                </div>
+                ))}
               </div>
             </FadeIn>
           </div>
         </div>
       </section>
 
-      {/* FEATURE SHOWCASE 2 — Deal Timeline */}
-      <section style={{ padding:"100px 24px", background:"var(--bg)" }}>
-        <div style={{ maxWidth:1120, margin:"0 auto" }}>
-          <div className="showcase-grid">
-            <FadeIn delay={100}>
-              <div className="sc-card">
-                <div className="sc-header">
-                  <div className="sc-h-icon">🏢</div>
-                  <div>
-                    <div className="sc-h-title">Acme Corp — Enterprise Deal</div>
-                    <div style={{ fontSize:10, color:"var(--ink4)" }}>3 calls · $85,000</div>
-                  </div>
-                  <div className="sc-h-badge"><div style={{ width:5,height:5,borderRadius:"50%",background:"var(--green)" }}/>Improving</div>
-                </div>
-                <div className="sc-body">
-                  {[
-                    { name:"Discovery Call", date:"Mar 3", score:72, color:"#f59e0b", dotColor:"rgba(245,158,11,.4)" },
-                    { name:"Product Demo", date:"Mar 10", score:84, color:"#22c55e", dotColor:"rgba(34,197,94,.4)" },
-                    { name:"Negotiation", date:"Mar 17", score:91, color:"#0ef5d4", dotColor:"rgba(14,245,212,.4)" },
-                  ].map((c, i) => (
-                    <div key={i} className="sc-call" style={{ borderBottom: i < 2 ? "1px solid var(--card-border)" : "none" }}>
-                      <div className="sc-call-dot" style={{ background: c.dotColor }} />
-                      <div>
-                        <div className="sc-call-name">{c.name}</div>
-                        <div className="sc-call-meta">{c.date} · {i===2?"Latest":"Completed"}</div>
-                      </div>
-                      <div className="sc-call-score">
-                        <div className="sc-call-score-n" style={{ color: c.color }}>{c.score}</div>
-                        <div className="sc-call-score-l">/ 100</div>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="sc-intel">
-                    <div className="sc-intel-hdr">✨ What Changed — AI Analysis</div>
-                    {["Pricing objection from demo fully resolved","New stakeholder: CFO joining next call","Sentiment improved 7pts — strong momentum"].map((t, i) => (
-                      <div key={i} className="sc-intel-item"><span style={{ color:"#a78bfa", flexShrink:0 }}>·</span>{t}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </FadeIn>
-            <FadeIn>
-              <div>
-                <div className="sec-kicker">Deal Intelligence</div>
-                <h2 className="sec-title">Your entire deal, in one thread.</h2>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  Stop losing context between calls. Link every call to a deal and Fixsense builds a living timeline — objections, buying signals, sentiment trend, and a running AI analysis.
-                </p>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:28 }}>
-                  Click "What Changed?" and the AI compares your last two calls to tell you exactly how deal momentum shifted and what your next best action is.
-                </p>
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {["Complete call history linked to every deal","'What Changed?' AI analysis between calls","Sentiment trend: improving, declining, or stable","Recommended next best actions after each call"].map((t, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      {t}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURE SHOWCASE 3 — Coaching Clips */}
-      <section className="clips-section">
-        <div className="clips-i">
-          <div className="clips-grid">
-            <FadeIn>
-              <div className="clip-demo">
-                <div style={{ padding:"12px 14px", borderBottom:"1px solid var(--card-border)", display:"flex", alignItems:"center", gap:9 }}>
-                  <div style={{ width:28,height:28,borderRadius:7,background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>✂️</div>
-                  <div style={{ fontFamily:"var(--fd)", fontSize:12, fontWeight:700, color:"var(--ink)" }}>Transcript · Select lines to clip</div>
-                </div>
-                <div className="clip-transcript">
-                  {[
-                    { sp:"Rep", c:"#818cf8", t:"What's the biggest pain with your current setup?", sel:false },
-                    { sp:"Alex", c:"#2dd4bf", t:"We lost a $200k deal because nobody flagged the pricing objection.", sel:true },
-                    { sp:"Rep", c:"#818cf8", t:"That's the exact gap Fixsense closes. When did you realize it?", sel:true },
-                    { sp:"Alex", c:"#2dd4bf", t:"In the post-mortem. By then it was too late.", sel:true },
-                    { sp:"Rep", c:"#818cf8", t:"With real-time objection detection you'd see that flag mid-call.", sel:false },
-                  ].map((l, i) => (
-                    <div key={i} className={`clip-line${l.sel?" sel":""}`}>
-                      <div className="clip-speaker" style={{ color: l.c }}>{l.sp}</div>
-                      <div className="clip-text">{l.t}</div>
-                      {l.sel && <div style={{ width:6,height:6,borderRadius:"50%",background:"#a78bfa",flexShrink:0,margin:"auto 0" }}/>}
-                    </div>
-                  ))}
-                </div>
-                <div className="clip-action">
-                  <div className="clip-sel-info">3 lines · 0:28 selected</div>
-                  <div className="clip-btn">✂ Create Clip</div>
-                </div>
-              </div>
-            </FadeIn>
-            <FadeIn delay={100}>
-              <div>
-                <div className="sec-kicker">Coaching Clips</div>
-                <h2 className="sec-title">Clip moments.<br />Coach at scale.</h2>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  Select any lines from a call transcript, add a coaching note, tag it, and Fixsense creates a shareable clip page instantly. No video editing. No meeting to sit through.
-                </p>
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {["Select transcript lines and clip in seconds","Add coaching notes, tags, and share links","Public clip pages — no Fixsense account needed","React with emoji, thread replies, view counts"].map((t, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(139,92,246,0.12)"/><path d="M4.5 7.5l2 2 4-4" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      {t}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURE SHOWCASE 4 — Priority Action Layer */}
-      <section className="action-section">
-        <div className="action-i">
-          <div className="action-grid">
-            <FadeIn>
-              <div>
-                <div className="sec-kicker">Priority Action Layer</div>
-                <h2 className="sec-title">Know exactly what to do next.</h2>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  After every call, Fixsense generates your single most important next action — and drafts the follow-up email automatically. Push it to HubSpot or Salesforce in one click.
-                </p>
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {["AI-generated priority next action per call","Draft follow-up email ready to send or edit","One-click push to HubSpot or Salesforce","Action completion tracked across your pipeline"].map((t, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      {t}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
-            <FadeIn delay={100}>
-              <div className="action-demo">
-                <div className="action-hdr">
-                  <div style={{ width:28,height:28,borderRadius:8,background:"rgba(14,245,212,.1)",border:"1px solid rgba(14,245,212,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13 }}>⚡</div>
-                  <div className="action-title">Priority Next Action</div>
-                  <div style={{ marginLeft:"auto", fontSize:10, color:"#22c55e", fontWeight:700, background:"rgba(34,197,94,.1)", border:"1px solid rgba(34,197,94,.2)", borderRadius:20, padding:"2px 9px" }}>Acme Corp · Discovery</div>
-                </div>
-                <div className="action-body">
-                  <div className="action-priority">
-                    <div className="action-check" />
-                    <div className="action-priority-text">Send ROI breakdown + CFO briefing doc within 24 hours — prospect signaled urgency on the budget timeline</div>
-                  </div>
-                  <div className="action-email">
-                    <div className="action-email-label">Draft Follow-Up Email</div>
-                    <div className="action-email-subject">Re: Acme Corp — ROI breakdown as promised</div>
-                    <div className="action-email-body">Hi Alex, great call today. As promised, I've attached the ROI breakdown tailored to your team's 60 calls/week. Based on our data, teams your size typically see a 28% close rate improvement in 90 days…</div>
-                  </div>
-                  <div className="action-crm-row">
-                    <div className="action-crm-btn hs">Push to HubSpot</div>
-                    <div className="action-crm-btn sf">Push to Salesforce</div>
-                  </div>
-                </div>
-              </div>
-            </FadeIn>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURE SHOWCASE 5 — Team Analytics */}
-      <section className="analytics-section">
-        <div className="analytics-i">
-          <div className="analytics-grid">
-            <FadeIn delay={100}>
-              <div className="analytics-demo">
-                <div className="analytics-hdr">
-                  <div style={{ fontFamily:"var(--fd)", fontSize:13, fontWeight:700, color:"var(--ink)", padding:"0 2px 10px", borderBottom:"1px solid var(--card-border)", marginBottom:0 }}>Team Leaderboard</div>
-                </div>
-                <div className="analytics-stats">
-                  <div className="analytics-stat">
-                    <div className="analytics-stat-n" style={{ color:"#0ef5d4" }}>4</div>
-                    <div className="analytics-stat-l">Active reps</div>
-                  </div>
-                  <div className="analytics-stat">
-                    <div className="analytics-stat-n" style={{ color:"#a78bfa" }}>63%</div>
-                    <div className="analytics-stat-l">Team win rate</div>
-                  </div>
-                  <div className="analytics-stat">
-                    <div className="analytics-stat-n" style={{ color:"#fbbf24" }}>78%</div>
-                    <div className="analytics-stat-l">Avg sentiment</div>
-                  </div>
-                </div>
-                <div className="analytics-body">
-                  {repData.map((rep, i) => (
-                    <div key={i} className="rep-row">
-                      <div style={{ width:24,height:24,borderRadius:6,background:`${rep.bg}`,border:`1px solid ${rep.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:rep.color,flexShrink:0 }}>{rep.initials}</div>
-                      <div className="rep-name">{rep.name}</div>
-                      <div className="rep-bar-wrap"><div className="rep-bar" style={{ width:`${rep.winRate}%`, background:rep.color }} /></div>
-                      <div className="rep-pct" style={{ color:rep.color }}>{rep.winRate}%</div>
-                      <div className="rep-calls">{rep.calls} calls</div>
-                    </div>
-                  ))}
-                  <div style={{ marginTop:12, padding:"10px 12px", background:"rgba(139,92,246,.06)", border:"1px solid rgba(139,92,246,.15)", borderRadius:9 }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:"#a78bfa", marginBottom:5, textTransform:"uppercase", letterSpacing:".06em", fontFamily:"var(--fm)" }}>📊 AI Insight</div>
-                    <div style={{ fontSize:11.5, color:"var(--ink2)", lineHeight:1.55 }}>Tunde's win rate dropped 12pts this month. His talk ratio is 68% — above team average. Recommend coaching on active listening.</div>
-                  </div>
-                </div>
-              </div>
-            </FadeIn>
-            <FadeIn>
-              <div>
-                <div className="sec-kicker">Team Analytics</div>
-                <h2 className="sec-title">Full visibility.<br />Zero extra meetings.</h2>
-                <p style={{ fontSize:15, color:"var(--ink2)", lineHeight:1.75, marginBottom:22 }}>
-                  Managers get rep leaderboards, win rate trends, and sentiment benchmarks — without listening to a single recording. The AI surfaces exactly which rep needs coaching on what.
-                </p>
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {["Rep leaderboard with win rate, talk ratio, and sentiment","Weekly team digest with AI coaching recommendations","Compare any two reps side by side","Identify patterns across your top performers and replicate them"].map((t, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, fontSize:14, color:"var(--ink2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink:0 }}><circle cx="7.5" cy="7.5" r="7" fill="rgba(14,245,212,0.1)"/><path d="M4.5 7.5l2 2 4-4" stroke="#0ef5d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      {t}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section className="how" id="how">
-        <div className="how-i">
+      {/* ── INTERACTIVE DEMO ── */}
+      <section className="demo-section" id="demo">
+        <div className="demo-i">
           <FadeIn>
-            <div style={{ textAlign:"center", marginBottom:60 }}>
-              <div className="sec-kicker">How It Works</div>
-              <h2 className="sec-title">Live in 60 seconds</h2>
-              <p style={{ fontSize:16, color:"var(--ink2)", lineHeight:1.7, maxWidth:480, margin:"0 auto" }}>No IT tickets. No complex setup. Most teams are running their first call within 2 minutes.</p>
+            <div className="demo-header">
+              <div className="sec-kicker" style={{ justifyContent: "center" }}>Live Interactive Demo</div>
+              <h2 className="sec-title" style={{ maxWidth: 700, margin: "0 auto 16px", textAlign: "center" }}>
+                Click a feature. Run the demo. See exactly what your reps would see.
+              </h2>
+              <p style={{ fontSize: 16, color: "var(--ink2)", textAlign: "center", maxWidth: 560, margin: "0 auto 40px" }}>
+                This is a real simulation of a Fixsense call room. Hit "Run Demo" to watch an $850k enterprise call play out — with every feature working live.
+              </p>
             </div>
           </FadeIn>
-          <div className="how-steps">
-            <div className="how-connector" />
-            {[
-              { n:"01", title:"Create a meeting room", desc:"Click 'New Meeting', enter a title. Fixsense generates a private room link in under 3 seconds. Share it with your prospect — no account needed.", active:true },
-              { n:"02", title:"Share the link & join", desc:"Your prospect joins without any setup. Join as host and AI starts transcribing both sides immediately — objections flagged live as they happen.", active:false },
-              { n:"03", title:"Get insights, close more", desc:"Full AI summary, coaching clips, priority next action, and deal intelligence ready the moment the call ends. Push to CRM in one click.", active:false },
-            ].map((s, i) => (
-              <FadeIn key={i} delay={i * 100}>
-                <div>
-                  <div className={`how-step-num ${s.active?"done":""}`}>{s.n}</div>
-                  <div className="how-step-title">{s.title}</div>
-                  <div className="how-step-desc">{s.desc}</div>
+          <FadeIn delay={80}>
+            <LiveDemo />
+          </FadeIn>
+          <FadeIn delay={120}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginTop: 28 }}>
+              {[
+                "Pricing objections flagged at the exact second",
+                "Sentiment tracks every turn of the conversation",
+                "One-click push to HubSpot or Salesforce",
+              ].map((t, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(14,245,212,.05)", border: "1px solid rgba(14,245,212,.12)", borderRadius: 20, padding: "5px 14px", fontSize: 12, color: "rgba(14,245,212,.8)" }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5.5" fill="rgba(14,245,212,.1)"/><path d="M3.5 6l1.5 1.5 3.5-3" stroke="#0ef5d4" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  {t}
                 </div>
-              </FadeIn>
-            ))}
-          </div>
+              ))}
+            </div>
+          </FadeIn>
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="testimonials">
-        <div className="testimonials-i">
+      {/* ── BOT vs NATIVE ── */}
+      <section className="bot-section" id="native">
+        <div className="bot-i">
           <FadeIn>
-            <div style={{ marginBottom:56 }}>
-              <div className="sec-kicker">Customer Stories</div>
-              <h2 className="sec-title">Revenue leaders trust Fixsense</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center", marginBottom: 56 }}>
+              <div>
+                <div className="sec-kicker">Why Not Just Use a Bot?</div>
+                <h2 className="sec-title">Bots poison the call before your rep says a word</h2>
+                <p style={{ fontSize: 15, color: "var(--ink2)", lineHeight: 1.72, marginBottom: 16 }}>
+                  Every other conversation intelligence tool relies on a third-party bot joining your Zoom or Meet call. The moment that bot appears, 31% of enterprise prospects disengage. The trust signal is broken before you've earned it.
+                </p>
+                <p style={{ fontSize: 15, color: "var(--ink2)", lineHeight: 1.72 }}>
+                  Fixsense doesn't join your call — <strong style={{ color: "var(--ink)" }}>Fixsense IS your call.</strong> We built native meeting infrastructure on 100ms so there's no bot, no third-party server, no "allow recording" dialog. Your prospect sees a clean meeting link. That's it.
+                </p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[
+                  { label: "Traditional bot (Gong, Chorus)", value: "31% prospect opt-out", bad: true },
+                  { label: "Fixsense native room", value: "0% visible to prospect", bad: false },
+                  { label: "Bot join delay (avg)", value: "45–90 seconds missed", bad: true },
+                  { label: "Fixsense capture starts", value: "Instant — call second 0", bad: false },
+                  { label: "Audio quality (bot re-encoded)", value: "Degraded + transcription lag", bad: true },
+                  { label: "Fixsense audio pipeline", value: "Native WebRTC — zero loss", bad: false },
+                ].map((row, i) => (
+                  <div key={i} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "11px 16px",
+                    borderRadius: 10,
+                    background: row.bad ? "rgba(239,68,68,.04)" : "rgba(14,245,212,.04)",
+                    border: `1px solid ${row.bad ? "rgba(239,68,68,.15)" : "rgba(14,245,212,.12)"}`,
+                    gap: 12,
+                  }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,.55)" }}>{row.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: row.bad ? "#f87171" : "#0ef5d4", flexShrink: 0 }}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </FadeIn>
+          <FadeIn delay={80}>
+            <BotComparison />
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* ── COMPARISON TABLE ── */}
+      <section className="comp-section">
+        <div className="comp-i">
+          <FadeIn>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div className="sec-kicker" style={{ justifyContent: "center" }}>Competitor Comparison</div>
+              <h2 className="sec-title" style={{ textAlign: "center" }}>Fixsense vs everyone else</h2>
+              <p style={{ fontSize: 15, color: "var(--ink2)", textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
+                Enterprise tools charge $100k/yr and deliver post-call analysis. We give you real-time intelligence for a fraction of the cost.
+              </p>
+            </div>
+          </FadeIn>
+          <FadeIn delay={60}>
+            <div style={{ overflowX: "auto" }}>
+              <table className="comp-table">
+                <thead>
+                  <tr>
+                    <th className="comp-th" style={{ textAlign: "left", fontSize: 11, color: "rgba(255,255,255,.35)" }}>Feature</th>
+                    <th className="comp-th fixsense-col">Fixsense</th>
+                    <th className="comp-th" style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>Gong</th>
+                    <th className="comp-th" style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>Chorus</th>
+                    <th className="comp-th" style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>Bot only</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {COMPARISON.map((row, i) => (
+                    <tr key={i} className="comp-tr">
+                      <td className="comp-td">{row.feature}</td>
+                      <td className="comp-td fixsense-col"><Check on={row.fixsense} /></td>
+                      <td className="comp-td"><Check on={row.gong} /></td>
+                      <td className="comp-td"><Check on={row.chorus} /></td>
+                      <td className="comp-td"><Check on={row.bot} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </FadeIn>
+          <FadeIn delay={100}>
+            <div style={{ marginTop: 24, padding: "16px 20px", background: "rgba(14,245,212,.04)", border: "1px solid rgba(14,245,212,.12)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <p style={{ fontSize: 14, color: "var(--ink2)", margin: 0 }}>
+                Gong starts at <strong style={{ color: "#f87171" }}>$100k/year</strong>. Fixsense starts at <strong style={{ color: "#0ef5d4" }}>$18/month</strong> with more real-time features.
+              </p>
+              <Link to="/pricing" className="btn-main" style={{ padding: "10px 22px", fontSize: 13 }}>See Full Pricing</Link>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* ── TESTIMONIALS ── */}
+      <section className="testi-section">
+        <div className="testi-i">
+          <FadeIn>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div className="sec-kicker" style={{ justifyContent: "center" }}>Real Results</div>
+              <h2 className="sec-title" style={{ textAlign: "center" }}>Teams that made the switch</h2>
             </div>
           </FadeIn>
           <div className="testi-grid">
@@ -1130,7 +957,7 @@ export default function LandingPage() {
               <FadeIn key={i} delay={i * 80}>
                 <div className="testi-card">
                   <div className="testi-metric">{t.metric}</div>
-                  <p className="testi-quote">{t.quote}</p>
+                  <p className="testi-quote">"{t.quote}"</p>
                   <div className="testi-author">
                     <div className="testi-av">{t.initials}</div>
                     <div>
@@ -1145,59 +972,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* PLANS */}
-      <section className="plans" id="pricing">
-        <div className="plans-i">
-          <FadeIn>
-            <div style={{ textAlign:"center" }}>
-              <div className="sec-kicker">Pricing</div>
-              <h2 className="sec-title">Minute-based. Transparent.</h2>
-              <p style={{ fontSize:16, color:"var(--ink2)", lineHeight:1.7, maxWidth:480, margin:"0 auto 12px" }}>Pay for exactly how long you record. Start free. Upgrade when you're ready.</p>
-            </div>
-          </FadeIn>
-          <div className="plans-grid">
-            {PLANS.map((p, i) => (
-              <FadeIn key={p.key} delay={i * 70}>
-                <div className={`plan-card ${p.hot?"hot":""}`}>
-                  {p.badge && <div className={`plan-badge ${p.badgeType}`}>{p.badge}</div>}
-                  <div className="plan-name">{p.name}</div>
-                  <div style={{ display:"flex", alignItems:"baseline", gap:2, marginBottom:2 }}>
-                    <div className="plan-price">{p.price}</div>
-                    <div className="plan-period">/mo</div>
-                  </div>
-                  <div className="plan-mins">{p.mins}</div>
-                  <div className="plan-desc">{p.desc}</div>
-                  <div className="plan-div" />
-                  <ul className="plan-feats">
-                    {p.feats.map(f => (
-                      <li key={f} className="plan-feat">
-                        <div style={{ width:15,height:15,borderRadius:"50%",background:p.hot?"rgba(14,245,212,.12)":"rgba(167,139,250,.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1 }}>
-                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                            <path d="M1.5 4l1.5 1.5 3.5-3" stroke={p.hot?"#0ef5d4":"#a78bfa"} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link to={user ? "/dashboard/billing" : "/login"} className={`plan-cta ${p.ctaClass}`}>
-                    {p.ctaText}
-                  </Link>
-                  {p.hot && <div style={{ textAlign:"center", marginTop:8, fontSize:11, color:"var(--ink3)" }}>No credit card required</div>}
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="faq">
+      {/* ── FAQ ── */}
+      <section className="faq-section">
         <div className="faq-i">
           <FadeIn>
-            <div style={{ textAlign:"center", marginBottom:48 }}>
-              <div className="sec-kicker">FAQ</div>
-              <h2 className="sec-title">Common questions</h2>
+            <div style={{ textAlign: "center", marginBottom: 48 }}>
+              <div className="sec-kicker" style={{ justifyContent: "center" }}>Common Questions</div>
+              <h2 className="sec-title" style={{ textAlign: "center", fontSize: "clamp(24px,3.5vw,40px)" }}>Questions we get every day</h2>
             </div>
           </FadeIn>
           <FadeIn delay={60}>
@@ -1205,32 +986,34 @@ export default function LandingPage() {
               <div key={i} className="faq-item">
                 <button className="faq-q" onClick={() => setActiveFaq(activeFaq === i ? null : i)}>
                   {f.q}
-                  <svg className={`faq-chevron ${activeFaq===i?"open":""}`} width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <svg className={`faq-chev ${activeFaq === i ? "op" : ""}`} width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <path d="M3.5 5.5l3.5 3.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-                <div className={`faq-a ${activeFaq===i?"open":""}`}><p>{f.a}</p></div>
+                <div className={`faq-a ${activeFaq === i ? "op" : ""}`}><p>{f.a}</p></div>
               </div>
             ))}
           </FadeIn>
         </div>
       </section>
 
-      {/* FINAL CTA */}
+      {/* ── FINAL CTA ── */}
       <section className="final">
         <div className="final-orb" />
         <div className="final-i">
           <FadeIn>
-            <h2 className="final-h">Start closing more deals<br /><span className="c">today.</span></h2>
-            <p className="final-p">Every call you run without Fixsense is a call you'll never fully understand. Start free — no credit card, no setup, just insights.</p>
-            <div className="final-btns">
+            <h2 className="final-h">Stop running sales calls on gut feeling.</h2>
+            <p className="final-p">The next deal your rep loses to an unhandled objection could have been saved. Start with 30 free minutes — no card, no bot, no Zoom required.</p>
+            <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
               <Link to={user ? "/dashboard" : "/login"} className="btn-main">
-                {user ? "Open Dashboard" : "Start for free"}
+                Start for free — no card
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </Link>
-              <Link to="/pricing" className="btn-sec">View pricing</Link>
+              <Link to="/pricing" className="btn-outline">View full pricing</Link>
             </div>
-            <div className="final-note">Free plan · 30 min/month · No credit card required</div>
+            <p style={{ marginTop: 16, fontSize: 12, color: "var(--mu)" }}>
+              30 min/month free · No bot joins your calls · Native meeting room included
+            </p>
           </FadeIn>
         </div>
       </section>
@@ -1241,17 +1024,17 @@ export default function LandingPage() {
           <div className="footer-top">
             <div>
               <div className="footer-brand-logo"><Logo size={22} /><span className="footer-brand-name">Fixsense</span></div>
-              <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams.</p>
+              <p className="footer-brand-desc">Real-time AI sales intelligence. No bots. No Zoom dependency. Just your rep and the deal.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[["#features","Features"],["#pricing","Pricing"],["/integrations","Integrations"],["/changelog","Changelog"]].map(([h,l])=>(
+              {[["#demo","Live Demo"],["#native","Why Native"],["/pricing","Pricing"],["/changelog","Changelog"]].map(([h,l])=>(
                 <a key={h} href={h} className="footer-link">{l}</a>
               ))}
             </div>
             <div>
               <div className="footer-col-title">Company</div>
-              {[["/about","About"],["/blog","Blog"],["/careers","Careers"],["/testimonials","Stories"]].map(([h,l])=>(
+              {[["/about","About"],["/blog","Blog"],["/testimonials","Stories"],["/contact","Contact"]].map(([h,l])=>(
                 <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
@@ -1264,7 +1047,7 @@ export default function LandingPage() {
           </div>
           <div className="footer-bottom">
             <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
-            <div className="footer-legal-links">
+            <div style={{ display: "flex", gap: 18 }}>
               <Link to="/privacy" className="footer-ll">Privacy</Link>
               <Link to="/terms" className="footer-ll">Terms</Link>
               <Link to="/security" className="footer-ll">Security</Link>
