@@ -32,6 +32,7 @@ import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from '@/components/PWABanner';
 import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
+import changelogpage from "./pages/changelogpage";
 import {
   PrivacyPage,
   TermsPage,
@@ -40,8 +41,7 @@ import {
 } from "./pages/LegalPages";
 
 import {
-  IntegrationsPage,
-  ChangelogPage,
+  IntegrationsPage
   AboutPage,
   BlogPage,
   CareersPage,
@@ -71,7 +71,7 @@ const App = () => {
 
               {/* Marketing Pages */}
               <Route path="/integrations" element={<IntegrationsPage />} />
-              <Route path="/changelog" element={<ChangelogPage />} />
+              <Route path="/changelog" element={<changelogpage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/careers" element={<CareersPage />} />
