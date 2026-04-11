@@ -563,12 +563,7 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-orb1" />
         <div className="hero-orb2" />
-        <FadeIn delay={40}>
-          <div className="hero-pill">
-            <div className="hero-pill-dot" />
-            AI-powered sales call intelligence
-          </div>
-        </FadeIn>
+        
         <FadeIn delay={90}>
           <h1 className="hero-h">
             Every sales call.<br />
