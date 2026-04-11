@@ -278,7 +278,7 @@ function LiveCallSimulator() {
     });
     scheduleNextLine(selected);
     return () => clearAll();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, selected]);
 
   function scheduleNextLine(sc: Scenario) {
@@ -853,7 +853,11 @@ export default function LandingPage() {
             <span className="nav-logo-text">Fixsense</span>
           </Link>
           <div className="nav-links">
-            {NAV.map(l => <a key={l.label} href={l.href} className="nav-link">{l.label}</a>)}
+            {NAV.map(l => (
+              l.href.startsWith("#")
+                ? <a key={l.label} href={l.href} className="nav-link">{l.label}</a>
+                : <Link key={l.label} to={l.href} className="nav-link">{l.label}</Link>
+            ))}
           </div>
           <div className="nav-actions">
             {user ? (
@@ -895,7 +899,9 @@ export default function LandingPage() {
         </div>
         <nav className="drawer-nav">
           {NAV.map(l => (
-            <a key={l.label} href={l.href} className="drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
+            l.href.startsWith("#")
+              ? <a key={l.label} href={l.href} className="drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</a>
+              : <Link key={l.label} to={l.href} className="drawer-link" onClick={() => setMobileOpen(false)}>{l.label}</Link>
           ))}
         </nav>
         <div className="drawer-footer">
@@ -913,8 +919,9 @@ export default function LandingPage() {
       {/* HERO */}
       <section className="hero">
         <div className="hero-pattern" />
+
         
-        <FadeIn delay={60}>
+        <FadeIn delay={80}>
           <h1 className="hero-title">
             Close More Deals With <span className="blue">AI-Powered</span> Sales Call Intelligence
           </h1>
@@ -1219,33 +1226,37 @@ export default function LandingPage() {
               </div>
               <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams. Capture, analyze, and act on every conversation.</p>
             </div>
+            {/* FIX: Product column — use Link for internal routes, a for hash anchors */}
             <div>
-      <div className="footer-col-title">Product</div>
-      {[
-        { label: "Features",     href: "#features"       },
-      { label: "Pricing",      href: "/pricing"        },
-      { label: "Integrations", href: "/Integrations"               },
-      { label: "Changelog",    href: "/Changelog"               },
-      ].map(l => (
-      <a key={l.label} href={l.href} className="footer-link">{l.label}</a>
-     ))}
-   </div>
-   
-   
-   <div>
-     <div className="footer-col-title">Legal</div>
-     <Link to="/privacy"  className="footer-link">Privacy Policy</Link>
-      <Link to="/terms"    className="footer-link">Terms of Service</Link>
-     <Link to="/security" className="footer-link">Security</Link>
-     <Link to="/contact"  className="footer-link">Contact</Link>
-   </div>
+              <div className="footer-col-title">Product</div>
+              <a href="#features" className="footer-link">Features</a>
+              <Link to="/pricing" className="footer-link">Pricing</Link>
+              <Link to="/integrations" className="footer-link">Integrations</Link>
+              <Link to="/changelog" className="footer-link">Changelog</Link>
+            </div>
+            {/* FIX: Company column — was missing Link components */}
+            <div>
+              <div className="footer-col-title">Company</div>
+              <Link to="/about" className="footer-link">About</Link>
+              <Link to="/blog" className="footer-link">Blog</Link>
+              <Link to="/careers" className="footer-link">Careers</Link>
+              <Link to="/press" className="footer-link">Press</Link>
+            </div>
+            {/* FIX: Legal column */}
+            <div>
+              <div className="footer-col-title">Legal</div>
+              <Link to="/privacy" className="footer-link">Privacy Policy</Link>
+              <Link to="/terms" className="footer-link">Terms of Service</Link>
+              <Link to="/security" className="footer-link">Security</Link>
+              <Link to="/contact" className="footer-link">Contact</Link>
+            </div>
           </div>
           <div className="footer-bottom">
             <span className="footer-legal">© {new Date().getFullYear()} Fixsense, Inc. All rights reserved.</span>
             <div className="footer-legal-links">
-              <a href="/privacy" className="footer-legal-link">Privacy</a>
-              <a href="/terms" className="footer-legal-link">Terms</a>
-              <a href="/security" className="footer-legal-link">Security</a>
+              <Link to="/privacy" className="footer-legal-link">Privacy</Link>
+              <Link to="/terms" className="footer-legal-link">Terms</Link>
+              <Link to="/security" className="footer-legal-link">Security</Link>
             </div>
           </div>
         </div>
