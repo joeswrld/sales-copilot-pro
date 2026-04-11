@@ -385,17 +385,33 @@ export default function SettingsPage() {
     return () => window.removeEventListener("message", handler);
   }, [qc]);
 
-  // ── Check URL params (redirect flow fallback) ─────────────────────
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const connected = params.get("connected");
-    if (connected) {
-      qc.invalidateQueries({ queryKey: ["settings-integrations"] });
-      const name = INTEGRATIONS.find(p => p.id === connected)?.name ?? connected;
-      toast.success(`${name} connected successfully!`);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [qc]);
+  // ── Check URL params (redirect flow) ─────────────────────────────
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const connected = params.get("connected");
+  const error     = params.get("error");
+
+  if (connected) {
+    qc.invalidateQueries({ queryKey: ["settings-integrations"] });
+    qc.invalidateQueries({ queryKey: ["calendar-integration"] });
+    qc.invalidateQueries({ queryKey: ["upcoming-meetings"] });
+    const name = INTEGRATIONS.find(p => p.id === connected)?.name ?? connected;
+    toast.success(`${name} connected successfully! 🎉`);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+
+  if (error) {
+    const messages: Record<string, string> = {
+      oauth_not_configured: "OAuth credentials not configured. Contact support.",
+      token_exchange_failed: "Authorization failed. Please try again.",
+      missing_code: "Authorization code missing. Please try again.",
+      invalid_state: "Invalid OAuth state. Please try again.",
+      access_denied: "Access was denied. Please try again.",
+    };
+    toast.error(messages[error] ?? `Connection failed: ${error}`);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+}, [qc]);
 
   // ── Preferences ───────────────────────────────────────────────────
   const anyCrmConnected =
