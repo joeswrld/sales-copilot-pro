@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
+import UpgradeModal from "@/components/plan/UpgradeModal";
 
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
@@ -51,6 +53,193 @@ import {
 
 const queryClient = new QueryClient();
 
+// Inner app — has access to AuthContext so PlanEnforcementProvider can call useAuth inside
+function AppRoutes() {
+  return (
+    <PlanEnforcementProvider>
+      {/* Global upgrade modal — rendered once at root level */}
+      <UpgradeModal />
+
+      <BrowserRouter>
+        <DebugInspector />
+        <PWABanner />
+
+        <Routes>
+          {/* Public */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/testimonials" element={<TestimonialsPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+          {/* Marketing */}
+          <Route path="/integrations" element={<IntegrationsPage />} />
+          <Route path="/changelog" element={<Changelogpage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/careers" element={<CareersPage />} />
+          <Route path="/press" element={<PressPage />} />
+
+          {/* Legal */}
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/security" element={<SecurityPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+
+          {/* OAuth */}
+          <Route
+            path="/auth/google/callback"
+            element={<GoogleCalendarCallback />}
+          />
+
+          {/* Protected */}
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardHome />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/calls"
+            element={
+              <ProtectedRoute>
+                <CallsList />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/calls/:id"
+            element={
+              <ProtectedRoute>
+                <CallDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/live"
+            element={
+              <ProtectedRoute>
+                <LiveCall />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/live/:id"
+            element={
+              <ProtectedRoute>
+                <LiveMeeting />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/deals"
+            element={
+              <ProtectedRoute>
+                <DealsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/analytics"
+            element={
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/team"
+            element={
+              <ProtectedRoute>
+                <TeamPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/messages"
+            element={
+              <ProtectedRoute>
+                <MessagesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/integrations"
+            element={
+              <ProtectedRoute>
+                <IntegrationsDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/billing"
+            element={
+              <ProtectedRoute>
+                <BillingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard/coach"
+            element={
+              <ProtectedRoute>
+                <AIChatPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Public dynamic */}
+          <Route path="/clip/:shareToken" element={<ClipSharePage />} />
+          <Route path="/meet/:roomName" element={<MeetingJoin />} />
+
+          {/* Fallback */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </PlanEnforcementProvider>
+  );
+}
+
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -58,183 +247,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-
-          <BrowserRouter>
-            <DebugInspector />
-            <PWABanner />
-
-            <Routes>
-              {/* Public */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/testimonials" element={<TestimonialsPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-
-              {/* Marketing */}
-              <Route path="/integrations" element={<IntegrationsPage />} />
-              <Route path="/changelog" element={<Changelogpage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/blog" element={<BlogPage />} />
-              <Route path="/careers" element={<CareersPage />} />
-              <Route path="/press" element={<PressPage />} />
-
-              {/* Legal */}
-              <Route path="/privacy" element={<PrivacyPage />} />
-              <Route path="/terms" element={<TermsPage />} />
-              <Route path="/security" element={<SecurityPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-
-              {/* OAuth */}
-              <Route
-                path="/auth/google/callback"
-                element={<GoogleCalendarCallback />}
-              />
-
-              {/* Protected */}
-              <Route
-                path="/onboarding"
-                element={
-                  <ProtectedRoute>
-                    <OnboardingPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardHome />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/calls"
-                element={
-                  <ProtectedRoute>
-                    <CallsList />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/calls/:id"
-                element={
-                  <ProtectedRoute>
-                    <CallDetail />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/live"
-                element={
-                  <ProtectedRoute>
-                    <LiveCall />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/live/:id"
-                element={
-                  <ProtectedRoute>
-                    <LiveMeeting />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/deals"
-                element={
-                  <ProtectedRoute>
-                    <DealsPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/analytics"
-                element={
-                  <ProtectedRoute>
-                    <Analytics />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/team"
-                element={
-                  <ProtectedRoute>
-                    <TeamPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/messages"
-                element={
-                  <ProtectedRoute>
-                    <MessagesPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/settings"
-                element={
-                  <ProtectedRoute>
-                    <SettingsPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/integrations"
-                element={
-                  <ProtectedRoute>
-                    <IntegrationsDashboardPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/profile"
-                element={
-                  <ProtectedRoute>
-                    <ProfilePage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/billing"
-                element={
-                  <ProtectedRoute>
-                    <BillingPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/coach"
-                element={
-                  <ProtectedRoute>
-                    <AIChatPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Public dynamic */}
-              <Route path="/clip/:shareToken" element={<ClipSharePage />} />
-              <Route path="/meet/:roomName" element={<MeetingJoin />} />
-
-              {/* Fallback */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+          <AppRoutes />
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
