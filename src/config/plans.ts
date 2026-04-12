@@ -31,8 +31,8 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
     calls_limit: 5,
     features: [
       "30 minutes of calls/month",
-      "Basic AI transcription",
-      "1 AI summary/month",
+      " AI transcription",
+      "Live call rooms",
       "Solo use only",
     ],
   },
@@ -49,7 +49,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
       "AI summaries + action items",
       "Basic insights",
       "Up to 3 team members",
-      "Zoom & Google Meet",
+      "Objection detection",
     ],
   },
   growth: {
@@ -85,7 +85,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
       "Advanced analytics + leaderboards",
       "Deal intelligence AI",
       "Rep coaching dashboards",
-      "API access",
+      "Action Layer + CRM push",
       "Dedicated CSM",
     ],
   },
