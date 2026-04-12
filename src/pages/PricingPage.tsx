@@ -463,8 +463,8 @@ export default function PricingPage() {
                     {[
                       { n: "Free", p: "$0/mo", g: false },
                       { n: "Starter", p: "$18/mo", g: false },
-                      { n: "Growth", p: "$49/mo", g: true },
-                      { n: "Scale", p: "$99/mo", g: false },
+                      { n: "Growth", p: "$60/mo", g: true },
+                      { n: "Scale", p: "$160/mo", g: false },
                     ].map(col => (
                       <th key={col.n} className={`mth ${col.g ? "mtd-gbg" : ""}`}>
                         {col.g && <div className="mth-top" />}
