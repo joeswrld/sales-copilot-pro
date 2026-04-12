@@ -1,3 +1,9 @@
+/**
+ * TeamCoachingTab.tsx — with plan enforcement
+ * Coaching Clips tab is gated behind Growth plan.
+ * Add the gate around the CoachingClipsTab render.
+ */
+
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +22,8 @@ import { useCoaching, useTeamCalls, type TeamCall } from "@/hooks/useCoaching";
 import { useTeam } from "@/hooks/useTeam";
 import { useAuth } from "@/contexts/AuthContext";
 import CoachingClipsTab from "@/components/coaching/CoachingClipsTab";
+import { LockedCard } from "@/components/plan/PlanGate";
+import { usePlanEnforcement } from "@/contexts/PlanEnforcementContext";
 import { format, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -110,7 +118,6 @@ function MeetingCoachingView({
 
   return (
     <div className="space-y-6">
-      {/* Back + Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
@@ -136,7 +143,6 @@ function MeetingCoachingView({
         )}
       </div>
 
-      {/* Summary */}
       {call.summary?.summary && (
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
@@ -162,24 +168,10 @@ function MeetingCoachingView({
                 </ul>
               </div>
             )}
-            {call.summary.key_decisions && call.summary.key_decisions.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs font-semibold text-foreground mb-1">Key Decisions</p>
-                <ul className="space-y-1">
-                  {call.summary.key_decisions.map((decision, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                      <span className="text-primary mt-0.5">•</span>
-                      {decision}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Coaching Comments */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
@@ -193,7 +185,6 @@ function MeetingCoachingView({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Comment input */}
           <div className="space-y-2">
             {replyTo && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded px-2 py-1">
@@ -228,7 +219,6 @@ function MeetingCoachingView({
             </div>
           </div>
 
-          {/* Comments list */}
           {commentsLoading ? (
             <div className="flex justify-center py-6">
               <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -279,7 +269,6 @@ function MeetingCoachingView({
                         </div>
                       </div>
 
-                      {/* Replies */}
                       {commentReplies.length > 0 && (
                         <div className="ml-10 space-y-2 border-l-2 border-border pl-3">
                           {commentReplies.map(reply => {
@@ -332,7 +321,7 @@ export default function TeamCoachingTab() {
   const [view, setView] = useState<"meetings" | "clips">("meetings");
 
   const { teamCalls, teamCallsLoading } = useTeamCalls();
-  const { members } = useTeam();
+  const { hasFeature } = usePlanEnforcement();
 
   // Filters
   const [memberFilter, setMemberFilter] = useState<string>("all");
@@ -368,7 +357,6 @@ export default function TeamCoachingTab() {
     );
   }
 
-  // Unique members from calls
   const callMembers = Array.from(
     new Map(
       teamCalls.map(c => [
@@ -428,10 +416,34 @@ export default function TeamCoachingTab() {
           )}
         >
           Clips Library
+          {/* Show lock badge if not on Growth+ */}
+          {!hasFeature("coaching") && (
+            <span style={{
+              fontSize: 9, fontWeight: 700,
+              padding: "1px 5px", borderRadius: 20,
+              background: "rgba(14,245,212,.1)", color: "#0ef5d4",
+              border: "1px solid rgba(14,245,212,.2)",
+              marginLeft: 6,
+            }}>
+              Growth
+            </span>
+          )}
         </button>
       </div>
 
-      {view === "clips" && <CoachingClipsTab />}
+      {/* Coaching Clips — gated to Growth+ */}
+      {view === "clips" && (
+        hasFeature("coaching")
+          ? <CoachingClipsTab />
+          : (
+            <div className="py-8">
+              <LockedCard
+                feature="coaching"
+                description="Create shareable coaching clips from call transcripts. Tag best practices, objection handling moments, and use them to onboard and coach your team."
+              />
+            </div>
+          )
+      )}
 
       {view === "meetings" && (
         <>
