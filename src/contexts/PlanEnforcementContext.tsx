@@ -2,12 +2,12 @@
  * PlanEnforcementContext.tsx
  *
  * Central plan enforcement layer.
- * Wraps the app and provides:
- *  - hasFeature(key) → boolean
- *  - getPlanLimit(key) → number | string
- *  - canStartCall() → boolean
- *  - minuteData → usage details
- *  - upgradePrompt(feature) → opens upgrade modal
+ * Feature gates match the pricing table exactly:
+ *
+ * free:    live_calls, transcription, summaries
+ * starter: + objection_detection, sentiment, engagement, team_messages, crm_push, api_access
+ * growth:  + deal_rooms, coaching, analytics, leaderboards
+ * scale:   + dedicated_csm
  */
 
 import {
@@ -18,7 +18,6 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import { useMinuteUsage } from "@/hooks/useMinuteUsage";
 import { PLAN_CONFIG, PLAN_ORDER } from "@/config/plans";
@@ -42,6 +41,11 @@ export type PlanFeatureKey =
   | "api_access";
 
 // Feature → minimum plan index (0=free, 1=starter, 2=growth, 3=scale)
+// Matches pricing table exactly:
+// free: live_calls, transcription, summaries
+// starter: objection_detection, sentiment, engagement, team_messages, crm_push, api_access
+// growth: deal_rooms, coaching, analytics, leaderboards
+// scale: dedicated_csm
 const FEATURE_MIN_PLAN: Record<PlanFeatureKey, number> = {
   live_calls:          0, // free+
   transcription:       0, // free+
@@ -102,13 +106,11 @@ interface UpgradeModalState {
 }
 
 interface PlanEnforcementContextValue {
-  // Feature checks
   hasFeature: (feature: PlanFeatureKey) => boolean;
   planKey: string;
   planName: string;
   planIndex: number;
 
-  // Minute / call limits
   canStartCall: () => boolean;
   minutesUsed: number;
   minuteLimit: number;
@@ -118,10 +120,8 @@ interface PlanEnforcementContextValue {
   usagePct: number;
   isUnlimited: boolean;
 
-  // Team limits
   teamMembersLimit: number;
 
-  // Upgrade prompt
   upgradeModal: UpgradeModalState;
   openUpgradeModal: (feature: PlanFeatureKey, customMessage?: string) => void;
   closeUpgradeModal: () => void;
@@ -156,7 +156,7 @@ export function PlanEnforcementProvider({ children }: { children: ReactNode }) {
   );
 
   const canStartCall = useCallback((): boolean => {
-    if (!usage) return true; // optimistic while loading
+    if (!usage) return true;
     return !usage.isAtLimit;
   }, [usage]);
 
@@ -206,15 +206,12 @@ export function PlanEnforcementProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export function usePlanEnforcement() {
   const ctx = useContext(PlanEnforcementContext);
   if (!ctx) throw new Error("usePlanEnforcement must be used inside PlanEnforcementProvider");
   return ctx;
 }
 
-/** Convenience: returns whether a specific feature is available */
 export function useFeature(feature: PlanFeatureKey) {
   const { hasFeature, openUpgradeModal } = usePlanEnforcement();
   return {
