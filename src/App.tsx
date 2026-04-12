@@ -53,14 +53,14 @@ import {
 
 const queryClient = new QueryClient();
 
-// Inner app — has access to AuthContext so PlanEnforcementProvider can call useAuth inside
+// BrowserRouter must be the outermost wrapper so that
+// PlanEnforcementProvider and UpgradeModal can use useNavigate.
 function AppRoutes() {
   return (
-    <PlanEnforcementProvider>
-      {/* Global upgrade modal — rendered once at root level */}
-      <UpgradeModal />
-
-      <BrowserRouter>
+    <BrowserRouter>
+      <PlanEnforcementProvider>
+        {/* Global upgrade modal — rendered once at root level */}
+        <UpgradeModal />
         <DebugInspector />
         <PWABanner />
 
@@ -235,8 +235,8 @@ function AppRoutes() {
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </BrowserRouter>
-    </PlanEnforcementProvider>
+      </PlanEnforcementProvider>
+    </BrowserRouter>
   );
 }
 
