@@ -283,7 +283,7 @@ export default function PricingPage() {
       mins: "30 min/month", tagline: "Try without a card",
       ctaText: "Start Free", ctaClass: "cta-ghost",
       cardClass: "", priceClass: "", minsClass: "",
-      feats: ["Live call rooms", "Basic transcription", "1 AI summary/month", "Solo use"],
+      feats: ["Live call rooms", "Basic transcription", " AI summary", "Solo use"],
     },
     {
       key: "starter", name: "Starter", price: "$18", badge: null, badgeClass: "badge-plain",
