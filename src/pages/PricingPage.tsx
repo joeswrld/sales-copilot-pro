@@ -64,8 +64,8 @@ const FAQS = [
 const FEATURE_MATRIX = [
   { label: "Minutes / month",       free: "30 min",    starter: "300 min",  growth: "1,500 min", scale: "5,000 min" },
   { label: "Live calls",            free: true,        starter: true,       growth: true,        scale: true },
-  { label: "AI transcription",      free: "Basic",     starter: true,       growth: true,        scale: true },
-  { label: "AI call summaries",     free: "1/month",   starter: true,       growth: true,        scale: true },
+  { label: "AI transcription",      free: "true",     starter: true,       growth: true,        scale: true },
+  { label: "AI call summaries",     free: "true",   starter: true,       growth: true,        scale: true },
   { label: "Objection detection",   free: false,       starter: false,      growth: true,        scale: true },
   { label: "Sentiment analysis",    free: false,       starter: false,      growth: true,        scale: true },
   { label: "Engagement scoring",    free: false,       starter: false,      growth: true,        scale: true },
