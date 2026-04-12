@@ -22,6 +22,8 @@ import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { usePlanEnforcement } from "@/contexts/PlanEnforcementContext";
+import { LockedCard } from "@/components/plan/PlanGate";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MEETING_TYPE_LABELS: Record<string, string> = {
@@ -91,6 +93,7 @@ type MobileTab = "transcript" | "insights";
 
 function MobileView({ transcripts, objections, topics, talkRatio, engagementScore, questionsCount, elapsed, formatTime, transcriptEndRef }: any) {
   const [tab, setTab] = useState<MobileTab>("transcript");
+  const { hasFeature } = usePlanEnforcement();
 
   return (
     <div className="flex flex-col h-full gap-2">
@@ -148,10 +151,10 @@ function MobileView({ transcripts, objections, topics, talkRatio, engagementScor
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "Engagement", val: `${engagementScore}%` },
                 { label: "Questions", val: questionsCount },
-                { label: "Objections", val: objections.length },
                 { label: "Duration", val: formatTime(elapsed) },
+                ...(hasFeature("engagement") ? [{ label: "Engagement", val: `${engagementScore}%` }] : []),
+                ...(hasFeature("objection_detection") ? [{ label: "Objections", val: objections.length }] : []),
               ].map(({ label, val }) => (
                 <div key={label} className="glass rounded-xl p-3 text-center">
                   <div className="text-xl font-bold font-display">{val}</div>
@@ -159,21 +162,32 @@ function MobileView({ transcripts, objections, topics, talkRatio, engagementScor
                 </div>
               ))}
             </div>
+
+            {/* Engagement — gated (mobile) */}
+            {!hasFeature("engagement") && (
+              <LockedCard feature="engagement" compact />
+            )}
+
+            {/* Objections — gated (mobile) */}
             {objections.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Objections</p>
-                {objections.map((obj: any) => (
-                  <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
-                    <p className="font-medium text-destructive/90">{obj.objection_type}</p>
-                    {obj.suggestion && (
-                      <div className="flex items-start gap-1.5 text-muted-foreground mt-1">
-                        <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                        {obj.suggestion}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              hasFeature("objection_detection") ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Objections</p>
+                  {objections.map((obj: any) => (
+                    <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
+                      <p className="font-medium text-destructive/90">{obj.objection_type}</p>
+                      {obj.suggestion && (
+                        <div className="flex items-start gap-1.5 text-muted-foreground mt-1">
+                          <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
+                          {obj.suggestion}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <LockedCard feature="objection_detection" compact />
+              )
             )}
           </div>
         )}
@@ -189,6 +203,7 @@ export default function LiveMeeting() {
   const isMobile = useIsMobile();
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
+  const { hasFeature } = usePlanEnforcement();
 
   const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } =
     useLiveCall({ onCallEnded: () => setStatus("available") });
@@ -355,7 +370,7 @@ export default function LiveMeeting() {
         {/* Streaming status */}
         <StreamingBanner transcriptCount={transcripts.length} />
 
-        {/* Main 2-column layout (transcript + insights, no embedded video since 100ms is in separate window/tab) */}
+        {/* Main 2-column layout */}
         <div className="grid grid-cols-12 gap-4 flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 220px)" }}>
 
           {/* Transcript — 7 cols */}
@@ -390,7 +405,7 @@ export default function LiveMeeting() {
           {/* Insights — 5 cols */}
           <div className="col-span-5 flex flex-col gap-3 overflow-y-auto min-h-0 pr-0.5">
 
-            {/* Talk ratio */}
+            {/* Talk ratio — available to all plans */}
             <InsightCard title="Talk Ratio" icon={<BarChart3 className="w-3 h-3" />}>
               <div className="flex justify-between text-xs mb-1.5">
                 <span className="text-primary">You {talkRatio.rep}%</span>
@@ -405,33 +420,37 @@ export default function LiveMeeting() {
               )}
             </InsightCard>
 
-            {/* Engagement */}
-            <InsightCard title="Engagement" icon={<TrendingUp className="w-3 h-3" />}>
-              <div className="flex items-end gap-2 mb-1.5">
-                <span className="text-3xl font-bold font-display text-primary">{engagementScore}</span>
-                <span className="text-xs text-muted-foreground mb-1">/ 100</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-muted">
-                <div
-                  className={cn("h-1.5 rounded-full transition-all duration-1000",
-                    engagementScore >= 70 ? "bg-green-500" : engagementScore >= 40 ? "bg-primary" : "bg-red-500"
-                  )}
-                  style={{ width: `${engagementScore}%` }}
-                />
-              </div>
-              {engagementScore < 40 && transcripts.length > 3 && (
-                <p className="text-xs text-orange-400 mt-2">💡 Try asking an open-ended question</p>
-              )}
-            </InsightCard>
+            {/* Engagement — gated behind Starter+ */}
+            {hasFeature("engagement") ? (
+              <InsightCard title="Engagement" icon={<TrendingUp className="w-3 h-3" />}>
+                <div className="flex items-end gap-2 mb-1.5">
+                  <span className="text-3xl font-bold font-display text-primary">{engagementScore}</span>
+                  <span className="text-xs text-muted-foreground mb-1">/ 100</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className={cn("h-1.5 rounded-full transition-all duration-1000",
+                      engagementScore >= 70 ? "bg-green-500" : engagementScore >= 40 ? "bg-primary" : "bg-red-500"
+                    )}
+                    style={{ width: `${engagementScore}%` }}
+                  />
+                </div>
+                {engagementScore < 40 && transcripts.length > 3 && (
+                  <p className="text-xs text-orange-400 mt-2">💡 Try asking an open-ended question</p>
+                )}
+              </InsightCard>
+            ) : (
+              <LockedCard feature="engagement" compact />
+            )}
 
-            {/* Stats */}
+            {/* Call Stats — available to all plans */}
             <InsightCard title="Call Stats" icon={<Zap className="w-3 h-3" />}>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { v: questionsCount, l: "Questions" },
-                  { v: objections.length, l: "Objections" },
                   { v: topics.length, l: "Topics" },
                   { v: formatTime(elapsed), l: "Duration" },
+                  ...(hasFeature("objection_detection") ? [{ v: objections.length, l: "Objections" }] : []),
                 ].map(({ v, l }) => (
                   <div key={l}>
                     <div className="text-base font-bold font-display">{v}</div>
@@ -441,26 +460,30 @@ export default function LiveMeeting() {
               </div>
             </InsightCard>
 
-            {/* Objections */}
+            {/* Objections — gated behind Starter+ */}
             {objections.length > 0 && (
-              <InsightCard title={`Objections (${objections.length})`} icon={<AlertCircle className="w-3 h-3 text-destructive" />}>
-                <div className="space-y-2.5 max-h-40 overflow-y-auto">
-                  {objections.map((obj) => (
-                    <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
-                      <p className="font-medium text-destructive/90">{obj.objection_type}</p>
-                      {obj.suggestion && (
-                        <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
-                          <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                          {obj.suggestion}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </InsightCard>
+              hasFeature("objection_detection") ? (
+                <InsightCard title={`Objections (${objections.length})`} icon={<AlertCircle className="w-3 h-3 text-destructive" />}>
+                  <div className="space-y-2.5 max-h-40 overflow-y-auto">
+                    {objections.map((obj) => (
+                      <div key={obj.id} className="rounded-lg p-2.5 text-xs bg-destructive/5 border border-destructive/15">
+                        <p className="font-medium text-destructive/90">{obj.objection_type}</p>
+                        {obj.suggestion && (
+                          <div className="flex items-start gap-1.5 text-muted-foreground mt-1.5">
+                            <Lightbulb className="w-3 h-3 text-accent shrink-0 mt-0.5" />
+                            {obj.suggestion}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </InsightCard>
+              ) : (
+                <LockedCard feature="objection_detection" compact />
+              )
             )}
 
-            {/* Topics */}
+            {/* Topics — available to all plans */}
             {topics.length > 0 && (
               <InsightCard title="Key Topics" icon={<Radio className="w-3 h-3" />}>
                 <div className="flex flex-wrap gap-1.5">
@@ -473,7 +496,7 @@ export default function LiveMeeting() {
               </InsightCard>
             )}
 
-            {/* Discovery tips */}
+            {/* Discovery tips — available to all plans */}
             {meetingType === "discovery" && (
               <InsightCard title="Discovery Tips" icon={<Target className="w-3 h-3 text-primary" />}>
                 <button
