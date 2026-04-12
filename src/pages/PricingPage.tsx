@@ -72,10 +72,10 @@ const FEATURE_MATRIX = [
   { label: "Deal rooms & deals AI", free: false,       starter: false,      growth: true,        scale: true },
   { label: "Coaching clips",        free: false,       starter: false,      growth: true,        scale: true },
   { label: "Team members",          free: "Solo",      starter: "Up to 3",  growth: "Up to 10",  scale: "Unlimited" },
-  { label: "Team messages",         free: false,       starter: false,      growth: true,        scale: true },
+  { label: "Team messages",         free: false,       starter: true,      growth: true,        scale: true },
   { label: "Advanced analytics",    free: false,       starter: false,      growth: false,       scale: true },
   { label: "Rep leaderboards",      free: false,       starter: false,      growth: false,       scale: true },
-  { label: "API access",            free: false,       starter: false,      growth: false,       scale: true },
+  { label: "Action Layer + CRM push",            free: false,       starter: true,      growth: true,       scale: true },
   { label: "Dedicated CSM",         free: false,       starter: false,      growth: false,       scale: true },
 ];
 
@@ -293,18 +293,18 @@ export default function PricingPage() {
       feats: ["Everything in Free", "Full AI summaries", "Objection detection", "Up to 3 members"],
     },
     {
-      key: "growth", name: "Growth", price: "$49", badge: "Most Popular", badgeClass: "badge-growth",
+      key: "growth", name: "Growth", price: "$60", badge: "Most Popular", badgeClass: "badge-growth",
       mins: "1,500 min/month (25h)", tagline: "Best for growing teams",
       ctaText: "Start Free Trial", ctaClass: "cta-fill",
       cardClass: "plan-card-growth", priceClass: "plan-price-growth", minsClass: "",
       feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"],
     },
     {
-      key: "scale", name: "Scale", price: "$99", badge: "Enterprise", badgeClass: "badge-scale",
+      key: "scale", name: "Scale", price: "$120", badge: "Enterprise", badgeClass: "badge-scale",
       mins: "5,000 min/month (83h)", tagline: "Enterprise sales orgs",
       ctaText: "Get Scale", ctaClass: "cta-purple",
       cardClass: "plan-card-scale", priceClass: "", minsClass: "plan-mins-scale",
-      feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "API access", "Unlimited members"],
+      feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "Action Layer + CRM push", "Unlimited members"],
     },
   ];
 
