@@ -73,8 +73,8 @@ const FEATURE_MATRIX = [
   { label: "Coaching clips",        free: false,       starter: false,      growth: true,        scale: true },
   { label: "Team members",          free: "Solo",      starter: "Up to 3",  growth: "Up to 10",  scale: "Unlimited" },
   { label: "Team messages",         free: false,       starter: true,      growth: true,        scale: true },
-  { label: "Advanced analytics",    free: false,       starter: false,      growth: false,       scale: true },
-  { label: "Rep leaderboards",      free: false,       starter: false,      growth: false,       scale: true },
+  { label: "Advanced analytics",    free: false,       starter: false,      growth: true,       scale: true },
+  { label: "Rep leaderboards",      free: false,       starter: false,      growth: true,       scale: true },
   { label: "Action Layer + CRM push",            free: false,       starter: true,      growth: true,       scale: true },
   { label: "Dedicated CSM",         free: false,       starter: false,      growth: false,       scale: true },
 ];
