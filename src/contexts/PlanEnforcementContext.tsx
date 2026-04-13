@@ -5,7 +5,7 @@
  * Feature gates match the pricing table exactly:
  *
  * free:    live_calls, transcription, summaries
- * starter: + objection_detection, sentiment, engagement, team_messages, crm_push, api_access
+ * starter: + objection_detection, sentiment, engagement, team_messages, crm_push, api_access, team_access
  * growth:  + deal_rooms, coaching, analytics, leaderboards
  * scale:   + dedicated_csm
  */
@@ -34,6 +34,7 @@ export type PlanFeatureKey =
   | "deal_rooms"
   | "coaching"
   | "team_messages"
+  | "team_access"
   | "analytics"
   | "leaderboards"
   | "crm_push"
@@ -43,7 +44,7 @@ export type PlanFeatureKey =
 // Feature → minimum plan index (0=free, 1=starter, 2=growth, 3=scale)
 // Matches pricing table exactly:
 // free: live_calls, transcription, summaries
-// starter: objection_detection, sentiment, engagement, team_messages, crm_push, api_access
+// starter: objection_detection, sentiment, engagement, team_messages, team_access, crm_push, api_access
 // growth: deal_rooms, coaching, analytics, leaderboards
 // scale: dedicated_csm
 const FEATURE_MIN_PLAN: Record<PlanFeatureKey, number> = {
@@ -56,6 +57,7 @@ const FEATURE_MIN_PLAN: Record<PlanFeatureKey, number> = {
   deal_rooms:          2, // growth+
   coaching:            2, // growth+
   team_messages:       1, // starter+
+  team_access:         1, // starter+ — gates the entire Team page
   analytics:           2, // growth+
   leaderboards:        2, // growth+
   crm_push:            1, // starter+
@@ -73,6 +75,7 @@ export const FEATURE_LABELS: Record<PlanFeatureKey, string> = {
   deal_rooms:          "Deal Rooms & Deal AI",
   coaching:            "Coaching Clips",
   team_messages:       "Team Messages",
+  team_access:         "Team Workspace",
   analytics:           "Advanced Analytics",
   leaderboards:        "Rep Leaderboards",
   crm_push:            "Action Layer + CRM Push",
@@ -90,6 +93,7 @@ export const FEATURE_REQUIRED_PLAN: Record<PlanFeatureKey, string> = {
   deal_rooms:          "Growth",
   coaching:            "Growth",
   team_messages:       "Starter",
+  team_access:         "Starter",
   analytics:           "Growth",
   leaderboards:        "Growth",
   crm_push:            "Starter",
