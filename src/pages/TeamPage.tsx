@@ -9,14 +9,17 @@ import { BarChart3, Users, Plus, GraduationCap, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useMessageNotifications } from "@/hooks/useMessageNotifications";
+import { usePlanEnforcement } from "@/contexts/PlanEnforcementContext";
 import TeamOverviewTab from "@/components/team/TeamOverviewTab";
 import TeamMembersTab from "@/components/team/TeamMembersTab";
 import TeamCoachingTab from "@/components/team/TeamCoachingTab";
 import TeamSettingsTab from "@/components/team/TeamSettingsTab";
 import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
+import { LockedCard } from "@/components/plan/PlanGate";
 
 export default function TeamPage() {
   const { user } = useAuth();
+  const { hasFeature, isLoading: planLoading } = usePlanEnforcement();
   const {
     team, teamLoading, role, members, membersLoading,
     pendingInvitations, adminPlanKey,
@@ -27,6 +30,36 @@ export default function TeamPage() {
   const [teamName, setTeamName] = useState("");
 
   const isAdmin = role === "admin";
+
+  // ── Plan gate: Team features require Starter plan or above ──────────────
+  // team_messages is the feature key that maps to Starter+ in PlanEnforcementContext
+  if (planLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!hasFeature("team_messages")) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center h-[60vh] px-4">
+          <div className="w-full max-w-md">
+            <LockedCard
+              feature="team_messages"
+              title="Team Workspace"
+              description="Upgrade to Starter or higher to unlock team features: performance overview, member management, coaching tools, and team messaging."
+            />
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ── Normal team page rendering (Starter+ users only) ─────────────────────
 
   if (teamLoading) {
     return (
@@ -161,4 +194,4 @@ export default function TeamPage() {
       </div>
     </DashboardLayout>
   );
-  }
+}
