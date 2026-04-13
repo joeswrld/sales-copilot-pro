@@ -33,6 +33,7 @@ export interface PendingInvitation {
   invited_by: string;
   status: string;
   created_at: string;
+  invite_token?: string | null;
   isExistingUser?: boolean;
   teams?: { name: string } | null;
 }
@@ -50,7 +51,6 @@ async function fetchMyTeamId(userId: string): Promise<string | null> {
   return data?.team_id ?? null;
 }
 
-/** Ensures a workspace row exists for a team, linking the admin's plan to it */
 async function ensureWorkspaceForTeam(teamId: string, adminUserId: string): Promise<void> {
   try {
     await supabase
@@ -195,7 +195,6 @@ export function useTeam() {
 
       if (!adminMember?.user_id) return "free";
 
-      // Check subscription first (Paystack source of truth)
       const { data: sub } = await supabase
         .from("subscriptions" as any)
         .select("plan_name, status")
@@ -210,7 +209,6 @@ export function useTeam() {
         if (name.includes("starter")) return "starter";
       }
 
-      // Fall back to profile plan_type
       const { data: profile } = await supabase
         .from("profiles")
         .select("plan_type")
@@ -229,23 +227,19 @@ export function useTeam() {
     queryClient.invalidateQueries({ queryKey: ["team-members", teamId] });
     queryClient.invalidateQueries({ queryKey: ["team-invitations", teamId] });
     queryClient.invalidateQueries({ queryKey: ["my-pending-invitations", userId] });
-    // Also invalidate effective-plan so teammates see updated features
     queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
   };
 
-  // ── CREATE TEAM ───────────────────────────────────────────────────────────
+  // ── CREATE TEAM ─────────────────────────────────────────────────────────────
   const createTeam = useMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase.rpc("create_team_with_owner", {
         team_name: name || "My Team",
       });
       if (error) throw error;
-
-      // Ensure workspace row exists immediately so plan inheritance works right away
       if (data?.id && userId) {
         await ensureWorkspaceForTeam(data.id, userId);
       }
-
       return data;
     },
     onSuccess: () => {
@@ -253,15 +247,12 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to create team",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to create team", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── INVITE MEMBER ─────────────────────────────────────────────────────────
+  // ── INVITE MEMBER ────────────────────────────────────────────────────────────
+  // ✅ Updated: reads back invite_token and passes it to send-invite-email
   const inviteMember = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       if (!teamId) throw new Error("No team");
@@ -274,18 +265,19 @@ export function useTeam() {
 
       const isExistingUser = !!existingProfile;
 
-      const { error: invErr } = await supabase
+      // Insert invitation — DB trigger auto-generates invite_token
+      const { data: invRow, error: invErr } = await supabase
         .from("team_invitations")
         .insert({ team_id: teamId, email, role, invited_by: userId! })
-        .select()
+        .select("id, invite_token")
         .single();
 
       if (invErr) {
-        if (invErr.code === "23505") {
-          throw new Error("This email has already been invited.");
-        }
+        if (invErr.code === "23505") throw new Error("This email has already been invited.");
         throw invErr;
       }
+
+      const inviteToken: string | null = (invRow as any)?.invite_token ?? null;
 
       if (isExistingUser) {
         const { error: memErr } = await supabase
@@ -305,41 +297,39 @@ export function useTeam() {
         await supabase.from("notifications").insert({
           user_id: existingProfile.id,
           type: "system",
-          message: `You've been invited to join a team as ${role}. Go to Team page to accept.`,
-        });
-      } else {
-        await supabase.functions.invoke("send-invite-email", {
-          body: {
-            email,
-            teamName: teamQuery.data?.name ?? "a team",
-            inviterName: user?.user_metadata?.full_name ?? user?.email,
-            role,
-            signupUrl: `${window.location.origin}/login`,
-          },
+          message: `You've been invited to join a team as ${role}. Go to Team page to accept or visit your invite link.`,
         });
       }
 
-      return { isExistingUser };
+      // Send email with the dedicated invite landing page link
+      await supabase.functions.invoke("send-invite-email", {
+        body: {
+          email,
+          teamName: teamQuery.data?.name ?? "a team",
+          inviterName: user?.user_metadata?.full_name ?? user?.email,
+          role,
+          inviteToken,
+          signupUrl: `${window.location.origin}/login`,
+        },
+      });
+
+      return { isExistingUser, inviteToken };
     },
     onSuccess: ({ isExistingUser }) => {
       toast({
         title: "Invitation sent!",
         description: isExistingUser
-          ? "The user has been notified in-app."
-          : "An email invite has been sent.",
+          ? "The user has been notified in-app and by email."
+          : "An email invite has been sent with a personal link.",
       });
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to invite",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to invite", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── CANCEL INVITATION ─────────────────────────────────────────────────────
+  // ── CANCEL INVITATION ───────────────────────────────────────────────────────
   const cancelInvitation = useMutation({
     mutationFn: async (invitationId: string) => {
       const { error } = await supabase
@@ -353,15 +343,11 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to cancel invitation",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to cancel invitation", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── UPDATE ROLE ───────────────────────────────────────────────────────────
+  // ── UPDATE ROLE ─────────────────────────────────────────────────────────────
   const updateRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
       const { error } = await supabase
@@ -375,15 +361,11 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to update role",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── REMOVE MEMBER ─────────────────────────────────────────────────────────
+  // ── REMOVE MEMBER ───────────────────────────────────────────────────────────
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
       const { error } = await supabase
@@ -397,15 +379,30 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to remove member",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to remove member", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── ACCEPT INVITATION ─────────────────────────────────────────────────────
+  // ── ACCEPT INVITATION (token-based) ─────────────────────────────────────────
+  const acceptInvitationByToken = useMutation({
+    mutationFn: async (token: string) => {
+      const { data, error } = await (supabase as any).rpc(
+        "accept_invitation_by_token", { p_token: token }
+      );
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Failed to accept invitation");
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Joined team!", description: "Welcome to the team." });
+      invalidate();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to accept invitation", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // ── ACCEPT INVITATION (legacy email-based) ──────────────────────────────────
   const acceptInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
@@ -425,7 +422,6 @@ export function useTeam() {
         );
       if (error) throw error;
 
-      // After accepting, ensure workspace exists so plan propagates immediately
       const { data: adminMember } = await supabase
         .from("team_members")
         .select("user_id")
@@ -443,15 +439,11 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to accept invitation",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to accept invitation", description: err.message, variant: "destructive" });
     },
   });
 
-  // ── DECLINE INVITATION ────────────────────────────────────────────────────
+  // ── DECLINE INVITATION ──────────────────────────────────────────────────────
   const declineInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
@@ -479,11 +471,7 @@ export function useTeam() {
       invalidate();
     },
     onError: (err: any) => {
-      toast({
-        title: "Failed to decline invitation",
-        description: err.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to decline invitation", description: err.message, variant: "destructive" });
     },
   });
 
@@ -505,6 +493,7 @@ export function useTeam() {
     updateRole,
     removeMember,
     acceptInvitation,
+    acceptInvitationByToken,
     declineInvitation,
   };
 }
