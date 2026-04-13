@@ -1,7 +1,14 @@
 /**
- * useEffectivePlan.ts — v3
+ * useEffectivePlan.ts — v4 (Team Plan Inheritance)
+ *
  * Resolves the effective plan for the authenticated user.
- * Now uses new minute quotas: Free 30 | Starter 300 | Growth 1500 | Scale 5000
+ * Priority order for plan resolution:
+ *   1. Active subscription row (Paystack source of truth)
+ *   2. Workspace admin's active subscription (team plan inheritance)
+ *   3. profiles.plan_type fallback
+ *
+ * Calls get_user_active_plan_details() RPC which is now subscription-aware.
+ * Also calls get_team_plan_info() to get feature_flags directly from DB plans table.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -14,13 +21,15 @@ export { PLAN_CONFIG };
 export interface EffectivePlan {
   planKey:          string;
   planName:         string;
-  callsLimit:       number;   // legacy compat — -1 = unlimited
+  callsLimit:       number;   // -1 = unlimited
   minuteQuota:      number;   // -1 = unlimited
   teamMembersLimit: number;
   isInherited:      boolean;
   adminUserId:      string | null;
   personalPlanKey:  string;
   workspaceId:      string | null;
+  /** Feature flags directly from plans table — most authoritative source */
+  featureFlags:     Record<string, boolean>;
 }
 
 export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoading: boolean } {
@@ -31,104 +40,84 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
     queryFn: async (): Promise<EffectivePlan> => {
       if (!user) throw new Error("Not authenticated");
 
-      // ── 1. Own subscription ───────────────────────────────────────────
-      const { data: ownSub } = await supabase
-        .from("subscriptions" as any)
-        .select("status, plan_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // ── 1. Get plan details via RPC (subscription-aware, team-inherited) ───────
+      const { data: planDetails, error: planErr } = await (supabase as any).rpc(
+        "get_user_active_plan_details",
+        { p_user_id: user.id }
+      );
 
-      const ownSubPlanKey =
-        (ownSub as any)?.status === "active"
-          ? normalizePlanKey((ownSub as any)?.plan_name)
-          : null;
-
-      // ── 2. Own profile plan ───────────────────────────────────────────
-      const { data: ownProfile } = await supabase
-        .from("profiles")
-        .select("plan_type")
-        .eq("id", user.id)
-        .single();
-
-      const ownProfilePlan  = ownProfile?.plan_type ?? "free";
-      const personalPlanKey = ownSubPlanKey ?? ownProfilePlan;
-
-      // ── 3. Team membership ────────────────────────────────────────────
-      const { data: membership } = await supabase
-        .from("team_members")
-        .select("team_id")
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .limit(1)
-        .maybeSingle();
-
-      const teamId = membership?.team_id ?? null;
-
-      if (!teamId) {
-        const config = PLAN_CONFIG[personalPlanKey] ?? PLAN_CONFIG.free;
-        return {
-          planKey:          personalPlanKey,
-          planName:         config.name,
-          callsLimit:       config.calls_limit,
-          minuteQuota:      getMinuteQuota(personalPlanKey),
-          teamMembersLimit: config.team_members_limit,
-          isInherited:      false,
-          adminUserId:      null,
-          personalPlanKey,
-          workspaceId:      null,
-        };
+      if (planErr) {
+        console.error("get_user_active_plan_details error:", planErr);
       }
 
-      // ── 4. Workspace admin plan ───────────────────────────────────────
-      const { data: ws } = await supabase
-        .from("workspaces" as any)
-        .select("id, owner_id")
-        .eq("team_id", teamId)
-        .maybeSingle();
+      // RPC returns array with one row
+      const details = Array.isArray(planDetails) ? planDetails[0] : planDetails;
+      const planKey = details?.plan_key ?? "free";
+      const isInherited = details?.is_inherited ?? false;
+      const adminUserId = details?.owner_user_id ?? null;
+      const workspaceId = details?.workspace_id ?? null;
 
-      const workspaceId = (ws as any)?.id ?? null;
-      const adminUserId = (ws as any)?.owner_id ?? null;
-      let adminPlanKey  = "free";
+      // ── 2. Get feature flags from plans table via get_team_plan_info ─────────
+      let featureFlags: Record<string, boolean> = {};
+      try {
+        const { data: teamInfo, error: infoErr } = await (supabase as any).rpc(
+          "get_team_plan_info",
+          { p_user_id: user.id }
+        );
+        if (!infoErr && teamInfo?.feature_flags) {
+          featureFlags = teamInfo.feature_flags as Record<string, boolean>;
+        }
+      } catch (e) {
+        console.warn("get_team_plan_info error (non-fatal):", e);
+      }
 
-      if (adminUserId) {
-        const { data: adminSub } = await supabase
+      // ── 3. If no feature flags from DB, fall back to hardcoded config ────────
+      if (Object.keys(featureFlags).length === 0) {
+        const config = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.free;
+        featureFlags = config.feature_flags ?? {};
+      }
+
+      // ── 4. Get personal plan key for display purposes ────────────────────────
+      let personalPlanKey = "free";
+      try {
+        const { data: ownSub } = await supabase
           .from("subscriptions" as any)
           .select("status, plan_name")
-          .eq("user_id", adminUserId)
+          .eq("user_id", user.id)
           .maybeSingle();
 
-        const adminSubKey =
-          (adminSub as any)?.status === "active"
-            ? normalizePlanKey((adminSub as any)?.plan_name)
-            : null;
-
-        const { data: adminProfile } = await supabase
-          .from("profiles")
-          .select("plan_type")
-          .eq("id", adminUserId)
-          .single();
-
-        adminPlanKey = adminSubKey ?? adminProfile?.plan_type ?? "free";
+        if ((ownSub as any)?.status === "active") {
+          personalPlanKey = normalizePlanKey((ownSub as any)?.plan_name);
+        } else {
+          const { data: ownProfile } = await supabase
+            .from("profiles")
+            .select("plan_type")
+            .eq("id", user.id)
+            .single();
+          personalPlanKey = ownProfile?.plan_type ?? "free";
+        }
+      } catch (e) {
+        console.warn("personalPlanKey fetch error (non-fatal):", e);
       }
 
-      // ── 5. Pick higher plan ───────────────────────────────────────────
-      const adminIdx    = PLAN_ORDER.indexOf(adminPlanKey);
-      const personalIdx = PLAN_ORDER.indexOf(personalPlanKey);
-      const finalPlanKey = adminIdx > personalIdx ? adminPlanKey : personalPlanKey;
-      const isInherited  = adminIdx > personalIdx;
-
-      const config = PLAN_CONFIG[finalPlanKey] ?? PLAN_CONFIG.free;
+      // ── 5. Get limits — prefer DB details, fall back to PLAN_CONFIG ──────────
+      const config = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.free;
+      const callsLimit = details?.calls_limit ?? config.calls_limit;
+      const teamMembersLimit = details?.team_members_limit ?? config.team_members_limit;
+      const minuteQuota = getMinuteQuota(planKey);
+      const planName = config.name ?? (planKey.charAt(0).toUpperCase() + planKey.slice(1));
 
       return {
-        planKey:          finalPlanKey,
-        planName:         config.name,
-        callsLimit:       config.calls_limit,
-        minuteQuota:      getMinuteQuota(finalPlanKey),
-        teamMembersLimit: config.team_members_limit,
+        planKey,
+        planName,
+        callsLimit,
+        minuteQuota,
+        teamMembersLimit,
         isInherited,
         adminUserId,
         personalPlanKey,
         workspaceId,
+        featureFlags,
       };
     },
     enabled:   !!user,
@@ -147,12 +136,12 @@ export function isPlanFeatureAvailable(
   const idx   = ORDER.indexOf(planKey);
 
   switch (feature) {
-    case "live_calls":           return idx >= 0; // all plans
-    case "ai_coach":             return idx >= 1; // starter+
-    case "coaching":             return idx >= 2; // growth+
-    case "team_analytics":       return idx >= 2; // growth+
-    case "deal_rooms":           return idx >= 2; // growth+
-    case "objection_detection":  return idx >= 2; // growth+
+    case "live_calls":           return idx >= 0;
+    case "ai_coach":             return idx >= 1;
+    case "coaching":             return idx >= 2;
+    case "team_analytics":       return idx >= 2;
+    case "deal_rooms":           return idx >= 2;
+    case "objection_detection":  return idx >= 2;
     default:                     return false;
   }
 }
