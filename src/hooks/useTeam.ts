@@ -37,8 +37,6 @@ export interface PendingInvitation {
   teams?: { name: string } | null;
 }
 
-// ─── Helper: fetch the team_id for the current user ─────────────────────────
-// Uses .maybeSingle() so it returns null instead of throwing 406 when no row
 async function fetchMyTeamId(userId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from("team_members")
@@ -46,10 +44,24 @@ async function fetchMyTeamId(userId: string): Promise<string | null> {
     .eq("user_id", userId)
     .eq("status", "active")
     .limit(1)
-    .maybeSingle(); // ← was .single() — that caused PGRST116 406 when user has no team
+    .maybeSingle();
 
   if (error) throw error;
   return data?.team_id ?? null;
+}
+
+/** Ensures a workspace row exists for a team, linking the admin's plan to it */
+async function ensureWorkspaceForTeam(teamId: string, adminUserId: string): Promise<void> {
+  try {
+    await supabase
+      .from("workspaces" as any)
+      .upsert(
+        { team_id: teamId, owner_id: adminUserId },
+        { onConflict: "team_id" }
+      );
+  } catch (e) {
+    console.warn("ensureWorkspaceForTeam error (non-fatal):", e);
+  }
 }
 
 export function useTeam() {
@@ -57,7 +69,6 @@ export function useTeam() {
   const queryClient = useQueryClient();
   const userId = user?.id;
 
-  // ── Fetch current user's team_id ──────────────────────────────────────
   const teamIdQuery = useQuery({
     queryKey: ["my-team-id", userId],
     queryFn: () => (userId ? fetchMyTeamId(userId) : null),
@@ -67,7 +78,6 @@ export function useTeam() {
 
   const teamId = teamIdQuery.data ?? null;
 
-  // ── Fetch team details ────────────────────────────────────────────────
   const teamQuery = useQuery({
     queryKey: ["team", teamId],
     queryFn: async () => {
@@ -84,7 +94,6 @@ export function useTeam() {
     staleTime: 30_000,
   });
 
-  // ── Fetch current user's role ─────────────────────────────────────────
   const roleQuery = useQuery({
     queryKey: ["my-team-role", teamId, userId],
     queryFn: async () => {
@@ -103,7 +112,6 @@ export function useTeam() {
     staleTime: 30_000,
   });
 
-  // ── Fetch team members ────────────────────────────────────────────────
   const membersQuery = useQuery({
     queryKey: ["team-members", teamId],
     queryFn: async () => {
@@ -124,7 +132,6 @@ export function useTeam() {
     staleTime: 30_000,
   });
 
-  // ── Fetch pending invitations (admin only) ────────────────────────────
   const invitationsQuery = useQuery({
     queryKey: ["team-invitations", teamId],
     queryFn: async () => {
@@ -136,7 +143,6 @@ export function useTeam() {
         .eq("status", "pending")
         .order("created_at", { ascending: false });
       if (error) {
-        // Non-admins will get RLS-blocked — treat as empty
         console.warn("team invitations fetch:", error.message);
         return [];
       }
@@ -146,12 +152,10 @@ export function useTeam() {
     staleTime: 15_000,
   });
 
-  // ── Fetch MY pending invitations (invitations sent to my email) ───────
   const myInvitationsQuery = useQuery({
     queryKey: ["my-pending-invitations", userId],
     queryFn: async () => {
       if (!userId) return [];
-      // Get the current user's email from profiles
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
@@ -176,12 +180,10 @@ export function useTeam() {
     staleTime: 15_000,
   });
 
-  // ── Admin plan key (for limits) ───────────────────────────────────────
   const adminPlanQuery = useQuery({
     queryKey: ["team-admin-plan", teamId],
     queryFn: async () => {
       if (!teamId) return "free";
-      // Find the admin of this team
       const { data: adminMember } = await supabase
         .from("team_members")
         .select("user_id")
@@ -193,19 +195,29 @@ export function useTeam() {
 
       if (!adminMember?.user_id) return "free";
 
+      // Check subscription first (Paystack source of truth)
       const { data: sub } = await supabase
-        .from("subscriptions")
+        .from("subscriptions" as any)
         .select("plan_name, status")
         .eq("user_id", adminMember.user_id)
         .eq("status", "active")
         .maybeSingle();
 
-      if (!sub?.plan_name) return "free";
-      const name = sub.plan_name.toLowerCase();
-      if (name.includes("scale")) return "scale";
-      if (name.includes("growth")) return "growth";
-      if (name.includes("starter")) return "starter";
-      return "free";
+      if ((sub as any)?.plan_name) {
+        const name = (sub as any).plan_name.toLowerCase();
+        if (name.includes("scale"))   return "scale";
+        if (name.includes("growth"))  return "growth";
+        if (name.includes("starter")) return "starter";
+      }
+
+      // Fall back to profile plan_type
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan_type")
+        .eq("id", adminMember.user_id)
+        .maybeSingle();
+
+      return profile?.plan_type ?? "free";
     },
     enabled: !!teamId,
     staleTime: 60_000,
@@ -217,15 +229,23 @@ export function useTeam() {
     queryClient.invalidateQueries({ queryKey: ["team-members", teamId] });
     queryClient.invalidateQueries({ queryKey: ["team-invitations", teamId] });
     queryClient.invalidateQueries({ queryKey: ["my-pending-invitations", userId] });
+    // Also invalidate effective-plan so teammates see updated features
+    queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
   };
 
-  // ── CREATE TEAM ───────────────────────────────────────────────────────
+  // ── CREATE TEAM ───────────────────────────────────────────────────────────
   const createTeam = useMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase.rpc("create_team_with_owner", {
         team_name: name || "My Team",
       });
       if (error) throw error;
+
+      // Ensure workspace row exists immediately so plan inheritance works right away
+      if (data?.id && userId) {
+        await ensureWorkspaceForTeam(data.id, userId);
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -241,12 +261,11 @@ export function useTeam() {
     },
   });
 
-  // ── INVITE MEMBER ─────────────────────────────────────────────────────
+  // ── INVITE MEMBER ─────────────────────────────────────────────────────────
   const inviteMember = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
       if (!teamId) throw new Error("No team");
 
-      // Check if user already has a Fixsense account
       const { data: existingProfile } = await supabase
         .from("profiles")
         .select("id, email")
@@ -255,7 +274,6 @@ export function useTeam() {
 
       const isExistingUser = !!existingProfile;
 
-      // Insert invitation record
       const { error: invErr } = await supabase
         .from("team_invitations")
         .insert({ team_id: teamId, email, role, invited_by: userId! })
@@ -270,7 +288,6 @@ export function useTeam() {
       }
 
       if (isExistingUser) {
-        // Existing user: add them directly as invited member
         const { error: memErr } = await supabase
           .from("team_members")
           .insert({
@@ -285,14 +302,12 @@ export function useTeam() {
 
         if (memErr && memErr.code !== "23505") throw memErr;
 
-        // Send in-app notification
         await supabase.from("notifications").insert({
           user_id: existingProfile.id,
           type: "system",
           message: `You've been invited to join a team as ${role}. Go to Team page to accept.`,
         });
       } else {
-        // New user: send invite email via edge function
         await supabase.functions.invoke("send-invite-email", {
           body: {
             email,
@@ -324,7 +339,7 @@ export function useTeam() {
     },
   });
 
-  // ── CANCEL INVITATION ─────────────────────────────────────────────────
+  // ── CANCEL INVITATION ─────────────────────────────────────────────────────
   const cancelInvitation = useMutation({
     mutationFn: async (invitationId: string) => {
       const { error } = await supabase
@@ -346,15 +361,9 @@ export function useTeam() {
     },
   });
 
-  // ── UPDATE ROLE ───────────────────────────────────────────────────────
+  // ── UPDATE ROLE ───────────────────────────────────────────────────────────
   const updateRole = useMutation({
-    mutationFn: async ({
-      memberId,
-      role,
-    }: {
-      memberId: string;
-      role: string;
-    }) => {
+    mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
       const { error } = await supabase
         .from("team_members")
         .update({ role })
@@ -374,7 +383,7 @@ export function useTeam() {
     },
   });
 
-  // ── REMOVE MEMBER ─────────────────────────────────────────────────────
+  // ── REMOVE MEMBER ─────────────────────────────────────────────────────────
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
       const { error } = await supabase
@@ -396,12 +405,11 @@ export function useTeam() {
     },
   });
 
-  // ── ACCEPT INVITATION ─────────────────────────────────────────────────
+  // ── ACCEPT INVITATION ─────────────────────────────────────────────────────
   const acceptInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
 
-      // Update invitation status
       await supabase
         .from("team_invitations")
         .update({ status: "accepted" })
@@ -409,7 +417,6 @@ export function useTeam() {
         .eq("status", "pending")
         .ilike("email", (await supabase.from("profiles").select("email").eq("id", userId).maybeSingle()).data?.email ?? "");
 
-      // Upsert into team_members as active
       const { error } = await supabase
         .from("team_members")
         .upsert(
@@ -417,6 +424,19 @@ export function useTeam() {
           { onConflict: "team_id,user_id" }
         );
       if (error) throw error;
+
+      // After accepting, ensure workspace exists so plan propagates immediately
+      const { data: adminMember } = await supabase
+        .from("team_members")
+        .select("user_id")
+        .eq("team_id", inviteTeamId)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (adminMember?.user_id) {
+        await ensureWorkspaceForTeam(inviteTeamId, adminMember.user_id);
+      }
     },
     onSuccess: () => {
       toast({ title: "Joined team!", description: "Welcome to the team." });
@@ -431,7 +451,7 @@ export function useTeam() {
     },
   });
 
-  // ── DECLINE INVITATION ────────────────────────────────────────────────
+  // ── DECLINE INVITATION ────────────────────────────────────────────────────
   const declineInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
@@ -447,7 +467,6 @@ export function useTeam() {
         .eq("team_id", inviteTeamId)
         .ilike("email", profile?.email ?? "");
 
-      // Also remove invited team_member row if it exists
       await supabase
         .from("team_members")
         .delete()
@@ -469,7 +488,6 @@ export function useTeam() {
   });
 
   return {
-    // Data
     team: teamQuery.data ?? null,
     teamId,
     role: (roleQuery.data ?? "member") as string,
@@ -477,14 +495,10 @@ export function useTeam() {
     pendingInvitations: invitationsQuery.data ?? [],
     myPendingInvitations: myInvitationsQuery.data ?? [],
     adminPlanKey: adminPlanQuery.data ?? "free",
-
-    // Loading states
     teamLoading:
       teamIdQuery.isLoading ||
       (!!teamId && teamQuery.isLoading),
     membersLoading: membersQuery.isLoading,
-
-    // Mutations
     createTeam,
     inviteMember,
     cancelInvitation,
