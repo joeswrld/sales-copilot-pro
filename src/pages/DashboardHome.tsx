@@ -1,4 +1,8 @@
+// src/pages/DashboardHome.tsx
 import DashboardLayout from "@/components/DashboardLayout";
+import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
+import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
+import { PlanBanner } from "@/components/plan/PlanGate";
 import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +23,6 @@ const statusColors: Record<string, string> = {
   "Follow-up": "bg-accent/10 text-accent",
 };
 
-// ── Real Pipeline Health Hook ────────────────────────────────────────────────
 function usePipelineHealth() {
   return useQuery({
     queryKey: ["pipeline-health"],
@@ -41,7 +44,6 @@ function usePipelineHealth() {
   });
 }
 
-// ── Pipeline Health Card ────────────────────────────────────────────────────
 function PipelineHealthCard() {
   const { data: health, isLoading } = usePipelineHealth();
 
@@ -77,7 +79,6 @@ function PipelineHealthCard() {
   const circ = 2 * Math.PI * radius;
   const dash = (score / 100) * circ;
 
-  // Top 3 breakdown items sorted by score ASC (weakest first = most actionable)
   const breakdownItems = Object.values(health.breakdown).sort((a, b) => a.score - b.score).slice(0, 3);
 
   return (
@@ -86,18 +87,13 @@ function PipelineHealthCard() {
         <span className="text-xs text-muted-foreground font-medium">Pipeline Health</span>
         <Activity className={`w-4 h-4 ${color}`} />
       </div>
-
       <div className="flex items-center gap-3 mb-3">
         <div className="relative w-14 h-14 shrink-0">
           <svg viewBox="0 0 60 60" className="w-14 h-14 -rotate-90">
             <circle cx="30" cy="30" r={radius} fill="none" stroke="hsl(222, 30%, 18%)" strokeWidth="5" />
-            <circle
-              cx="30" cy="30" r={radius} fill="none"
-              stroke={strokeColor} strokeWidth="5"
-              strokeDasharray={`${dash} ${circ}`}
-              strokeLinecap="round"
-              style={{ transition: "stroke-dasharray 0.6s ease" }}
-            />
+            <circle cx="30" cy="30" r={radius} fill="none" stroke={strokeColor} strokeWidth="5"
+              strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+              style={{ transition: "stroke-dasharray 0.6s ease" }} />
           </svg>
           <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold font-display ${color}`}>
             {score}
@@ -111,8 +107,6 @@ function PipelineHealthCard() {
           <div className="text-xs text-muted-foreground mt-0.5">out of 100</div>
         </div>
       </div>
-
-      {/* Weakest areas */}
       <div className="space-y-1.5 pt-2 border-t border-border">
         {breakdownItems.map(item => {
           const itemColor = item.score >= 70 ? "bg-success" : item.score >= 45 ? "bg-primary" : item.score >= 25 ? "bg-accent" : "bg-destructive";
@@ -168,12 +162,23 @@ export default function DashboardHome() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold font-display">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome back, {displayName}. Here's your sales performance overview.</p>
+
+        {/* ── Banners (invitations + plan) ── */}
+        <div className="space-y-3">
+          <TeamInvitationsBanner />
+          <PlanInheritanceBanner />
+          <PlanBanner />
         </div>
 
-        {/* Stat cards + Pipeline Health */}
+        {/* ── Page header ── */}
+        <div>
+          <h1 className="text-2xl font-bold font-display">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Welcome back, {displayName}. Here's your sales performance overview.
+          </p>
+        </div>
+
+        {/* ── Stat cards + Pipeline Health ── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {statsLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
@@ -201,7 +206,7 @@ export default function DashboardHome() {
           )}
         </div>
 
-        {/* Recent Calls */}
+        {/* ── Recent Calls ── */}
         <div className="glass rounded-xl overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="font-display font-semibold">Recent Calls</h2>
@@ -229,10 +234,16 @@ export default function DashboardHome() {
           ) : (
             <div className="divide-y divide-border">
               {recentCalls.map(call => (
-                <Link key={call.id} to={`/dashboard/calls/${call.id}`} className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors">
+                <Link
+                  key={call.id}
+                  to={`/dashboard/calls/${call.id}`}
+                  className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors"
+                >
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{call.name}</p>
-                    <p className="text-xs text-muted-foreground">{format(new Date(call.date), "MMM d, yyyy")} · {call.duration_minutes ? `${call.duration_minutes} min` : "—"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(call.date), "MMM d, yyyy")} · {call.duration_minutes ? `${call.duration_minutes} min` : "—"}
+                    </p>
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="hidden sm:flex items-center gap-2">
@@ -250,6 +261,7 @@ export default function DashboardHome() {
             </div>
           )}
         </div>
+
       </div>
     </DashboardLayout>
   );
