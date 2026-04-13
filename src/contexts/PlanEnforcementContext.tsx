@@ -1,9 +1,15 @@
 /**
- * PlanEnforcementContext.tsx
+ * PlanEnforcementContext.tsx — v2 (Team Plan Inheritance)
  *
  * Central plan enforcement layer.
- * Feature gates match the pricing table exactly:
+ * hasFeature() now uses TWO checks in priority order:
+ *   1. featureFlags from DB plans table (most accurate — includes team inheritance)
+ *   2. planIndex fallback (hardcoded tier list)
  *
+ * This means if admin pays for Growth, all teammates get Growth feature flags
+ * automatically — no hardcoded overrides needed.
+ *
+ * Feature gates match the pricing table exactly:
  * free:    live_calls, transcription, summaries
  * starter: + objection_detection, sentiment, engagement, team_messages, crm_push, api_access, team_access
  * growth:  + deal_rooms, coaching, analytics, leaderboards
@@ -42,27 +48,43 @@ export type PlanFeatureKey =
   | "api_access";
 
 // Feature → minimum plan index (0=free, 1=starter, 2=growth, 3=scale)
-// Matches pricing table exactly:
-// free: live_calls, transcription, summaries
-// starter: objection_detection, sentiment, engagement, team_messages, team_access, crm_push, api_access
-// growth: deal_rooms, coaching, analytics, leaderboards
-// scale: dedicated_csm
+// Used as FALLBACK when featureFlags from DB are unavailable
 const FEATURE_MIN_PLAN: Record<PlanFeatureKey, number> = {
-  live_calls:          0, // free+
-  transcription:       0, // free+
-  summaries:           0, // free+
-  objection_detection: 1, // starter+
-  sentiment:           1, // starter+
-  engagement:          1, // starter+
-  deal_rooms:          2, // growth+
-  coaching:            2, // growth+
-  team_messages:       1, // starter+
-  team_access:         1, // starter+ — gates the entire Team page
-  analytics:           2, // growth+
-  leaderboards:        2, // growth+
-  crm_push:            1, // starter+
-  dedicated_csm:       3, // scale only
-  api_access:          1, // starter+
+  live_calls:          0,
+  transcription:       0,
+  summaries:           0,
+  objection_detection: 1,
+  sentiment:           1,
+  engagement:          1,
+  deal_rooms:          2,
+  coaching:            2,
+  team_messages:       1,
+  team_access:         1,
+  analytics:           2,
+  leaderboards:        2,
+  crm_push:            1,
+  dedicated_csm:       3,
+  api_access:          1,
+};
+
+// Maps PlanFeatureKey → DB feature_flags key name
+// (DB uses slightly different naming in some cases)
+const FEATURE_FLAG_DB_KEY: Partial<Record<PlanFeatureKey, string>> = {
+  live_calls:          "live_calls",
+  transcription:       "transcription",
+  summaries:           "summaries",
+  objection_detection: "objection_detection",
+  sentiment:           "sentiment",
+  engagement:          "engagement",
+  deal_rooms:          "deal_rooms",
+  coaching:            "coaching",
+  team_messages:       "team_messages",
+  team_access:         "team_messages", // team_access gates same features as team_messages
+  analytics:           "analytics",
+  leaderboards:        "leaderboards",
+  crm_push:            "crm_push",
+  dedicated_csm:       "csm",
+  api_access:          "crm_push",      // api_access uses same tier as crm_push
 };
 
 export const FEATURE_LABELS: Record<PlanFeatureKey, string> = {
@@ -114,6 +136,8 @@ interface PlanEnforcementContextValue {
   planKey: string;
   planName: string;
   planIndex: number;
+  isInherited: boolean;
+  adminUserId: string | null;
 
   canStartCall: () => boolean;
   minutesUsed: number;
@@ -146,17 +170,31 @@ export function PlanEnforcementProvider({ children }: { children: ReactNode }) {
     feature: null,
   });
 
-  const planKey = effectivePlan?.planKey ?? "free";
+  const planKey  = effectivePlan?.planKey ?? "free";
   const planName = effectivePlan?.planName ?? "Free";
   const planIndex = PLAN_ORDER.indexOf(planKey);
   const teamMembersLimit = effectivePlan?.teamMembersLimit ?? 1;
+  const featureFlags = effectivePlan?.featureFlags ?? {};
+  const isInherited = effectivePlan?.isInherited ?? false;
+  const adminUserId = effectivePlan?.adminUserId ?? null;
 
+  /**
+   * hasFeature — checks DB feature_flags first (team-inherited, most accurate),
+   * then falls back to hardcoded plan tier index.
+   */
   const hasFeature = useCallback(
     (feature: PlanFeatureKey): boolean => {
+      // 1. Check DB feature flags if available (includes team inheritance)
+      const dbKey = FEATURE_FLAG_DB_KEY[feature];
+      if (dbKey && Object.keys(featureFlags).length > 0) {
+        return featureFlags[dbKey] === true;
+      }
+
+      // 2. Fallback: hardcoded plan tier comparison
       const minIdx = FEATURE_MIN_PLAN[feature] ?? 0;
       return planIndex >= minIdx;
     },
-    [planIndex]
+    [featureFlags, planIndex]
   );
 
   const canStartCall = useCallback((): boolean => {
@@ -181,14 +219,16 @@ export function PlanEnforcementProvider({ children }: { children: ReactNode }) {
       planKey,
       planName,
       planIndex,
+      isInherited,
+      adminUserId,
       canStartCall,
-      minutesUsed: usage?.minutesUsed ?? 0,
-      minuteLimit: usage?.minuteLimit ?? 30,
+      minutesUsed:      usage?.minutesUsed ?? 0,
+      minuteLimit:      usage?.minuteLimit ?? 30,
       minutesRemaining: usage?.minutesRemaining ?? 30,
-      isAtLimit: usage?.isAtLimit ?? false,
-      isNearLimit: usage?.isNearLimit ?? false,
-      usagePct: usage?.pct ?? 0,
-      isUnlimited: usage?.isUnlimited ?? false,
+      isAtLimit:        usage?.isAtLimit ?? false,
+      isNearLimit:      usage?.isNearLimit ?? false,
+      usagePct:         usage?.pct ?? 0,
+      isUnlimited:      usage?.isUnlimited ?? false,
       teamMembersLimit,
       upgradeModal,
       openUpgradeModal,
@@ -196,10 +236,9 @@ export function PlanEnforcementProvider({ children }: { children: ReactNode }) {
       isLoading: planLoading || usageLoading,
     }),
     [
-      hasFeature, planKey, planName, planIndex, canStartCall,
-      usage, teamMembersLimit, upgradeModal,
-      openUpgradeModal, closeUpgradeModal,
-      planLoading, usageLoading,
+      hasFeature, planKey, planName, planIndex, isInherited, adminUserId,
+      canStartCall, usage, teamMembersLimit, upgradeModal,
+      openUpgradeModal, closeUpgradeModal, planLoading, usageLoading,
     ]
   );
 
