@@ -35,6 +35,7 @@ import PWABanner from "@/components/PWABanner";
 import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
+import InviteLanding from "./pages/InviteLanding";
 
 import {
   PrivacyPage,
@@ -71,7 +72,7 @@ function AppRoutes() {
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-
+<Route path="/invite/:token" element={<InviteLanding />} />
           {/* Marketing */}
           <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/changelog" element={<Changelogpage />} />
