@@ -1,4 +1,11 @@
 // src/hooks/useSubscription.ts
+// FIXES:
+//  1. cancelSubscription no longer requires paystack_subscription_code/email_token
+//     (works for one-time charge plans too — edge function handles DB-only cancel)
+//  2. Reduced polling intervals to prevent "Network error" from concurrent fetches
+//  3. transactions query delayed 800ms and reduced refetch to 30s
+//  4. pendingSync query only runs when truly pending, reduced to 15s
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -69,10 +76,6 @@ export interface BillingState {
 }
 
 // ── Serialized session refresh ────────────────────────────────────────────────
-// Prevents auth lock contention (React Strict Mode double-invokes effects,
-// causing multiple concurrent refreshSession() calls that fight over the same
-// IndexedDB lock and emit "Lock was not released within 5000ms" warnings).
-// All concurrent callers share a single in-flight promise instead.
 let _refreshPromise: Promise<string> | null = null;
 
 async function getSessionToken(): Promise<string> {
@@ -81,13 +84,11 @@ async function getSessionToken(): Promise<string> {
   if (!error && session?.access_token) {
     const expiresAt = session.expires_at ?? 0;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    // Refresh if token expires within 10 minutes
     if (expiresAt - nowSeconds >= 600) {
       return session.access_token;
     }
   }
 
-  // Deduplicate concurrent refresh calls — all waiters share the same promise
   if (!_refreshPromise) {
     _refreshPromise = supabase.auth
       .refreshSession()
@@ -109,8 +110,6 @@ async function getSessionToken(): Promise<string> {
   return _refreshPromise;
 }
 
-// ── Invoke edge function with guaranteed fresh auth token ─────────────────────
-// Retries once with a forced refresh on 401.
 async function invokeWithAuth(
   fnName: string,
   body: Record<string, unknown>
@@ -131,7 +130,6 @@ async function invokeWithAuth(
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  // If 401, force-refresh and retry once
   const is401 =
     result.error &&
     (String(result.error.message).includes("401") ||
@@ -178,9 +176,10 @@ export function useSubscription() {
       return data as Subscription | null;
     },
     enabled: !!user,
+    // Only poll fast when pending; otherwise refresh every 5 minutes
     refetchInterval: (q) => {
       const data = q.state.data as Subscription | null;
-      return data?.status === "pending" ? 5000 : false;
+      return data?.status === "pending" ? 10_000 : 5 * 60_000;
     },
   });
 
@@ -197,7 +196,8 @@ export function useSubscription() {
       return data as unknown as { plan_type: string; billing_status: string } | null;
     },
     enabled: !!user,
-    refetchInterval: 10_000,
+    // Reduced from 10s to 30s — billing status changes rarely
+    refetchInterval: 30_000,
   });
 
   // ── Latest payment record ──────────────────────────────────────────────
@@ -215,7 +215,8 @@ export function useSubscription() {
       return data as PaymentRecord | null;
     },
     enabled: !!user,
-    refetchInterval: 10_000,
+    // Reduced from 10s to 30s
+    refetchInterval: 30_000,
   });
 
   // ── Derived billing state ──────────────────────────────────────────────
@@ -250,7 +251,6 @@ export function useSubscription() {
   // ── Subscribe (new checkout) ───────────────────────────────────────────
   const subscribe = useMutation({
     mutationFn: async (planKey: string = "starter") => {
-      // Force fresh token to avoid 401 from edge function's server-side JWT validation
       const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
       if (refreshErr || !refreshData.session?.access_token) {
         throw new Error("Session expired — please sign in again.");
@@ -278,31 +278,42 @@ export function useSubscription() {
   });
 
   // ── Cancel subscription ────────────────────────────────────────────────
+  // FIX: Removed the guard that required paystack_subscription_code + paystack_email_token.
+  // The updated edge function handles DB-only cancellation when no Paystack sub code exists
+  // (one-time charge plans). The edge function fetches the sub from DB itself.
   const cancelSubscription = useMutation({
     mutationFn: async () => {
-      if (!query.data?.paystack_subscription_code || !query.data?.paystack_email_token) {
+      // Verify there is actually an active subscription before calling the edge function
+      const currentSub = query.data;
+      if (!currentSub || currentSub.status === "cancelled") {
         throw new Error("No active subscription to cancel");
       }
+
       const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
       if (refreshErr || !refreshData.session?.access_token) {
         throw new Error("Session expired — please sign in again.");
       }
       const freshToken = refreshData.session.access_token;
 
+      // Pass any available codes (edge function handles null gracefully)
       const result = await supabase.functions.invoke("paystack-cancel-subscription", {
         body: {
-          subscription_code: query.data.paystack_subscription_code,
-          email_token: query.data.paystack_email_token,
+          subscription_code: currentSub.paystack_subscription_code ?? null,
+          email_token: currentSub.paystack_email_token ?? null,
         },
         headers: { Authorization: `Bearer ${freshToken}` },
       });
+
       if (result.error) throw new Error(result.error.message ?? "Failed to cancel subscription");
       if ((result.data as any)?.error) throw new Error((result.data as any).error);
+      return result.data;
     },
     onSuccess: () => {
-      toast.success("Subscription cancelled");
+      toast.success("Subscription cancelled successfully");
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
       queryClient.invalidateQueries({ queryKey: ["billing-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
+      queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to cancel subscription");
@@ -310,13 +321,8 @@ export function useSubscription() {
   });
 
   // ── Preview plan change ────────────────────────────────────────────────
-  // FIX: Force a fresh session refresh before calling the edge function.
-  // The edge function's resolveUser() calls admin.auth.getUser(token) which
-  // validates the token server-side. If the stored token is near-expiry or
-  // stale, this fails → 401. Forcing a refresh here guarantees a fresh JWT.
   const previewPlanChange = useMutation({
     mutationFn: async (newPlanKey: string): Promise<PlanChangePreview> => {
-      // Force fresh token — do NOT use getSessionToken() cache here
       const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
       if (refreshErr || !refreshData.session?.access_token) {
         throw new Error("Session expired — please sign in again.");
@@ -336,7 +342,6 @@ export function useSubscription() {
   // ── Change plan ────────────────────────────────────────────────────────
   const changePlan = useMutation({
     mutationFn: async (newPlanKey: string) => {
-      // Force fresh token same as previewPlanChange
       const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
       if (refreshErr || !refreshData.session?.access_token) {
         throw new Error("Session expired — please sign in again.");
@@ -402,15 +407,13 @@ export function useSubscription() {
   });
 
   // ── Transaction history ────────────────────────────────────────────────
-  // FIX: Delay initial fetch by 800ms so the auth lock settles after mount.
-  // React Strict Mode double-invokes effects, causing multiple concurrent
-  // refreshSession() calls that fight over the same lock and produce 401s.
+  // FIX: Increased delay to 1200ms and reduced refetch to 30s to prevent
+  // "Network error" from concurrent auth lock contention.
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
-      // Wait for auth lock to settle before hitting the edge function
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 1200));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
       });
@@ -419,18 +422,18 @@ export function useSubscription() {
       return ((data as any)?.transactions ?? []) as SubscriptionTransaction[];
     },
     enabled: !!user,
-    refetchInterval: 15000,
+    // Reduced from 15s to 30s — transaction history doesn't need to be real-time
+    refetchInterval: 30_000,
     retry: 1,
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
-  // FIX: Delay initial fetch by 1200ms for the same auth lock reason above.
+  // FIX: Increased delay and reduced polling to 15s to prevent concurrent calls
   const pendingSyncQuery = useQuery({
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
       if (!user || query.data?.status !== "pending") return null;
-      // Wait for auth lock to settle before hitting the edge function
-      await new Promise((r) => setTimeout(r, 1200));
+      await new Promise((r) => setTimeout(r, 1500));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: false,
       });
@@ -443,7 +446,8 @@ export function useSubscription() {
       return data;
     },
     enabled: !!user && query.data?.status === "pending",
-    refetchInterval: 8000,
+    // Reduced from 8s to 15s
+    refetchInterval: 15_000,
     retry: 1,
   });
 
