@@ -6,7 +6,7 @@
  *  2. User can copy link, join, schedule, or close
  *  3. Join/host via pasted link
  *  4. Schedule meetings inside Fixsense (no external calendar)
- *  5. Upcoming meetings list with "Start Now"
+ *  5. Upcoming meetings list with "Start Now" via MeetingTimeline
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -27,6 +27,10 @@ import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
 import { TeamUsageBanner } from "@/components/TeamMinuteUsageComponents";
+// ✅ Import real hook instead of inline definition
+import { useScheduledMeetings } from "@/hooks/useScheduledMeetings";
+// ✅ Import MeetingTimeline component
+import MeetingTimeline from "@/components/MeetingTimeline";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format, parseISO, isAfter } from "date-fns";
@@ -35,17 +39,6 @@ import { format, parseISO, isAfter } from "date-fns";
 declare global { interface Window { HMS: any; } }
 
 type ClearState = "idle" | "clearing" | "done" | "failed";
-
-interface ScheduledMeeting {
-  id: string;
-  user_id: string;
-  title: string;
-  meeting_link: string;
-  scheduled_time: string;
-  status: "scheduled" | "live" | "ended";
-  meeting_type?: string;
-  created_at: string;
-}
 
 const MEETING_TYPES = [
   { value: "discovery", label: "Discovery", emoji: "🔍" },
@@ -163,61 +156,6 @@ function useHMSAudioStreaming(callId: string | null) {
   return { chunksSent, isStreaming, startPeerAudio, stopAll };
 }
 
-// ─── Hook: scheduled meetings ──────────────────────────────────────────────────
-function useScheduledMeetings() {
-  const [meetings, setMeetings] = useState<ScheduledMeeting[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const fetchMeetings = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const { data, error } = await (supabase as any)
-        .from("scheduled_meetings")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .eq("status", "scheduled")
-        .order("scheduled_time", { ascending: true })
-        .limit(10);
-      if (!error && data) setMeetings(data);
-    } catch (e) {
-      console.warn("fetchMeetings error:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const scheduleMeeting = useCallback(async (params: {
-    title: string;
-    meeting_link: string;
-    scheduled_time: string;
-    meeting_type?: string;
-  }) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Not authenticated");
-    const { data, error } = await (supabase as any)
-      .from("scheduled_meetings")
-      .insert({
-        user_id: session.user.id,
-        title: params.title,
-        meeting_link: params.meeting_link,
-        scheduled_time: params.scheduled_time,
-        meeting_type: params.meeting_type || "other",
-        status: "scheduled",
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    await fetchMeetings();
-    return data;
-  }, [fetchMeetings]);
-
-  useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
-
-  return { meetings, isLoading, fetchMeetings, scheduleMeeting };
-}
-
 // ─── Meeting Created Popup ─────────────────────────────────────────────────────
 function MeetingCreatedPopup({
   shareLink,
@@ -248,7 +186,6 @@ function MeetingCreatedPopup({
   };
 
   return (
-    /* Overlay */
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
       <div
         className="relative w-full max-w-md rounded-2xl border border-white/10 overflow-hidden"
@@ -257,16 +194,11 @@ function MeetingCreatedPopup({
           boxShadow: "0 0 0 1px rgba(99,102,241,0.2), 0 32px 80px rgba(0,0,0,0.6), 0 0 60px rgba(99,102,241,0.08)",
         }}
       >
-        {/* Accent glow top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-0.5 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
-
-        {/* Close button */}
         <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors z-10">
           <X className="w-4 h-4" />
         </button>
-
         <div className="p-6 space-y-5">
-          {/* Header */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))", border: "1px solid rgba(99,102,241,0.3)" }}>
               <CheckCircle2 className="w-5 h-5 text-indigo-400" />
@@ -277,7 +209,6 @@ function MeetingCreatedPopup({
             </div>
           </div>
 
-          {/* Link box */}
           <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
             <Link2 className="w-3.5 h-3.5 text-white/30 shrink-0" />
             <span className="text-xs text-white/60 flex-1 truncate font-mono">{shareLink}</span>
@@ -295,17 +226,13 @@ function MeetingCreatedPopup({
             </button>
           </div>
 
-          {/* Action buttons */}
           <div className="space-y-2.5">
             <button
               onClick={onJoinAsHost}
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98]"
               style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)", boxShadow: "0 4px 20px rgba(99,102,241,0.3)" }}
             >
-              <span className="flex items-center gap-2.5">
-                <Video className="w-4 h-4" />
-                Join as Host
-              </span>
+              <span className="flex items-center gap-2.5"><Video className="w-4 h-4" />Join as Host</span>
               <ArrowRight className="w-4 h-4 opacity-60" />
             </button>
 
@@ -314,10 +241,7 @@ function MeetingCreatedPopup({
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-white/8"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
             >
-              <span className="flex items-center gap-2.5 text-white/70">
-                <CalendarPlus className="w-4 h-4" />
-                Schedule this meeting
-              </span>
+              <span className="flex items-center gap-2.5 text-white/70"><CalendarPlus className="w-4 h-4" />Schedule this meeting</span>
               <ArrowRight className="w-4 h-4 text-white/30" />
             </button>
 
@@ -325,16 +249,12 @@ function MeetingCreatedPopup({
               <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-white/8"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
               >
-                <span className="flex items-center gap-2.5 text-white/50">
-                  <ExternalLink className="w-4 h-4" />
-                  Open in new tab
-                </span>
+                <span className="flex items-center gap-2.5 text-white/50"><ExternalLink className="w-4 h-4" />Open in new tab</span>
                 <ArrowRight className="w-4 h-4 text-white/20" />
               </button>
             </a>
           </div>
 
-          {/* Footer */}
           <p className="text-[11px] text-white/20 flex items-center gap-1.5 justify-center">
             <Shield className="w-3 h-3" />
             No login required for guests · AI transcription active when you join
@@ -399,7 +319,6 @@ function ScheduleModal({
             </div>
           </div>
 
-          {/* Title */}
           <div>
             <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Title *</label>
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Acme Corp Demo"
@@ -407,7 +326,6 @@ function ScheduleModal({
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} />
           </div>
 
-          {/* Link (optional if prefilled) */}
           {!prefillLink && (
             <div>
               <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Link (optional)</label>
@@ -417,7 +335,6 @@ function ScheduleModal({
             </div>
           )}
 
-          {/* Date & Time */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-white/50 font-medium mb-1.5 block">Date *</label>
@@ -433,7 +350,6 @@ function ScheduleModal({
             </div>
           </div>
 
-          {/* Meeting type */}
           <div>
             <label className="text-xs text-white/50 font-medium mb-1.5 block">Type</label>
             <div className="flex flex-wrap gap-1.5">
@@ -552,7 +468,9 @@ export default function LiveCall() {
 
   const { roomInfo, isCreating, createRoom, setRoomInfo } = useHMSRoom();
   const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
-  const { meetings: scheduledMeetings, isLoading: meetingsLoading, scheduleMeeting, fetchMeetings } = useScheduledMeetings();
+
+  // ✅ Use real useScheduledMeetings hook — only need `create` for the Schedule modal save handler
+  const { create: createMeeting } = useScheduledMeetings();
 
   // UI state
   const [showPopup, setShowPopup] = useState(false);
@@ -699,7 +617,6 @@ export default function LiveCall() {
     const link = joinLink.trim();
     if (!link) { toast.error("Please paste a meeting link"); return; }
     try {
-      // Extract room name from 100ms link and try to create host token
       toast.info("Opening as host in new tab…");
       window.open(link, "_blank");
     } catch {
@@ -749,8 +666,22 @@ export default function LiveCall() {
     setShowScheduleModal(true);
   }, []);
 
+  // ✅ Save handler for ScheduleModal now uses the real hook's create mutation
+  const handleScheduleSave = useCallback(async (params: {
+    title: string;
+    meeting_link: string;
+    scheduled_time: string;
+    meeting_type: string;
+  }) => {
+    await createMeeting.mutateAsync({
+      title: params.title,
+      meeting_link: params.meeting_link || undefined,
+      scheduled_time: params.scheduled_time,
+      meeting_type: params.meeting_type,
+    });
+  }, [createMeeting]);
+
   const hasActiveSession = isLive && !!callId && !isZombie;
-  const upcomingMeetings = scheduledMeetings.filter(m => isAfter(parseISO(m.scheduled_time), new Date()));
 
   if (isLoading) {
     return (
@@ -779,7 +710,7 @@ export default function LiveCall() {
         <ScheduleModal
           prefillLink={schedulePrefilledLink}
           prefillTitle={schedulePrefilledTitle}
-          onSave={scheduleMeeting}
+          onSave={handleScheduleSave}
           onClose={() => setShowScheduleModal(false)}
         />
       )}
@@ -904,50 +835,9 @@ export default function LiveCall() {
               </Button>
             </div>
 
-            {/* Upcoming meetings */}
-            <div className="glass rounded-xl border border-border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5" />Upcoming
-                </h2>
-                {meetingsLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-              </div>
-
-              {upcomingMeetings.length === 0 ? (
-                <div className="text-center py-5">
-                  <Calendar className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground/50">No scheduled meetings</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {upcomingMeetings.slice(0, 4).map(meeting => {
-                    const mt = MEETING_TYPES.find(t => t.value === meeting.meeting_type);
-                    return (
-                      <div key={meeting.id} className="rounded-lg p-2.5 space-y-1" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium leading-tight text-foreground/80 truncate">{mt?.emoji} {meeting.title}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <Clock className="w-2.5 h-2.5" />
-                          {format(parseISO(meeting.scheduled_time), "MMM d · h:mm a")}
-                        </div>
-                        {meeting.meeting_link && (
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            <a href={meeting.meeting_link} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-[11px] text-primary hover:underline">
-                              <Play className="w-2.5 h-2.5" />Start Now
-                            </a>
-                            <button onClick={() => { navigator.clipboard.writeText(meeting.meeting_link); toast.success("Copied!"); }}
-                              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground ml-auto">
-                              <Copy className="w-2.5 h-2.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            {/* ✅ Upcoming meetings — replaced with MeetingTimeline */}
+            <div className="glass rounded-xl border border-border p-4">
+              <MeetingTimeline compact maxItems={4} />
             </div>
           </div>
 
@@ -1024,7 +914,7 @@ export default function LiveCall() {
 
           {/* ── RIGHT: Activity / Info ── */}
           <div className="space-y-4">
-            {/* Live status */}
+            {/* AI Features */}
             <div className="glass rounded-xl border border-border p-4 space-y-3">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" />AI Features
@@ -1049,7 +939,7 @@ export default function LiveCall() {
               </div>
             </div>
 
-            {/* Quick stats */}
+            {/* Quick links */}
             <div className="glass rounded-xl border border-border p-4 space-y-3">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <Hash className="w-3.5 h-3.5" />Quick Links
