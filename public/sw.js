@@ -1,189 +1,126 @@
 /**
  * Fixsense Service Worker
- * - Caches shell + static assets
- * - Offline-capable call list (network-first with cache fallback)
- * - Push notification support for post-call summaries
+ * Handles Web Push notifications for meeting reminders.
+ * Must be placed at /public/sw.js (served from root).
  */
 
-const CACHE_NAME = 'fixsense-v1';
-const STATIC_CACHE = 'fixsense-static-v1';
-const API_CACHE = 'fixsense-api-v1';
+const CACHE_NAME = "fixsense-v1";
 
-// App shell files to cache immediately
-const SHELL_ASSETS = [
-  '/',
-  '/dashboard',
-  '/dashboard/calls',
-  '/dashboard/live',
-  '/manifest.json',
-  '/fixsense_icon_logo (2).png',
-];
-
-// ── Install: cache app shell ──────────────────────────────────────────────────
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(SHELL_ASSETS).catch((err) => {
-        console.warn('[SW] Failed to cache some shell assets:', err);
-      });
-    }).then(() => self.skipWaiting())
-  );
+// ── Install: cache app shell ─────────────────────────────────────────────────
+self.addEventListener("install", (event) => {
+  console.log("[SW] Installing...");
+  self.skipWaiting();
 });
 
-// ── Activate: clean old caches ────────────────────────────────────────────────
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((k) => k !== STATIC_CACHE && k !== API_CACHE && k !== CACHE_NAME)
-          .map((k) => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
-  );
+// ── Activate: take control immediately ───────────────────────────────────────
+self.addEventListener("activate", (event) => {
+  console.log("[SW] Activated");
+  event.waitUntil(clients.claim());
 });
 
-// ── Fetch strategy ────────────────────────────────────────────────────────────
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
+// ── Push: show notification when message arrives ──────────────────────────────
+self.addEventListener("push", (event) => {
+  console.log("[SW] Push received");
 
-  // Skip non-GET, chrome-extension, and Supabase realtime (websockets)
-  if (request.method !== 'GET') return;
-  if (url.protocol === 'chrome-extension:') return;
-  if (url.pathname.startsWith('/realtime/')) return;
-
-  // Supabase REST API → Network-first with API cache fallback
-  if (url.hostname.includes('supabase.co') && url.pathname.startsWith('/rest/')) {
-    event.respondWith(networkFirstWithCache(request, API_CACHE, 60 * 5)); // 5 min TTL
-    return;
-  }
-
-  // Static assets (js, css, images, fonts) → Cache-first
-  if (
-    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/)
-  ) {
-    event.respondWith(cacheFirst(request, STATIC_CACHE));
-    return;
-  }
-
-  // Navigation requests (HTML pages) → Network-first, offline fallback to /
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() =>
-        caches.match('/') || caches.match('/dashboard')
-      )
-    );
-    return;
-  }
-
-  // Default: network-first
-  event.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  );
-});
-
-// ── Cache helpers ─────────────────────────────────────────────────────────────
-async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(cacheName);
-    cache.put(request, response.clone());
-  }
-  return response;
-}
-
-async function networkFirstWithCache(request, cacheName, ttlSeconds = 300) {
+  let data = {};
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      // Store with timestamp header for TTL enforcement
-      const headers = new Headers(response.headers);
-      headers.set('sw-cached-at', Date.now().toString());
-      const cachedResponse = new Response(response.clone().body, { headers });
-      cache.put(request, cachedResponse);
+    if (event.data) {
+      data = event.data.json();
     }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) {
-      const cachedAt = parseInt(cached.headers.get('sw-cached-at') || '0');
-      if (Date.now() - cachedAt < ttlSeconds * 1000) {
-        return cached;
-      }
-    }
-    return new Response(
-      JSON.stringify({ error: 'offline', message: 'You appear to be offline' }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    console.warn("[SW] Could not parse push data:", err);
+    data = {
+      title: "📅 Fixsense Reminder",
+      body: event.data ? event.data.text() : "You have an upcoming meeting.",
+    };
   }
-}
 
-// ── Push notifications ────────────────────────────────────────────────────────
-self.addEventListener('push', (event) => {
-  let data = { title: 'Fixsense', body: 'You have a new update', url: '/dashboard' };
-
-  try {
-    data = event.data?.json() || data;
-  } catch {
-    data.body = event.data?.text() || data.body;
-  }
+  const {
+    title = "📅 Fixsense Reminder",
+    body = "You have an upcoming meeting.",
+    icon = "/fixsense_icon_logo (2).png",
+    badge = "/fixsense_icon_logo (2).png",
+    tag = "fixsense-reminder",
+    url = "/dashboard/live",
+    requireInteraction = false,
+    vibrate = [200, 100, 200],
+    actions = [],
+    data: notifData = {},
+  } = data;
 
   const options = {
-    body: data.body,
-    icon: '/fixsense_icon_logo (2).png',
-    badge: '/fixsense_icon_logo (2).png',
-    tag: data.tag || 'fixsense-notification',
-    renotify: true,
-    data: { url: data.url || '/dashboard' },
-    actions: [
-      { action: 'open', title: 'View' },
-      { action: 'dismiss', title: 'Dismiss' },
-    ],
-    vibrate: [200, 100, 200],
+    body,
+    icon,
+    badge,
+    tag,
+    requireInteraction,
+    vibrate,
+    actions,
+    data: { url, ...notifData },
+    timestamp: Date.now(),
+    silent: false,
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Fixsense', options)
-  );
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
-self.addEventListener('notificationclick', (event) => {
+// ── Notification click: open the app or meeting link ──────────────────────────
+self.addEventListener("notificationclick", (event) => {
+  console.log("[SW] Notification click:", event.action);
   event.notification.close();
 
-  if (event.action === 'dismiss') return;
+  const notifData = event.notification.data || {};
+  let targetUrl = notifData.url || "/dashboard/live";
 
-  const url = event.notification.data?.url || '/dashboard';
+  // Handle action buttons
+  if (event.action === "join" && notifData.meeting_link) {
+    targetUrl = notifData.meeting_link;
+  } else if (event.action === "dismiss") {
+    return; // Just close
+  } else if (event.action === "open" || !event.action) {
+    targetUrl = notifData.url || "/dashboard/live";
+  }
+
+  // Ensure absolute URL
+  if (!targetUrl.startsWith("http")) {
+    targetUrl = self.location.origin + targetUrl;
+  }
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Focus existing tab if open
-      for (const client of clients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.focus();
-          client.navigate(url);
-          return;
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windowClients) => {
+        // Focus existing window if already open
+        for (const client of windowClients) {
+          if (client.url.includes(self.location.origin) && "focus" in client) {
+            client.focus();
+            client.navigate(targetUrl);
+            return;
+          }
         }
-      }
-      // Open new tab
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(url);
-      }
-    })
+        // Otherwise open a new window
+        return clients.openWindow(targetUrl);
+      })
   );
 });
 
-// ── Background sync (for queued actions when offline) ─────────────────────────
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-calls') {
-    event.waitUntil(syncPendingData());
-  }
+// ── Push subscription change: re-subscribe automatically ──────────────────────
+self.addEventListener("pushsubscriptionchange", (event) => {
+  console.log("[SW] Push subscription changed — re-subscribing...");
+  event.waitUntil(
+    self.registration.pushManager
+      .subscribe({ userVisibleOnly: true })
+      .then((subscription) => {
+        // Notify all open app clients so they can save the new subscription
+        return clients.matchAll({ type: "window" }).then((windowClients) => {
+          for (const client of windowClients) {
+            client.postMessage({
+              type: "PUSH_SUBSCRIPTION_CHANGED",
+              subscription: subscription.toJSON(),
+            });
+          }
+        });
+      })
+      .catch((err) => console.error("[SW] Re-subscription failed:", err))
+  );
 });
-
-async function syncPendingData() {
-  // Future: sync any queued offline actions back to Supabase
-  console.log('[SW] Background sync triggered');
-}
