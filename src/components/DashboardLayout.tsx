@@ -3,7 +3,7 @@ import { Building2 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
-  Users, LogOut, MessageSquare, ChevronDown, Bell, Timer,
+  Users, LogOut, MessageSquare, ChevronDown, Bell,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -51,6 +51,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { unreadCount } = useNotifications();
   const { team } = useTeam();
+  // Only fetch messaging if user is in a team — avoids unnecessary queries
   const { totalUnread } = useTeamMessaging(team?.id);
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
@@ -73,6 +74,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Settings", icon: Settings,   href: "/dashboard/settings" },
   ];
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate("/");
+    } catch (e) {
+      console.error("Sign out error:", e);
+      navigate("/");
+    }
+  };
+
   const SidebarContent = () => (
     <div className="flex flex-col h-full" style={{ fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif" }}>
       <div className="px-4 pt-5 pb-4">
@@ -83,7 +94,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
       <div className="mx-4 mb-1 h-px bg-[rgba(255,255,255,0.06)]" />
 
-      {/* ✅ CHANGED: TeamUsageSidebarPill replaces the old MinuteUsagePill */}
       <TeamUsageSidebarPill />
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
@@ -96,7 +106,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </nav>
       <div className="mx-3 mb-4 mt-2 rounded-md overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[rgba(255,255,255,0.04)] transition-colors cursor-pointer"
-          onClick={async () => { await signOut(); navigate("/"); }}>
+          onClick={handleSignOut}>
           <div className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 uppercase"
             style={{ background: "linear-gradient(135deg, rgba(26,240,196,0.2) 0%, rgba(11,191,160,0.2) 100%)", border: "1px solid rgba(26,240,196,0.2)", color: "#1af0c4" }}>
             {emailInitial}
@@ -150,7 +160,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="hidden md:block"><BreadcrumbPath /></div>
           </div>
           <div className="flex items-center gap-1">
-            <button className="relative w-8 h-8 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)] transition-colors" onClick={() => navigate("/dashboard/messages")}>
+            <button
+              className="relative w-8 h-8 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+              onClick={() => navigate("/dashboard/messages")}
+            >
               <Bell style={{ width: 15, height: 15 }} />
               {messagesUnread > 0 && <span className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full" style={{ background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,0.6)" }} />}
             </button>
@@ -175,12 +188,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 function BreadcrumbPath() {
   const location = useLocation();
   const segments = location.pathname.split("/").filter(Boolean);
-  const labels: Record<string, string> = { dashboard:"Dashboard", calls:"Calls", live:"Live Call", analytics:"Analytics", team:"Team", messages:"Messages", settings:"Settings", billing:"Billing", coach:"AI Coach", profile:"Profile" };
+  const labels: Record<string, string> = {
+    dashboard: "Dashboard", calls: "Calls", live: "Live Call", analytics: "Analytics",
+    team: "Team", messages: "Messages", settings: "Settings", billing: "Billing",
+    coach: "AI Coach", profile: "Profile", deals: "Deals",
+  };
   if (segments.length === 1) return <span className="text-[13px] font-semibold text-white tracking-[-0.01em]">Dashboard</span>;
   return (
     <div className="flex items-center gap-1.5">
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
+        // Skip long UUIDs
         if (seg.includes("-") && seg.length > 20) return null;
         return (
           <span key={i} className="flex items-center gap-1.5">
