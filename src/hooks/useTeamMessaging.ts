@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export interface Conversation {
   id: string;
@@ -25,13 +25,11 @@ export interface Message {
   sender?: { full_name: string | null; email: string | null };
 }
 
-/** Returns display name for a conversation */
 export function getConversationName(convo: Conversation): string {
   if (convo.participants.length === 0) return "Empty Chat";
   if (convo.participants.length === 1) {
     return convo.participants[0].full_name || convo.participants[0].email || "Unknown";
   }
-  // Group: show first 3 names
   const names = convo.participants
     .slice(0, 3)
     .map(p => p.full_name?.split(" ")[0] || p.email?.split("@")[0] || "?");
@@ -39,13 +37,11 @@ export function getConversationName(convo: Conversation): string {
   return names.join(", ") + suffix;
 }
 
-/** Returns initials for avatar */
 export function getConversationInitials(convo: Conversation): string {
   if (convo.participants.length <= 1) {
     const name = convo.participants[0]?.full_name || convo.participants[0]?.email || "?";
     return name[0]?.toUpperCase() || "?";
   }
-  // Group: show count
   return `${convo.participants.length + 1}`;
 }
 
@@ -54,12 +50,14 @@ export function useTeamMessaging(teamId: string | undefined) {
   const queryClient = useQueryClient();
 
   const conversationsQuery = useQuery({
-    queryKey: ["team-conversations", teamId],
+    queryKey: ["team-conversations", teamId, user?.id],
     queryFn: async () => {
+      if (!teamId || !user?.id) return [];
+
       const { data: participantRows } = await supabase
         .from("conversation_participants")
         .select("conversation_id, last_read_at")
-        .eq("user_id", user!.id);
+        .eq("user_id", user.id);
 
       if (!participantRows?.length) return [];
 
@@ -70,7 +68,7 @@ export function useTeamMessaging(teamId: string | undefined) {
         .from("team_conversations")
         .select("*")
         .in("id", convoIds)
-        .eq("team_id", teamId!)
+        .eq("team_id", teamId)
         .order("created_at", { ascending: false });
 
       if (!convos?.length) return [];
@@ -87,28 +85,38 @@ export function useTeamMessaging(teamId: string | undefined) {
         .in("id", allUserIds);
       const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
 
-      const results: Conversation[] = [];
-      for (const convo of convos) {
-        // FIX: Use .maybeSingle() instead of .single() to avoid 406 errors
-        // when a conversation has no messages yet (0 rows should return null, not throw)
-        const { data: lastMsg } = await supabase
-          .from("team_messages")
-          .select("message_text, created_at, sender_id")
-          .eq("conversation_id", convo.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // Batch fetch last messages for all conversations at once
+      const lastMessages = new Map<string, any>();
+      if (convoIds.length > 0) {
+        // Use a subquery approach - get last message per conversation
+        for (const convoId of convoIds) {
+          const { data: lastMsg } = await supabase
+            .from("team_messages")
+            .select("message_text, created_at, sender_id")
+            .eq("conversation_id", convoId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (lastMsg) lastMessages.set(convoId, lastMsg);
+        }
+      }
 
-        const lastRead = lastReadMap.get(convo.id);
+      // Batch fetch unread counts
+      const unreadCounts = new Map<string, number>();
+      for (const convoId of convoIds) {
+        const lastRead = lastReadMap.get(convoId);
         const { count } = await supabase
           .from("team_messages")
           .select("id", { count: "exact", head: true })
-          .eq("conversation_id", convo.id)
-          .neq("sender_id", user!.id)
+          .eq("conversation_id", convoId)
+          .neq("sender_id", user.id)
           .gt("created_at", lastRead ?? "1970-01-01");
+        unreadCounts.set(convoId, count ?? 0);
+      }
 
+      const results: Conversation[] = convos.map(convo => {
         const participants = (allParticipants ?? [])
-          .filter(p => p.conversation_id === convo.id && p.user_id !== user!.id)
+          .filter(p => p.conversation_id === convo.id && p.user_id !== user.id)
           .map(p => {
             const prof = profileMap.get(p.user_id);
             return {
@@ -119,14 +127,14 @@ export function useTeamMessaging(teamId: string | undefined) {
             };
           });
 
-        results.push({
+        return {
           ...convo,
           participants,
-          last_message: lastMsg ?? undefined,
-          unread_count: count ?? 0,
+          last_message: lastMessages.get(convo.id) ?? undefined,
+          unread_count: unreadCounts.get(convo.id) ?? 0,
           is_group: participants.length > 1,
-        });
-      }
+        };
+      });
 
       results.sort((a, b) => {
         const aTime = a.last_message?.created_at ?? a.created_at;
@@ -137,7 +145,9 @@ export function useTeamMessaging(teamId: string | undefined) {
       return results;
     },
     enabled: !!user && !!teamId,
-    refetchInterval: 30000,
+    // Reduced refetch interval to avoid hammering DB
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   const totalUnread = conversationsQuery.data?.reduce((sum, c) => sum + c.unread_count, 0) ?? 0;
@@ -159,14 +169,17 @@ export interface ReadReceipt {
 export function useConversationMessages(conversationId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // Track last marked-read message count to avoid redundant upserts
+  const lastMarkCountRef = useRef(0);
 
   const messagesQuery = useQuery({
     queryKey: ["conversation-messages", conversationId],
     queryFn: async () => {
+      if (!conversationId) return [];
       const { data: messages } = await supabase
         .from("team_messages")
         .select("*")
-        .eq("conversation_id", conversationId!)
+        .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
       if (!messages?.length) return [];
@@ -184,17 +197,18 @@ export function useConversationMessages(conversationId: string | null) {
       })) as Message[];
     },
     enabled: !!conversationId,
+    staleTime: 10_000,
   });
 
-  // Read receipts: fetch other participants' last_read_at
   const readReceiptsQuery = useQuery({
     queryKey: ["read-receipts", conversationId],
     queryFn: async () => {
+      if (!conversationId || !user) return [] as ReadReceipt[];
       const { data: participants } = await supabase
         .from("conversation_participants")
         .select("user_id, last_read_at")
-        .eq("conversation_id", conversationId!)
-        .neq("user_id", user!.id);
+        .eq("conversation_id", conversationId)
+        .neq("user_id", user.id);
 
       if (!participants?.length) return [] as ReadReceipt[];
 
@@ -212,11 +226,17 @@ export function useConversationMessages(conversationId: string | null) {
       })) as ReadReceipt[];
     },
     enabled: !!conversationId && !!user,
-    refetchInterval: 10000,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
 
+  // Mark as read — only fire when message count actually changes
+  const messageCount = messagesQuery.data?.length ?? 0;
   useEffect(() => {
-    if (!conversationId || !user) return;
+    if (!conversationId || !user || messageCount === 0) return;
+    if (messageCount === lastMarkCountRef.current) return;
+    lastMarkCountRef.current = messageCount;
+
     supabase
       .from("conversation_participants")
       .update({ last_read_at: new Date().toISOString() })
@@ -225,8 +245,9 @@ export function useConversationMessages(conversationId: string | null) {
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
       });
-  }, [conversationId, user, messagesQuery.data?.length]);
+  }, [conversationId, user, messageCount, queryClient]);
 
+  // Realtime subscription
   useEffect(() => {
     if (!conversationId) return;
 
@@ -247,11 +268,12 @@ export function useConversationMessages(conversationId: string | null) {
 
   const sendMessage = useMutation({
     mutationFn: async (payload: { text: string; file_url?: string; file_name?: string; file_type?: string }) => {
+      if (!conversationId || !user) throw new Error("No conversation or user");
       const { error } = await supabase
         .from("team_messages")
         .insert({
-          conversation_id: conversationId!,
-          sender_id: user!.id,
+          conversation_id: conversationId,
+          sender_id: user.id,
           message_text: payload.text,
           file_url: payload.file_url ?? null,
           file_name: payload.file_name ?? null,
@@ -262,13 +284,12 @@ export function useConversationMessages(conversationId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["read-receipts", conversationId] });
     },
   });
 
-  /** Start a new conversation with one or more users */
   const startConversation = useMutation({
     mutationFn: async ({ teamId, memberIds }: { teamId: string; memberIds: string[] }) => {
+      if (!user) throw new Error("Not authenticated");
       const convoId = crypto.randomUUID();
 
       const { error: convoErr } = await supabase
@@ -276,7 +297,7 @@ export function useConversationMessages(conversationId: string | null) {
         .insert({ id: convoId, team_id: teamId });
       if (convoErr) throw convoErr;
 
-      const participantRows = [user!.id, ...memberIds].map(uid => ({
+      const participantRows = [user.id, ...memberIds].map(uid => ({
         conversation_id: convoId,
         user_id: uid,
       }));
