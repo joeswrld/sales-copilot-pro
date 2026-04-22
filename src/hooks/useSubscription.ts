@@ -1,10 +1,11 @@
 // src/hooks/useSubscription.ts
-// FIXES:
-//  1. cancelSubscription no longer requires paystack_subscription_code/email_token
-//     (works for one-time charge plans too — edge function handles DB-only cancel)
-//  2. Reduced polling intervals to prevent "Network error" from concurrent fetches
-//  3. transactions query delayed 800ms and reduced refetch to 30s
-//  4. pendingSync query only runs when truly pending, reduced to 15s
+// FIXES v2:
+//  1. transactionsQuery — only runs ONCE on mount (no polling), not every 30s.
+//     Transaction history doesn't change in real-time; re-fetched only on demand.
+//  2. pendingSyncQuery — only runs when status is genuinely "pending"; reduced to 20s.
+//  3. profileQuery — reduced from 30s to 2min polling (billing_status rarely changes).
+//  4. paymentQuery — reduced from 30s to 2min polling.
+//  5. getSessionToken — serialised, prevents concurrent auth lock contention.
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -176,7 +177,7 @@ export function useSubscription() {
       return data as Subscription | null;
     },
     enabled: !!user,
-    // Only poll fast when pending; otherwise refresh every 5 minutes
+    // Fast poll only while pending; otherwise 5 minutes
     refetchInterval: (q) => {
       const data = q.state.data as Subscription | null;
       return data?.status === "pending" ? 10_000 : 5 * 60_000;
@@ -184,6 +185,7 @@ export function useSubscription() {
   });
 
   // ── Profile billing status ─────────────────────────────────────────────
+  // FIX: reduced from 30s → 2 minutes. Billing status changes are rare.
   const profileQuery = useQuery({
     queryKey: ["billing-profile", user?.id],
     queryFn: async () => {
@@ -196,11 +198,11 @@ export function useSubscription() {
       return data as unknown as { plan_type: string; billing_status: string } | null;
     },
     enabled: !!user,
-    // Reduced from 10s to 30s — billing status changes rarely
-    refetchInterval: 30_000,
+    refetchInterval: 2 * 60_000,
   });
 
   // ── Latest payment record ──────────────────────────────────────────────
+  // FIX: reduced from 30s → 2 minutes.
   const paymentQuery = useQuery({
     queryKey: ["latest-payment", user?.id],
     queryFn: async (): Promise<PaymentRecord | null> => {
@@ -215,8 +217,7 @@ export function useSubscription() {
       return data as PaymentRecord | null;
     },
     enabled: !!user,
-    // Reduced from 10s to 30s
-    refetchInterval: 30_000,
+    refetchInterval: 2 * 60_000,
   });
 
   // ── Derived billing state ──────────────────────────────────────────────
@@ -278,12 +279,8 @@ export function useSubscription() {
   });
 
   // ── Cancel subscription ────────────────────────────────────────────────
-  // FIX: Removed the guard that required paystack_subscription_code + paystack_email_token.
-  // The updated edge function handles DB-only cancellation when no Paystack sub code exists
-  // (one-time charge plans). The edge function fetches the sub from DB itself.
   const cancelSubscription = useMutation({
     mutationFn: async () => {
-      // Verify there is actually an active subscription before calling the edge function
       const currentSub = query.data;
       if (!currentSub || currentSub.status === "cancelled") {
         throw new Error("No active subscription to cancel");
@@ -295,7 +292,6 @@ export function useSubscription() {
       }
       const freshToken = refreshData.session.access_token;
 
-      // Pass any available codes (edge function handles null gracefully)
       const result = await supabase.functions.invoke("paystack-cancel-subscription", {
         body: {
           subscription_code: currentSub.paystack_subscription_code ?? null,
@@ -407,13 +403,15 @@ export function useSubscription() {
   });
 
   // ── Transaction history ────────────────────────────────────────────────
-  // FIX: Increased delay to 1200ms and reduced refetch to 30s to prevent
-  // "Network error" from concurrent auth lock contention.
+  // FIX: No automatic polling — transactions don't change in real-time.
+  // staleTime=5min means it only re-fetches when user explicitly navigates
+  // to the billing page or calls refetch().
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
-      await new Promise((r) => setTimeout(r, 1200));
+      // Small delay to avoid racing with other auth calls on page load
+      await new Promise((r) => setTimeout(r, 800));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
       });
@@ -422,13 +420,14 @@ export function useSubscription() {
       return ((data as any)?.transactions ?? []) as SubscriptionTransaction[];
     },
     enabled: !!user,
-    // Reduced from 15s to 30s — transaction history doesn't need to be real-time
-    refetchInterval: 30_000,
+    // FIX: No refetchInterval — only fetches on mount + explicit invalidation
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
     retry: 1,
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
-  // FIX: Increased delay and reduced polling to 15s to prevent concurrent calls
+  // FIX: only active when truly pending, poll at 20s (was 8-15s)
   const pendingSyncQuery = useQuery({
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
@@ -446,8 +445,7 @@ export function useSubscription() {
       return data;
     },
     enabled: !!user && query.data?.status === "pending",
-    // Reduced from 8s to 15s
-    refetchInterval: 15_000,
+    refetchInterval: 20_000,
     retry: 1,
   });
 
