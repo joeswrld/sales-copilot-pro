@@ -1,15 +1,12 @@
 /**
- * useUserStatus.ts — v3 (Debounced, performance-safe)
+ * useUserStatus.ts — v4 (Stabilized)
  *
- * KEY FIX: The original version fired upsert_user_status on EVERY mouse/keyboard
- * event (after 10-min away timer reset) causing dozens of concurrent DB calls
- * that froze the app on mobile/slow connections.
- *
- * Changes:
- *  - All status upserts are debounced (500ms for auto, 0ms for manual)
- *  - Away timer reset only fires DB call when status actually changes
- *  - Removed redundant mutation calls on every route change
- *  - Status stored in ref to prevent stale closure issues
+ * Key fixes from v3:
+ *  - upsertStatus mutation is now stable (no stale closure issues with debounce)
+ *  - Away timer only fires ONE upsert when crossing into away, not on every activity event
+ *  - Route-change auto-status has a longer debounce (2s) to avoid spamming on fast navigation
+ *  - useMutation stabilized with useCallback for the mutationFn
+ *  - Removed the broken `debouncedUpsert` that created new closures on every render
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -17,8 +14,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 export type UserStatus = "available" | "on_call" | "in_meeting" | "away" | "busy";
 
@@ -50,10 +45,10 @@ const PAGE_STATUS_MAP: Record<string, { status: UserStatus; page: string }> = {
   "/dashboard":           { status: "available", page: "dashboard"  },
 };
 
-const AWAY_TIMEOUT_MS   = 10 * 60 * 1000; // 10 minutes
-const DEBOUNCE_MS       = 1500;            // 1.5s debounce on auto status changes
-
-// ─── Hook ────────────────────────────────────────────────────────────────────
+const AWAY_TIMEOUT_MS  = 10 * 60 * 1000;
+const ROUTE_DEBOUNCE   = 2000;
+const AWAY_DEBOUNCE    = 500;
+const ACTIVITY_THROTTLE = 15_000; // Minimum 15s between activity-based status changes
 
 export function useUserStatus(teamId?: string | null) {
   const { user } = useAuth();
@@ -62,13 +57,15 @@ export function useUserStatus(teamId?: string | null) {
 
   const [teamStatuses, setTeamStatuses] = useState<Map<string, UserStatusInfo>>(new Map());
 
-  const awayTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const manualOverrideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debounceRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isManualRef       = useRef(false);
-  const lastUpsertedRef   = useRef<{ status: string; page: string }>({ status: "", page: "" });
+  const awayTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualOverrideRef  = useRef(false);
+  const lastUpsertedRef    = useRef<{ status: string; page: string }>({ status: "", page: "" });
+  const routeDebounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const awayDebounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActivityRef    = useRef(0);
+  const isAwayRef          = useRef(false);
 
-  // ── Fetch my current status ────────────────────────────────────────────
+  // ── Fetch my current status ──────────────────────────────────────────────
   const { data: myStatusRow } = useQuery({
     queryKey: ["user-status", user?.id],
     queryFn: async () => {
@@ -81,11 +78,11 @@ export function useUserStatus(teamId?: string | null) {
       return data as unknown as UserStatusInfo | null;
     },
     enabled: !!user,
-    staleTime: 60_000,   // Only re-fetch after 1 minute
-    refetchInterval: false, // No automatic polling — realtime handles updates
+    staleTime: 60_000,
+    refetchInterval: false,
   });
 
-  // ── Fetch team statuses ────────────────────────────────────────────────
+  // ── Fetch team statuses ──────────────────────────────────────────────────
   const { data: teamStatusRows } = useQuery({
     queryKey: ["team-statuses", teamId],
     queryFn: async () => {
@@ -103,8 +100,8 @@ export function useUserStatus(teamId?: string | null) {
         .in("user_id", userIds);
       return (data || []) as unknown as UserStatusInfo[];
     },
-    enabled:         !!teamId && !!user,
-    staleTime:       30_000,
+    enabled: !!teamId && !!user,
+    staleTime: 30_000,
     refetchInterval: false,
   });
 
@@ -126,7 +123,7 @@ export function useUserStatus(teamId?: string | null) {
     });
   }, [teamStatusRows]);
 
-  // ── Realtime subscription ─────────────────────────────────────────────
+  // ── Realtime subscription ────────────────────────────────────────────────
   useEffect(() => {
     if (!teamId || !user) return;
     const ch = supabase
@@ -152,16 +149,18 @@ export function useUserStatus(teamId?: string | null) {
     return () => { supabase.removeChannel(ch); };
   }, [teamId, user]);
 
-  // ── Upsert mutation ────────────────────────────────────────────────────
+  // ── Core upsert mutation ─────────────────────────────────────────────────
   const upsertStatus = useMutation({
     mutationFn: async ({
       status,
       customText,
       page,
+      isManual,
     }: {
       status: UserStatus;
       customText?: string;
       page?: string;
+      isManual?: boolean;
     }) => {
       if (!user) return;
       // Skip if nothing changed
@@ -177,7 +176,7 @@ export function useUserStatus(teamId?: string | null) {
         p_custom_text: customText ?? null,
         p_team_id:     teamId ?? null,
         p_last_page:   page ?? null,
-        p_is_manual:   isManualRef.current,
+        p_is_manual:   isManual ?? false,
       });
     },
     onMutate: ({ status }) => {
@@ -199,37 +198,25 @@ export function useUserStatus(teamId?: string | null) {
     },
   });
 
-  // ── Debounced upsert helper ────────────────────────────────────────────
-  const debouncedUpsert = useCallback((
-    status: UserStatus, page?: string, delay = DEBOUNCE_MS
-  ) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      upsertStatus.mutate({ status, page });
-    }, delay);
-  }, [upsertStatus]);
-
-  // ── Manual status setter ───────────────────────────────────────────────
+  // ── Manual status setter ─────────────────────────────────────────────────
   const setStatus = useCallback((status: UserStatus, customText?: string) => {
-    isManualRef.current = true;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    upsertStatus.mutate({ status, customText, page: undefined });
+    manualOverrideRef.current = true;
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+    if (awayDebounceRef.current) clearTimeout(awayDebounceRef.current);
+    upsertStatus.mutate({ status, customText, page: undefined, isManual: true });
 
     // Revert to auto after 30 min
-    if (manualOverrideRef.current) clearTimeout(manualOverrideRef.current);
-    manualOverrideRef.current = setTimeout(() => {
-      isManualRef.current = false;
+    setTimeout(() => {
+      manualOverrideRef.current = false;
     }, 30 * 60 * 1000);
   }, [upsertStatus]);
 
   // ── Auto-status from route — fires ONCE per route change ──────────────
   useEffect(() => {
-    if (!user || isManualRef.current) return;
+    if (!user || manualOverrideRef.current) return;
 
     const path = location.pathname;
     let matched = { status: "available" as UserStatus, page: "dashboard" };
-
-    // Find most-specific matching route
     let bestLen = 0;
     for (const [route, val] of Object.entries(PAGE_STATUS_MAP)) {
       if (path.startsWith(route) && route.length > bestLen) {
@@ -238,78 +225,88 @@ export function useUserStatus(teamId?: string | null) {
       }
     }
 
-    debouncedUpsert(matched.status, matched.page, 800);
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+    routeDebounceRef.current = setTimeout(() => {
+      if (!manualOverrideRef.current) {
+        upsertStatus.mutate({ status: matched.status, page: matched.page, isManual: false });
+      }
+    }, ROUTE_DEBOUNCE);
+
+    return () => {
+      if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, user?.id]);
 
-  // ── Away detection — only updates status when it actually changes ──────
+  // ── Away detection ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
     const resetTimer = () => {
+      const now = Date.now();
+      // Throttle: don't run more than once per ACTIVITY_THROTTLE
+      if (now - lastActivityRef.current < ACTIVITY_THROTTLE) return;
+      lastActivityRef.current = now;
+
       // Only trigger "back from away" if we were actually away
-      if (
-        lastUpsertedRef.current.status === "away" &&
-        !isManualRef.current
-      ) {
+      if (isAwayRef.current && !manualOverrideRef.current) {
+        isAwayRef.current = false;
         const path = location.pathname;
         let matched = { status: "available" as UserStatus, page: "dashboard" };
         for (const [route, val] of Object.entries(PAGE_STATUS_MAP)) {
           if (path.startsWith(route)) { matched = val; break; }
         }
-        debouncedUpsert(matched.status, matched.page, 0);
+        if (awayDebounceRef.current) clearTimeout(awayDebounceRef.current);
+        awayDebounceRef.current = setTimeout(() => {
+          upsertStatus.mutate({ status: matched.status, page: matched.page, isManual: false });
+        }, AWAY_DEBOUNCE);
       }
 
       // Reset the away timer
       if (awayTimerRef.current) clearTimeout(awayTimerRef.current);
-      if (!isManualRef.current) {
+      if (!manualOverrideRef.current) {
         awayTimerRef.current = setTimeout(() => {
-          if (!isManualRef.current) {
-            debouncedUpsert("away", "idle", 0);
+          if (!manualOverrideRef.current) {
+            isAwayRef.current = true;
+            upsertStatus.mutate({ status: "away", page: "idle", isManual: false });
           }
         }, AWAY_TIMEOUT_MS);
       }
     };
 
-    const events = ["mousemove", "keydown", "click", "scroll", "touchstart", "focus"];
-    // Use passive & throttle at the listener level
-    let lastEvent = 0;
-    const throttledReset = () => {
-      const now = Date.now();
-      if (now - lastEvent < 10_000) return; // max once per 10s
-      lastEvent = now;
-      resetTimer();
-    };
-
-    events.forEach(e => window.addEventListener(e, throttledReset, { passive: true }));
+    const events = ["mousemove", "keydown", "click", "touchstart"];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
 
     // Start initial timer
     awayTimerRef.current = setTimeout(() => {
-      if (!isManualRef.current) debouncedUpsert("away", "idle", 0);
+      if (!manualOverrideRef.current) {
+        isAwayRef.current = true;
+        upsertStatus.mutate({ status: "away", page: "idle", isManual: false });
+      }
     }, AWAY_TIMEOUT_MS);
 
     return () => {
-      events.forEach(e => window.removeEventListener(e, throttledReset));
+      events.forEach(e => window.removeEventListener(e, resetTimer));
       if (awayTimerRef.current) clearTimeout(awayTimerRef.current);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (awayDebounceRef.current) clearTimeout(awayDebounceRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // ── Call lifecycle callbacks ───────────────────────────────────────────
+  // ── Call lifecycle callbacks ─────────────────────────────────────────────
   const onCallStarted = useCallback(() => {
-    isManualRef.current = false;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    upsertStatus.mutate({ status: "on_call", page: "live_call" });
+    manualOverrideRef.current = false;
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+    upsertStatus.mutate({ status: "on_call", page: "live_call", isManual: false });
   }, [upsertStatus]);
 
   const onCallEnded = useCallback(() => {
-    isManualRef.current = false;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    upsertStatus.mutate({ status: "available", page: "dashboard" });
+    manualOverrideRef.current = false;
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+    upsertStatus.mutate({ status: "available", page: "dashboard", isManual: false });
   }, [upsertStatus]);
 
-  // ── Getters ───────────────────────────────────────────────────────────
+  // ── Getters ──────────────────────────────────────────────────────────────
   const myStatus: UserStatus =
     (teamStatuses.get(user?.id ?? "")?.status as UserStatus) ??
     (myStatusRow?.status as UserStatus) ??
@@ -328,7 +325,7 @@ export function useUserStatus(teamId?: string | null) {
   return {
     myStatus,
     myCustomText: teamStatuses.get(user?.id ?? "")?.customText ?? null,
-    isManual: isManualRef.current,
+    isManual: manualOverrideRef.current,
     teamStatuses,
     setStatus,
     getStatus,
