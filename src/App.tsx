@@ -37,6 +37,7 @@ import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
 
+
 import {
   PrivacyPage,
   TermsPage,
@@ -102,6 +103,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
+        
 
           <Route
             path="/dashboard"

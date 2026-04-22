@@ -30,7 +30,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
     team_members_limit: 1,
     calls_limit: 5,
     features: [
-      "30 minutes of calls/month",
+      "30 minutes of AI-Powered calls/month",
       " AI transcription",
       "Live call rooms",
       "Solo use only",
@@ -44,7 +44,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
     team_members_limit: 3,
     calls_limit: 50,
     features: [
-      "300 minutes of calls/month",
+      "300 minutes of AI-Powered calls/month",
       "Real-time transcription",
       "AI summaries + action items",
       "Basic insights",
@@ -62,7 +62,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
     highlight: true,
     badge: "Most Popular",
     features: [
-      "1,500 minutes of calls/month",
+      "1,500 minutes of AI-Powered calls/month",
       "Objection detection",
       "Sentiment analysis + engagement",
       "Deal rooms & deal intelligence",
@@ -80,7 +80,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
     calls_limit: -1,
     badge: "Best Value",
     features: [
-      "5,000 minutes of calls/month",
+      "5,000 minutes of AI-Powered calls/month",
       "Unlimited team members",
       "Advanced analytics + leaderboards",
       "Deal intelligence AI",

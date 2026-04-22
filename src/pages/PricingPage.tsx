@@ -280,28 +280,28 @@ export default function PricingPage() {
   const PLANS_CONFIG = [
     {
       key: "free", name: "Free", price: "$0", badge: null, badgeClass: "badge-plain",
-      mins: "30 min/month", tagline: "Try without a card",
+      mins: "30 min of AI-Powered calls/month", tagline: "Try without a card",
       ctaText: "Start Free", ctaClass: "cta-ghost",
       cardClass: "", priceClass: "", minsClass: "",
       feats: ["Live call rooms", "Basic transcription", " AI summary", "Solo use"],
     },
     {
       key: "starter", name: "Starter", price: "$18", badge: null, badgeClass: "badge-plain",
-      mins: "300 min/month (5h)", tagline: "Individual reps",
+      mins: "300 min of AI-Powered calls/month (5h)", tagline: "Individual reps",
       ctaText: "Get Starter", ctaClass: "cta-out",
       cardClass: "", priceClass: "", minsClass: "",
       feats: ["Everything in Free", "Full AI summaries", "Objection detection", "Up to 3 members"],
     },
     {
       key: "growth", name: "Growth", price: "$60", badge: "Most Popular", badgeClass: "badge-growth",
-      mins: "1,500 min/month (25h)", tagline: "Best for growing teams",
+      mins: "1,500 min of AI-Powered calls/month (25h)", tagline: "Best for growing teams",
       ctaText: "Start Free Trial", ctaClass: "cta-fill",
       cardClass: "plan-card-growth", priceClass: "plan-price-growth", minsClass: "",
       feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"],
     },
     {
       key: "scale", name: "Scale", price: "$120", badge: "Enterprise", badgeClass: "badge-scale",
-      mins: "5,000 min/month (83h)", tagline: "Enterprise sales orgs",
+      mins: "5,000 min of AI-Powered calls/month (83h)", tagline: "Enterprise sales orgs",
       ctaText: "Get Scale", ctaClass: "cta-purple",
       cardClass: "plan-card-scale", priceClass: "", minsClass: "plan-mins-scale",
       feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "Action Layer + CRM push", "Unlimited members"],
