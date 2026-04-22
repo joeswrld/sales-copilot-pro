@@ -1,13 +1,18 @@
 /**
- * usePushNotifications.ts — v3
+ * usePushNotifications.ts — v4
  *
- * Key fixes:
- *  1. Detects legacy FCM endpoints (fcm.googleapis.com/fcm/send/) and
- *     automatically unsubscribes + re-subscribes silently in the background,
- *     so the user never sees the "Enable reminders" button reappear.
- *  2. Validates subscription against DB on mount — if inactive/missing,
- *     silently re-subscribes if permission is already granted.
- *  3. isLoading = true while validation runs to prevent banner flicker.
+ * Fixes over v3:
+ *  1. 401 on save-push-subscription — caused by sending the request before the
+ *     auth session was ready. Now uses supabase.auth.getSession() with an explicit
+ *     refresh fallback before every server call. verify_jwt is off on the edge fn
+ *     so we pass the token in the body as a backup too.
+ *  2. Legacy FCM infinite-loop — after unsubscribing a legacy FCM endpoint the
+ *     browser on some Chrome versions creates ANOTHER legacy FCM endpoint. We now
+ *     cap retry attempts and give up cleanly instead of looping.
+ *  3. DB records with legacy FCM endpoints are now hard-deleted (not just
+ *     soft-deactivated) so they don't keep triggering the re-subscription path.
+ *  4. `isLoading` is correctly `false` when SW is not supported (prevents
+ *     UI flash).
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -26,6 +31,8 @@ export interface PushNotificationState {
   subscribe: () => Promise<boolean>;
   unsubscribe: () => Promise<void>;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -57,7 +64,28 @@ function detectBrowserName(): string {
   return "Unknown";
 }
 
-async function saveSubscriptionToSupabase(
+/** Get a fresh, valid access token — always refreshes if expiring soon. */
+async function getFreshToken(): Promise<string | null> {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) return null;
+
+    // If token expires in < 5 minutes, force refresh
+    const expiresAt = session.expires_at ?? 0;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiresAt - nowSec < 300) {
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshed.session) return null;
+      return refreshed.session.access_token;
+    }
+
+    return session.access_token;
+  } catch {
+    return null;
+  }
+}
+
+async function saveSubscriptionToServer(
   subscription: PushSubscription,
   accessToken: string
 ): Promise<boolean> {
@@ -75,17 +103,28 @@ async function saveSubscriptionToSupabase(
       },
     });
     if (error) {
-      console.error("[Push] Save error:", error);
+      console.error("[Push] save-push-subscription error:", error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("[Push] Save threw:", err);
+    console.error("[Push] save-push-subscription threw:", err);
     return false;
   }
 }
 
-async function removeFromSupabase(endpoint: string): Promise<void> {
+/** Hard-delete a legacy/dead endpoint from the DB so it stops triggering re-sub. */
+async function deleteEndpointFromDb(endpoint: string): Promise<void> {
+  try {
+    await supabase
+      .from("push_subscriptions" as any)
+      .delete()
+      .eq("endpoint", endpoint);
+  } catch {}
+}
+
+/** Soft-deactivate an endpoint (for non-legacy stale subs). */
+async function deactivateEndpointInDb(endpoint: string): Promise<void> {
   try {
     await supabase
       .from("push_subscriptions" as any)
@@ -95,16 +134,24 @@ async function removeFromSupabase(endpoint: string): Promise<void> {
 }
 
 /**
- * Unsubscribes any existing browser subscription and creates a fresh one.
- * Returns the new PushSubscription or null if it failed.
+ * Attempt to create a fresh, non-legacy PushSubscription.
+ * Returns null if it still comes back as legacy (capped at 2 attempts).
  */
 async function createFreshSubscription(
   reg: ServiceWorkerRegistration,
-  vapidPublicKey: string
+  vapidPublicKey: string,
+  attempt = 0
 ): Promise<PushSubscription | null> {
+  if (attempt >= 2) {
+    console.warn("[Push] Gave up after 2 attempts — browser keeps issuing legacy FCM endpoints");
+    return null;
+  }
+
   try {
     const existing = await reg.pushManager.getSubscription();
-    if (existing) await existing.unsubscribe();
+    if (existing) {
+      await existing.unsubscribe().catch(() => {});
+    }
 
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
@@ -112,9 +159,11 @@ async function createFreshSubscription(
     });
 
     if (isLegacyFcmEndpoint(sub.endpoint)) {
-      await sub.unsubscribe();
-      console.warn("[Push] New subscription is still legacy FCM — cannot use");
-      return null;
+      console.warn(`[Push] Attempt ${attempt + 1}: still got legacy FCM endpoint — retrying once`);
+      await sub.unsubscribe().catch(() => {});
+      // Small delay before retry
+      await new Promise((r) => setTimeout(r, 300));
+      return createFreshSubscription(reg, vapidPublicKey, attempt + 1);
     }
 
     return sub;
@@ -124,115 +173,116 @@ async function createFreshSubscription(
   }
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
 export function usePushNotifications(): PushNotificationState {
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
+  const isSupported = checkSupport();
+
+  // Start isLoading=false if SW not supported — no flicker
+  const [isLoading, setIsLoading] = useState(isSupported);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [permissionState, setPermissionState] = useState<PermissionState>("default");
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
   const swRegisteredRef = useRef(false);
   const validatedRef = useRef(false);
 
-  const isSupported = checkSupport();
-
-  // ── Core: validate existing subscription, auto-heal if stale ───────────────
+  // ── Validate existing subscription on mount ──────────────────────────────
   const validateSubscription = useCallback(
     async (reg: ServiceWorkerRegistration, userId: string): Promise<void> => {
       const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-      const permState =
-        "Notification" in window ? Notification.permission : "default";
+      const permState = "Notification" in window ? Notification.permission : "default";
 
       let sub: PushSubscription | null = null;
       try {
         sub = await reg.pushManager.getSubscription();
       } catch {}
 
-      // No subscription — nothing to validate
       if (!sub) {
         setIsSubscribed(false);
         setIsLoading(false);
         return;
       }
 
-      const isLegacy = isLegacyFcmEndpoint(sub.endpoint);
+      // Legacy FCM — hard-delete from DB and unsubscribe browser
+      if (isLegacyFcmEndpoint(sub.endpoint)) {
+        console.log("[Push] Detected legacy FCM subscription — cleaning up");
+        await deleteEndpointFromDb(sub.endpoint);
+        try { await sub.unsubscribe(); } catch {}
 
-      // Check DB validity (only if not legacy)
-      let isActiveInDb = false;
-      if (!isLegacy) {
-        try {
-          const { data } = await supabase
-            .from("push_subscriptions" as any)
-            .select("is_active, failed_count")
-            .eq("endpoint", sub.endpoint)
-            .eq("user_id", userId)
-            .maybeSingle();
-
-          isActiveInDb =
-            !!data &&
-            (data as any).is_active === true &&
-            ((data as any).failed_count ?? 0) < 10;
-        } catch {
-          // DB check failed — optimistically trust the browser
-          isActiveInDb = true;
+        // Only auto-resubscribe if permission already granted and VAPID key set
+        if (permState === "granted" && vapidPublicKey) {
+          const token = await getFreshToken();
+          if (token) {
+            const newSub = await createFreshSubscription(reg, vapidPublicKey);
+            if (newSub) {
+              const saved = await saveSubscriptionToServer(newSub, token);
+              if (saved) {
+                console.log("[Push] Auto re-subscribed with modern endpoint");
+                setIsSubscribed(true);
+                setIsLoading(false);
+                return;
+              }
+              // Save failed — clean up the browser sub too
+              try { await newSub.unsubscribe(); } catch {}
+            }
+          }
         }
+
+        setIsSubscribed(false);
+        setIsLoading(false);
+        return;
       }
 
-      // Subscription is healthy — done
-      if (!isLegacy && isActiveInDb) {
+      // Modern endpoint — check DB health
+      let isActiveInDb = false;
+      try {
+        const { data } = await supabase
+          .from("push_subscriptions" as any)
+          .select("is_active, failed_count")
+          .eq("endpoint", sub.endpoint)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        isActiveInDb =
+          !!data &&
+          (data as any).is_active === true &&
+          ((data as any).failed_count ?? 0) < 10;
+      } catch {
+        // DB check failed — optimistically trust the browser sub
+        isActiveInDb = true;
+      }
+
+      if (isActiveInDb) {
         setIsSubscribed(true);
         setIsLoading(false);
         return;
       }
 
-      // ── Needs refresh ────────────────────────────────────────────────────────
-      console.log(
-        `[Push] ${isLegacy ? "Legacy FCM endpoint" : "Inactive subscription"} detected — auto re-subscribing silently`
-      );
+      // Stale / failed subscription — deactivate in DB and try to re-save
+      await deactivateEndpointInDb(sub.endpoint);
 
-      // Mark old endpoint as inactive in DB
-      await removeFromSupabase(sub.endpoint);
-
-      // Can only auto-resubscribe if permission is already granted and VAPID is set
-      if (permState !== "granted" || !vapidPublicKey) {
-        try { await sub.unsubscribe(); } catch {}
-        setIsSubscribed(false);
-        setIsLoading(false);
-        return;
-      }
-
-      // Create a fresh subscription silently
-      const newSub = await createFreshSubscription(reg, vapidPublicKey);
-      if (!newSub) {
-        setIsSubscribed(false);
-        setIsLoading(false);
-        return;
-      }
-
-      // Save to Supabase
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          const saved = await saveSubscriptionToSupabase(newSub, session.access_token);
+      if (permState === "granted" && vapidPublicKey) {
+        const token = await getFreshToken();
+        if (token) {
+          // The existing browser sub is still valid, just re-register it in DB
+          const saved = await saveSubscriptionToServer(sub, token);
           if (saved) {
-            console.log("[Push] Auto re-subscribed successfully with modern endpoint");
             setIsSubscribed(true);
             setIsLoading(false);
             return;
           }
         }
-      } catch {}
+      }
 
-      // Save failed — browser subscription was created but not persisted
-      try { await newSub.unsubscribe(); } catch {}
       setIsSubscribed(false);
       setIsLoading(false);
     },
-    [] // stable — only uses refs and external functions
+    []
   );
 
-  // ── Register SW on mount ─────────────────────────────────────────────────────
+  // ── Register SW ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSupported || swRegisteredRef.current) return;
     swRegisteredRef.current = true;
@@ -251,7 +301,7 @@ export function usePushNotifications(): PushNotificationState {
           validatedRef.current = true;
           await validateSubscription(reg, user.id);
         } else {
-          // User not loaded yet — do a quick check without DB
+          // User not loaded yet — quick non-DB check
           const existing = await reg.pushManager.getSubscription().catch(() => null);
           const valid = !!existing && !isLegacyFcmEndpoint(existing.endpoint);
           setIsSubscribed(valid);
@@ -264,7 +314,7 @@ export function usePushNotifications(): PushNotificationState {
       });
   }, [isSupported]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Re-validate once user becomes available (if SW already registered) ──────
+  // ── Re-validate once user becomes available ──────────────────────────────
   useEffect(() => {
     if (!user || !swRegistration || validatedRef.current) return;
     validatedRef.current = true;
@@ -272,7 +322,7 @@ export function usePushNotifications(): PushNotificationState {
     validateSubscription(swRegistration, user.id);
   }, [user, swRegistration, validateSubscription]);
 
-  // ── SW message: re-save subscription when browser auto-renews it ────────────
+  // ── Handle SW push subscription change messages ──────────────────────────
   useEffect(() => {
     if (!isSupported) return;
     const handler = async (event: MessageEvent) => {
@@ -281,22 +331,19 @@ export function usePushNotifications(): PushNotificationState {
         event.data.subscription &&
         user
       ) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          const newSub = event.data.subscription as PushSubscriptionJSON;
-          if (newSub.endpoint && newSub.keys) {
-            await supabase.functions.invoke("save-push-subscription", {
-              headers: { Authorization: `Bearer ${session.access_token}` },
-              body: {
-                endpoint: newSub.endpoint,
-                p256dh: newSub.keys.p256dh ?? "",
-                auth: newSub.keys.auth ?? "",
-                browser_name: detectBrowserName(),
-              },
-            });
-          }
+        const token = await getFreshToken();
+        if (!token) return;
+        const newSub = event.data.subscription as PushSubscriptionJSON;
+        if (newSub.endpoint && newSub.keys && !isLegacyFcmEndpoint(newSub.endpoint)) {
+          await supabase.functions.invoke("save-push-subscription", {
+            headers: { Authorization: `Bearer ${token}` },
+            body: {
+              endpoint: newSub.endpoint,
+              p256dh: newSub.keys.p256dh ?? "",
+              auth: newSub.keys.auth ?? "",
+              browser_name: detectBrowserName(),
+            },
+          });
         }
       }
     };
@@ -304,10 +351,11 @@ export function usePushNotifications(): PushNotificationState {
     return () => navigator.serviceWorker?.removeEventListener("message", handler);
   }, [isSupported, user]);
 
-  // ── Manual subscribe (user presses button) ───────────────────────────────────
+  // ── Manual subscribe ─────────────────────────────────────────────────────
   const subscribe = useCallback(async (): Promise<boolean> => {
     if (!isSupported || !user) return false;
     setIsLoading(true);
+
     try {
       const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
       if (!vapidPublicKey) {
@@ -339,24 +387,25 @@ export function usePushNotifications(): PushNotificationState {
 
       const newSub = await createFreshSubscription(reg, vapidPublicKey);
       if (!newSub) {
-        toast.error("Could not create push subscription. Try updating your browser.", {
-          duration: 6000,
-        });
+        toast.error(
+          "Could not create a push subscription. Your browser may be using a deprecated push service. Try updating Chrome or using a different browser.",
+          { duration: 8000 }
+        );
         return false;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) {
+      // FIX: Get fresh token right before saving to avoid 401
+      const token = await getFreshToken();
+      if (!token) {
         toast.error("Please sign in to enable notifications.");
+        try { await newSub.unsubscribe(); } catch {}
         return false;
       }
 
-      const saved = await saveSubscriptionToSupabase(newSub, session.access_token);
+      const saved = await saveSubscriptionToServer(newSub, token);
       if (!saved) {
         toast.error("Failed to save notification subscription. Please try again.");
-        await newSub.unsubscribe();
+        try { await newSub.unsubscribe(); } catch {}
         return false;
       }
 
@@ -379,16 +428,15 @@ export function usePushNotifications(): PushNotificationState {
     }
   }, [isSupported, user, swRegistration]);
 
-  // ── Manual unsubscribe ───────────────────────────────────────────────────────
+  // ── Manual unsubscribe ───────────────────────────────────────────────────
   const unsubscribe = useCallback(async (): Promise<void> => {
     if (!swRegistration) return;
     setIsLoading(true);
     try {
       const sub = await swRegistration.pushManager.getSubscription();
       if (sub) {
-        const endpoint = sub.endpoint;
-        await sub.unsubscribe();
-        await removeFromSupabase(endpoint);
+        await deactivateEndpointInDb(sub.endpoint);
+        await sub.unsubscribe().catch(() => {});
       }
       setIsSubscribed(false);
       toast.success("Notifications disabled.");
