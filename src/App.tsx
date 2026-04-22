@@ -36,6 +36,8 @@ import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
+import DealDetailPage from "./pages/DealDetailPage";
+
 
 
 import {
@@ -158,6 +160,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          <Route path="/dashboard/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
 
           <Route
             path="/dashboard/analytics"
