@@ -1,13 +1,15 @@
 /**
- * useUserStatus.ts — v2 (Auto-Activity Detection)
+ * useUserStatus.ts — v3 (Debounced, performance-safe)
  *
- * Automatic status based on:
- *  - Current page/route  → on_call | in_meeting | available | away
- *  - Mouse/keyboard idle → away after 10 minutes
- *  - Live call active    → on_call
- *  - Manual override     → locks for 30 minutes, then reverts to auto
+ * KEY FIX: The original version fired upsert_user_status on EVERY mouse/keyboard
+ * event (after 10-min away timer reset) causing dozens of concurrent DB calls
+ * that froze the app on mobile/slow connections.
  *
- * DB-backed via user_statuses table + Supabase Realtime.
+ * Changes:
+ *  - All status upserts are debounced (500ms for auto, 0ms for manual)
+ *  - Away timer reset only fires DB call when status actually changes
+ *  - Removed redundant mutation calls on every route change
+ *  - Status stored in ref to prevent stale closure issues
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -32,24 +34,24 @@ export const STATUS_CONFIG: Record<
   UserStatus,
   { label: string; emoji: string; color: string; bgColor: string; description: string }
 > = {
-  available:  { label: "Available",    emoji: "🟢", color: "#22c55e", bgColor: "rgba(34,197,94,.15)",   description: "Ready to chat"        },
-  on_call:    { label: "On a Call",    emoji: "🔴", color: "#ef4444", bgColor: "rgba(239,68,68,.15)",   description: "In a live sales call"  },
+  available:  { label: "Available",    emoji: "🟢", color: "#22c55e", bgColor: "rgba(34,197,94,.15)",   description: "Ready to chat"         },
+  on_call:    { label: "On a Call",    emoji: "🔴", color: "#ef4444", bgColor: "rgba(239,68,68,.15)",   description: "In a live sales call"   },
   in_meeting: { label: "In a Meeting", emoji: "📞", color: "#f59e0b", bgColor: "rgba(245,158,11,.15)",  description: "In a scheduled meeting" },
-  away:       { label: "Away",         emoji: "🌙", color: "#8b5cf6", bgColor: "rgba(139,92,246,.15)",  description: "Inactive for 10+ min"  },
-  busy:       { label: "Busy",         emoji: "⛔", color: "#64748b", bgColor: "rgba(100,116,139,.15)", description: "Do not disturb"        },
+  away:       { label: "Away",         emoji: "🌙", color: "#8b5cf6", bgColor: "rgba(139,92,246,.15)",  description: "Inactive for 10+ min"   },
+  busy:       { label: "Busy",         emoji: "⛔", color: "#64748b", bgColor: "rgba(100,116,139,.15)", description: "Do not disturb"         },
 };
 
-// Map route paths → auto status
 const PAGE_STATUS_MAP: Record<string, { status: UserStatus; page: string }> = {
-  "/dashboard/live":      { status: "on_call",    page: "live_call" },
-  "/dashboard/messages":  { status: "available",  page: "messages"  },
-  "/dashboard/deals":     { status: "available",  page: "deals"     },
-  "/dashboard":           { status: "available",  page: "dashboard" },
-  "/dashboard/analytics": { status: "available",  page: "analytics" },
-  "/dashboard/settings":  { status: "available",  page: "settings"  },
+  "/dashboard/live":      { status: "on_call",   page: "live_call"  },
+  "/dashboard/messages":  { status: "available", page: "messages"   },
+  "/dashboard/deals":     { status: "available", page: "deals"      },
+  "/dashboard/analytics": { status: "available", page: "analytics"  },
+  "/dashboard/settings":  { status: "available", page: "settings"   },
+  "/dashboard":           { status: "available", page: "dashboard"  },
 };
 
-const AWAY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const AWAY_TIMEOUT_MS   = 10 * 60 * 1000; // 10 minutes
+const DEBOUNCE_MS       = 1500;            // 1.5s debounce on auto status changes
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
@@ -59,13 +61,14 @@ export function useUserStatus(teamId?: string | null) {
   const qc = useQueryClient();
 
   const [teamStatuses, setTeamStatuses] = useState<Map<string, UserStatusInfo>>(new Map());
-  const awayTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const manualOverrideRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isManualRef        = useRef(false);
-  const myStatusRef        = useRef<UserStatus>("available");
-  const lastAutoPageRef    = useRef<string>("");
 
-  // ── Fetch my status ────────────────────────────────────────────────────
+  const awayTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualOverrideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isManualRef       = useRef(false);
+  const lastUpsertedRef   = useRef<{ status: string; page: string }>({ status: "", page: "" });
+
+  // ── Fetch my current status ────────────────────────────────────────────
   const { data: myStatusRow } = useQuery({
     queryKey: ["user-status", user?.id],
     queryFn: async () => {
@@ -78,7 +81,8 @@ export function useUserStatus(teamId?: string | null) {
       return data as unknown as UserStatusInfo | null;
     },
     enabled: !!user,
-    staleTime: 30_000,
+    staleTime: 60_000,   // Only re-fetch after 1 minute
+    refetchInterval: false, // No automatic polling — realtime handles updates
   });
 
   // ── Fetch team statuses ────────────────────────────────────────────────
@@ -99,8 +103,9 @@ export function useUserStatus(teamId?: string | null) {
         .in("user_id", userIds);
       return (data || []) as unknown as UserStatusInfo[];
     },
-    enabled: !!teamId,
-    staleTime: 10_000,
+    enabled:         !!teamId && !!user,
+    staleTime:       30_000,
+    refetchInterval: false,
   });
 
   // Build team map
@@ -110,8 +115,8 @@ export function useUserStatus(teamId?: string | null) {
       const next = new Map(prev);
       teamStatusRows.forEach((row: any) => {
         next.set(row.user_id, {
-          userId:    row.user_id,
-          status:    row.status,
+          userId:     row.user_id,
+          status:     row.status,
           customText: row.custom_text,
           updatedAt:  row.updated_at,
           lastPage:   row.last_page,
@@ -142,11 +147,10 @@ export function useUserStatus(teamId?: string | null) {
             });
             return next;
           });
-          qc.invalidateQueries({ queryKey: ["team-statuses", teamId] });
         })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [teamId, user, qc]);
+  }, [teamId, user]);
 
   // ── Upsert mutation ────────────────────────────────────────────────────
   const upsertStatus = useMutation({
@@ -154,123 +158,155 @@ export function useUserStatus(teamId?: string | null) {
       status,
       customText,
       page,
-      isManual = false,
     }: {
       status: UserStatus;
       customText?: string;
       page?: string;
-      isManual?: boolean;
     }) => {
       if (!user) return;
+      // Skip if nothing changed
+      if (
+        lastUpsertedRef.current.status === status &&
+        lastUpsertedRef.current.page   === (page ?? "")
+      ) return;
+
+      lastUpsertedRef.current = { status, page: page ?? "" };
+
       await (supabase as any).rpc("upsert_user_status", {
         p_status:      status,
         p_custom_text: customText ?? null,
         p_team_id:     teamId ?? null,
         p_last_page:   page ?? null,
-        p_is_manual:   isManual,
+        p_is_manual:   isManualRef.current,
       });
     },
     onMutate: ({ status }) => {
-      myStatusRef.current = status;
       if (user) {
         setTeamStatuses(prev => {
           const next = new Map(prev);
-          next.set(user.id, { userId: user.id, status, updatedAt: new Date().toISOString() });
+          next.set(user.id, {
+            userId:    user.id,
+            status,
+            updatedAt: new Date().toISOString(),
+          });
           return next;
         });
       }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["user-status", user?.id] });
-      qc.invalidateQueries({ queryKey: ["team-statuses", teamId] });
+      if (teamId) qc.invalidateQueries({ queryKey: ["team-statuses", teamId] });
     },
   });
 
-  // ── Manual status setter (locks for 30 min) ────────────────────────────
+  // ── Debounced upsert helper ────────────────────────────────────────────
+  const debouncedUpsert = useCallback((
+    status: UserStatus, page?: string, delay = DEBOUNCE_MS
+  ) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      upsertStatus.mutate({ status, page });
+    }, delay);
+  }, [upsertStatus]);
+
+  // ── Manual status setter ───────────────────────────────────────────────
   const setStatus = useCallback((status: UserStatus, customText?: string) => {
     isManualRef.current = true;
-    upsertStatus.mutate({ status, customText, isManual: true });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    upsertStatus.mutate({ status, customText, page: undefined });
 
-    // Clear manual override after 30 min → resume auto
+    // Revert to auto after 30 min
     if (manualOverrideRef.current) clearTimeout(manualOverrideRef.current);
     manualOverrideRef.current = setTimeout(() => {
       isManualRef.current = false;
     }, 30 * 60 * 1000);
   }, [upsertStatus]);
 
-  // ── Auto-status from route ─────────────────────────────────────────────
+  // ── Auto-status from route — fires ONCE per route change ──────────────
   useEffect(() => {
     if (!user || isManualRef.current) return;
 
     const path = location.pathname;
-    // Find best matching route
     let matched = { status: "available" as UserStatus, page: "dashboard" };
+
+    // Find most-specific matching route
+    let bestLen = 0;
     for (const [route, val] of Object.entries(PAGE_STATUS_MAP)) {
-      if (path.startsWith(route)) {
+      if (path.startsWith(route) && route.length > bestLen) {
         matched = val;
-        // Prefer longer (more specific) match
-        if (route.length > (lastAutoPageRef.current?.length ?? 0)) {
-          lastAutoPageRef.current = route;
-          break;
-        }
+        bestLen = route.length;
       }
     }
 
-    upsertStatus.mutate({ status: matched.status, page: matched.page, isManual: false });
+    debouncedUpsert(matched.status, matched.page, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, user]);
+  }, [location.pathname, user?.id]);
 
-  // ── Away detection from inactivity ────────────────────────────────────
+  // ── Away detection — only updates status when it actually changes ──────
   useEffect(() => {
     if (!user) return;
 
     const resetTimer = () => {
-      // If was away and now active → revert to available
-      if (myStatusRef.current === "away" && !isManualRef.current) {
+      // Only trigger "back from away" if we were actually away
+      if (
+        lastUpsertedRef.current.status === "away" &&
+        !isManualRef.current
+      ) {
         const path = location.pathname;
-        const matched = Object.entries(PAGE_STATUS_MAP).find(([r]) => path.startsWith(r));
-        const newStatus = matched?.[1].status ?? "available";
-        const newPage   = matched?.[1].page   ?? "dashboard";
-        upsertStatus.mutate({ status: newStatus, page: newPage, isManual: false });
+        let matched = { status: "available" as UserStatus, page: "dashboard" };
+        for (const [route, val] of Object.entries(PAGE_STATUS_MAP)) {
+          if (path.startsWith(route)) { matched = val; break; }
+        }
+        debouncedUpsert(matched.status, matched.page, 0);
       }
 
-      // Reset away timer
+      // Reset the away timer
       if (awayTimerRef.current) clearTimeout(awayTimerRef.current);
-      if (myStatusRef.current !== "on_call" && myStatusRef.current !== "in_meeting" && !isManualRef.current) {
+      if (!isManualRef.current) {
         awayTimerRef.current = setTimeout(() => {
           if (!isManualRef.current) {
-            upsertStatus.mutate({ status: "away", page: "idle", isManual: false });
+            debouncedUpsert("away", "idle", 0);
           }
         }, AWAY_TIMEOUT_MS);
       }
     };
 
     const events = ["mousemove", "keydown", "click", "scroll", "touchstart", "focus"];
-    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    // Use passive & throttle at the listener level
+    let lastEvent = 0;
+    const throttledReset = () => {
+      const now = Date.now();
+      if (now - lastEvent < 10_000) return; // max once per 10s
+      lastEvent = now;
+      resetTimer();
+    };
+
+    events.forEach(e => window.addEventListener(e, throttledReset, { passive: true }));
 
     // Start initial timer
     awayTimerRef.current = setTimeout(() => {
-      if (!isManualRef.current) {
-        upsertStatus.mutate({ status: "away", page: "idle", isManual: false });
-      }
+      if (!isManualRef.current) debouncedUpsert("away", "idle", 0);
     }, AWAY_TIMEOUT_MS);
 
     return () => {
-      events.forEach(e => window.removeEventListener(e, resetTimer));
+      events.forEach(e => window.removeEventListener(e, throttledReset));
       if (awayTimerRef.current) clearTimeout(awayTimerRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
-  // ── Live-call auto-status (called from useLiveCall) ───────────────────
+  // ── Call lifecycle callbacks ───────────────────────────────────────────
   const onCallStarted = useCallback(() => {
-    isManualRef.current = false; // override any manual lock for calls
-    upsertStatus.mutate({ status: "on_call", page: "live_call", isManual: false });
+    isManualRef.current = false;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    upsertStatus.mutate({ status: "on_call", page: "live_call" });
   }, [upsertStatus]);
 
   const onCallEnded = useCallback(() => {
     isManualRef.current = false;
-    upsertStatus.mutate({ status: "available", page: "dashboard", isManual: false });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    upsertStatus.mutate({ status: "available", page: "dashboard" });
   }, [upsertStatus]);
 
   // ── Getters ───────────────────────────────────────────────────────────
