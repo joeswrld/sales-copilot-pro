@@ -201,7 +201,100 @@ function NotifRow({
   );
 }
 
+// ─── Notification Dropdown — desktop popover + mobile bottom sheet ────────────
 
+function NotificationDropdown() {
+  const [open, setOpen] = useState(false);
+  const ref             = useRef<HTMLDivElement>(null);
+  const sheetRef        = useRef<HTMLDivElement>(null);
+  const navigate        = useNavigate();
+
+  // SSR-safe mobile detection — read once at open-time to avoid resize flicker
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth < 640
+  );
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", check, { passive: true });
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const {
+    notifications, notificationsLoading,
+    unreadCount, markRead, markAllRead,
+  } = useNotifications();
+
+  // ── Close on outside click (desktop only) ────────────────────────────────
+  useEffect(() => {
+    if (!open || isMobile) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open, isMobile]);
+
+  // ── Close on Escape ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [open]);
+
+  // ── Lock body scroll when mobile sheet is open ───────────────────────────
+  useEffect(() => {
+    if (open && isMobile) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [open, isMobile]);
+
+  // ── Swipe-down to dismiss (mobile only) ─────────────────────────────────
+  useEffect(() => {
+    if (!open || !isMobile || !sheetRef.current) return;
+    const sheet = sheetRef.current;
+    let startY = 0;
+    let currentY = 0;
+
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0].clientY; };
+    const onTouchMove  = (e: TouchEvent) => {
+      currentY = e.touches[0].clientY;
+      const delta = Math.max(0, currentY - startY);
+      sheet.style.transform = `translateY(${delta}px)`;
+      sheet.style.transition = "none";
+    };
+    const onTouchEnd = () => {
+      const delta = currentY - startY;
+      sheet.style.transition = "transform .28s cubic-bezier(.22,.68,0,1)";
+      if (delta > 110) {
+        sheet.style.transform = "translateY(100%)";
+        setTimeout(() => setOpen(false), 260);
+      } else {
+        sheet.style.transform = "translateY(0)";
+      }
+    };
+
+    sheet.addEventListener("touchstart", onTouchStart, { passive: true });
+    sheet.addEventListener("touchmove",  onTouchMove,  { passive: true });
+    sheet.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    return () => {
+      sheet.removeEventListener("touchstart", onTouchStart);
+      sheet.removeEventListener("touchmove",  onTouchMove);
+      sheet.removeEventListener("touchend",   onTouchEnd);
+    };
+  }, [open, isMobile]);
+
+  const handleNotifClick = useCallback((n: NotifItem) => {
+    if (!n.is_read) markRead.mutate(n.id);
+    setOpen(false);
+    if (n.reference_id) navigate("/dashboard/messages");
+  }, [markRead, navigate]);
+
+  const handleMarkAll = () => markAllRead.mutate();
+  const goToMessages  = () => { navigate("/dashboard/messages"); setOpen(false); };
 
   // ── Shared panel sections ────────────────────────────────────────────────
 
