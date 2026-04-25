@@ -1,10 +1,10 @@
-import { ReactNode, useState, useRef, useEffect } from "react";
+import { ReactNode, useState, useRef, useEffect, useCallback } from "react";
 import { Building2 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, CheckCheck,
-  TrendingUp, AtSign, AlertCircle, Check,
+  TrendingUp, AtSign, AlertCircle, Check, ArrowLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -12,7 +12,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
 import { TeamUsageSidebarPill } from "@/components/TeamMinuteUsageComponents";
 import { cn } from "@/lib/utils";
-import { format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -52,278 +52,426 @@ const NOTIF_ICON: Record<string, React.ElementType> = {
 };
 
 const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
-  comment:  { bg: "rgba(14,245,212,.12)",  icon: "#0ef5d4" },
-  coaching: { bg: "rgba(34,197,94,.12)",   icon: "#22c55e" },
-  mention:  { bg: "rgba(251,191,36,.12)",  icon: "#fbbf24" },
-  system:   { bg: "rgba(148,163,184,.12)", icon: "#94a3b8" },
+  comment:  { bg: "rgba(14,245,212,.13)",  icon: "#0ef5d4" },
+  coaching: { bg: "rgba(34,197,94,.13)",   icon: "#22c55e" },
+  mention:  { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
+  system:   { bg: "rgba(148,163,184,.13)", icon: "#94a3b8" },
 };
 
 function fmtNotifTime(d: string) {
   const dt = new Date(d);
-  if (isToday(dt))     return format(dt, "h:mm a");
+  if (isToday(dt)) {
+    const mins = Math.round((Date.now() - dt.getTime()) / 60_000);
+    if (mins < 1)  return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    return format(dt, "h:mm a");
+  }
   if (isYesterday(dt)) return "Yesterday";
   return format(dt, "MMM d");
 }
 
-// ─── Notification Dropdown ────────────────────────────────────────────────────
+// ─── Global notification styles injected once ─────────────────────────────────
+
+const NOTIF_CSS = `
+  @keyframes notif-drop {
+    from { opacity:0; transform:translateY(-8px) scale(.97); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+  }
+  @keyframes notif-sheet {
+    from { transform:translateY(100%); }
+    to   { transform:translateY(0); }
+  }
+  @keyframes notif-backdrop {
+    from { opacity:0; }
+    to   { opacity:1; }
+  }
+  @keyframes notif-spin {
+    to { transform:rotate(360deg); }
+  }
+  .notif-drop   { animation: notif-drop   .18s cubic-bezier(.22,.68,0,1.2) forwards; }
+  .notif-sheet  { animation: notif-sheet  .28s cubic-bezier(.22,.68,0,1)   forwards; }
+  .notif-backdrop { animation: notif-backdrop .2s ease forwards; }
+`;
+
+// ─── Notification item row (shared between desktop + mobile) ─────────────────
+
+interface NotifItem {
+  id: string;
+  type: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  reference_id: string | null;
+}
+
+function NotifRow({
+  n,
+  onClick,
+  isLast,
+}: {
+  n: NotifItem;
+  onClick: (n: NotifItem) => void;
+  isLast: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const Icon  = NOTIF_ICON[n.type]  ?? AlertCircle;
+  const color = NOTIF_COLOR[n.type] ?? NOTIF_COLOR.system;
+
+  return (
+    <div
+      onClick={() => onClick(n)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex",
+        gap: 12,
+        padding: "13px 16px",
+        borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,.05)",
+        background: hovered
+          ? (n.is_read ? "rgba(255,255,255,.04)" : "rgba(26,240,196,.08)")
+          : (n.is_read ? "transparent" : "rgba(26,240,196,.04)"),
+        cursor: "pointer",
+        transition: "background .12s",
+        userSelect: "none",
+      }}
+    >
+      {/* Type icon */}
+      <div style={{
+        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+        background: color.bg,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        marginTop: 1,
+      }}>
+        <Icon size={17} color={color.icon} />
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{
+          fontSize: 13, margin: "0 0 4px", lineHeight: 1.45,
+          color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.92)",
+          fontWeight: n.is_read ? 400 : 600,
+          fontFamily: "system-ui, sans-serif",
+          overflow: "hidden", textOverflow: "ellipsis",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}>
+          {n.message}
+        </p>
+        <span style={{
+          fontSize: 11,
+          color: n.is_read ? "rgba(255,255,255,.22)" : "rgba(26,240,196,.75)",
+          fontFamily: "system-ui, sans-serif",
+        }}>
+          {fmtNotifTime(n.created_at)}
+        </span>
+      </div>
+
+      {/* Status indicator */}
+      <div style={{ display: "flex", alignItems: "flex-start", paddingTop: 3, flexShrink: 0 }}>
+        {!n.is_read
+          ? <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,.55)", marginTop: 2 }} />
+          : <Check size={12} color="rgba(255,255,255,.2)" />
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── Notification Dropdown — desktop popover + mobile bottom sheet ────────────
 
 function NotificationDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref  = useRef<HTMLDivElement>(null);
-  const { notifications, notificationsLoading, unreadCount, markRead, markAllRead } = useNotifications();
-  const navigate = useNavigate();
+  const [open, setOpen]         = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const ref                     = useRef<HTMLDivElement>(null);
+  const navigate                = useNavigate();
 
-  // Close on outside click
+  const {
+    notifications, notificationsLoading,
+    unreadCount, markRead, markAllRead,
+  } = useNotifications();
+
+  // Detect mobile breakpoint
   useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Close on outside click (desktop)
+  useEffect(() => {
+    if (!open || isMobile) return;
+    const h = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open, isMobile]);
 
   // Close on Escape
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
   }, [open]);
 
-  const handleNotifClick = (n: { id: string; is_read: boolean; reference_id: string | null }) => {
-    if (!n.is_read) markRead.mutate(n.id);
-    if (n.reference_id) {
-      // Navigate to messages if it's a comment/mention notification
-      navigate("/dashboard/messages");
-      setOpen(false);
+  // Lock body scroll when mobile sheet is open
+  useEffect(() => {
+    if (isMobile && open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
     }
-  };
+    return () => { document.body.style.overflow = ""; };
+  }, [isMobile, open]);
 
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      {/* Bell button */}
-      <button
-        onClick={() => setOpen(v => !v)}
-        className={cn(
-          "relative w-8 h-8 rounded-md flex items-center justify-center transition-colors",
-          open
-            ? "bg-[rgba(255,255,255,0.1)] text-white"
-            : "text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)]"
+  const handleNotifClick = useCallback((n: NotifItem) => {
+    if (!n.is_read) markRead.mutate(n.id);
+    setOpen(false);
+    if (n.reference_id) navigate("/dashboard/messages");
+  }, [markRead, navigate]);
+
+  const handleMarkAll = () => markAllRead.mutate();
+
+  const goToMessages = () => { navigate("/dashboard/messages"); setOpen(false); };
+
+  // ── Shared inner content ──────────────────────────────────────────────────
+
+  const PanelHeader = () => (
+    <div style={{
+      padding: "14px 16px",
+      borderBottom: "1px solid rgba(255,255,255,.08)",
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      flexShrink: 0,
+      gap: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {isMobile && (
+          <button
+            onClick={() => setOpen(false)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.5)", display: "flex", alignItems: "center", padding: 0, marginRight: 2 }}
+            aria-label="Close"
+          >
+            <ArrowLeft size={18} />
+          </button>
         )}
-      >
-        <Bell style={{ width: 15, height: 15 }} />
+        <span style={{
+          fontSize: 15, fontWeight: 700, color: "#f0f6fc",
+          fontFamily: "system-ui, sans-serif",
+        }}>
+          Notifications
+        </span>
         {unreadCount > 0 && (
-          <span
-            className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full"
-            style={{ background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,0.6)" }}
-          />
+          <span style={{
+            fontSize: 10, fontWeight: 800, lineHeight: 1,
+            background: "#1af0c4", color: "#060912",
+            borderRadius: 20, padding: "2px 7px",
+          }}>
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
         )}
-      </button>
+      </div>
 
-      {/* Dropdown panel */}
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            right: 0,
-            width: 360,
-            maxHeight: 480,
-            background: "#111827",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 14,
-            overflow: "hidden",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
-            zIndex: 200,
-            display: "flex",
-            flexDirection: "column",
-            // Slide-in animation
-            animation: "notif-drop .18s ease",
-          }}
-        >
-          <style>{`
-            @keyframes notif-drop {
-              from { opacity:0; transform:translateY(-6px) scale(.98); }
-              to   { opacity:1; transform:translateY(0)    scale(1); }
-            }
-          `}</style>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAll}
+            disabled={markAllRead.isPending}
+            style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: "rgba(26,240,196,.1)",
+              border: "1px solid rgba(26,240,196,.2)",
+              borderRadius: 8, padding: "5px 10px",
+              cursor: "pointer", fontSize: 11, fontWeight: 600,
+              color: "#1af0c4", fontFamily: "system-ui, sans-serif",
+              whiteSpace: "nowrap",
+              opacity: markAllRead.isPending ? 0.6 : 1,
+            }}
+          >
+            <CheckCheck size={11} />
+            {!isMobile && "Mark all read"}
+            {isMobile && "All read"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
-          {/* Header */}
+  const PanelBody = () => (
+    <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+      {notificationsLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 140 }}>
           <div style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexShrink: 0,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{
-                fontSize: 14, fontWeight: 700, color: "#f0f6fc",
-                fontFamily: "system-ui, sans-serif",
-              }}>
-                Notifications
-              </span>
-              {unreadCount > 0 && (
-                <span style={{
-                  fontSize: 10, fontWeight: 800,
-                  background: "#1af0c4", color: "#060912",
-                  borderRadius: 10, padding: "1px 7px",
-                }}>
-                  {unreadCount}
-                </span>
-              )}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {unreadCount > 0 && (
-                <button
-                  onClick={() => markAllRead.mutate()}
-                  disabled={markAllRead.isPending}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    background: "rgba(26,240,196,.1)",
-                    border: "1px solid rgba(26,240,196,.2)",
-                    borderRadius: 7, padding: "4px 10px",
-                    cursor: "pointer", fontSize: 11,
-                    color: "#1af0c4", fontFamily: "system-ui,sans-serif",
-                  }}
-                >
-                  <CheckCheck size={11} />
-                  Mark all read
-                </button>
-              )}
-              <button
-                onClick={() => { navigate("/dashboard/messages"); setOpen(false); }}
-                style={{
-                  background: "rgba(255,255,255,.06)",
-                  border: "1px solid rgba(255,255,255,.1)",
-                  borderRadius: 7, padding: "4px 10px",
-                  cursor: "pointer", fontSize: 11,
-                  color: "rgba(255,255,255,.6)", fontFamily: "system-ui,sans-serif",
-                }}
-              >
-                See all
-              </button>
-            </div>
-          </div>
-
-          {/* List */}
-          <div style={{ overflowY: "auto", flex: 1 }}>
-            {notificationsLoading ? (
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 120 }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(26,240,196,.3)", borderTopColor: "#1af0c4", animation: "spin .7s linear infinite" }} />
-                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-              </div>
-            ) : notifications.length === 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 20px", gap: 10 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Bell size={20} color="rgba(255,255,255,.25)" />
-                </div>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.35)", margin: 0, fontFamily: "system-ui,sans-serif" }}>
-                  You're all caught up!
-                </p>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,.2)", margin: 0, fontFamily: "system-ui,sans-serif", textAlign: "center", maxWidth: 200 }}>
-                  Notifications about coaching, mentions, and team activity appear here.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {notifications.map((n, idx) => {
-                  const Icon  = NOTIF_ICON[n.type]  ?? AlertCircle;
-                  const color = NOTIF_COLOR[n.type] ?? NOTIF_COLOR.system;
-                  const isLast = idx === notifications.length - 1;
-                  return (
-                    <div
-                      key={n.id}
-                      onClick={() => handleNotifClick(n)}
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        padding: "12px 16px",
-                        borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,.04)",
-                        background: n.is_read ? "transparent" : "rgba(26,240,196,.04)",
-                        cursor: "pointer",
-                        transition: "background .12s",
-                        position: "relative",
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = n.is_read ? "rgba(255,255,255,.03)" : "rgba(26,240,196,.07)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = n.is_read ? "transparent" : "rgba(26,240,196,.04)")}
-                    >
-                      {/* Icon badge */}
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: color.bg, flexShrink: 0,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        marginTop: 1,
-                      }}>
-                        <Icon size={16} color={color.icon} />
-                      </div>
-
-                      {/* Text */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{
-                          fontSize: 13, margin: "0 0 3px", lineHeight: 1.45,
-                          color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.9)",
-                          fontWeight: n.is_read ? 400 : 600,
-                          fontFamily: "system-ui,sans-serif",
-                          // Two-line clamp
-                          overflow: "hidden", textOverflow: "ellipsis",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}>
-                          {n.message}
-                        </p>
-                        <span style={{
-                          fontSize: 11,
-                          color: n.is_read ? "rgba(255,255,255,.22)" : "rgba(26,240,196,.7)",
-                          fontFamily: "system-ui,sans-serif",
-                        }}>
-                          {fmtNotifTime(n.created_at)}
-                        </span>
-                      </div>
-
-                      {/* Unread dot + read-tick */}
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, paddingTop: 2, flexShrink: 0 }}>
-                        {!n.is_read
-                          ? <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,.5)" }} />
-                          : <Check size={12} color="rgba(255,255,255,.2)" />
-                        }
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
+            width: 22, height: 22, borderRadius: "50%",
+            border: "2.5px solid rgba(26,240,196,.25)",
+            borderTopColor: "#1af0c4",
+            animation: "notif-spin .7s linear infinite",
+          }} />
+        </div>
+      ) : notifications.length === 0 ? (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", padding: "52px 24px", gap: 12,
+        }}>
           <div style={{
-            padding: "10px 16px",
-            borderTop: "1px solid rgba(255,255,255,.06)",
-            display: "flex",
-            justifyContent: "center",
-            flexShrink: 0,
+            width: 52, height: 52, borderRadius: 14,
+            background: "rgba(255,255,255,.05)",
+            border: "1px solid rgba(255,255,255,.08)",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <button
-              onClick={() => { navigate("/dashboard/messages"); setOpen(false); }}
-              style={{
-                fontSize: 12, color: "rgba(255,255,255,.4)",
-                background: "none", border: "none", cursor: "pointer",
-                fontFamily: "system-ui,sans-serif",
-                transition: "color .12s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#1af0c4")}
-              onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.4)")}
-            >
-              View all notifications →
-            </button>
+            <Bell size={22} color="rgba(255,255,255,.2)" />
           </div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,.4)", margin: 0, fontFamily: "system-ui, sans-serif" }}>
+            You're all caught up!
+          </p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,.22)", margin: 0, fontFamily: "system-ui, sans-serif", textAlign: "center", maxWidth: 220, lineHeight: 1.6 }}>
+            Coaching updates, team mentions and activity will appear here.
+          </p>
+        </div>
+      ) : (
+        <div>
+          {notifications.map((n, i) => (
+            <NotifRow
+              key={n.id}
+              n={n}
+              onClick={handleNotifClick}
+              isLast={i === notifications.length - 1}
+            />
+          ))}
         </div>
       )}
     </div>
+  );
+
+  const PanelFooter = () => (
+    <div style={{
+      padding: "10px 16px",
+      borderTop: "1px solid rgba(255,255,255,.06)",
+      display: "flex", justifyContent: "center",
+      flexShrink: 0,
+    }}>
+      <button
+        onClick={goToMessages}
+        style={{
+          fontSize: 12, fontWeight: 500,
+          color: "rgba(255,255,255,.38)",
+          background: "none", border: "none", cursor: "pointer",
+          fontFamily: "system-ui, sans-serif",
+          padding: "4px 8px", borderRadius: 6,
+          transition: "color .12s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = "#1af0c4")}
+        onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.38)")}
+      >
+        View all in Messages →
+      </button>
+    </div>
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <>
+      <style>{NOTIF_CSS}</style>
+
+      <div ref={ref} style={{ position: "relative" }}>
+        {/* Bell button */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+          className={cn(
+            "relative w-8 h-8 rounded-md flex items-center justify-center transition-colors",
+            open
+              ? "bg-[rgba(255,255,255,0.1)] text-white"
+              : "text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)]"
+          )}
+        >
+          <Bell style={{ width: 15, height: 15 }} />
+          {unreadCount > 0 && (
+            <span
+              className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full"
+              style={{ background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,0.65)" }}
+            />
+          )}
+        </button>
+
+        {/* Desktop popover */}
+        {open && !isMobile && (
+          <div
+            className="notif-drop"
+            style={{
+              position: "absolute",
+              top: "calc(100% + 10px)",
+              right: 0,
+              width: 380,
+              maxHeight: "min(520px, calc(100vh - 80px))",
+              background: "#111827",
+              border: "1px solid rgba(255,255,255,.1)",
+              borderRadius: 16,
+              overflow: "hidden",
+              boxShadow: "0 24px 64px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.04)",
+              zIndex: 200,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <PanelHeader />
+            <PanelBody />
+            <PanelFooter />
+          </div>
+        )}
+      </div>
+
+      {/* Mobile full-screen bottom sheet — rendered outside the bell ref so it
+          covers the full viewport correctly */}
+      {open && isMobile && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 400 }}>
+          {/* Backdrop */}
+          <div
+            className="notif-backdrop"
+            onClick={() => setOpen(false)}
+            style={{
+              position: "absolute", inset: 0,
+              background: "rgba(0,0,0,.65)",
+              backdropFilter: "blur(6px)",
+            }}
+          />
+
+          {/* Sheet */}
+          <div
+            className="notif-sheet"
+            style={{
+              position: "absolute",
+              bottom: 0, left: 0, right: 0,
+              /* Tall enough to show plenty of notifications, short enough to
+                 show the backdrop above so the user knows they can dismiss */
+              height: "min(86vh, 600px)",
+              background: "#111827",
+              borderRadius: "20px 20px 0 0",
+              border: "1px solid rgba(255,255,255,.1)",
+              borderBottom: "none",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              /* Safe area for notched phones */
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            }}
+          >
+            {/* Drag handle */}
+            <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 0", flexShrink: 0 }}>
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,.18)" }} />
+            </div>
+
+            <PanelHeader />
+            <PanelBody />
+            <PanelFooter />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -386,14 +534,13 @@ function SectionLabel({ children }: { children: ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const navigate           = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { unreadCount } = useNotifications();
-  const { team } = useTeam();
-  const { totalUnread } = useTeamMessaging(team?.id);
+  const { unreadCount }    = useNotifications();
+  const { team }           = useTeam();
+  const { totalUnread }    = useTeamMessaging(team?.id);
 
-  const displayName =
-    user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+  const displayName  = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const emailInitial = displayName[0]?.toUpperCase() || "U";
   const messagesUnread = totalUnread + unreadCount;
 
@@ -421,10 +568,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   };
 
   const SidebarContent = () => (
-    <div
-      className="flex flex-col h-full"
-      style={{ fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif" }}
-    >
+    <div className="flex flex-col h-full" style={{ fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif" }}>
       <div className="px-4 pt-5 pb-4">
         <Link to="/dashboard" className="flex items-center gap-2.5 group">
           <FixsenseLogo size={28} />
@@ -437,11 +581,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         <SectionLabel>Main</SectionLabel>
-        {primaryNav.map(item => <NavLink key={item.href} item={item} />)}
+        {primaryNav.map(item  => <NavLink key={item.href}  item={item} />)}
         <SectionLabel>Workspace</SectionLabel>
         {workspaceNav.map(item => <NavLink key={item.href} item={item} />)}
         <SectionLabel>System</SectionLabel>
-        {systemNav.map(item => <NavLink key={item.href} item={item} />)}
+        {systemNav.map(item   => <NavLink key={item.href}  item={item} />)}
       </nav>
 
       {/* User card */}
@@ -461,12 +605,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {emailInitial}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold text-[rgba(255,255,255,0.85)] truncate leading-none mb-0.5">
-              {displayName}
-            </p>
-            <p className="text-[10px] text-[rgba(255,255,255,0.32)] truncate leading-none">
-              {user?.email}
-            </p>
+            <p className="text-[12px] font-semibold text-[rgba(255,255,255,0.85)] truncate leading-none mb-0.5">{displayName}</p>
+            <p className="text-[10px] text-[rgba(255,255,255,0.32)] truncate leading-none">{user?.email}</p>
           </div>
           <LogOut style={{ width: 13, height: 13 }} className="text-[rgba(255,255,255,0.25)] shrink-0" />
         </div>
@@ -543,9 +683,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          {/* Right side actions */}
+          {/* Right actions */}
           <div className="flex items-center gap-1">
-            {/* ── Notification bell with dropdown ── */}
+            {/* Notification bell — responsive dropdown/sheet */}
             <NotificationDropdown />
 
             {/* User menu */}
@@ -566,10 +706,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <span className="hidden sm:block text-[12px] font-medium text-[rgba(255,255,255,0.55)] max-w-[100px] truncate">
                 {displayName}
               </span>
-              <ChevronDown
-                style={{ width: 12, height: 12 }}
-                className="text-[rgba(255,255,255,0.25)] hidden sm:block"
-              />
+              <ChevronDown style={{ width: 12, height: 12 }} className="text-[rgba(255,255,255,0.25)] hidden sm:block" />
             </button>
           </div>
         </header>
@@ -606,14 +743,7 @@ function BreadcrumbPath() {
         return (
           <span key={i} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-[rgba(255,255,255,0.2)] text-[11px]">/</span>}
-            <span
-              className={cn(
-                "text-[13px] tracking-[-0.01em]",
-                isLast
-                  ? "font-semibold text-white"
-                  : "font-medium text-[rgba(255,255,255,0.35)]"
-              )}
-            >
+            <span className={cn("text-[13px] tracking-[-0.01em]", isLast ? "font-semibold text-white" : "font-medium text-[rgba(255,255,255,0.35)]")}>
               {labels[seg] || seg}
             </span>
           </span>
