@@ -88,9 +88,13 @@ const NOTIF_CSS = `
   @keyframes notif-spin {
     to { transform:rotate(360deg); }
   }
-  .notif-drop   { animation: notif-drop   .18s cubic-bezier(.22,.68,0,1.2) forwards; }
-  .notif-sheet  { animation: notif-sheet  .28s cubic-bezier(.22,.68,0,1)   forwards; }
-  .notif-backdrop { animation: notif-backdrop .2s ease forwards; }
+  .notif-drop    { animation: notif-drop    .2s cubic-bezier(.22,.68,0,1.2) both; }
+  .notif-sheet   { animation: notif-sheet   .32s cubic-bezier(.22,.68,0,1)  both; }
+  .notif-backdrop{ animation: notif-backdrop .22s ease both; }
+
+  /* Touch-friendly tap highlight */
+  .notif-row { -webkit-tap-highlight-color: transparent; }
+  .notif-row:active { background: rgba(26,240,196,.1) !important; }
 `;
 
 // ─── Notification item row (shared between desktop + mobile) ─────────────────
@@ -108,51 +112,61 @@ function NotifRow({
   n,
   onClick,
   isLast,
+  isMobile,
 }: {
   n: NotifItem;
   onClick: (n: NotifItem) => void;
   isLast: boolean;
+  isMobile: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
   const Icon  = NOTIF_ICON[n.type]  ?? AlertCircle;
   const color = NOTIF_COLOR[n.type] ?? NOTIF_COLOR.system;
 
   return (
     <div
+      className="notif-row"
       onClick={() => onClick(n)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => e.key === "Enter" && onClick(n)}
       style={{
         display: "flex",
-        gap: 12,
-        padding: "13px 16px",
+        gap: isMobile ? 14 : 12,
+        padding: isMobile ? "15px 18px" : "13px 16px",
         borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,.05)",
-        background: hovered
-          ? (n.is_read ? "rgba(255,255,255,.04)" : "rgba(26,240,196,.08)")
-          : (n.is_read ? "transparent" : "rgba(26,240,196,.04)"),
+        background: n.is_read ? "transparent" : "rgba(26,240,196,.04)",
         cursor: "pointer",
         transition: "background .12s",
         userSelect: "none",
+        WebkitUserSelect: "none",
       }}
     >
       {/* Type icon */}
       <div style={{
-        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+        width: isMobile ? 42 : 38,
+        height: isMobile ? 42 : 38,
+        borderRadius: 11,
+        flexShrink: 0,
         background: color.bg,
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         marginTop: 1,
       }}>
-        <Icon size={17} color={color.icon} />
+        <Icon size={isMobile ? 18 : 17} color={color.icon} />
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{
-          fontSize: 13, margin: "0 0 4px", lineHeight: 1.45,
+          fontSize: isMobile ? 14 : 13,
+          margin: "0 0 4px",
+          lineHeight: 1.45,
           color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.92)",
           fontWeight: n.is_read ? 400 : 600,
           fontFamily: "system-ui, sans-serif",
-          overflow: "hidden", textOverflow: "ellipsis",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
@@ -160,7 +174,7 @@ function NotifRow({
           {n.message}
         </p>
         <span style={{
-          fontSize: 11,
+          fontSize: isMobile ? 12 : 11,
           color: n.is_read ? "rgba(255,255,255,.22)" : "rgba(26,240,196,.75)",
           fontFamily: "system-ui, sans-serif",
         }}>
@@ -169,10 +183,17 @@ function NotifRow({
       </div>
 
       {/* Status indicator */}
-      <div style={{ display: "flex", alignItems: "flex-start", paddingTop: 3, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", paddingTop: isMobile ? 5 : 3, flexShrink: 0 }}>
         {!n.is_read
-          ? <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,.55)", marginTop: 2 }} />
-          : <Check size={12} color="rgba(255,255,255,.2)" />
+          ? <div style={{
+              width: isMobile ? 9 : 8,
+              height: isMobile ? 9 : 8,
+              borderRadius: "50%",
+              background: "#1af0c4",
+              boxShadow: "0 0 6px rgba(26,240,196,.55)",
+              marginTop: 2,
+            }} />
+          : <Check size={isMobile ? 14 : 12} color="rgba(255,255,255,.2)" />
         }
       </div>
     </div>
@@ -182,25 +203,28 @@ function NotifRow({
 // ─── Notification Dropdown — desktop popover + mobile bottom sheet ────────────
 
 function NotificationDropdown() {
-  const [open, setOpen]         = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const ref                     = useRef<HTMLDivElement>(null);
-  const navigate                = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref             = useRef<HTMLDivElement>(null);
+  const sheetRef        = useRef<HTMLDivElement>(null);
+  const navigate        = useNavigate();
+
+  // SSR-safe mobile detection — read once at open-time to avoid resize flicker
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth < 640
+  );
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", check, { passive: true });
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const {
     notifications, notificationsLoading,
     unreadCount, markRead, markAllRead,
   } = useNotifications();
 
-  // Detect mobile breakpoint
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 640);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  // Close on outside click (desktop)
+  // ── Close on outside click (desktop only) ────────────────────────────────
   useEffect(() => {
     if (!open || isMobile) return;
     const h = (e: MouseEvent) => {
@@ -210,7 +234,7 @@ function NotificationDropdown() {
     return () => document.removeEventListener("mousedown", h);
   }, [open, isMobile]);
 
-  // Close on Escape
+  // ── Close on Escape ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
@@ -218,15 +242,49 @@ function NotificationDropdown() {
     return () => document.removeEventListener("keydown", h);
   }, [open]);
 
-  // Lock body scroll when mobile sheet is open
+  // ── Lock body scroll when mobile sheet is open ───────────────────────────
   useEffect(() => {
-    if (isMobile && open) {
+    if (open && isMobile) {
+      const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
+      return () => { document.body.style.overflow = prev; };
     }
-    return () => { document.body.style.overflow = ""; };
-  }, [isMobile, open]);
+  }, [open, isMobile]);
+
+  // ── Swipe-down to dismiss (mobile only) ─────────────────────────────────
+  useEffect(() => {
+    if (!open || !isMobile || !sheetRef.current) return;
+    const sheet = sheetRef.current;
+    let startY = 0;
+    let currentY = 0;
+
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0].clientY; };
+    const onTouchMove  = (e: TouchEvent) => {
+      currentY = e.touches[0].clientY;
+      const delta = Math.max(0, currentY - startY);
+      sheet.style.transform = `translateY(${delta}px)`;
+      sheet.style.transition = "none";
+    };
+    const onTouchEnd = () => {
+      const delta = currentY - startY;
+      sheet.style.transition = "transform .28s cubic-bezier(.22,.68,0,1)";
+      if (delta > 110) {
+        sheet.style.transform = "translateY(100%)";
+        setTimeout(() => setOpen(false), 260);
+      } else {
+        sheet.style.transform = "translateY(0)";
+      }
+    };
+
+    sheet.addEventListener("touchstart", onTouchStart, { passive: true });
+    sheet.addEventListener("touchmove",  onTouchMove,  { passive: true });
+    sheet.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    return () => {
+      sheet.removeEventListener("touchstart", onTouchStart);
+      sheet.removeEventListener("touchmove",  onTouchMove);
+      sheet.removeEventListener("touchend",   onTouchEnd);
+    };
+  }, [open, isMobile]);
 
   const handleNotifClick = useCallback((n: NotifItem) => {
     if (!n.is_read) markRead.mutate(n.id);
@@ -235,31 +293,39 @@ function NotificationDropdown() {
   }, [markRead, navigate]);
 
   const handleMarkAll = () => markAllRead.mutate();
+  const goToMessages  = () => { navigate("/dashboard/messages"); setOpen(false); };
 
-  const goToMessages = () => { navigate("/dashboard/messages"); setOpen(false); };
+  // ── Shared panel sections ────────────────────────────────────────────────
 
-  // ── Shared inner content ──────────────────────────────────────────────────
-
-  const PanelHeader = () => (
+  const PanelHeader = ({ mobile }: { mobile: boolean }) => (
     <div style={{
-      padding: "14px 16px",
+      padding: mobile ? "14px 18px" : "13px 16px",
       borderBottom: "1px solid rgba(255,255,255,.08)",
-      display: "flex", alignItems: "center", justifyContent: "space-between",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
       flexShrink: 0,
       gap: 8,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {isMobile && (
+      <div style={{ display: "flex", alignItems: "center", gap: mobile ? 10 : 8 }}>
+        {mobile && (
           <button
             onClick={() => setOpen(false)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.5)", display: "flex", alignItems: "center", padding: 0, marginRight: 2 }}
-            aria-label="Close"
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "rgba(255,255,255,.5)", display: "flex",
+              alignItems: "center", padding: 4, marginLeft: -4,
+              borderRadius: 6, WebkitTapHighlightColor: "transparent",
+            }}
+            aria-label="Close notifications"
           >
             <ArrowLeft size={18} />
           </button>
         )}
         <span style={{
-          fontSize: 15, fontWeight: 700, color: "#f0f6fc",
+          fontSize: mobile ? 16 : 15,
+          fontWeight: 700,
+          color: "#f0f6fc",
           fontFamily: "system-ui, sans-serif",
         }}>
           Notifications
@@ -275,33 +341,39 @@ function NotificationDropdown() {
         )}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAll}
-            disabled={markAllRead.isPending}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              background: "rgba(26,240,196,.1)",
-              border: "1px solid rgba(26,240,196,.2)",
-              borderRadius: 8, padding: "5px 10px",
-              cursor: "pointer", fontSize: 11, fontWeight: 600,
-              color: "#1af0c4", fontFamily: "system-ui, sans-serif",
-              whiteSpace: "nowrap",
-              opacity: markAllRead.isPending ? 0.6 : 1,
-            }}
-          >
-            <CheckCheck size={11} />
-            {!isMobile && "Mark all read"}
-            {isMobile && "All read"}
-          </button>
-        )}
-      </div>
+      {unreadCount > 0 && (
+        <button
+          onClick={handleMarkAll}
+          disabled={markAllRead.isPending}
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            background: "rgba(26,240,196,.1)",
+            border: "1px solid rgba(26,240,196,.2)",
+            borderRadius: 8,
+            padding: mobile ? "7px 12px" : "5px 10px",
+            cursor: "pointer",
+            fontSize: mobile ? 12 : 11,
+            fontWeight: 600,
+            color: "#1af0c4",
+            fontFamily: "system-ui, sans-serif",
+            whiteSpace: "nowrap",
+            opacity: markAllRead.isPending ? 0.6 : 1,
+            WebkitTapHighlightColor: "transparent",
+          }}
+        >
+          <CheckCheck size={mobile ? 13 : 11} />
+          Mark all read
+        </button>
+      )}
     </div>
   );
 
-  const PanelBody = () => (
-    <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+  const PanelBody = ({ mobile }: { mobile: boolean }) => (
+    <div style={{
+      overflowY: "auto",
+      flex: 1,
+      WebkitOverflowScrolling: "touch",
+    } as React.CSSProperties}>
       {notificationsLoading ? (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 140 }}>
           <div style={{
@@ -314,20 +386,33 @@ function NotificationDropdown() {
       ) : notifications.length === 0 ? (
         <div style={{
           display: "flex", flexDirection: "column", alignItems: "center",
-          justifyContent: "center", padding: "52px 24px", gap: 12,
+          justifyContent: "center",
+          padding: mobile ? "60px 28px" : "52px 24px",
+          gap: 14,
         }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 14,
+            width: mobile ? 60 : 52,
+            height: mobile ? 60 : 52,
+            borderRadius: 16,
             background: "rgba(255,255,255,.05)",
             border: "1px solid rgba(255,255,255,.08)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <Bell size={22} color="rgba(255,255,255,.2)" />
+            <Bell size={mobile ? 26 : 22} color="rgba(255,255,255,.2)" />
           </div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,.4)", margin: 0, fontFamily: "system-ui, sans-serif" }}>
-            You're all caught up!
+          <p style={{
+            fontSize: mobile ? 15 : 14,
+            fontWeight: 600, color: "rgba(255,255,255,.4)",
+            margin: 0, fontFamily: "system-ui, sans-serif",
+          }}>
+            You&apos;re all caught up!
           </p>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,.22)", margin: 0, fontFamily: "system-ui, sans-serif", textAlign: "center", maxWidth: 220, lineHeight: 1.6 }}>
+          <p style={{
+            fontSize: mobile ? 13 : 12,
+            color: "rgba(255,255,255,.22)", margin: 0,
+            fontFamily: "system-ui, sans-serif", textAlign: "center",
+            maxWidth: 240, lineHeight: 1.6,
+          }}>
             Coaching updates, team mentions and activity will appear here.
           </p>
         </div>
@@ -339,6 +424,7 @@ function NotificationDropdown() {
               n={n}
               onClick={handleNotifClick}
               isLast={i === notifications.length - 1}
+              isMobile={mobile}
             />
           ))}
         </div>
@@ -346,9 +432,12 @@ function NotificationDropdown() {
     </div>
   );
 
-  const PanelFooter = () => (
+  const PanelFooter = ({ mobile }: { mobile: boolean }) => (
     <div style={{
-      padding: "10px 16px",
+      padding: mobile ? "12px 18px" : "10px 16px",
+      paddingBottom: mobile
+        ? "calc(12px + env(safe-area-inset-bottom, 0px))"
+        : "10px",
       borderTop: "1px solid rgba(255,255,255,.06)",
       display: "flex", justifyContent: "center",
       flexShrink: 0,
@@ -356,12 +445,13 @@ function NotificationDropdown() {
       <button
         onClick={goToMessages}
         style={{
-          fontSize: 12, fontWeight: 500,
+          fontSize: mobile ? 13 : 12, fontWeight: 500,
           color: "rgba(255,255,255,.38)",
           background: "none", border: "none", cursor: "pointer",
           fontFamily: "system-ui, sans-serif",
-          padding: "4px 8px", borderRadius: 6,
-          transition: "color .12s",
+          padding: mobile ? "8px 12px" : "4px 8px",
+          borderRadius: 6, transition: "color .12s",
+          WebkitTapHighlightColor: "transparent",
         }}
         onMouseEnter={e => (e.currentTarget.style.color = "#1af0c4")}
         onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.38)")}
@@ -382,6 +472,8 @@ function NotificationDropdown() {
         <button
           onClick={() => setOpen(v => !v)}
           aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+          aria-expanded={open}
+          aria-haspopup="dialog"
           className={cn(
             "relative w-8 h-8 rounded-md flex items-center justify-center transition-colors",
             open
@@ -392,21 +484,24 @@ function NotificationDropdown() {
           <Bell style={{ width: 15, height: 15 }} />
           {unreadCount > 0 && (
             <span
+              aria-hidden="true"
               className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full"
               style={{ background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,0.65)" }}
             />
           )}
         </button>
 
-        {/* Desktop popover */}
+        {/* ── Desktop popover ──────────────────────────────────────────────── */}
         {open && !isMobile && (
           <div
+            role="dialog"
+            aria-label="Notifications"
             className="notif-drop"
             style={{
               position: "absolute",
               top: "calc(100% + 10px)",
               right: 0,
-              width: 380,
+              width: "min(380px, calc(100vw - 24px))",
               maxHeight: "min(520px, calc(100vh - 80px))",
               background: "#111827",
               border: "1px solid rgba(255,255,255,.1)",
@@ -418,56 +513,65 @@ function NotificationDropdown() {
               flexDirection: "column",
             }}
           >
-            <PanelHeader />
-            <PanelBody />
-            <PanelFooter />
+            <PanelHeader mobile={false} />
+            <PanelBody   mobile={false} />
+            <PanelFooter mobile={false} />
           </div>
         )}
       </div>
 
-      {/* Mobile full-screen bottom sheet — rendered outside the bell ref so it
-          covers the full viewport correctly */}
+      {/* ── Mobile bottom sheet — portalled outside bell ref ──────────────── */}
       {open && isMobile && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 400 }}>
+        <div
+          role="dialog"
+          aria-label="Notifications"
+          aria-modal="true"
+          style={{ position: "fixed", inset: 0, zIndex: 400 }}
+        >
           {/* Backdrop */}
           <div
             className="notif-backdrop"
             onClick={() => setOpen(false)}
             style={{
               position: "absolute", inset: 0,
-              background: "rgba(0,0,0,.65)",
+              background: "rgba(0,0,0,.6)",
               backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
             }}
           />
 
           {/* Sheet */}
           <div
+            ref={sheetRef}
             className="notif-sheet"
             style={{
               position: "absolute",
               bottom: 0, left: 0, right: 0,
-              /* Tall enough to show plenty of notifications, short enough to
-                 show the backdrop above so the user knows they can dismiss */
-              height: "min(86vh, 600px)",
+              height: "min(88vh, 640px)",
               background: "#111827",
-              borderRadius: "20px 20px 0 0",
+              borderRadius: "22px 22px 0 0",
               border: "1px solid rgba(255,255,255,.1)",
               borderBottom: "none",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              /* Safe area for notched phones */
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+              willChange: "transform",
             }}
           >
             {/* Drag handle */}
-            <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 0", flexShrink: 0 }}>
-              <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,.18)" }} />
+            <div style={{
+              display: "flex", justifyContent: "center",
+              padding: "14px 0 4px", flexShrink: 0, cursor: "grab",
+            }}>
+              <div style={{
+                width: 44, height: 4, borderRadius: 2,
+                background: "rgba(255,255,255,.2)",
+              }} />
             </div>
 
-            <PanelHeader />
-            <PanelBody />
-            <PanelFooter />
+            <PanelHeader mobile={true} />
+            <PanelBody   mobile={true} />
+            <PanelFooter mobile={true} />
           </div>
         </div>
       )}
