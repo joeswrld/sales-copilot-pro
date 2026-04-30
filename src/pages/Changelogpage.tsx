@@ -452,14 +452,8 @@ export default function ChangelogPage() {
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[["/#features","Features"],["/#pricing","Pricing"],["/integrations","Integrations"],["/changelog","Changelog"]].map(([h,l])=>(
+              {[["/#features","Features"],["/#pricing","Pricing"],["/testimonials","Stories"],["/changelog","Changelog"]].map(([h,l])=>(
                 <a key={h} href={h} className="footer-link">{l}</a>
-              ))}
-            </div>
-            <div>
-              <div className="footer-col-title">Company</div>
-              {[["/about","About"],["/blog","Blog"],["/careers","Careers"],["/testimonials","Stories"]].map(([h,l])=>(
-                <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
             <div>

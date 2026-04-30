@@ -494,12 +494,7 @@ export default function TestimonialsPage() {
       <section className="hero">
         <div className="hero-orb1" />
         <div className="hero-orb2" />
-        <FadeIn delay={60}>
-          <div className="hero-pill">
-            <div className="hero-pill-dot" />
-            Real results from real sales teams
-          </div>
-        </FadeIn>
+        
         <FadeIn delay={100}>
           <h1 className="hero-h">
             Trusted by teams<br />
@@ -523,16 +518,7 @@ export default function TestimonialsPage() {
       </section>
 
       {/* LOGO STRIP */}
-      <div className="logo-strip">
-        <div className="logo-strip-i">
-          <span className="logo-lbl">Integrates with</span>
-          <div className="logo-names">
-            {["Zoom", "Google Meet", "Salesforce", "HubSpot", "Slack", "100ms"].map(l => (
-              <span key={l} className="logo-name">{l}</span>
-            ))}
-          </div>
-        </div>
-      </div>
+     
 
       {/* METRICS */}
       <section className="metrics">
@@ -695,14 +681,8 @@ export default function TestimonialsPage() {
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[["/#features","Features"],["/#pricing","Pricing"],["/integrations","Integrations"],["/changelog","Changelog"]].map(([h,l])=>(
+              {[["/#features","Features"],["/#pricing","Pricing"],["/testimonials","Stories"],["/changelog","Changelog"]].map(([h,l])=>(
                 <a key={h} href={h} className="footer-link">{l}</a>
-              ))}
-            </div>
-            <div>
-              <div className="footer-col-title">Company</div>
-              {[["/about","About"],["/blog","Blog"],["/careers","Careers"],["/testimonials","Stories"]].map(([h,l])=>(
-                <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
             <div>

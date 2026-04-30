@@ -178,14 +178,7 @@ function TestimonialPanel() {
         </div>
       </div>
 
-      <div style={{ paddingTop: "32px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "32px" }}>
-        <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", fontFamily: "'DM Sans', sans-serif", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>Integrates with</div>
-        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-          {["Zoom", "Google Meet", "Salesforce", "HubSpot", "Slack"].map((name) => (
-            <span key={name} style={{ fontSize: "12px", fontWeight: 500, color: "rgba(255,255,255,0.22)", fontFamily: "'DM Sans', sans-serif" }}>{name}</span>
-          ))}
-        </div>
-      </div>
+     
     </div>
   );
 }

@@ -64,8 +64,8 @@ const FAQS = [
 const FEATURE_MATRIX = [
   { label: "Minutes / month",       free: "30 min",    starter: "300 min",  growth: "1,500 min", scale: "5,000 min" },
   { label: "Live calls",            free: true,        starter: true,       growth: true,        scale: true },
-  { label: "AI transcription",      free: "true",     starter: true,       growth: true,        scale: true },
-  { label: "AI call summaries",     free: "true",   starter: true,       growth: true,        scale: true },
+  { label: "AI transcription",      free: true,     starter: true,       growth: true,        scale: true },
+  { label: "AI call summaries",     free: true,   starter: true,       growth: true,        scale: true },
   { label: "Objection detection",   free: false,       starter: true,      growth: true,        scale: true },
   { label: "Sentiment analysis",    free: false,       starter: true,      growth: true,        scale: true },
   { label: "Engagement scoring",    free: false,       starter: true ,      growth: true,        scale: true },
@@ -553,16 +553,11 @@ export default function PricingPage() {
               <div className="footer-brand-logo"><Logo size={22} /><span className="footer-brand-name">Fixsense</span></div>
               <p className="footer-brand-desc">AI-powered sales call intelligence for modern revenue teams.</p>
             </div>
+          
             <div>
               <div className="footer-col-title">Product</div>
-              {[["/#features","Features"],["/#pricing","Pricing"],["/integrations","Integrations"],["/changelog","Changelog"]].map(([h,l])=>(
+              {[["/#features","Features"],["/#pricing","Pricing"],["/testimonials","Stories"],["/changelog","Changelog"]].map(([h,l])=>(
                 <a key={h} href={h} className="footer-link">{l}</a>
-              ))}
-            </div>
-            <div>
-              <div className="footer-col-title">Company</div>
-              {[["/about","About"],["/blog","Blog"],["/careers","Careers"],["/testimonials","Stories"]].map(([h,l])=>(
-                <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
             <div>

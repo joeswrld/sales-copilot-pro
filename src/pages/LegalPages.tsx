@@ -302,7 +302,7 @@ export function PrivacyPage() {
           <li>Log data and error reports</li>
         </ul>
         <h3>Integration Data</h3>
-        <p>If you connect third-party services (Zoom, Google Meet, Salesforce, HubSpot, Slack), we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
+        <p>If you connect third-party services , we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
       </section>
 
       <section className="lg-section" id="how-we-use">
@@ -516,7 +516,7 @@ export function TermsPage() {
 
       <section className="lg-section" id="governing-law">
         <h2>Governing Law</h2>
-        <p>These Terms are governed by the laws of the Federal Republic of Nigeria. Any disputes shall be resolved in the courts of Edo State, Nigeria.</p>
+        <p>These Terms are governed by the laws of the Federal Republic of Nigeria. Any disputes shall be resolved in the courts </p>
         <p>We may update these Terms with 30 days' notice. Continued use constitutes acceptance.</p>
       </section>
 

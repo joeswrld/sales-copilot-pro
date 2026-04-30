@@ -62,7 +62,7 @@ import { PushNotificationToggle } from '@/components/PWABanner';
 <PushNotificationToggle />
 ```
 
-### Step 4: Trigger push after call summary
+iko### Step 4: Trigger push after call summary
 In `generate-call-summary` edge function, after saving the summary, add:
 ```ts
 // Fire-and-forget push notification

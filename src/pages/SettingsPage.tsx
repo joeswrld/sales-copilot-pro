@@ -63,25 +63,10 @@ function HubSpotHelp() {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ marginTop: 8 }}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#FF7A59", background: "rgba(255,122,89,.08)", border: "1px solid rgba(255,122,89,.2)", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}
-      >
-        <Info style={{ width: 11, height: 11 }} /> How to get HubSpot credentials
-      </button>
+      
       {open && (
         <div style={{ marginTop: 8, padding: "12px 14px", background: "rgba(255,122,89,.04)", border: "1px solid rgba(255,122,89,.15)", borderRadius: 10 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#FF7A59" }}>Setting up HubSpot OAuth</p>
-          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "rgba(255,255,255,.5)", lineHeight: 1.7 }}>
-            <li>Go to <strong style={{ color: "rgba(255,255,255,.7)" }}>developers.hubspot.com</strong> → Create an app.</li>
-            <li>Under <strong style={{ color: "rgba(255,255,255,.7)" }}>Auth</strong>, copy your <strong style={{ color: "#FF7A59" }}>Client ID</strong> and <strong style={{ color: "#FF7A59" }}>Client Secret</strong>.</li>
-            <li>Add redirect URI: <code style={{ color: "#fbbf24", fontSize: 10, background: "rgba(255,255,255,.05)", padding: "1px 5px", borderRadius: 4 }}>https://dkvtufanmaiclmsnpyae.supabase.co/functions/v1/oauth-callback</code></li>
-            <li>Set scopes: <code style={{ color: "#a5b4fc", fontSize: 10 }}>crm.objects.contacts.read crm.objects.deals.read crm.objects.deals.write</code></li>
-            <li>In Supabase → Edge Function Secrets, add <code style={{ color: "#fbbf24", fontSize: 10 }}>HUBSPOT_CLIENT_ID</code> and <code style={{ color: "#fbbf24", fontSize: 10 }}>HUBSPOT_CLIENT_SECRET</code>.</li>
-          </ol>
-          <a href="https://developers.hubspot.com/docs/api/oauth-quickstart-guide" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 11, color: "#FF7A59", textDecoration: "underline" }}>
-            HubSpot OAuth Guide <ExternalLink style={{ width: 10, height: 10 }} />
-          </a>
+        
         </div>
       )}
     </div>
@@ -103,7 +88,7 @@ const INTEGRATIONS = [
     ),
     accentColor: "#4285F4", accentBg: "rgba(66,133,244,.08)", accentBorder: "rgba(66,133,244,.18)",
     features: ["Sync events → calls", "Attach meet links"],
-    comingSoon: false, helpContent: null as React.ReactNode,
+    comingSoon: true, helpContent: null as React.ReactNode,
   },
   {
     id: "hubspot",
@@ -117,7 +102,7 @@ const INTEGRATIONS = [
     ),
     accentColor: "#FF7A59", accentBg: "rgba(255,122,89,.08)", accentBorder: "rgba(255,122,89,.18)",
     features: ["Contact + deal sync", "Auto-log calls", "Push AI summaries"],
-    comingSoon: false, helpContent: <HubSpotHelp />,
+    comingSoon: true, helpContent: <HubSpotHelp />,
   },
   {
     id: "salesforce",

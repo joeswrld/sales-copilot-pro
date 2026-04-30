@@ -75,12 +75,12 @@ function AppRoutes() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 <Route path="/invite/:token" element={<InviteLanding />} />
           {/* Marketing */}
-          <Route path="/integrations" element={<IntegrationsPage />} />
+          {/*<Route path="/integrations" element={<IntegrationsPage />} /> */}
           <Route path="/changelog" element={<Changelogpage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/careers" element={<CareersPage />} />
-          <Route path="/press" element={<PressPage />} />
+          {/*<Route path="/about" element={<AboutPage />} /> */}
+          {/*<Route path="/blog" element={<BlogPage />} />*/}
+          {/*<Route path="/careers" element={<CareersPage />} />*/}
+          {/*<Route path="/press" element={<PressPage />} />*/}
 
           {/* Legal */}
           <Route path="/privacy" element={<PrivacyPage />} />
@@ -115,7 +115,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/calls"
+            path="/calls"
             element={
               <ProtectedRoute>
                 <CallsList />
@@ -124,7 +124,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/calls/:id"
+            path="/calls/:id"
             element={
               <ProtectedRoute>
                 <CallDetail />
@@ -133,7 +133,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/live"
+            path="/live"
             element={
               <ProtectedRoute>
                 <LiveCall />
@@ -142,7 +142,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/live/:id"
+            path="/live/:id"
             element={
               <ProtectedRoute>
                 <LiveMeeting />
@@ -151,7 +151,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/deals"
+            path="/deals"
             element={
               <ProtectedRoute>
                 <DealsPage />
@@ -160,7 +160,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/analytics"
+            path="/analytics"
             element={
               <ProtectedRoute>
                 <Analytics />
@@ -169,7 +169,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/team"
+            path="/team"
             element={
               <ProtectedRoute>
                 <TeamPage />
@@ -178,7 +178,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/messages"
+            path="/messages"
             element={
               <ProtectedRoute>
                 <MessagesPage />
@@ -187,25 +187,25 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/settings"
+            path="/settings"
             element={
-              <ProtectedRoute>
+             
                 <SettingsPage />
-              </ProtectedRoute>
+              
             }
           />
 
           <Route
             path="/dashboard/integrations"
             element={
-              <ProtectedRoute>
+             
                 <IntegrationsDashboardPage />
-              </ProtectedRoute>
+              
             }
           />
 
           <Route
-            path="/dashboard/profile"
+            path="/profile"
             element={
               <ProtectedRoute>
                 <ProfilePage />
@@ -214,7 +214,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/billing"
+            path="/billing"
             element={
               <ProtectedRoute>
                 <BillingPage />
@@ -223,7 +223,7 @@ function AppRoutes() {
           />
 
           <Route
-            path="/dashboard/coach"
+            path="/coach"
             element={
               <ProtectedRoute>
                 <AIChatPage />
