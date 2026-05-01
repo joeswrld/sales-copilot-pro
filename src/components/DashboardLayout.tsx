@@ -112,14 +112,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const primaryNav: NavItem[] = [
     { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-    { label: "Live Call", icon: Radio, href: "/dashboard/live" },
-    { label: "Calls", icon: Phone, href: "/dashboard/calls" },
-    { label: "Deals", icon: Building2, href: "/dashboard/deals" },
-    { label: "AI Coach", icon: Bot, href: "/dashboard/coach" },
+    { label: "Live Call", icon: Radio, href: "/live" },
+    { label: "Calls", icon: Phone, href: "/calls" },
+    { label: "Deals", icon: Building2, href: "/deals" },
+    { label: "AI Coach", icon: Bot, href: "/coach" },
   ];
   const workspaceNav: NavItem[] = [
-    { label: "Team",     icon: Users,         href: "/dashboard/team" },
-    { label: "Messages", icon: MessageSquare, href: "/dashboard/messages", badge: messagesUnread > 0 ? messagesUnread : null },
+    { label: "Team",     icon: Users,         href: "/team" },
+    { label: "Messages", icon: MessageSquare, href: "/messages", badge: messagesUnread > 0 ? messagesUnread : null },
   ];
   const systemNav: NavItem[] = [
     { label: "Billing",  icon: CreditCard, href: "/billing" },
