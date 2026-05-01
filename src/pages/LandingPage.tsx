@@ -818,7 +818,7 @@ export default function LandingPage() {
     { label: "Problem", href: "#problem" },
     { label: "Live Demo", href: "#demo" },
     { label: "Pricing", href: "/pricing" },
-    { label: "Changelog", href: "/changelog" },
+    { label: "Changelog", href: "/testimonials" },
   ];
 
   return (
@@ -1326,12 +1326,7 @@ export default function LandingPage() {
                   : <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
-            <div>
-              <div className="footer-col-title">Company</div>
-              {[["/about", "About"], ["/blog", "Blog"], ["/testimonials", "Stories"], ["/contact", "Contact"]].map(([h, l]) => (
-                <Link key={h} to={h} className="footer-link">{l}</Link>
-              ))}
-            </div>
+            
             <div>
               <div className="footer-col-title">Legal</div>
               {[["/privacy", "Privacy"], ["/terms", "Terms"], ["/security", "Security"], ["/contact", "Contact"]].map(([h, l]) => (
