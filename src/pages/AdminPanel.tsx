@@ -76,7 +76,7 @@ export default function AdminPanel() {
     if (t.data) setTeams(t.data as TeamRow[]);
     if (m.data) setMembers(m.data as TeamMember[]);
     if (r.data) setAdminIds(new Set(r.data.map((x: any) => x.user_id)));
-    if (!payRes.error && payRes.data) setPayments(payRes.data as Payment[]);
+    if (!payRes.error && payRes.data) setPayments(payRes.data as unknown as Payment[]);
     setLoading(false);
   };
 

@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AdminRoute from "@/components/AdminRoute";
+import AdminPanel from "./pages/AdminPanel";
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
