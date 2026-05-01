@@ -408,7 +408,7 @@ function ScheduleModal({
               <input
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="https://meet...."
+                placeholder="https://fixsense...."
                 className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none font-mono text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
               />
@@ -1094,7 +1094,7 @@ export default function LiveCall() {
                   <input
                     value={joinLink}
                     onChange={(e) => setJoinLink(e.target.value)}
-                    placeholder="https://app.100ms.live/room/..."
+                    placeholder="https://fixsense.com.ng/room/..."
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors font-mono placeholder:font-sans placeholder:text-muted-foreground/50"
                   />
                   {joinLink && (
@@ -1136,7 +1136,7 @@ export default function LiveCall() {
                 <p className="text-xs font-medium text-indigo-400/80">How it works</p>
                 <ul className="space-y-1">
                   {[
-                    "Paste your 100ms meeting link above",
+                    "Paste your fixsense meeting link above",
                     "Join as guest or host with full controls",
                     "AI transcription starts automatically",
                   ].map((tip) => (
