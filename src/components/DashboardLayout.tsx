@@ -3,7 +3,8 @@ import { Building2 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
-  Users, LogOut, MessageSquare, ChevronDown, Bell, Timer,
+  Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
+
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -120,6 +121,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const workspaceNav: NavItem[] = [
     { label: "Team",     icon: Users,         href: "/team" },
     { label: "Messages", icon: MessageSquare, href: "/messages", badge: messagesUnread > 0 ? messagesUnread : null },
+    { label: "Analytics",     icon: BarChart3,         href: "/analytics" },
   ];
   const systemNav: NavItem[] = [
     { label: "Billing",  icon: CreditCard, href: "/billing" },
