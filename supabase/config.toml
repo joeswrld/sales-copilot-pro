@@ -84,3 +84,5 @@ verify_jwt = false
 
 [functions.transcribe-stream]
 verify_jwt = false
+[functions.admin-user-actions]
+verify_jwt = false
