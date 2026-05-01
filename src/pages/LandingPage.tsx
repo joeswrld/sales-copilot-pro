@@ -818,7 +818,7 @@ export default function LandingPage() {
     { label: "Problem", href: "#problem" },
     { label: "Live Demo", href: "#demo" },
     { label: "Pricing", href: "/pricing" },
-    { label: "Changelog", href: "/testimonials" },
+    { label: "Testimonials", href: "/testimonials" },
   ];
 
   return (
