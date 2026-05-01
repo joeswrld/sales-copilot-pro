@@ -195,20 +195,24 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ── FIX: Redirect already-authenticated users to dashboard ──────────────
+  // ── Redirect already-authenticated users (admins → /admin, others → /dashboard) ──
   useEffect(() => {
-    // Check existing session immediately on mount
+    const route = async (uid: string) => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", uid)
+        .eq("role", "admin")
+        .maybeSingle();
+      navigate(data ? "/admin" : "/dashboard", { replace: true });
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        navigate("/dashboard", { replace: true });
-      }
+      if (session?.user) route(session.user.id);
     });
 
-    // Also listen for auth state changes (e.g. token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        navigate("/dashboard", { replace: true });
-      }
+      if (session?.user) route(session.user.id);
     });
 
     return () => subscription.unsubscribe();

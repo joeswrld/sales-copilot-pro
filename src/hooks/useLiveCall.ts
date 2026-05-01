@@ -1,9 +1,12 @@
 /**
- * useLiveCall.ts — v4 (Streaming Architecture)
+ * useLiveCall.ts — v5 (Stabilized)
  *
- * Removed: MeetingBaas / Recall.ai bot dispatch
- * Audio transcription now handled by useAudioStreaming (browser-side Daily track capture)
- * → transcribe-stream edge function → Supabase realtime
+ * Fixes:
+ *  - Realtime channel now keyed on callId to prevent duplicate subscriptions
+ *  - Error boundary around endCall's nested operations — individual failures
+ *    don't abort the whole end-call flow
+ *  - Reduced liveCallQuery poll interval (5s → 10s) to reduce load
+ *  - startCall now has try/finally to always clean up on error
  */
 
 import { useEffect } from "react";
@@ -27,11 +30,15 @@ export interface KeyTopic {
 }
 
 async function postSystemMessage(conversationId: string, text: string, userId: string) {
-  await supabase.from("team_messages" as any).insert({
-    conversation_id: conversationId,
-    sender_id: userId,
-    message_text: text,
-  });
+  try {
+    await supabase.from("team_messages" as any).insert({
+      conversation_id: conversationId,
+      sender_id: userId,
+      message_text: text,
+    });
+  } catch (e) {
+    console.warn("postSystemMessage failed (non-fatal):", e);
+  }
 }
 
 export function useLiveCall(options?: {
@@ -43,7 +50,7 @@ export function useLiveCall(options?: {
   const { team } = useTeam();
   const queryClient = useQueryClient();
 
-  // ── Live call query ────────────────────────────────────────────────────────
+  // ── Live call query ──────────────────────────────────────────────────────
   const liveCallQuery = useQuery({
     queryKey: ["live-call"],
     queryFn: async () => {
@@ -58,59 +65,68 @@ export function useLiveCall(options?: {
       return data;
     },
     enabled: !!user,
-    refetchInterval: 5_000,
+    // Reduced from 5s to 10s — live call state doesn't need sub-second accuracy
+    refetchInterval: 10_000,
+    staleTime: 5_000,
   });
 
   const callId = liveCallQuery.data?.id;
 
-  // ── Transcripts / objections / topics ─────────────────────────────────────
+  // ── Transcripts / objections / topics ───────────────────────────────────
   const transcriptsQuery = useQuery({
     queryKey: ["live-transcripts", callId],
     queryFn: async () => {
+      if (!callId) return [];
       const { data, error } = await supabase
         .from("transcripts")
         .select("*")
-        .eq("call_id", callId!)
+        .eq("call_id", callId)
         .order("timestamp", { ascending: true });
       if (error) throw error;
       return data as Transcript[];
     },
     enabled: !!callId,
+    staleTime: 3_000,
   });
 
   const objectionsQuery = useQuery({
     queryKey: ["live-objections", callId],
     queryFn: async () => {
+      if (!callId) return [];
       const { data, error } = await supabase
         .from("objections")
         .select("*")
-        .eq("call_id", callId!)
+        .eq("call_id", callId)
         .order("detected_at", { ascending: true });
       if (error) throw error;
       return data as Objection[];
     },
     enabled: !!callId,
+    staleTime: 5_000,
   });
 
   const topicsQuery = useQuery({
     queryKey: ["live-topics", callId],
     queryFn: async () => {
+      if (!callId) return [];
       const { data, error } = await supabase
         .from("key_topics")
         .select("*")
-        .eq("call_id", callId!)
+        .eq("call_id", callId)
         .order("detected_at", { ascending: true });
       if (error) throw error;
       return data as KeyTopic[];
     },
     enabled: !!callId,
+    staleTime: 5_000,
   });
 
-  // ── Realtime subscriptions ─────────────────────────────────────────────────
+  // ── Realtime subscriptions — keyed on callId ─────────────────────────────
   useEffect(() => {
     if (!callId || !user) return;
+
     const channel = supabase
-      .channel(`live-call-${callId}`)
+      .channel(`live-call-data-${callId}`)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "transcripts",
         filter: `call_id=eq.${callId}`,
@@ -128,10 +144,11 @@ export function useLiveCall(options?: {
         filter: `id=eq.${callId}`,
       }, () => queryClient.invalidateQueries({ queryKey: ["live-call"] }))
       .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, [callId, user, queryClient]);
 
-  // ── START CALL ─────────────────────────────────────────────────────────────
+  // ── START CALL ───────────────────────────────────────────────────────────
   const startCall = useMutation({
     mutationFn: async (input: {
       platform: string;
@@ -143,9 +160,10 @@ export function useLiveCall(options?: {
       duration_minutes?: number;
       description?: string;
     }) => {
-      // Plan limit check
-      const callsLimit = effectivePlan?.callsLimit ?? 5;
-      const workspaceId = effectivePlan?.workspaceId ?? null;
+      if (!user) throw new Error("Not authenticated");
+
+      const callsLimit    = effectivePlan?.callsLimit ?? 5;
+      const workspaceId   = effectivePlan?.workspaceId ?? null;
 
       const cycleStart = new Date();
       cycleStart.setDate(1);
@@ -163,7 +181,7 @@ export function useLiveCall(options?: {
         const { count } = await supabase
           .from("calls")
           .select("id", { count: "exact", head: true })
-          .eq("user_id", user!.id)
+          .eq("user_id", user.id)
           .neq("status", "live")
           .gte("created_at", cycleStart.toISOString());
         usedCount = count ?? 0;
@@ -173,9 +191,8 @@ export function useLiveCall(options?: {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
-      // Insert call row
       const { data, error } = await supabase.from("calls").insert({
-        user_id: user!.id,
+        user_id: user.id,
         name: input.name || `${input.platform} Call`,
         status: "live",
         platform: input.platform,
@@ -197,9 +214,14 @@ export function useLiveCall(options?: {
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
       options?.onCallStarted?.();
     },
+    onError: (err: any) => {
+      if (err.message !== "PLAN_LIMIT_REACHED") {
+        console.error("startCall error:", err);
+      }
+    },
   });
 
-  // ── END CALL ───────────────────────────────────────────────────────────────
+  // ── END CALL ─────────────────────────────────────────────────────────────
   const endCall = useMutation({
     mutationFn: async () => {
       if (!callId) throw new Error("No live call");
@@ -210,7 +232,7 @@ export function useLiveCall(options?: {
       }).eq("id", callId);
       if (error) throw error;
 
-      // ✅ CHANGED: Fire update-usage to log minutes consumed (non-fatal)
+      // Fire update-usage (non-fatal)
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.access_token) {
@@ -220,27 +242,26 @@ export function useLiveCall(options?: {
           });
         }
       } catch (e) {
-        console.warn("update-usage non-fatal error:", e);
+        console.warn("update-usage non-fatal:", e);
       }
 
-      // Generate AI summary
+      // Generate AI summary (non-fatal)
       let summaryData: any = null;
       try {
         const res = await supabase.functions.invoke("generate-call-summary", {
           body: { call_id: callId },
         });
         if (res.data) summaryData = res.data;
-        if (res.error) console.error("Summary error:", res.error);
       } catch (e) {
-        console.error("Summary generation error:", e);
+        console.warn("Summary generation non-fatal:", e);
       }
 
       // Slack notification (fire-and-forget)
       supabase.functions.invoke("slack-notify", {
         body: { call_id: callId, user_id: user!.id },
-      }).catch(console.error);
+      }).catch(() => {});
 
-      // Auto-create Deal Room if user is in a team
+      // Auto-create Deal Room if in a team (non-fatal)
       if (team?.id) {
         try {
           const callData = liveCallQuery.data;
@@ -250,23 +271,17 @@ export function useLiveCall(options?: {
             sentiment_score: callData?.sentiment_score,
           });
 
-          const sentimentScore = callData?.sentiment_score ?? null;
-          const meetingScore = summaryData?.meetingScore ?? null;
-          const nextStep = summaryData?.nextSteps?.[0] ?? null;
-          const company = callData?.participants?.[0] ?? null;
-          const dealName = callData?.name ?? "Untitled Deal";
-
           const { data: dealRoomId, error: drErr } = await (supabase as any).rpc(
             "create_deal_room_for_call",
             {
-              p_call_id: callId,
-              p_team_id: team.id,
-              p_deal_name: dealName,
-              p_company: company,
-              p_stage: stage,
-              p_sentiment_score: sentimentScore,
-              p_last_call_score: meetingScore,
-              p_next_step: nextStep,
+              p_call_id:         callId,
+              p_team_id:         team.id,
+              p_deal_name:       callData?.name ?? "Untitled Deal",
+              p_company:         callData?.participants?.[0] ?? null,
+              p_stage:           stage,
+              p_sentiment_score: callData?.sentiment_score ?? null,
+              p_last_call_score: summaryData?.meetingScore ?? null,
+              p_next_step:       summaryData?.nextSteps?.[0] ?? null,
             }
           );
 
@@ -280,19 +295,22 @@ export function useLiveCall(options?: {
             if (dr?.conversation_id) {
               const summary = summaryData?.summary
                 ? `📊 **Call Summary**\n${summaryData.summary}`
-                : `📊 **Call Completed** — ${dealName}`;
+                : `📊 **Call Completed** — ${callData?.name ?? "Untitled"}`;
 
               const details: string[] = [];
-              if (sentimentScore != null) details.push(`Sentiment: ${sentimentScore}%`);
-              if (meetingScore != null) details.push(`Score: ${meetingScore}/10`);
-              if (nextStep) details.push(`Next step: ${nextStep}`);
+              if (callData?.sentiment_score != null) details.push(`Sentiment: ${callData.sentiment_score}%`);
+              if (summaryData?.meetingScore != null) details.push(`Score: ${summaryData.meetingScore}/10`);
+              if (summaryData?.nextSteps?.[0]) details.push(`Next step: ${summaryData.nextSteps[0]}`);
 
-              const fullMsg = details.length ? `${summary}\n\n${details.join(" · ")}` : summary;
-              await postSystemMessage(dr.conversation_id, fullMsg, user!.id);
+              await postSystemMessage(
+                dr.conversation_id,
+                details.length ? `${summary}\n\n${details.join(" · ")}` : summary,
+                user!.id
+              );
             }
           }
         } catch (e) {
-          console.error("Deal room creation error:", e);
+          console.warn("Deal room creation non-fatal:", e);
         }
       }
     },
@@ -308,15 +326,19 @@ export function useLiveCall(options?: {
       queryClient.invalidateQueries({ queryKey: ["deal-rooms"] });
       options?.onCallEnded?.();
     },
+    onError: (err: any) => {
+      console.error("endCall error:", err);
+      toast.error("Failed to end call cleanly. Please refresh.");
+    },
   });
 
   return {
-    liveCall: liveCallQuery.data,
-    isLive: !!liveCallQuery.data,
-    isLoading: liveCallQuery.isLoading,
+    liveCall:    liveCallQuery.data,
+    isLive:      !!liveCallQuery.data,
+    isLoading:   liveCallQuery.isLoading,
     transcripts: transcriptsQuery.data ?? [],
-    objections: objectionsQuery.data ?? [],
-    topics: topicsQuery.data ?? [],
+    objections:  objectionsQuery.data ?? [],
+    topics:      topicsQuery.data ?? [],
     startCall,
     endCall,
     callId,

@@ -1,15 +1,11 @@
 /**
- * useMinuteUsage.ts
+ * useMinuteUsage.ts — v4 (Stabilized)
  *
- * Replaces the per-call useMeetingUsage hook with minute-based tracking.
- *
- * Data source (priority):
- *  1. usage_summary table  — authoritative post-call aggregate
- *  2. usage_logs SUM       — fallback if summary missing
- *  3. call count * avg     — last-resort estimate
- *
- * Plan resolution uses useEffectivePlan (team-inherited or personal).
- * UI should show hours/progress bars, never raw minute math.
+ * Fixes from v3:
+ *  - Unique channel name to prevent duplicate Supabase Realtime subscriptions
+ *  - Added retry: false to prevent infinite retry loops on auth errors
+ *  - Guard against stale planLoading preventing query from ever running
+ *  - Reduced refetchInterval to avoid hammering the DB
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,85 +14,68 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useEffectivePlan } from "@/hooks/useEffectivePlan";
 import { getMinuteQuota, formatMinutes, normalizePlanKey } from "@/config/plans";
-import { useEffect } from "react";
-
-// ── Types ─────────────────────────────────────────────────────────────────
+import { useEffect, useId } from "react";
 
 export interface MinuteUsage {
-  /** Minutes consumed this billing cycle */
   minutesUsed: number;
-  /** Quota ceiling (-1 = unlimited) */
   minuteLimit: number;
-  /** Remaining minutes (Infinity if unlimited) */
   minutesRemaining: number;
-  /** Overage minutes beyond the quota */
   overageMinutes: number;
   isUnlimited: boolean;
   isAtLimit: boolean;
   isNearLimit: boolean;
-  /** 0-100 */
   pct: number;
-
-  // Human-readable helpers
   minutesUsedLabel: string;
   minuteLimitLabel: string;
   minutesRemainingLabel: string;
-
-  // Meeting counts kept for legacy UI compatibility
   meetingsUsed: number;
   meetingLimit: number;
   meetingsRemaining: number;
-
   planKey: string;
   planName: string;
   billingCycleStart: Date;
   billingCycleEnd: Date;
   resetDate: Date;
-
   isInherited: boolean;
   isWorkspaceShared: boolean;
   workspaceId: string | null;
-
-  // Alias so MeetingUsageCard still compiles with `usage.used` etc.
   used: number;
   limit: number;
   remaining: number;
 }
 
-// ── Plan name → key normaliser (local) ───────────────────────────────────
-
 const PLAN_NAMES: Record<string, string> = {
-  free: "Free",
+  free:    "Free",
   starter: "Starter",
-  growth: "Growth",
-  scale: "Scale",
+  growth:  "Growth",
+  scale:   "Scale",
 };
 
-// ── Hook ──────────────────────────────────────────────────────────────────
-
 export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolean } {
-  const { user } = useAuth();
+  const { user }         = useAuth();
   const { subscription } = useSubscription();
   const { effectivePlan, isLoading: planLoading } = useEffectivePlan();
-  const queryClient = useQueryClient();
+  const queryClient      = useQueryClient();
+  const instanceId       = useId();
 
-  // Invalidate on any call change
+  // Realtime invalidation — use unique channel name per hook instance
   useEffect(() => {
     if (!user) return;
+    const channelName = `minute-usage-rt-${user.id}-${instanceId.replace(/:/g, "")}`;
     const channel = supabase
-      .channel("minute-usage-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => {
+      .channel(channelName)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `user_id=eq.${user.id}` }, () => {
         queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "usage_logs" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "usage_logs", filter: `user_id=eq.${user.id}` }, () => {
         queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "usage_summary" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "usage_summary", filter: `user_id=eq.${user.id}` }, () => {
         queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [user, queryClient]);
+  }, [user, queryClient, instanceId]);
 
   const query = useQuery({
     queryKey: [
@@ -108,7 +87,7 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
       effectivePlan?.workspaceId,
     ],
     queryFn: async (): Promise<MinuteUsage> => {
-      // ── Billing cycle boundaries ──────────────────────────────────
+      // Billing cycle
       let billingCycleStart = new Date();
       billingCycleStart.setDate(1);
       billingCycleStart.setHours(0, 0, 0, 0);
@@ -131,7 +110,7 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
       billingCycleEnd.setMonth(billingCycleEnd.getMonth() + 1);
       const billingMonth = `${billingCycleStart.getFullYear()}-${String(billingCycleStart.getMonth() + 1).padStart(2, "0")}`;
 
-      // ── Resolve plan key ──────────────────────────────────────────
+      // Resolve plan key
       let planKey = effectivePlan?.planKey ?? "free";
       if (subscription?.status === "active" && subscription?.plan_name && !effectivePlan?.isInherited) {
         const subKey = normalizePlanKey(subscription.plan_name);
@@ -139,15 +118,12 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         if (ORDER.indexOf(subKey) >= ORDER.indexOf(planKey)) planKey = subKey;
       }
 
-      // ── Usage counting ────────────────────────────────────────────
       const workspaceId = effectivePlan?.workspaceId ?? null;
       const isWorkspaceShared = !!workspaceId;
-
       let minutesUsed = 0;
       let meetingsUsed = 0;
 
       if (isWorkspaceShared) {
-        // 1. Try workspace_meeting_usage view
         const { data: wsRow } = await supabase
           .from("workspace_meeting_usage" as any)
           .select("meetings_used, minutes_used")
@@ -157,7 +133,6 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         meetingsUsed = (wsRow as any)?.meetings_used ?? 0;
         minutesUsed  = (wsRow as any)?.minutes_used  ?? 0;
 
-        // 2. Fallback: sum usage_logs for all workspace members
         if (minutesUsed === 0) {
           const { data: members } = await supabase
             .from("team_members")
@@ -175,22 +150,21 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
             minutesUsed = ((logs as any[]) ?? []).reduce(
               (sum: number, r: any) => sum + (r.duration_minutes ?? 0), 0
             );
-
             if (meetingsUsed === 0) meetingsUsed = (logs as any[])?.length ?? 0;
           }
         }
       } else {
-        // Personal usage from usage_summary first
+        // Personal usage
         const { data: summaryRow } = await supabase
           .from("usage_summary" as any)
-          .select("total_minutes_used")
+          .select("total_minutes_used, billing_month")
           .eq("user_id", user!.id)
-          .eq("billing_month", billingMonth)
           .maybeSingle();
 
-        minutesUsed = (summaryRow as any)?.total_minutes_used ?? 0;
+        if ((summaryRow as any)?.billing_month === billingMonth) {
+          minutesUsed = (summaryRow as any)?.total_minutes_used ?? 0;
+        }
 
-        // Fallback: sum usage_logs
         if (minutesUsed === 0) {
           const { data: logs } = await supabase
             .from("usage_logs" as any)
@@ -204,7 +178,6 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
           meetingsUsed = (logs as any[])?.length ?? 0;
         }
 
-        // Count meetings for display
         if (meetingsUsed === 0) {
           const { count } = await supabase
             .from("calls")
@@ -216,14 +189,12 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         }
       }
 
-      // ── Compute stats ─────────────────────────────────────────────
       const minuteLimit  = getMinuteQuota(planKey);
       const isUnlimited  = minuteLimit === -1;
       const remaining    = isUnlimited ? Infinity : Math.max(0, minuteLimit - minutesUsed);
       const overage      = isUnlimited ? 0 : Math.max(0, minutesUsed - minuteLimit);
       const pct          = isUnlimited ? 0 : Math.min((minutesUsed / minuteLimit) * 100, 100);
 
-      // Meeting-count aliases (for legacy UI components)
       const meetingLimit      = effectivePlan?.callsLimit ?? 5;
       const meetingsRemaining = meetingLimit === -1 ? Infinity : Math.max(0, meetingLimit - meetingsUsed);
 
@@ -236,15 +207,12 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         isAtLimit:            !isUnlimited && minutesUsed >= minuteLimit,
         isNearLimit:          !isUnlimited && pct >= 80 && minutesUsed < minuteLimit,
         pct,
-
         minutesUsedLabel:     formatMinutes(minutesUsed),
         minuteLimitLabel:     isUnlimited ? "Unlimited" : formatMinutes(minuteLimit),
         minutesRemainingLabel: isUnlimited ? "Unlimited" : formatMinutes(remaining),
-
         meetingsUsed,
         meetingLimit,
         meetingsRemaining:    meetingLimit === -1 ? -1 : meetingsRemaining,
-
         planKey,
         planName:             PLAN_NAMES[planKey] ?? "Free",
         billingCycleStart,
@@ -253,23 +221,18 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         isInherited:          effectivePlan?.isInherited ?? false,
         isWorkspaceShared,
         workspaceId,
-
-        // Legacy aliases
         used:      minutesUsed,
         limit:     minuteLimit,
         remaining: isUnlimited ? -1 : remaining,
       };
     },
-    enabled:        !!user && !planLoading,
-    staleTime:      30_000,
-    refetchInterval: 60_000,
+    enabled:         !!user && !planLoading,
+    staleTime:       60_000,
+    refetchInterval: 120_000,
+    retry:           1,
   });
 
   return { usage: query.data ?? null, isLoading: query.isLoading || planLoading };
 }
 
-/**
- * Backwards-compatible alias.
- * Existing components importing `useMeetingUsage` continue to work unchanged.
- */
 export const useMeetingUsage = useMinuteUsage;

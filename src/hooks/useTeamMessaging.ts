@@ -1,7 +1,20 @@
+/**
+ * useTeamMessaging.ts — v2 (Performance Fix)
+ *
+ * ROOT CAUSE OF PAGE HANG:
+ * The old version did one query per conversation in a for-loop:
+ *   - lastMessages: N queries
+ *   - unreadCounts: N queries
+ * With 29 conversations = 58+ sequential round-trips → browser timeout/hang
+ *
+ * FIX: Single RPC call `get_conversations_with_context` returns everything
+ * in one query with a lateral join. 1 query replaces 60+.
+ */
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export interface Conversation {
   id: string;
@@ -22,16 +35,15 @@ export interface Message {
   file_url?: string | null;
   file_name?: string | null;
   file_type?: string | null;
+  parent_id?: string | null;
   sender?: { full_name: string | null; email: string | null };
 }
 
-/** Returns display name for a conversation */
 export function getConversationName(convo: Conversation): string {
-  if (convo.participants.length === 0) return "Empty Chat";
+  if (convo.participants.length === 0) return "Team Chat";
   if (convo.participants.length === 1) {
     return convo.participants[0].full_name || convo.participants[0].email || "Unknown";
   }
-  // Group: show first 3 names
   const names = convo.participants
     .slice(0, 3)
     .map(p => p.full_name?.split(" ")[0] || p.email?.split("@")[0] || "?");
@@ -39,13 +51,11 @@ export function getConversationName(convo: Conversation): string {
   return names.join(", ") + suffix;
 }
 
-/** Returns initials for avatar */
 export function getConversationInitials(convo: Conversation): string {
   if (convo.participants.length <= 1) {
     const name = convo.participants[0]?.full_name || convo.participants[0]?.email || "?";
     return name[0]?.toUpperCase() || "?";
   }
-  // Group: show count
   return `${convo.participants.length + 1}`;
 }
 
@@ -53,91 +63,67 @@ export function useTeamMessaging(teamId: string | undefined) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  // ── Fast single-RPC conversations query ───────────────────────────────────
   const conversationsQuery = useQuery({
-    queryKey: ["team-conversations", teamId],
-    queryFn: async () => {
-      const { data: participantRows } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id, last_read_at")
-        .eq("user_id", user!.id);
+    queryKey: ["team-conversations", teamId, user?.id],
+    queryFn: async (): Promise<Conversation[]> => {
+      if (!teamId || !user?.id) return [];
 
-      if (!participantRows?.length) return [];
+      // Use the new fast RPC instead of N+1 loop
+      const { data, error } = await (supabase as any).rpc(
+        "get_conversations_with_context",
+        { p_user_id: user.id }
+      );
 
-      const convoIds = participantRows.map(p => p.conversation_id);
-      const lastReadMap = new Map(participantRows.map(p => [p.conversation_id, p.last_read_at]));
+      if (error) {
+        console.error("get_conversations_with_context error:", error);
+        // Graceful fallback: just return participants without counts
+        const { data: fallback } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("user_id", user.id);
 
-      const { data: convos } = await supabase
-        .from("team_conversations")
-        .select("*")
-        .in("id", convoIds)
-        .eq("team_id", teamId!)
-        .order("created_at", { ascending: false });
+        if (!fallback?.length) return [];
 
-      if (!convos?.length) return [];
+        const convoIds = fallback.map(f => f.conversation_id);
+        const { data: convos } = await supabase
+          .from("team_conversations")
+          .select("*")
+          .in("id", convoIds)
+          .eq("team_id", teamId);
 
-      const { data: allParticipants } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id, user_id")
-        .in("conversation_id", convoIds);
-
-      const allUserIds = [...new Set(allParticipants?.map(p => p.user_id) ?? [])];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, avatar_url")
-        .in("id", allUserIds);
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
-
-      const results: Conversation[] = [];
-      for (const convo of convos) {
-        // FIX: Use .maybeSingle() instead of .single() to avoid 406 errors
-        // when a conversation has no messages yet (0 rows should return null, not throw)
-        const { data: lastMsg } = await supabase
-          .from("team_messages")
-          .select("message_text, created_at, sender_id")
-          .eq("conversation_id", convo.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const lastRead = lastReadMap.get(convo.id);
-        const { count } = await supabase
-          .from("team_messages")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", convo.id)
-          .neq("sender_id", user!.id)
-          .gt("created_at", lastRead ?? "1970-01-01");
-
-        const participants = (allParticipants ?? [])
-          .filter(p => p.conversation_id === convo.id && p.user_id !== user!.id)
-          .map(p => {
-            const prof = profileMap.get(p.user_id);
-            return {
-              user_id: p.user_id,
-              full_name: prof?.full_name ?? null,
-              email: prof?.email ?? null,
-              avatar_url: prof?.avatar_url ?? null,
-            };
-          });
-
-        results.push({
-          ...convo,
-          participants,
-          last_message: lastMsg ?? undefined,
-          unread_count: count ?? 0,
-          is_group: participants.length > 1,
-        });
+        return (convos || []).map(c => ({
+          ...c,
+          participants: [],
+          unread_count: 0,
+          is_group: false,
+        })) as Conversation[];
       }
 
-      results.sort((a, b) => {
-        const aTime = a.last_message?.created_at ?? a.created_at;
-        const bTime = b.last_message?.created_at ?? b.created_at;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+      // Parse the RPC result
+      const rawConvos = Array.isArray(data) ? data : [];
 
-      return results;
+      return rawConvos
+        .filter((c: any) => c.team_id === teamId)
+        .map((c: any) => ({
+          id: c.id,
+          team_id: c.team_id,
+          created_at: c.created_at,
+          participants: (c.participants || []) as Conversation["participants"],
+          last_message: c.last_message_text
+            ? {
+                message_text: c.last_message_text,
+                created_at: c.last_message_at,
+                sender_id: c.last_message_sender_id,
+              }
+            : undefined,
+          unread_count: c.unread_count ?? 0,
+          is_group: (c.participants || []).length > 1,
+        })) as Conversation[];
     },
     enabled: !!user && !!teamId,
-    refetchInterval: 30000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const totalUnread = conversationsQuery.data?.reduce((sum, c) => sum + c.unread_count, 0) ?? 0;
@@ -146,7 +132,8 @@ export function useTeamMessaging(teamId: string | undefined) {
     conversations: conversationsQuery.data ?? [],
     conversationsLoading: conversationsQuery.isLoading,
     totalUnread,
-    refetchConversations: () => queryClient.invalidateQueries({ queryKey: ["team-conversations"] }),
+    refetchConversations: () =>
+      queryClient.invalidateQueries({ queryKey: ["team-conversations"] }),
   };
 }
 
@@ -159,44 +146,66 @@ export interface ReadReceipt {
 export function useConversationMessages(conversationId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const lastMarkCountRef = useRef(0);
 
+  // ── Fast single-RPC messages query ────────────────────────────────────────
   const messagesQuery = useQuery({
     queryKey: ["conversation-messages", conversationId],
-    queryFn: async () => {
-      const { data: messages } = await supabase
-        .from("team_messages")
-        .select("*")
-        .eq("conversation_id", conversationId!)
-        .order("created_at", { ascending: true });
+    queryFn: async (): Promise<Message[]> => {
+      if (!conversationId || !user?.id) return [];
 
-      if (!messages?.length) return [];
+      // Use the fast RPC (also marks as read server-side)
+      const { data, error } = await (supabase as any).rpc(
+        "get_messages_with_senders",
+        { p_conversation_id: conversationId, p_user_id: user.id }
+      );
 
-      const senderIds = [...new Set(messages.map(m => m.sender_id))];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .in("id", senderIds);
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) ?? []);
+      if (error) {
+        console.error("get_messages_with_senders error:", error);
+        // Fallback: plain query
+        const { data: msgs } = await supabase
+          .from("team_messages")
+          .select("*")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
+        return (msgs || []) as Message[];
+      }
 
-      return messages.map(m => ({
-        ...m,
-        sender: profileMap.get(m.sender_id) ?? null,
-      })) as Message[];
+      return (Array.isArray(data) ? data : []) as Message[];
     },
-    enabled: !!conversationId,
+    enabled: !!conversationId && !!user?.id,
+    staleTime: 10_000,
   });
 
-  // Read receipts: fetch other participants' last_read_at
+  // Mark as read when messages change (client-side fallback since RPC already does it)
+  const messageCount = messagesQuery.data?.length ?? 0;
+  useEffect(() => {
+    if (!conversationId || !user || messageCount === 0) return;
+    if (messageCount === lastMarkCountRef.current) return;
+    lastMarkCountRef.current = messageCount;
+
+    supabase
+      .from("conversation_participants")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId)
+      .eq("user_id", user.id)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
+      });
+  }, [conversationId, user, messageCount, queryClient]);
+
+  // Read receipts
   const readReceiptsQuery = useQuery({
     queryKey: ["read-receipts", conversationId],
-    queryFn: async () => {
+    queryFn: async (): Promise<ReadReceipt[]> => {
+      if (!conversationId || !user) return [];
       const { data: participants } = await supabase
         .from("conversation_participants")
         .select("user_id, last_read_at")
-        .eq("conversation_id", conversationId!)
-        .neq("user_id", user!.id);
+        .eq("conversation_id", conversationId)
+        .neq("user_id", user.id);
 
-      if (!participants?.length) return [] as ReadReceipt[];
+      if (!participants?.length) return [];
 
       const userIds = participants.map(p => p.user_id);
       const { data: profiles } = await supabase
@@ -209,66 +218,65 @@ export function useConversationMessages(conversationId: string | null) {
         user_id: p.user_id,
         last_read_at: p.last_read_at,
         full_name: profileMap.get(p.user_id)?.full_name ?? null,
-      })) as ReadReceipt[];
+      }));
     },
     enabled: !!conversationId && !!user,
-    refetchInterval: 10000,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
 
-  useEffect(() => {
-    if (!conversationId || !user) return;
-    supabase
-      .from("conversation_participants")
-      .update({ last_read_at: new Date().toISOString() })
-      .eq("conversation_id", conversationId)
-      .eq("user_id", user.id)
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
-      });
-  }, [conversationId, user, messagesQuery.data?.length]);
-
+  // Realtime subscription for new messages
   useEffect(() => {
     if (!conversationId) return;
-
     const channel = supabase
       .channel(`messages-${conversationId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "team_messages", filter: `conversation_id=eq.${conversationId}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
-          queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
-        }
-      )
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "team_messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      }, () => {
+        queryClient.invalidateQueries({
+          queryKey: ["conversation-messages", conversationId],
+        });
+        queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
+      })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [conversationId, queryClient]);
 
   const sendMessage = useMutation({
-    mutationFn: async (payload: { text: string; file_url?: string; file_name?: string; file_type?: string }) => {
-      const { error } = await supabase
-        .from("team_messages")
-        .insert({
-          conversation_id: conversationId!,
-          sender_id: user!.id,
-          message_text: payload.text,
-          file_url: payload.file_url ?? null,
-          file_name: payload.file_name ?? null,
-          file_type: payload.file_type ?? null,
-        } as any);
+    mutationFn: async (payload: {
+      text: string;
+      file_url?: string;
+      file_name?: string;
+      file_type?: string;
+    }) => {
+      if (!conversationId || !user) throw new Error("No conversation or user");
+      const { error } = await supabase.from("team_messages").insert({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        message_text: payload.text,
+        file_url: payload.file_url ?? null,
+        file_name: payload.file_name ?? null,
+        file_type: payload.file_type ?? null,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: ["conversation-messages", conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ["team-conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["read-receipts", conversationId] });
     },
   });
 
-  /** Start a new conversation with one or more users */
   const startConversation = useMutation({
-    mutationFn: async ({ teamId, memberIds }: { teamId: string; memberIds: string[] }) => {
+    mutationFn: async ({
+      teamId,
+      memberIds,
+    }: { teamId: string; memberIds: string[] }) => {
+      if (!user) throw new Error("Not authenticated");
       const convoId = crypto.randomUUID();
 
       const { error: convoErr } = await supabase
@@ -276,11 +284,10 @@ export function useConversationMessages(conversationId: string | null) {
         .insert({ id: convoId, team_id: teamId });
       if (convoErr) throw convoErr;
 
-      const participantRows = [user!.id, ...memberIds].map(uid => ({
+      const participantRows = [user.id, ...memberIds].map(uid => ({
         conversation_id: convoId,
         user_id: uid,
       }));
-
       const { error: partErr } = await supabase
         .from("conversation_participants")
         .insert(participantRows);

@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AdminRoute from "@/components/AdminRoute";
+import AdminPanel from "./pages/AdminPanel";
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
@@ -36,6 +38,8 @@ import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
+import DealDetailPage from "./pages/DealDetailPage";
+
 
 
 import {
@@ -92,6 +96,16 @@ function AppRoutes() {
           <Route
             path="/auth/google/callback"
             element={<GoogleCalendarCallback />}
+          />
+
+          {/* Admin */}
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPanel />
+              </AdminRoute>
+            }
           />
 
           {/* Protected */}
@@ -158,6 +172,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          <Route path="/dashboard/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
 
           <Route
             path="/analytics"
