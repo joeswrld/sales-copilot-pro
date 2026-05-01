@@ -503,6 +503,7 @@ export default function LandingPage() {
     /* ── SECTIONS ── */
     .section{padding:80px 24px;}
     .section-inner{max-width:1180px;margin:0 auto;}
+    @media(max-width:680px){.section{padding:56px 16px;}}
     .kicker{font-family:monospace;font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.16em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
     .kicker::before{content:'';display:inline-block;width:24px;height:1px;background:var(--cyan);}
     .section-h{font-family:var(--fd);font-size:clamp(28px,5vw,54px);font-weight:800;color:var(--ink);letter-spacing:-.04em;line-height:1.08;margin-bottom:14px;}
