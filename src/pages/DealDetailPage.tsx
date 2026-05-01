@@ -150,7 +150,7 @@ function CallItem({ call }: { call: any }) {
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)" }}>sentiment</div>
           </div>
         )}
-        <Link to={`/dashboard/calls/${call.id}`} onClick={e => e.stopPropagation()} style={{ color: "rgba(255,255,255,0.2)", textDecoration: "none", padding: 4 }}>
+        <Link to={`/calls/${call.id}`} onClick={e => e.stopPropagation()} style={{ color: "rgba(255,255,255,0.2)", textDecoration: "none", padding: 4 }}>
           <ExternalLink style={{ width: 13, height: 13 }} />
         </Link>
       </div>
@@ -389,7 +389,7 @@ export default function DealDetailPage() {
         <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.3)" }}>
           <Target style={{ width: 40, height: 40, margin: "0 auto 12px", opacity: 0.3 }} />
           <p>Deal not found.</p>
-          <button onClick={() => navigate("/dashboard/deals")} style={{ marginTop: 12, padding: "8px 16px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.6)", cursor: "pointer" }}>Back to Deals</button>
+          <button onClick={() => navigate("/deals")} style={{ marginTop: 12, padding: "8px 16px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.6)", cursor: "pointer" }}>Back to Deals</button>
         </div>
       </DashboardLayout>
     );
@@ -602,7 +602,7 @@ export default function DealDetailPage() {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <button
-            onClick={() => navigate("/dashboard/deals")}
+            onClick={() => navigate("/deals")}
             style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,0.5)", flexShrink: 0, marginTop: 2, WebkitTapHighlightColor: "transparent" }}
           >
             <ArrowLeft style={{ width: 15, height: 15 }} />
@@ -801,8 +801,8 @@ export default function DealDetailPage() {
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Quick Actions</div>
                 {[
-                  { label: "Start a Call", icon: Phone, to: "/dashboard/live" },
-                  { label: "View All Calls", icon: BarChart3, to: "/dashboard/calls" },
+                  { label: "Start a Call", icon: Phone, to: "/live" },
+                  { label: "View All Calls", icon: BarChart3, to: "/calls" },
                 ].map(({ label, icon: Icon, to }) => (
                   <Link key={to} to={to} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 9, textDecoration: "none", color: "rgba(255,255,255,0.55)", fontSize: 12, marginBottom: 6 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Icon style={{ width: 12, height: 12 }} />{label}</span>

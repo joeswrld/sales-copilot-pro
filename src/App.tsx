@@ -172,7 +172,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          <Route path="/dashboard/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
+          <Route path="/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
 
           <Route
             path="/analytics"

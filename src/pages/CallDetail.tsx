@@ -114,7 +114,7 @@ export default function CallDetail() {
       <DashboardLayout>
         <div className="text-center py-20">
           <p className="text-muted-foreground">Call not found.</p>
-          <Link to="/dashboard/calls">
+          <Link to="/calls">
             <Button variant="outline" className="mt-4">Back to Calls</Button>
           </Link>
         </div>
@@ -128,7 +128,7 @@ export default function CallDetail() {
 
         {/* ── Header ── */}
         <div className="flex items-center gap-3">
-          <Link to="/dashboard/calls">
+          <Link to="/calls">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="w-4 h-4" />
             </Button>

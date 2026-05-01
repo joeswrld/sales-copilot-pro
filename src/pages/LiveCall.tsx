@@ -727,7 +727,7 @@ export default function LiveCall() {
       });
 
       setHostJoined(true);
-      navigate(`/dashboard/live/${callId}`);
+      navigate(`/live/${callId}`);
     } catch (err: any) {
       toast.error("Failed to join meeting: " + err.message);
     }
@@ -810,7 +810,7 @@ export default function LiveCall() {
       toast.success("Call ended — generating AI summary…");
       setHostJoined(false);
       setActiveMeetingTitle("");
-      if (callId) navigate(`/dashboard/calls/${callId}`);
+      if (callId) navigate(`/calls/${callId}`);
     } catch {
       toast.error("Failed to end call.");
     }
@@ -895,7 +895,7 @@ export default function LiveCall() {
           onEnabled={() => toast.success("You'll now receive meeting reminders!")}
         />
 
-        <TeamUsageBanner onUpgrade={() => navigate("/dashboard/billing")} />
+        <TeamUsageBanner onUpgrade={() => navigate("/billing")} />
 
         {isZombie && <ZombieBanner callId={callId} onCleared={handleZombieCleared} />}
 
@@ -938,7 +938,7 @@ export default function LiveCall() {
                 {isVideoOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
                 {isVideoOn ? "Stop Video" : "Start Video"}
               </button>
-              <Link to={`/dashboard/live/${callId}`}>
+              <Link to={`/live/${callId}`}>
                 <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs">
                   <Eye className="w-3 h-3" />Transcript
                 </Button>
@@ -1257,9 +1257,9 @@ export default function LiveCall() {
               </h2>
               <div className="space-y-1">
                 {[
-                  { label: "All past calls", to: "/dashboard/calls",     icon: FileText },
-                  { label: "Analytics",      to: "/dashboard/analytics", icon: Sparkles },
-                  { label: "Deal rooms",     to: "/dashboard/deals",     icon: Users    },
+                  { label: "All past calls", to: "/calls",     icon: FileText },
+                  { label: "Analytics",      to: "/analytics", icon: Sparkles },
+                  { label: "Deal rooms",     to: "/deals",     icon: Users    },
                 ].map(({ label, to, icon: Icon }) => (
                   <Link
                     key={to}

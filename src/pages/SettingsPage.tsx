@@ -307,7 +307,7 @@ export default function SettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Not authenticated");
       const { data, error } = await supabase.functions.invoke("oauth-connect", {
-        body: { provider, redirect_uri: `${window.location.origin}/dashboard/settings` },
+        body: { provider, redirect_uri: `${window.location.origin}/settings` },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw error;
@@ -408,7 +408,7 @@ export default function SettingsPage() {
                     : `${profile?.calls_used ?? 0} / ${profile?.calls_limit ?? 5} calls used`}
                 </p>
               </div>
-              <Button size="sm" onClick={() => navigate("/dashboard/billing")}>
+              <Button size="sm" onClick={() => navigate("/billing")}>
                 {usage?.isAtLimit ? "Upgrade Now" : "Manage Plan"}
               </Button>
             </div>
@@ -436,7 +436,7 @@ export default function SettingsPage() {
                       <div className="mt-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
                         <p className="text-xs text-destructive font-medium">
                           Monthly limit reached.{" "}
-                          <button onClick={() => navigate("/dashboard/billing")} className="underline">Upgrade</button>{" "}
+                          <button onClick={() => navigate("/billing")} className="underline">Upgrade</button>{" "}
                           to continue recording.
                         </p>
                       </div>
@@ -444,7 +444,7 @@ export default function SettingsPage() {
                     {usage.isNearLimit && !usage.isAtLimit && (
                       <div className="mt-2 flex items-center gap-1">
                         <p className="text-xs text-amber-500">{hoursLeft}h remaining.</p>
-                        <button onClick={() => navigate("/dashboard/billing")} className="text-xs text-amber-500 hover:underline flex items-center gap-0.5">
+                        <button onClick={() => navigate("/billing")} className="text-xs text-amber-500 hover:underline flex items-center gap-0.5">
                           Upgrade <ArrowUpRight className="w-3 h-3" />
                         </button>
                       </div>

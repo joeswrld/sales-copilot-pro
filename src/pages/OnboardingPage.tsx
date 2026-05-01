@@ -251,7 +251,7 @@ export default function OnboardingPage() {
       if (error) console.warn("Could not update onboarding_complete:", error.message);
 
       toast.success("You're all set! Start your first call.");
-      navigate("/dashboard/live", { replace: true });
+      navigate("/live", { replace: true });
     } catch (err) {
       console.error("Onboarding finish error:", err);
       toast.error("Something went wrong.");

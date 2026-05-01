@@ -255,14 +255,14 @@ export default function LiveMeeting() {
 
   // Redirect if no live call
   useEffect(() => {
-    if (!isLoading && !isLive) navigate("/dashboard/live");
+    if (!isLoading && !isLive) navigate("/live");
   }, [isLoading, isLive, navigate]);
 
   const handleEnd = async () => {
     try {
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
-      navigate(callId ? `/dashboard/calls/${callId}` : "/dashboard/live");
+      navigate(callId ? `/calls/${callId}` : "/live");
     } catch {
       toast.error("Failed to end call");
     }

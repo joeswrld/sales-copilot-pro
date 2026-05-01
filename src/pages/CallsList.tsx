@@ -58,7 +58,7 @@ export default function CallsList() {
                 return (
                   <Link
                     key={call.id}
-                    to={isLive ? "/dashboard/live" : `/dashboard/calls/${call.id}`}
+                    to={isLive ? "/live" : `/calls/${call.id}`}
                     className="grid grid-cols-1 md:grid-cols-6 gap-2 md:gap-4 p-4 hover:bg-secondary/30 transition-colors items-center"
                   >
                     <div className="md:col-span-2 min-w-0">

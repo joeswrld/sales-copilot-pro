@@ -745,10 +745,10 @@ export default function DealsPage() {
         ) : isMobile ? (
           /* Mobile: stage tabs or flat list */
           viewMode === "kanban"
-            ? <MobileStageView byStage={byStage} onDealClick={d => navigate(`/dashboard/deals/${d.id}`)} />
+            ? <MobileStageView byStage={byStage} onDealClick={d => navigate(`/deals/${d.id}`)} />
             : (
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, overflow: "hidden" }}>
-                {filtered.map(d => <MobileDealRow key={d.id} deal={d} onClick={() => navigate(`/dashboard/deals/${d.id}`)} />)}
+                {filtered.map(d => <MobileDealRow key={d.id} deal={d} onClick={() => navigate(`/deals/${d.id}`)} />)}
               </div>
             )
         ) : viewMode === "kanban" ? (
@@ -756,7 +756,7 @@ export default function DealsPage() {
           <div style={{ overflowX: "auto", paddingBottom: 8 }}>
             <div style={{ display: "flex", gap: 12, minWidth: "max-content" }}>
               {KANBAN_STAGES.map(stage => (
-                <KanbanColumn key={stage.key} stage={stage} deals={byStage[stage.key] ?? []} onDealClick={d => navigate(`/dashboard/deals/${d.id}`)} onDrop={handleDrop} />
+                <KanbanColumn key={stage.key} stage={stage} deals={byStage[stage.key] ?? []} onDealClick={d => navigate(`/deals/${d.id}`)} onDrop={handleDrop} />
               ))}
             </div>
           </div>
@@ -768,7 +768,7 @@ export default function DealsPage() {
                 <span key={i} style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{h}</span>
               ))}
             </div>
-            {filtered.map(deal => <DealListRow key={deal.id} deal={deal} onClick={() => navigate(`/dashboard/deals/${deal.id}`)} />)}
+            {filtered.map(deal => <DealListRow key={deal.id} deal={deal} onClick={() => navigate(`/deals/${deal.id}`)} />)}
           </div>
         )}
       </div>
