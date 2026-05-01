@@ -883,7 +883,9 @@ export default function LandingPage() {
         <div className="hero-glow" />
         <div className="hero-inner">
           <div style={{ opacity: 0, animation: "slidein .6s ease .1s forwards" }}>
-            
+            <div className="hero-badge">
+              
+            </div>
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
