@@ -98,6 +98,16 @@ function AppRoutes() {
             element={<GoogleCalendarCallback />}
           />
 
+          {/* Admin */}
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPanel />
+              </AdminRoute>
+            }
+          />
+
           {/* Protected */}
           <Route
             path="/onboarding"
