@@ -884,9 +884,7 @@ export default function LandingPage() {
         <div className="hero-inner">
           <div style={{ opacity: 0, animation: "slidein .6s ease .1s forwards" }}>
             <div className="hero-badge">
-              <div className="hero-dot" />
-              Revenue lost in real time — recovered in real time
-            </div>
+              
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
