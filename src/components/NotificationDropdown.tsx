@@ -124,11 +124,22 @@ function NotifRow({
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
+        {n.title && (
+          <p style={{
+            fontSize: isMobile ? 13 : 12,
+            margin: "0 0 2px", lineHeight: 1.3,
+            color: n.is_read ? "rgba(255,255,255,.65)" : "rgba(255,255,255,.95)",
+            fontWeight: 700,
+            fontFamily: "system-ui, sans-serif",
+          }}>
+            {n.title}
+          </p>
+        )}
         <p style={{
           fontSize: isMobile ? 14 : 13,
           margin: "0 0 4px", lineHeight: 1.45,
           color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.92)",
-          fontWeight: n.is_read ? 400 : 600,
+          fontWeight: n.is_read ? 400 : (n.title ? 400 : 600),
           fontFamily: "system-ui, sans-serif",
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
