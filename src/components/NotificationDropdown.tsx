@@ -16,7 +16,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, CheckCheck, TrendingUp, AtSign, AlertCircle,
-  MessageSquare, Check, ArrowLeft,
+  MessageSquare, Check, ArrowLeft, Calendar, Users, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -29,6 +29,10 @@ const NOTIF_ICON: Record<string, React.ElementType> = {
   coaching: TrendingUp,
   mention:  AtSign,
   system:   AlertCircle,
+  meeting:  Calendar,
+  deal:     BarChart3,
+  team:     Users,
+  call:     Bell,
 };
 
 const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
@@ -36,6 +40,10 @@ const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
   coaching: { bg: "rgba(34,197,94,.13)",   icon: "#22c55e" },
   mention:  { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
   system:   { bg: "rgba(148,163,184,.13)", icon: "#94a3b8" },
+  meeting:  { bg: "rgba(96,165,250,.13)",  icon: "#60a5fa" },
+  deal:     { bg: "rgba(167,139,250,.13)", icon: "#a78bfa" },
+  team:     { bg: "rgba(14,245,212,.13)",  icon: "#0ef5d4" },
+  call:     { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
 };
 
 function fmtNotifTime(d: string) {
