@@ -16,7 +16,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, CheckCheck, TrendingUp, AtSign, AlertCircle,
-  MessageSquare, Check, ArrowLeft,
+  MessageSquare, Check, ArrowLeft, Calendar, Users, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -29,6 +29,10 @@ const NOTIF_ICON: Record<string, React.ElementType> = {
   coaching: TrendingUp,
   mention:  AtSign,
   system:   AlertCircle,
+  meeting:  Calendar,
+  deal:     BarChart3,
+  team:     Users,
+  call:     Bell,
 };
 
 const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
@@ -36,6 +40,10 @@ const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
   coaching: { bg: "rgba(34,197,94,.13)",   icon: "#22c55e" },
   mention:  { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
   system:   { bg: "rgba(148,163,184,.13)", icon: "#94a3b8" },
+  meeting:  { bg: "rgba(96,165,250,.13)",  icon: "#60a5fa" },
+  deal:     { bg: "rgba(167,139,250,.13)", icon: "#a78bfa" },
+  team:     { bg: "rgba(14,245,212,.13)",  icon: "#0ef5d4" },
+  call:     { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
 };
 
 function fmtNotifTime(d: string) {
@@ -80,7 +88,9 @@ const NOTIF_CSS = `
 interface NotifItem {
   id: string;
   type: string;
+  title: string | null;
   message: string;
+  link: string | null;
   is_read: boolean;
   created_at: string;
   reference_id: string | null;
@@ -122,11 +132,22 @@ function NotifRow({
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
+        {n.title && (
+          <p style={{
+            fontSize: isMobile ? 13 : 12,
+            margin: "0 0 2px", lineHeight: 1.3,
+            color: n.is_read ? "rgba(255,255,255,.65)" : "rgba(255,255,255,.95)",
+            fontWeight: 700,
+            fontFamily: "system-ui, sans-serif",
+          }}>
+            {n.title}
+          </p>
+        )}
         <p style={{
           fontSize: isMobile ? 14 : 13,
           margin: "0 0 4px", lineHeight: 1.45,
           color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.92)",
-          fontWeight: n.is_read ? 400 : 600,
+          fontWeight: n.is_read ? 400 : (n.title ? 400 : 600),
           fontFamily: "system-ui, sans-serif",
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
@@ -243,7 +264,11 @@ export function NotificationDropdown() {
   const handleNotifClick = useCallback((n: NotifItem) => {
     if (!n.is_read) markRead.mutate(n.id);
     setOpen(false);
-    if (n.reference_id) navigate("/dashboard/messages");
+    if (n.link) {
+      navigate(n.link);
+    } else if (n.reference_id) {
+      navigate("/dashboard/messages");
+    }
   }, [markRead, navigate]);
 
   const handleMarkAll = () => markAllRead.mutate();

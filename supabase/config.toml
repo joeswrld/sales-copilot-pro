@@ -86,3 +86,12 @@ verify_jwt = false
 verify_jwt = false
 [functions.admin-user-actions]
 verify_jwt = false
+
+[functions.save-push-subscription]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.meeting-reminders]
+verify_jwt = false
