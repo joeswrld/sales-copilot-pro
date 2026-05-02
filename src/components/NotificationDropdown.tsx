@@ -80,7 +80,9 @@ const NOTIF_CSS = `
 interface NotifItem {
   id: string;
   type: string;
+  title: string | null;
   message: string;
+  link: string | null;
   is_read: boolean;
   created_at: string;
   reference_id: string | null;
@@ -243,7 +245,11 @@ export function NotificationDropdown() {
   const handleNotifClick = useCallback((n: NotifItem) => {
     if (!n.is_read) markRead.mutate(n.id);
     setOpen(false);
-    if (n.reference_id) navigate("/dashboard/messages");
+    if (n.link) {
+      navigate(n.link);
+    } else if (n.reference_id) {
+      navigate("/dashboard/messages");
+    }
   }, [markRead, navigate]);
 
   const handleMarkAll = () => markAllRead.mutate();
