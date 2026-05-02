@@ -210,7 +210,7 @@ export default function DashboardHome() {
         <div className="glass rounded-xl overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="font-display font-semibold">Recent Calls</h2>
-            <Link to="/dashboard/calls" className="text-xs text-primary hover:underline">View all</Link>
+            <Link to="/calls" className="text-xs text-primary hover:underline">View all</Link>
           </div>
           {callsLoading ? (
             <div className="divide-y divide-border">
@@ -227,7 +227,7 @@ export default function DashboardHome() {
           ) : recentCalls.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm text-muted-foreground">No calls yet. Start by adding your first call.</p>
-              <Link to="/dashboard/live" className="text-xs text-primary hover:underline mt-2 inline-block">
+              <Link to="/live" className="text-xs text-primary hover:underline mt-2 inline-block">
                 Start a live call →
               </Link>
             </div>
@@ -236,7 +236,7 @@ export default function DashboardHome() {
               {recentCalls.map(call => (
                 <Link
                   key={call.id}
-                  to={`/dashboard/calls/${call.id}`}
+                  to={`/calls/${call.id}`}
                   className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors"
                 >
                   <div className="min-w-0">

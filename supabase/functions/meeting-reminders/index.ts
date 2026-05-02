@@ -86,8 +86,8 @@ serve(async (req) => {
       for (const reminder of reminders) {
         const idempotencyKey = `meeting_${meeting.id}_${reminder.type}`;
         const link = meeting.meeting_link
-          ? `/dashboard/live/${meeting.id}`
-          : `/dashboard/calls`;
+          ? `/live/${meeting.id}`
+          : `/calls`;
 
         // Create notification with deduplication
         const { error: notifErr } = await supabase.rpc("create_notification", {

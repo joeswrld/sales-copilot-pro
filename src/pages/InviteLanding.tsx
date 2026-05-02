@@ -132,7 +132,7 @@ export default function InviteLanding() {
       setError(data?.error || rpcErr?.message || "Failed to accept invitation.");
     } else {
       setDone("accepted");
-      setTimeout(() => navigate("/dashboard/team"), 2200);
+      setTimeout(() => navigate("/team"), 2200);
     }
     setActing(false);
   };
@@ -335,7 +335,7 @@ export default function InviteLanding() {
             <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.5)" }}>
               This invitation has already been {invite.status}.
               {invite.status === "accepted" && (
-                <span> <Link to="/dashboard/team" style={{ color: "#0ef5d4", textDecoration: "none" }}>Go to your team →</Link></span>
+                <span> <Link to="/team" style={{ color: "#0ef5d4", textDecoration: "none" }}>Go to your team →</Link></span>
               )}
             </p>
           </div>
@@ -392,7 +392,7 @@ export default function InviteLanding() {
 
         {/* ── Already member ── */}
         {invite.status === "accepted" && user && (
-          <Link to="/dashboard/team" style={{ display: "block", textAlign: "center", padding: "12px", borderRadius: 10, background: `${planCfg.color}12`, color: planCfg.color, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+          <Link to="/team" style={{ display: "block", textAlign: "center", padding: "12px", borderRadius: 10, background: `${planCfg.color}12`, color: planCfg.color, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
             Go to Team Dashboard →
           </Link>
         )}

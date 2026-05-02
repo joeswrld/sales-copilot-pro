@@ -136,7 +136,7 @@ export function SidebarPlanFooter() {
         borderRadius: 11, cursor: "pointer",
         transition: "all .12s",
       }}
-      onClick={() => navigate("/dashboard/billing")}
+      onClick={() => navigate("/billing")}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${color}30`; }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,.07)"; }}
     >

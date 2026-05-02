@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
 
     // Redirect back to settings or close popup
     const redirectUri = state.redirect_uri || "";
-    const redirectTarget = redirectUri || "/dashboard/settings";
+    const redirectTarget = redirectUri || "/settings";
 
     return new Response(
       `<html><body>

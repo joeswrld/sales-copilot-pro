@@ -41,7 +41,7 @@ self.addEventListener("push", (event) => {
     icon = "/fixsense_icon_logo (2).png",
     badge = "/fixsense_icon_logo (2).png",
     tag = "fixsense-reminder",
-    url = "/dashboard/live",
+    url = "/live",
     requireInteraction = false,
     vibrate = [200, 100, 200],
     actions = [],
@@ -70,7 +70,7 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const notifData = event.notification.data || {};
-  let targetUrl = notifData.url || "/dashboard/live";
+  let targetUrl = notifData.url || "/live";
 
   // Handle action buttons
   if (event.action === "join" && notifData.meeting_link) {
@@ -78,7 +78,7 @@ self.addEventListener("notificationclick", (event) => {
   } else if (event.action === "dismiss") {
     return; // Just close
   } else if (event.action === "open" || !event.action) {
-    targetUrl = notifData.url || "/dashboard/live";
+    targetUrl = notifData.url || "/live";
   }
 
   // Ensure absolute URL

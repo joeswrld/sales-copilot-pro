@@ -81,14 +81,14 @@ Instead of manually taking notes or guessing performance, Fixsense:
 ## Product Structure
 
 /dashboard            → Overview of performance and activity
-/dashboard/live       → Start or join meetings, run live analysis
-/dashboard/calls      → View recorded calls and insights
-/dashboard/ai-coach   → AI-driven coaching and recommendations
-/dashboard/analytics  → Performance tracking and trends
-/dashboard/team       → Manage team members, roles, and coaching
-/dashboard/messages   → Internal communication hub
-/dashboard/settings   → Manage integrations, preferences, and account
-/dashboard/billing    → Subscription plans and usage
+/live       → Start or join meetings, run live analysis
+/calls      → View recorded calls and insights
+/ai-coach   → AI-driven coaching and recommendations
+/analytics  → Performance tracking and trends
+/team       → Manage team members, roles, and coaching
+/messages   → Internal communication hub
+/settings   → Manage integrations, preferences, and account
+/billing    → Subscription plans and usage
 
 ---
 

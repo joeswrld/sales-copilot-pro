@@ -38,14 +38,14 @@
       "name": "Live Call",
       "short_name": "Live",
       "description": "Start or join a live sales call",
-      "url": "/dashboard/live",
+      "url": "/live",
       "icons": [{ "src": "/fixsense_icon_logo (2).png", "sizes": "96x96" }]
     },
     {
       "name": "My Calls",
       "short_name": "Calls",
       "description": "Review past calls and AI insights",
-      "url": "/dashboard/calls",
+      "url": "/calls",
       "icons": [{ "src": "/fixsense_icon_logo (2).png", "sizes": "96x96" }]
     }
   ],

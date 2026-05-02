@@ -27,7 +27,7 @@ export function TeamUsageSidebarPill() {
       <div
         className="mx-3 mt-3 mb-1 px-3 py-1.5 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
         style={{ background: "rgba(26,240,196,0.08)", border: "1px solid rgba(26,240,196,0.15)" }}
-        onClick={() => navigate("/dashboard/billing")}
+        onClick={() => navigate("/billing")}
       >
         <span className="text-[10px] font-semibold text-[#1af0c4] tracking-wide">
           ∞ Unlimited minutes
@@ -45,7 +45,7 @@ export function TeamUsageSidebarPill() {
     <div
       className="mx-3 mt-3 mb-1 px-3 py-2 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
       style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-      onClick={() => navigate("/dashboard/billing")}
+      onClick={() => navigate("/billing")}
     >
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] text-[rgba(255,255,255,0.38)] font-medium tracking-wide uppercase flex items-center gap-1">
@@ -149,7 +149,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
         </div>
         {usage.isAtLimit ? (
           <button
-            onClick={() => navigate("/dashboard/billing")}
+            onClick={() => navigate("/billing")}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#1af0c4]/10 border border-[#1af0c4]/25 text-[#1af0c4] hover:bg-[#1af0c4]/20 transition-colors"
           >
             <Zap style={{ width: 12, height: 12 }} /> Upgrade
@@ -204,7 +204,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
           <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0, marginTop: 1 }} />
           <span>
             Running low — {usage.minutesRemainingLabel} remaining.{" "}
-            <button onClick={() => navigate("/dashboard/billing")} className="underline font-semibold">
+            <button onClick={() => navigate("/billing")} className="underline font-semibold">
               Upgrade your plan
             </button>{" "}
             to avoid interruptions.

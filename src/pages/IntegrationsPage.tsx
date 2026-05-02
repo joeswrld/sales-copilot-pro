@@ -5,7 +5,7 @@
  *
  * NOTE FOR DEVS: This file exports BOTH:
  *   - IntegrationsPage  (public marketing/showcase, used in MarketingPages.tsx)
- *   - IntegrationsDashboardPage (authenticated settings hub, add to App.tsx at /dashboard/integrations)
+ *   - IntegrationsDashboardPage (authenticated settings hub, add to App.tsx at /integrations)
  *
  * The existing SettingsPage still handles the basic toggle list.
  * This page is the full-featured integrations hub.
@@ -791,7 +791,7 @@ export function IntegrationsDashboardPage() {
 
   const connectProvider = useMutation({
     mutationFn: async (provider: string) => {
-      const redirectUri = `${window.location.origin}/dashboard/settings`;
+      const redirectUri = `${window.location.origin}/settings`;
       const { data, error } = await supabase.functions.invoke("oauth-connect", {
         body: { provider, redirect_uri: redirectUri },
       });

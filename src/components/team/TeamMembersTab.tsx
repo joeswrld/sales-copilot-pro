@@ -371,7 +371,7 @@ export default function TeamMembersTab({
             </Button>
             <Button
               className="flex-1"
-              onClick={() => { setUpgradeOpen(false); navigate("/dashboard/billing"); }}
+              onClick={() => { setUpgradeOpen(false); navigate("/billing"); }}
             >
               <ArrowUp className="w-4 h-4 mr-1.5" />
               Upgrade Plan

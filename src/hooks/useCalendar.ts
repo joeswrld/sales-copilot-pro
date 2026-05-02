@@ -239,7 +239,7 @@ export function useCalendar() {
       // Step 1 — guarantee the DB row exists so the callback UPDATE lands
       await ensureIntegrationRow();
 
-      const redirectUri = `${window.location.origin}/dashboard/live`;
+      const redirectUri = `${window.location.origin}/live`;
       let oauthUrl: string | null = null;
 
       // Step 2 — try the edge function (normal path)

@@ -256,7 +256,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {/* User menu */}
             <button
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.06)]"
-              onClick={() => navigate("/dashboard/profile")}
+              onClick={() => navigate("p/rofile")}
             >
               <div
                 className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"

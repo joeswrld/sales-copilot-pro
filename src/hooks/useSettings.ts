@@ -151,7 +151,7 @@ export function useIntegrations() {
   // ── connectProvider ──
   const connectProvider = useMutation({
     mutationFn: async (provider: string) => {
-      const redirectUri = `${window.location.origin}/dashboard/settings`;
+      const redirectUri = `${window.location.origin}/settings`;
       const { data, error } = await supabase.functions.invoke("oauth-connect", {
         body: { provider, redirect_uri: redirectUri },
       });

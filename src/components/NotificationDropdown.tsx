@@ -267,12 +267,12 @@ export function NotificationDropdown() {
     if (n.link) {
       navigate(n.link);
     } else if (n.reference_id) {
-      navigate("/dashboard/messages");
+      navigate("/messages");
     }
   }, [markRead, navigate]);
 
   const handleMarkAll = () => markAllRead.mutate();
-  const goToMessages  = () => { navigate("/dashboard/messages"); setOpen(false); };
+  const goToMessages  = () => { navigate("/messages"); setOpen(false); };
 
   // ── Shared sub-components ──────────────────────────────────────────────────
 

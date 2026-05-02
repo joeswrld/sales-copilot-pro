@@ -47,7 +47,7 @@ export default function SubscriptionGate({ children, message }: SubscriptionGate
           <div className="flex flex-col gap-2">
             <Button
               size="lg"
-              onClick={() => navigate("/dashboard/billing")}
+              onClick={() => navigate("/billing")}
               className="w-full"
             >
               <Zap className="w-4 h-4 mr-2" />

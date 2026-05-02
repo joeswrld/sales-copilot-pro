@@ -267,7 +267,7 @@ export function MinutesMeter({ className, compact = false }: MinutesMeterProps) 
         border: `1px solid ${barColor}25`,
         cursor: (isAtLimit || isNearLimit) ? "pointer" : "default",
       }}
-        onClick={isAtLimit ? () => navigate("/dashboard/billing") : undefined}
+        onClick={isAtLimit ? () => navigate("/billing") : undefined}
       >
         {isAtLimit && <AlertTriangle style={{ width: 11, height: 11, color: "#ef4444", flexShrink: 0 }} />}
         <span style={{ fontSize: 11, fontWeight: 600, color: barColor, fontFamily: "'DM Sans',sans-serif" }}>
@@ -311,7 +311,7 @@ export function MinutesMeter({ className, compact = false }: MinutesMeterProps) 
             </span>
             {(isAtLimit || isNearLimit) && (
               <button
-                onClick={() => navigate("/dashboard/billing")}
+                onClick={() => navigate("/billing")}
                 style={{
                   background: "none", border: "none", cursor: "pointer",
                   fontSize: 10, fontWeight: 700, color: barColor,
@@ -360,7 +360,7 @@ export function PlanBanner({ className }: PlanBannerProps) {
           </span>
         </div>
         <button
-          onClick={() => navigate("/dashboard/billing")}
+          onClick={() => navigate("/billing")}
           style={{
             display: "flex", alignItems: "center", gap: 6,
             background: "#ef4444", border: "none", borderRadius: 8,
@@ -387,7 +387,7 @@ export function PlanBanner({ className }: PlanBannerProps) {
         Only {fmtMins(minutesRemaining)} left this month on your {planName} plan
       </span>
       <button
-        onClick={() => navigate("/dashboard/billing")}
+        onClick={() => navigate("/billing")}
         style={{
           background: "none", border: "1px solid rgba(245,158,11,.3)", borderRadius: 7,
           padding: "5px 11px", color: "#f59e0b", fontSize: 11,
@@ -417,7 +417,7 @@ export function PlanStatusBadge() {
 
   return (
     <button
-      onClick={() => navigate("/dashboard/billing")}
+      onClick={() => navigate("/billing")}
       style={{
         display: "inline-flex", alignItems: "center", gap: 5,
         padding: "3px 10px", borderRadius: 20,

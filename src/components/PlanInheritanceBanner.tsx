@@ -130,7 +130,7 @@ export default function PlanInheritanceBanner() {
         </div>
 
         <button
-          onClick={() => navigate("/dashboard/billing")}
+          onClick={() => navigate("/billing")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -178,7 +178,7 @@ export default function PlanInheritanceBanner() {
           in your workspace.
         </p>
         <button
-          onClick={() => navigate("/dashboard/team")}
+          onClick={() => navigate("/team")}
           style={{
             fontSize: 11,
             fontWeight: 600,

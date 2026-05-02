@@ -37,11 +37,11 @@ export const STATUS_CONFIG: Record<
 };
 
 const PAGE_STATUS_MAP: Record<string, { status: UserStatus; page: string }> = {
-  "/dashboard/live":      { status: "on_call",   page: "live_call"  },
-  "/dashboard/messages":  { status: "available", page: "messages"   },
-  "/dashboard/deals":     { status: "available", page: "deals"      },
-  "/dashboard/analytics": { status: "available", page: "analytics"  },
-  "/dashboard/settings":  { status: "available", page: "settings"   },
+  "/live":      { status: "on_call",   page: "live_call"  },
+  "/messages":  { status: "available", page: "messages"   },
+  "/deals":     { status: "available", page: "deals"      },
+  "/analytics": { status: "available", page: "analytics"  },
+  "/settings":  { status: "available", page: "settings"   },
   "/dashboard":           { status: "available", page: "dashboard"  },
 };
 

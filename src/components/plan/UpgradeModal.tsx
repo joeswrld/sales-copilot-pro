@@ -213,7 +213,7 @@ export default function UpgradeModal() {
             <button
               className="um-cta"
               style={{ background: copy.gradient, color: "#fff", boxShadow: `0 4px 20px ${copy.color}30` }}
-              onClick={() => { closeUpgradeModal(); navigate("/dashboard/billing"); }}
+              onClick={() => { closeUpgradeModal(); navigate("/billing"); }}
             >
               Upgrade to {requiredPlanName}
               <ArrowRight style={{ width: 15, height: 15 }} />

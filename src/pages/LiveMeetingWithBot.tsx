@@ -263,7 +263,7 @@ export default function LiveMeeting() {
   }, [transcripts.length]);
 
   useEffect(() => {
-    if (!isLoading && !isLive) navigate("/dashboard/live");
+    if (!isLoading && !isLive) navigate("/live");
   }, [isLoading, isLive, navigate]);
 
   // Show fallback when bot fails
@@ -278,7 +278,7 @@ export default function LiveMeeting() {
     try {
       await endCall.mutateAsync();
       toast.success("Call ended — AI summary generating…");
-      navigate(callId ? `/dashboard/calls/${callId}` : "/dashboard/live");
+      navigate(callId ? `/calls/${callId}` : "/live");
     } catch {
       toast.error("Failed to end call");
     }
@@ -314,7 +314,7 @@ export default function LiveMeeting() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <Link to="/dashboard/live">
+              <Link to="/live">
                 <Button variant="ghost" size="icon" className="h-8 w-8">
                   <ArrowLeft className="w-4 h-4" />
                 </Button>

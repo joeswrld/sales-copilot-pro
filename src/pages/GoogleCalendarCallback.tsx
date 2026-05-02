@@ -32,14 +32,14 @@ export function GoogleCalendarCallback() {
         if (error) {
           setStatus("error");
           setMessage("Google Calendar access was denied. You can try again in Settings.");
-          setTimeout(() => navigate("/dashboard/live"), 3000);
+          setTimeout(() => navigate("/live"), 3000);
           return;
         }
 
         if (!code) {
           setStatus("error");
           setMessage("No authorization code received from Google.");
-          setTimeout(() => navigate("/dashboard/live"), 3000);
+          setTimeout(() => navigate("/live"), 3000);
           return;
         }
 
@@ -47,7 +47,7 @@ export function GoogleCalendarCallback() {
         if (!userId) {
           setStatus("error");
           setMessage("Could not identify user. Please try again.");
-          setTimeout(() => navigate("/dashboard/live"), 3000);
+          setTimeout(() => navigate("/live"), 3000);
           return;
         }
 
@@ -62,7 +62,7 @@ export function GoogleCalendarCallback() {
           console.error("Callback error:", fnErr ?? data?.error);
           setStatus("error");
           setMessage("Failed to connect Google Calendar. Please try again.");
-          setTimeout(() => navigate("/dashboard/live"), 3000);
+          setTimeout(() => navigate("/live"), 3000);
           return;
         }
 
@@ -71,13 +71,13 @@ export function GoogleCalendarCallback() {
           `Connected! Found ${data.synced ?? 0} upcoming meetings. Redirecting…`
         );
         toast.success("Google Calendar connected — your meetings will auto-join!");
-        setTimeout(() => navigate("/dashboard/live"), 2000);
+        setTimeout(() => navigate("/live"), 2000);
 
       } catch (err: any) {
         console.error("Callback exception:", err);
         setStatus("error");
         setMessage("Something went wrong. Please try connecting again.");
-        setTimeout(() => navigate("/dashboard/live"), 3000);
+        setTimeout(() => navigate("/live"), 3000);
       }
     };
 

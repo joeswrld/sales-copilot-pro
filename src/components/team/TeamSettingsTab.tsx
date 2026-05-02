@@ -123,7 +123,7 @@ export default function TeamSettingsTab({
       });
 
       // Navigate to team page (will show create team screen)
-      navigate("/dashboard/team");
+      navigate("/team");
     } catch (error: any) {
       toast({
         title: "Failed to delete team",

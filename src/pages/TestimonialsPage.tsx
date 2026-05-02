@@ -443,7 +443,7 @@ export default function TestimonialsPage() {
           <div className="nav-acts">
             {user ? (
               <>
-                <Link to="/dashboard/profile" style={{ display:"flex",alignItems:"center",gap:7, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:100, padding:"5px 12px 5px 5px", textDecoration:"none" }}>
+                <Link to="/profile" style={{ display:"flex",alignItems:"center",gap:7, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:100, padding:"5px 12px 5px 5px", textDecoration:"none" }}>
                   <div style={{ width:26,height:26,borderRadius:"50%",background:"var(--cyan2)",border:"1px solid rgba(14,245,212,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--cyan)" }}>{emailInitial}</div>
                   <span style={{ fontSize:12,fontWeight:600,color:"var(--ink2)" }}>{displayName}</span>
                 </Link>

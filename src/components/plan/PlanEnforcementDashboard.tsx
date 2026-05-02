@@ -117,7 +117,7 @@ export default function PlanEnforcementDashboard() {
           {/* Show upgrade CTA only when NOT inherited (admin should upgrade) */}
           {!isInherited && nextPlan && (
             <button
-              onClick={() => navigate("/dashboard/billing")}
+              onClick={() => navigate("/billing")}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: `${nextHighlight?.color ?? "#0ef5d4"}15`,
@@ -136,7 +136,7 @@ export default function PlanEnforcementDashboard() {
           {/* When inherited, show info about workspace */}
           {isInherited && (
             <button
-              onClick={() => navigate("/dashboard/billing")}
+              onClick={() => navigate("/billing")}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: `${currentHighlight.color}10`,

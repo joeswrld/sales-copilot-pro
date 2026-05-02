@@ -260,7 +260,7 @@ export function useSubscription() {
 
       const result = await supabase.functions.invoke("paystack-create-subscription", {
         body: {
-          callback_url: `${window.location.origin}/dashboard/billing`,
+          callback_url: `${window.location.origin}/billing`,
           plan_key: planKey,
         },
         headers: { Authorization: `Bearer ${freshToken}` },
@@ -347,7 +347,7 @@ export function useSubscription() {
       const result = await supabase.functions.invoke("paystack-upgrade-subscription", {
         body: {
           new_plan_key: newPlanKey,
-          callback_url: `${window.location.origin}/dashboard/billing`,
+          callback_url: `${window.location.origin}/billing`,
         },
         headers: { Authorization: `Bearer ${freshToken}` },
       });

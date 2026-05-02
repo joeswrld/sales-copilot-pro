@@ -188,6 +188,6 @@ export async function sendTestNotification(reg: ServiceWorkerRegistration) {
     icon: '/fixsense_icon_logo (2).png',
     badge: '/fixsense_icon_logo (2).png',
     tag: 'test-notification',
-    data: { url: '/dashboard/calls' },
+    data: { url: '/calls' },
   } as any);
 }

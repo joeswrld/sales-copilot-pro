@@ -71,7 +71,7 @@ supabase.functions.invoke('send-push-notification', {
     user_id: userId,
     title: 'Call Summary Ready',
     body: `${callName} analyzed · Score: ${meetingScore}/100`,
-    url: `/dashboard/calls/${callId}`,
+    url: `/calls/${callId}`,
     tag: 'call-summary',
   }
 }).catch(console.warn);

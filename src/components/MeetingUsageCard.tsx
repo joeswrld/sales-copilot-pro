@@ -46,7 +46,7 @@ export function MeetingUsageCard({ variant = "card", className }: MeetingUsageCa
               ? "border-accent/30 bg-accent/5"
               : "border-border bg-secondary/30"
           )}
-          onClick={() => navigate("/dashboard/billing")}
+          onClick={() => navigate("/billing")}
         >
           <div className="flex items-center justify-between mb-1.5">
             <span className="font-medium text-foreground flex items-center gap-1">
@@ -161,13 +161,13 @@ export function MeetingUsageCard({ variant = "card", className }: MeetingUsageCa
             {usage.isAtLimit ? "No minutes remaining" : `${hoursRemaining}h remaining`}
           </span>
           {usage.isAtLimit && (
-            <Button size="sm" variant="default" className="h-7 text-xs gap-1.5" onClick={() => navigate("/dashboard/billing")}>
+            <Button size="sm" variant="default" className="h-7 text-xs gap-1.5" onClick={() => navigate("/billing")}>
               <Zap className="w-3 h-3" />
               Upgrade Plan
             </Button>
           )}
           {usage.isNearLimit && !usage.isAtLimit && (
-            <button onClick={() => navigate("/dashboard/billing")} className="text-xs text-accent hover:underline flex items-center gap-1">
+            <button onClick={() => navigate("/billing")} className="text-xs text-accent hover:underline flex items-center gap-1">
               Upgrade <ArrowUpRight className="w-3 h-3" />
             </button>
           )}
@@ -238,7 +238,7 @@ export function MeetingUsageCard({ variant = "card", className }: MeetingUsageCa
           <p className="text-xs text-destructive font-medium mb-2">
             You've used your monthly call minutes. Upgrade to continue scheduling calls.
           </p>
-          <Button size="sm" variant="default" className="w-full gap-1.5 text-xs h-8" onClick={() => navigate("/dashboard/billing")}>
+          <Button size="sm" variant="default" className="w-full gap-1.5 text-xs h-8" onClick={() => navigate("/billing")}>
             <Zap className="w-3 h-3" />
             Upgrade Your Plan
           </Button>
@@ -250,7 +250,7 @@ export function MeetingUsageCard({ variant = "card", className }: MeetingUsageCa
           <p className="text-xs text-accent-foreground mb-2">
             {hoursRemaining}h of call minutes remaining this month. Consider upgrading.
           </p>
-          <button onClick={() => navigate("/dashboard/billing")} className="text-xs text-accent hover:underline flex items-center gap-1">
+          <button onClick={() => navigate("/billing")} className="text-xs text-accent hover:underline flex items-center gap-1">
             View upgrade options <ArrowUpRight className="w-3 h-3" />
           </button>
         </div>
