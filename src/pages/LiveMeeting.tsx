@@ -7,6 +7,7 @@
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
+import LiveUsageAlert from "@/components/LiveUsageAlert";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -283,6 +284,7 @@ export default function LiveMeeting() {
     return (
       <DashboardLayout>
         <div className="flex flex-col gap-3" style={{ height: "calc(100dvh - 8rem)" }}>
+          <LiveUsageAlert />
           <div className="flex items-center justify-between gap-2 shrink-0">
             <div className="min-w-0">
               <h1 className="text-base font-bold font-display truncate">
@@ -328,6 +330,7 @@ export default function LiveMeeting() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4 h-full">
+        <LiveUsageAlert />
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3 shrink-0">
           <div>

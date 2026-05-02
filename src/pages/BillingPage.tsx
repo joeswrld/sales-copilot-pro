@@ -23,6 +23,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit, formatMinutes } from "@/config/plans";
 import { cn } from "@/lib/utils";
+import ExtraMinutesBundles from "@/components/ExtraMinutesBundles";
+import { useExtraMinutes } from "@/hooks/useExtraMinutes";
 
 const STATUS_CFG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
   active:    { label: "Active",    variant: "default",     icon: CheckCircle2 },
@@ -61,6 +63,7 @@ export default function BillingPage() {
     refetchInterval: 30_000,
   });
 
+  const { verify: verifyBundle } = useExtraMinutes();
   const [searchParams, setSearchParams] = useSearchParams();
   const [refreshing, setRefreshing]     = useState(false);
   const handledRef                      = useRef<string | null>(null);
@@ -76,6 +79,13 @@ export default function BillingPage() {
     handledRef.current = ref;
     sessionStorage.removeItem("fixsense_pending_payment_ref");
     setSearchParams({}, { replace: true });
+
+    // Check if this is a bundle payment
+    if (ref.startsWith("bundle_")) {
+      verifyBundle.mutate(ref);
+      return;
+    }
+
     verifyPayment.mutate({ reference: ref, includeTransactions: false }, {
       onSuccess: (d) => {
         if ((d as any)?.updated) toast.success("🎉 Payment confirmed! Your plan has been upgraded.");
@@ -297,6 +307,14 @@ export default function BillingPage() {
                     })()}
                   </CardContent>
                 </Card>
+
+                {/* Extra minutes bundles */}
+                <ExtraMinutesBundles
+                  isActivePlan={showActive}
+                  currentPlanKey={currentPlanKey}
+                  extraMinutes={usage?.extraMinutes}
+                  extraMinutesExpiresAt={usage?.extraMinutesExpiresAt}
+                />
 
                 {/* Change plan */}
                 {isActive && available.length > 0 && (
