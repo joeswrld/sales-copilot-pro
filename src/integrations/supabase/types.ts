@@ -2679,27 +2679,36 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          idempotency_key: string | null
           is_read: boolean
+          link: string | null
           message: string
           reference_id: string | null
+          title: string | null
           type: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           is_read?: boolean
+          link?: string | null
           message: string
           reference_id?: string | null
+          title?: string | null
           type?: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           is_read?: boolean
+          link?: string | null
           message?: string
           reference_id?: string | null
+          title?: string | null
           type?: string
           user_id?: string
         }
@@ -4316,6 +4325,18 @@ export type Database = {
         }
         Returns: string
       }
+      create_notification: {
+        Args: {
+          p_idempotency_key?: string
+          p_link?: string
+          p_message: string
+          p_reference_id?: string
+          p_title: string
+          p_type: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       create_team_with_owner: {
         Args: { team_name?: string }
         Returns: {
@@ -4346,6 +4367,7 @@ export type Database = {
         Args: { p_content: string; p_message_id: string }
         Returns: undefined
       }
+      ensure_activity_channel: { Args: { p_team_id: string }; Returns: string }
       ensure_deal_channel: {
         Args: { p_deal_id: string; p_team_id: string }
         Returns: string
