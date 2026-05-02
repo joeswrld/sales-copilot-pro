@@ -7,7 +7,9 @@ export interface Notification {
   id: string;
   user_id: string;
   type: string;
+  title: string | null;
   message: string;
+  link: string | null;
   reference_id: string | null;
   is_read: boolean;
   created_at: string;
