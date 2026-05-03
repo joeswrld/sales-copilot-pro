@@ -330,6 +330,7 @@ export default function LiveMeeting() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4 h-full">
+        <LiveUsageAlert />
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3 shrink-0">
           <div>
