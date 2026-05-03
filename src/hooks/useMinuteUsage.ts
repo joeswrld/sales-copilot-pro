@@ -189,7 +189,30 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         }
       }
 
-      const minuteLimit  = getMinuteQuota(planKey);
+      // Fetch extra minutes from subscription
+      let extraMinutes = 0;
+      let extraMinutesExpiresAt: string | null = null;
+      {
+        const { data: subRow } = await supabase
+          .from("subscriptions")
+          .select("extra_minutes, extra_minutes_expires_at")
+          .eq("user_id", user!.id)
+          .eq("status", "active")
+          .maybeSingle();
+        if (subRow) {
+          const now = new Date();
+          const expires = (subRow as any).extra_minutes_expires_at
+            ? new Date((subRow as any).extra_minutes_expires_at)
+            : null;
+          if (!expires || expires > now) {
+            extraMinutes = (subRow as any).extra_minutes ?? 0;
+            extraMinutesExpiresAt = (subRow as any).extra_minutes_expires_at ?? null;
+          }
+        }
+      }
+
+      const baseLimit    = getMinuteQuota(planKey);
+      const minuteLimit  = baseLimit === -1 ? -1 : baseLimit + extraMinutes;
       const isUnlimited  = minuteLimit === -1;
       const remaining    = isUnlimited ? Infinity : Math.max(0, minuteLimit - minutesUsed);
       const overage      = isUnlimited ? 0 : Math.max(0, minutesUsed - minuteLimit);
