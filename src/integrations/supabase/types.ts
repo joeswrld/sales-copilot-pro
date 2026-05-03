@@ -2812,6 +2812,7 @@ export type Database = {
       }
       payments: {
         Row: {
+          amount: number | null
           amount_kobo: number | null
           created_at: string
           currency: string | null
@@ -2824,6 +2825,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          amount?: number | null
           amount_kobo?: number | null
           created_at?: string
           currency?: string | null
@@ -2836,6 +2838,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          amount?: number | null
           amount_kobo?: number | null
           created_at?: string
           currency?: string | null
