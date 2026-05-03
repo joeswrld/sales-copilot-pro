@@ -23,6 +23,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { PLANS_SIMPLE, formatNGN, USD_TO_NGN, getTeamMembersLimit, formatMinutes } from "@/config/plans";
 import { cn } from "@/lib/utils";
+import ExtraMinutesBundles from "@/components/ExtraMinutesBundles";
+import { useExtraMinutes } from "@/hooks/useExtraMinutes";
 
 const STATUS_CFG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
   active:    { label: "Active",    variant: "default",     icon: CheckCircle2 },
