@@ -42,6 +42,8 @@ export interface MinuteUsage {
   used: number;
   limit: number;
   remaining: number;
+  extraMinutes: number;
+  extraMinutesExpiresAt: string | null;
 }
 
 const PLAN_NAMES: Record<string, string> = {
