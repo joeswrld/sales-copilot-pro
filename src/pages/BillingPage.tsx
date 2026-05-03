@@ -63,6 +63,7 @@ export default function BillingPage() {
     refetchInterval: 30_000,
   });
 
+  const { verify: verifyBundle } = useExtraMinutes();
   const [searchParams, setSearchParams] = useSearchParams();
   const [refreshing, setRefreshing]     = useState(false);
   const handledRef                      = useRef<string | null>(null);
