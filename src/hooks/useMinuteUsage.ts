@@ -249,6 +249,8 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
         used:      minutesUsed,
         limit:     minuteLimit,
         remaining: isUnlimited ? -1 : remaining,
+        extraMinutes,
+        extraMinutesExpiresAt,
       };
     },
     enabled:         !!user && !planLoading,
