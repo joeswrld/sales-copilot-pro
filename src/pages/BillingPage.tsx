@@ -308,6 +308,14 @@ export default function BillingPage() {
                   </CardContent>
                 </Card>
 
+                {/* Extra minutes bundles */}
+                <ExtraMinutesBundles
+                  isActivePlan={showActive}
+                  currentPlanKey={currentPlanKey}
+                  extraMinutes={usage?.extraMinutes}
+                  extraMinutesExpiresAt={usage?.extraMinutesExpiresAt}
+                />
+
                 {/* Change plan */}
                 {isActive && available.length > 0 && (
                   <Card className="border-primary/30">
