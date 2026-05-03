@@ -75,6 +75,9 @@ export function useMinuteUsage(): { usage: MinuteUsage | null; isLoading: boolea
       .on("postgres_changes", { event: "*", schema: "public", table: "usage_summary", filter: `user_id=eq.${user.id}` }, () => {
         queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${user.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user, queryClient, instanceId]);
