@@ -79,6 +79,13 @@ export default function BillingPage() {
     handledRef.current = ref;
     sessionStorage.removeItem("fixsense_pending_payment_ref");
     setSearchParams({}, { replace: true });
+
+    // Check if this is a bundle payment
+    if (ref.startsWith("bundle_")) {
+      verifyBundle.mutate(ref);
+      return;
+    }
+
     verifyPayment.mutate({ reference: ref, includeTransactions: false }, {
       onSuccess: (d) => {
         if ((d as any)?.updated) toast.success("🎉 Payment confirmed! Your plan has been upgraded.");
