@@ -3315,6 +3315,8 @@ export type Database = {
           card_last4: string | null
           created_at: string
           currency: string
+          extra_minutes: number
+          extra_minutes_expires_at: string | null
           id: string
           minutes_limit: number | null
           minutes_used: number
@@ -3339,6 +3341,8 @@ export type Database = {
           card_last4?: string | null
           created_at?: string
           currency?: string
+          extra_minutes?: number
+          extra_minutes_expires_at?: string | null
           id?: string
           minutes_limit?: number | null
           minutes_used?: number
@@ -3363,6 +3367,8 @@ export type Database = {
           card_last4?: string | null
           created_at?: string
           currency?: string
+          extra_minutes?: number
+          extra_minutes_expires_at?: string | null
           id?: string
           minutes_limit?: number | null
           minutes_used?: number
@@ -4644,6 +4650,8 @@ export type Database = {
           card_last4: string | null
           created_at: string
           currency: string
+          extra_minutes: number
+          extra_minutes_expires_at: string | null
           id: string
           minutes_limit: number | null
           minutes_used: number
