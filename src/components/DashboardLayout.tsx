@@ -4,12 +4,12 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
-
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
+import { useUserProfile } from "@/hooks/useSettings";
 import { TeamUsageSidebarPill } from "@/components/TeamMinuteUsageComponents";
 import { cn } from "@/lib/utils";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
