@@ -1,17 +1,13 @@
 /**
- * MessagesPage.tsx — v4
+ * MessagesPage.tsx — v5
  *
- * New in this version:
- *  - Sender name always shown above every message bubble (both sides)
- *  - Reply-to: tap/click any message → "Replying to X" bar appears,
- *    the reply is stored with parent_id, and the quoted preview renders inline
- *  - Sent / Seen ticks:
- *      ✓  (grey)  = message delivered (stored in DB)
- *      ✓✓ (teal)  = at least one other participant has read it
- *    Read receipts are written automatically when the RPC runs (see migration)
- *  - Online presence indicator (green dot beside avatar)
- *  - Typing indicator
- *  - Emoji reactions, edit, delete, copy (from v3)
+ * Fixes in this version:
+ *  - msgText() now recursively strips broken "sent a message:" prefixes
+ *    that were stored by the old (now-dropped) post_notification_to_activity
+ *    DB trigger. Safe for all future messages too.
+ *  - Notification display now uses title + message separately (matching
+ *    the updated notify_on_team_message DB function).
+ *  - All other v4 features retained (sender name, reply-to, ticks, reactions)
  */
 
 import {
@@ -71,25 +67,20 @@ interface Msg {
   parent_id?: string | null;
   edited_at?: string | null;
   is_deleted?: boolean;
-  // enriched
   sender_full_name?: string | null;
   sender_email?: string | null;
   sender_avatar_url?: string | null;
-  // reply preview
   reply_to_text?: string | null;
   reply_to_sender_name?: string | null;
-  // read receipts
   read_by?: string[];
-  // reactions
   reactions: Reaction[];
-  // deal channel compat
   type?: string;
   metadata?: Record<string, any>;
   is_pinned?: boolean;
 }
 
 interface NotificationItem {
-  id: string; type: string; message: string;
+  id: string; type: string; title: string | null; message: string;
   is_read: boolean; created_at: string; reference_id: string | null;
 }
 
@@ -120,15 +111,30 @@ function initials(name: string | null | undefined) {
   if (!name) return "?";
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
-function msgText(m: Msg) {
-  let raw = m.message_text || m.content || "";
-  // Strip duplicated sender prefix patterns like "Name sent a message: 'actual text'"
-  const prefixPattern = /^.+?\s+sent a message:\s*['"]?/i;
-  if (prefixPattern.test(raw)) {
-    raw = raw.replace(prefixPattern, "").replace(/['"]?\s*$/, "");
+
+/**
+ * Extract the real text from a message, stripping any broken
+ * "Name sent a message: 'text'" prefixes that were stored by
+ * the old recursive DB trigger. Handles arbitrarily deep nesting.
+ */
+function msgText(m: Msg): string {
+  let raw = (m.message_text || m.content || "").trim();
+
+  // Recursively strip until stable
+  let prev = "";
+  while (prev !== raw) {
+    prev = raw;
+    // Strip leading ": " junk from activity channel posts
+    raw = raw.replace(/^:\s+/, "");
+    // Strip "Name sent a message: ['"optional quote]"
+    raw = raw.replace(/^(?:[^:]+\s+)?sent a message:\s*["']?/i, "");
+    // Strip trailing quote left by the pattern
+    raw = raw.replace(/["']\s*$/, "").trim();
   }
+
   return raw;
 }
+
 function msgSenderId(m: Msg) { return m.sender_id || m.user_id || null; }
 function msgSenderName(m: Msg) {
   return m.sender_full_name || m.sender_email?.split("@")[0] || "Unknown";
@@ -226,10 +232,14 @@ function NotificationBell({ notifications, onMarkAll, onMarkOne, isMobile }: {
           cursor: n.is_read ? "default" : "pointer",
         }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-            {{ comment: "💬", coaching: "📈", mention: "@", system: "⚙️" }[n.type] ?? "🔔"}
+            {{ comment: "💬", coaching: "📈", mention: "💬", system: "⚙️" }[n.type] ?? "🔔"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 13, margin: "0 0 3px", color: n.is_read ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.88)", fontWeight: n.is_read ? 400 : 600, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            <p style={{ fontSize: 13, margin: "0 0 2px", color: n.is_read ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.88)", fontWeight: n.is_read ? 400 : 700, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {/* Title is now always set in the new notification format */}
+              {n.title || "Notification"}
+            </p>
+            <p style={{ fontSize: 12, margin: "0 0 3px", color: "rgba(255,255,255,.5)", fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
               {n.message}
             </p>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)" }}>{fmtTime(n.created_at)}</span>
@@ -355,7 +365,6 @@ function CtxMenu({ isOwn, x, y, isMobile, onReact, onReply, onEdit, onDelete, on
       {isMobile && <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 499 }} />}
       <div ref={ref} className="fade-in" style={menuSt}>
         {isMobile && <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 12px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} /></div>}
-        {/* Quick emoji strip */}
         <div style={{ display: "flex", gap: 3, padding: "6px 12px 10px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
           {QUICK_EMOJIS.slice(0, 6).map(e => (
             <button key={e} onClick={() => { onReact(e); onClose(); }} style={{ flex: 1, padding: "6px 2px", border: "none", borderRadius: 8, background: "rgba(255,255,255,.06)", cursor: "pointer", fontSize: 17 }}
@@ -391,9 +400,8 @@ function ReactionRow({ reactions, onToggle }: { reactions: Reaction[]; onToggle:
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact, onReply, onEdit, onDelete, onCopy }: {
+function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, onDelete, onCopy }: {
   msg: Msg; isOwn: boolean; isMobile: boolean; isOnline: boolean;
-  totalParticipants: number;
   onReact: (e: string) => void; onReply: () => void;
   onEdit: () => void; onDelete: () => void; onCopy: () => void;
 }) {
@@ -407,11 +415,13 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
   const name = msgSenderName(msg);
   const senderColor = isOwn ? "#0ef5d4" : "#a78bfa";
 
-  // Delivery status: seen = at least one other participant read it
   const seenCount = msg.read_by?.length ?? 0;
   const isSeen = seenCount > 0;
 
   const openCtx = (x: number, y: number) => { setCtxPos({ x, y }); setShowCtx(true); };
+
+  // Don't render empty messages (could be from the old broken trigger)
+  if (!text && !msg.file_url) return null;
 
   if (msg.type === "system") {
     return (
@@ -425,11 +435,9 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
     <div className="msg-in" style={{ display: "flex", flexDirection: isOwn ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, marginBottom: 4 }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}>
 
-      {/* Avatar — always shown */}
-      <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={(msg as any).sender_avatar_url} />
+      <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={msg.sender_avatar_url} />
 
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
-        {/* Sender name — always above the bubble */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 3, flexDirection: isOwn ? "row-reverse" : "row" }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Geist',system-ui,sans-serif" }}>
             {isOwn ? "You" : name}
@@ -439,7 +447,6 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
         </div>
 
         <div style={{ position: "relative" }}>
-          {/* Reply preview */}
           {msg.reply_to_text && (
             <div style={{
               background: isOwn ? "rgba(0,0,0,.2)" : "rgba(255,255,255,.06)",
@@ -455,7 +462,6 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
             </div>
           )}
 
-          {/* Bubble */}
           <div
             onContextMenu={e => { if (!isMobile) { e.preventDefault(); openCtx(e.clientX, e.clientY); } }}
             onTouchStart={() => { if (isMobile) longRef.current = setTimeout(() => openCtx(0, 0), 500); }}
@@ -474,12 +480,11 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
             }}
           >
             {msg.file_url
-              ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer" style={{ color: isOwn ? "#060912" : "#0ef5d4", textDecoration: "underline" }}>📎 {text}</a>
+              ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer" style={{ color: isOwn ? "#060912" : "#0ef5d4", textDecoration: "underline" }}>📎 {text || msg.file_name}</a>
               : text}
             {msg.edited_at && <span style={{ fontSize: 10, color: isOwn ? "rgba(0,0,0,.4)" : "rgba(255,255,255,.3)", marginLeft: 6 }}>(edited)</span>}
           </div>
 
-          {/* Hover action bar (desktop) */}
           {!isMobile && hovered && (
             <div style={{ position: "absolute", top: -34, [isOwn ? "left" : "right"]: 0, display: "flex", gap: 3, zIndex: 10 }}>
               <div style={{ position: "relative" }}>
@@ -495,10 +500,8 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
           )}
         </div>
 
-        {/* Reactions */}
         <ReactionRow reactions={msg.reactions || []} onToggle={onReact} />
 
-        {/* Sent / Seen ticks (own messages only, below right) */}
         {isOwn && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3, alignItems: "center", gap: 2 }}>
             {isSeen
@@ -511,7 +514,6 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
         )}
       </div>
 
-      {/* Context menu */}
       {showCtx && (
         <CtxMenu
           isOwn={isOwn} x={ctxPos.x} y={ctxPos.y} isMobile={isMobile}
@@ -645,7 +647,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
 
   const isDM = activeChannel.type === "dm" && !!activeChannel.conversationId;
 
-  // fetch participant count for read receipt display
   useEffect(() => {
     if (!activeChannel.conversationId) return;
     supabase.from("conversation_participants").select("user_id", { count: "exact", head: true })
@@ -659,8 +660,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         p_conversation_id: activeChannel.conversationId, p_limit: 100,
       });
       if (error) {
-        console.error("get_team_messages_with_senders:", error);
-        // graceful fallback — no enrichment
         const { data: raw } = await supabase.from("team_messages").select("*")
           .eq("conversation_id", activeChannel.conversationId)
           .order("created_at", { ascending: true }).limit(100);
@@ -686,7 +685,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
 
   useEffect(() => { setLoading(true); setMessages([]); setReplyTo(null); setEditingId(null); setText(""); load(); }, [activeChannel.id]);
 
-  // Realtime for messages
   useEffect(() => {
     const table = isDM ? "team_messages" : "deal_channel_messages";
     const filter = isDM ? `conversation_id=eq.${activeChannel.conversationId}` : `channel_id=eq.${activeChannel.id}`;
@@ -694,7 +692,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.id, activeChannel.conversationId, isDM, load]);
 
-  // Realtime for read receipts and reactions
   useEffect(() => {
     if (!isDM) return;
     const ch = supabase.channel(`extras-rt-${activeChannel.conversationId}`)
@@ -704,7 +701,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.conversationId, isDM, load]);
 
-  // Typing channel
   useEffect(() => {
     const ch = supabase.channel(`typing-${activeChannel.id}`);
     typingChannelRef.current = ch;
@@ -744,10 +740,9 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
   const handleReact = async (msgId: string, emoji: string) => {
     if (!user) return;
     const table = isDM ? "team_message_reactions" : "message_reactions";
-    const idCol = "message_id";
-    const { data: ex } = await (supabase as any).from(table).select("id").eq(idCol, msgId).eq("user_id", user.id).eq("emoji", emoji).maybeSingle();
+    const { data: ex } = await (supabase as any).from(table).select("id").eq("message_id", msgId).eq("user_id", user.id).eq("emoji", emoji).maybeSingle();
     if (ex) { await (supabase as any).from(table).delete().eq("id", ex.id); }
-    else { await (supabase as any).from(table).insert({ [idCol]: msgId, user_id: user.id, emoji }); }
+    else { await (supabase as any).from(table).insert({ message_id: msgId, user_id: user.id, emoji }); }
     load();
   };
 
@@ -769,12 +764,17 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
   };
 
   const copyMsg = (m: Msg) => navigator.clipboard.writeText(msgText(m)).then(() => toast.success("Copied!")).catch(() => toast.error("Copy failed"));
-
   const startReply = (m: Msg) => { setReplyTo(m); inputRef.current?.focus(); };
+
+  // Filter out empty/broken messages for display
+  const displayMessages = messages.filter(m => {
+    if (m.is_deleted) return false;
+    const t = msgText(m);
+    return t.length > 0 || !!m.file_url;
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      {/* Header */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
         {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
         <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: activeChannel.type === "dm" ? "rgba(167,139,250,.1)" : "rgba(14,245,212,.08)", border: `1px solid ${activeChannel.type === "dm" ? "rgba(167,139,250,.2)" : "rgba(14,245,212,.15)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: activeChannel.type === "dm" ? "#a78bfa" : "#0ef5d4" }}>
@@ -786,11 +786,10 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         </div>
       </div>
 
-      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 4px", minHeight: 0 }}>
         {loading ? (
           <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
-        ) : messages.length === 0 ? (
+        ) : displayMessages.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>{activeChannel.type === "dm" ? "👋" : "#"}</div>
             <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.4)", margin: "0 0 6px", fontFamily: "'Geist',system-ui,sans-serif" }}>{activeChannel.type === "dm" ? `Start a conversation with ${activeChannel.name}` : `#${activeChannel.name}`}</p>
@@ -798,8 +797,8 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
           </div>
         ) : (
           <>
-            {messages.map((msg, i) => {
-              const prev = i > 0 ? messages[i - 1] : null;
+            {displayMessages.map((msg, i) => {
+              const prev = i > 0 ? displayMessages[i - 1] : null;
               const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString();
               const uid = msgSenderId(msg);
               const isOwn = uid === currentUserId;
@@ -833,7 +832,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
                       <MsgBubble
                         msg={msg} isOwn={isOwn} isMobile={isMobile}
                         isOnline={!isOwn && senderOnline}
-                        totalParticipants={totalParticipants}
                         onReact={e => handleReact(msg.id, e)}
                         onReply={() => startReply(msg)}
                         onEdit={() => { setEditingId(msg.id); setEditText(msgText(msg)); }}
@@ -850,7 +848,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         )}
       </div>
 
-      {/* Typing indicator */}
       {typingUsers.length > 0 && (
         <div style={{ padding: "3px 16px", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
           <span className="pdot" /><span className="pdot" /><span className="pdot" />
@@ -860,7 +857,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         </div>
       )}
 
-      {/* Reply banner */}
       {replyTo && (
         <div style={{ margin: "0 14px 4px", padding: "6px 10px", background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <CornerUpLeft size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
@@ -874,7 +870,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         </div>
       )}
 
-      {/* Input */}
       <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "8px 10px 8px 14px", transition: "border-color .15s" }}>
           <textarea
@@ -920,7 +915,6 @@ export default function MessagesPage() {
     chk(); window.addEventListener("resize", chk); return () => window.removeEventListener("resize", chk);
   }, []);
 
-  // Presence heartbeat
   useEffect(() => {
     if (!user || !teamId) return;
     const beat = () => (supabase as any).rpc("upsert_user_presence", { p_status: "available", p_team_id: teamId, p_last_page: "messages" });
@@ -929,7 +923,6 @@ export default function MessagesPage() {
     return () => clearInterval(t);
   }, [user, teamId]);
 
-  // Fetch online users
   useEffect(() => {
     if (!teamId) return;
     const fetch = async () => {
@@ -948,7 +941,6 @@ export default function MessagesPage() {
     return () => { clearInterval(t); supabase.removeChannel(ch); };
   }, [teamId]);
 
-  // Load deal channels
   const loadDealChannels = useCallback(async () => {
     if (!teamId) return;
     setLoadingCh(true);
@@ -961,7 +953,6 @@ export default function MessagesPage() {
 
   useEffect(() => { loadDealChannels(); }, [teamId]);
 
-  // DM channels from conversations
   const dmChannels = useMemo((): Channel[] => conversations.map(c => {
     const other = c.participants[0];
     const name = other ? (other.full_name || other.email?.split("@")[0] || "Unknown") : c.participants.length > 0 ? `Group (${c.participants.length + 1})` : "Chat";
@@ -978,7 +969,6 @@ export default function MessagesPage() {
   const dealChs = allChannels.filter(c => c.type === "deal");
   const dmChs   = allChannels.filter(c => c.type === "dm");
 
-  // Notifications
   const loadNotifs = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(30);
@@ -988,7 +978,14 @@ export default function MessagesPage() {
   useEffect(() => { loadNotifs(); }, [user]);
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, loadNotifs).subscribe();
+    const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
+      loadNotifs();
+      const n = payload.new as any;
+      // Show toast with title + message separately (new format)
+      if (n?.message) {
+        toast(n.title || "New notification", { description: n.message });
+      }
+    }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
 
@@ -1018,7 +1015,6 @@ export default function MessagesPage() {
 
   const Sidebar = () => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Sidebar header */}
       <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1044,13 +1040,11 @@ export default function MessagesPage() {
         )}
       </div>
 
-      {/* Channel list */}
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 4 }}>
         {loadingCh ? (
           <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
         ) : (
           <>
-            {/* DMs */}
             <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>● Direct Messages</span>
               <button onClick={() => setShowNewDM(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
@@ -1068,7 +1062,6 @@ export default function MessagesPage() {
             })}
             {dmChs.length === 0 && <button onClick={() => setShowNewDM(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", border: "none", background: "transparent", cursor: "pointer", color: "rgba(255,255,255,.25)", fontSize: 12, fontFamily: "'Geist',system-ui,sans-serif" }}><Plus size={13} /> Message a teammate</button>}
 
-            {/* Team channels */}
             {teamChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1079,7 +1072,6 @@ export default function MessagesPage() {
               </>
             )}
 
-            {/* Deal channels */}
             {dealChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px" }}>
