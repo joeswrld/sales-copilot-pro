@@ -106,9 +106,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { unreadCount }    = useNotifications();
   const { team }           = useTeam();
   const { totalUnread }    = useTeamMessaging(team?.id);
+  const { profile }        = useUserProfile();
 
   const displayName  = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const emailInitial = displayName[0]?.toUpperCase() || "U";
+  const avatarUrl    = profile?.avatar_url;
   const messagesUnread = totalUnread + unreadCount;
 
   const primaryNav: NavItem[] = [
