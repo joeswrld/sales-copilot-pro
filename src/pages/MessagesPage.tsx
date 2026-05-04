@@ -74,6 +74,7 @@ interface Msg {
   // enriched
   sender_full_name?: string | null;
   sender_email?: string | null;
+  sender_avatar_url?: string | null;
   // reply preview
   reply_to_text?: string | null;
   reply_to_sender_name?: string | null;
