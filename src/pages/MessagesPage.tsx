@@ -149,20 +149,31 @@ textarea:focus,input:focus{outline:none!important}
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({ name, size = 32, color = "#0ef5d4", isOnline = false }: {
-  name?: string | null; size?: number; color?: string; isOnline?: boolean;
+function MsgAvatar({ name, size = 32, color = "#0ef5d4", isOnline = false, avatarUrl }: {
+  name?: string | null; size?: number; color?: string; isOnline?: boolean; avatarUrl?: string | null;
 }) {
   return (
     <div style={{ position: "relative", flexShrink: 0 }}>
-      <div style={{
-        width: size, height: size, borderRadius: size * 0.3,
-        background: `${color}18`, border: `1px solid ${color}30`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: size * 0.38, fontWeight: 700, color,
-        fontFamily: "'Geist',system-ui,sans-serif",
-      }}>
-        {initials(name)}
-      </div>
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={name || "User"}
+          style={{
+            width: size, height: size, borderRadius: size * 0.3,
+            objectFit: "cover", border: `1px solid ${color}30`,
+          }}
+        />
+      ) : (
+        <div style={{
+          width: size, height: size, borderRadius: size * 0.3,
+          background: `${color}18`, border: `1px solid ${color}30`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: size * 0.38, fontWeight: 700, color,
+          fontFamily: "'Geist',system-ui,sans-serif",
+        }}>
+          {initials(name)}
+        </div>
+      )}
       {isOnline && (
         <div style={{
           position: "absolute", bottom: -1, right: -1,
