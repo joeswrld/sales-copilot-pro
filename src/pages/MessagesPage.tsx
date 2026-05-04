@@ -482,8 +482,8 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
         {isOwn && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3, alignItems: "center", gap: 2 }}>
             {isSeen
-              ? <CheckCheck size={13} color="#0ef5d4" title={`Seen by ${seenCount} participant${seenCount > 1 ? "s" : ""}`} />
-              : <Check size={13} color="rgba(255,255,255,.35)" title="Sent" />}
+              ? <CheckCheck size={13} color="#0ef5d4" />
+              : <Check size={13} color="rgba(255,255,255,.35)" />}
             <span style={{ fontSize: 9, color: isSeen ? "#0ef5d4" : "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif" }}>
               {isSeen ? "Seen" : "Sent"}
             </span>
