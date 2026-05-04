@@ -245,6 +245,30 @@ export type Database = {
           },
         ]
       }
+      bundle_purchases: {
+        Row: {
+          id: string
+          minutes_added: number
+          paystack_reference: string
+          user_id: string
+          verified_at: string
+        }
+        Insert: {
+          id?: string
+          minutes_added: number
+          paystack_reference: string
+          user_id: string
+          verified_at?: string
+        }
+        Update: {
+          id?: string
+          minutes_added?: number
+          paystack_reference?: string
+          user_id?: string
+          verified_at?: string
+        }
+        Relationships: []
+      }
       calendar_events: {
         Row: {
           attendees: Json | null
@@ -4207,6 +4231,10 @@ export type Database = {
         Args: { p_team_id: string }
         Returns: undefined
       }
+      add_team_extra_minutes: {
+        Args: { p_expires_at?: string; p_minutes: number; p_user_id: string }
+        Returns: Json
+      }
       admin_delete_user:
         | { Args: { p_user_id: string }; Returns: undefined }
         | { Args: { p_admin_id?: string; p_user_id: string }; Returns: Json }
@@ -4635,6 +4663,7 @@ export type Database = {
           sender_id: string
         }[]
       }
+      get_team_minute_pool: { Args: { p_user_id: string }; Returns: Json }
       get_team_plan_info: { Args: { p_user_id: string }; Returns: Json }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
