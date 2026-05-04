@@ -1,13 +1,13 @@
 /**
- * MessagesPage.tsx — v5
+ * MessagesPage.tsx — v6 (Real-time Read Receipts)
  *
- * Fixes in this version:
- *  - msgText() now recursively strips broken "sent a message:" prefixes
- *    that were stored by the old (now-dropped) post_notification_to_activity
- *    DB trigger. Safe for all future messages too.
- *  - Notification display now uses title + message separately (matching
- *    the updated notify_on_team_message DB function).
- *  - All other v4 features retained (sender name, reply-to, ticks, reactions)
+ * Changes from v5:
+ *  - markAsRead() called immediately on channel select and on every message load
+ *  - Uses new mark_channel_read() DB RPC (works for DMs, team channels, deal channels)
+ *  - get_deal_channels_v2 now uses per-user read pointer (deal_channel_members.last_read_at)
+ *  - Realtime subscription on conversation_participants + deal_channel_members
+ *    so badge disappears the instant you open a chat, no refresh needed
+ *  - Optimistic badge zero-out before the RPC round-trips
  */
 
 import {
@@ -112,26 +112,15 @@ function initials(name: string | null | undefined) {
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-/**
- * Extract the real text from a message, stripping any broken
- * "Name sent a message: 'text'" prefixes that were stored by
- * the old recursive DB trigger. Handles arbitrarily deep nesting.
- */
 function msgText(m: Msg): string {
   let raw = (m.message_text || m.content || "").trim();
-
-  // Recursively strip until stable
   let prev = "";
   while (prev !== raw) {
     prev = raw;
-    // Strip leading ": " junk from activity channel posts
     raw = raw.replace(/^:\s+/, "");
-    // Strip "Name sent a message: ['"optional quote]"
     raw = raw.replace(/^(?:[^:]+\s+)?sent a message:\s*["']?/i, "");
-    // Strip trailing quote left by the pattern
     raw = raw.replace(/["']\s*$/, "").trim();
   }
-
   return raw;
 }
 
@@ -170,33 +159,13 @@ function MsgAvatar({ name, size = 32, color = "#0ef5d4", isOnline = false, avata
   return (
     <div style={{ position: "relative", flexShrink: 0 }}>
       {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt={name || "User"}
-          style={{
-            width: size, height: size, borderRadius: size * 0.3,
-            objectFit: "cover", border: `1px solid ${color}30`,
-          }}
-        />
+        <img src={avatarUrl} alt={name || "User"} style={{ width: size, height: size, borderRadius: size * 0.3, objectFit: "cover", border: `1px solid ${color}30` }} />
       ) : (
-        <div style={{
-          width: size, height: size, borderRadius: size * 0.3,
-          background: `${color}18`, border: `1px solid ${color}30`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: size * 0.38, fontWeight: 700, color,
-          fontFamily: "'Geist',system-ui,sans-serif",
-        }}>
+        <div style={{ width: size, height: size, borderRadius: size * 0.3, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color, fontFamily: "'Geist',system-ui,sans-serif" }}>
           {initials(name)}
         </div>
       )}
-      {isOnline && (
-        <div style={{
-          position: "absolute", bottom: -1, right: -1,
-          width: size * 0.32, height: size * 0.32,
-          borderRadius: "50%", background: "#22c55e",
-          border: "2px solid #08090f",
-        }} />
-      )}
+      {isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: size * 0.32, height: size * 0.32, borderRadius: "50%", background: "#22c55e", border: "2px solid #08090f" }} />}
     </div>
   );
 }
@@ -221,27 +190,15 @@ function NotificationBell({ notifications, onMarkAll, onMarkOne, isMobile }: {
   const List = () => (
     <div style={{ overflowY: "auto", flex: 1 }}>
       {notifications.length === 0 ? (
-        <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif", fontSize: 13 }}>
-          🔔 All caught up!
-        </div>
+        <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif", fontSize: 13 }}>🔔 All caught up!</div>
       ) : notifications.map(n => (
-        <div key={n.id} onClick={() => !n.is_read && onMarkOne(n.id)} style={{
-          display: "flex", gap: 12, padding: "12px 16px",
-          borderBottom: "1px solid rgba(255,255,255,.04)",
-          background: n.is_read ? "transparent" : "rgba(14,245,212,.04)",
-          cursor: n.is_read ? "default" : "pointer",
-        }}>
+        <div key={n.id} onClick={() => !n.is_read && onMarkOne(n.id)} style={{ display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.04)", background: n.is_read ? "transparent" : "rgba(14,245,212,.04)", cursor: n.is_read ? "default" : "pointer" }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
             {{ comment: "💬", coaching: "📈", mention: "💬", system: "⚙️" }[n.type] ?? "🔔"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 13, margin: "0 0 2px", color: n.is_read ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.88)", fontWeight: n.is_read ? 400 : 700, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {/* Title is now always set in the new notification format */}
-              {n.title || "Notification"}
-            </p>
-            <p style={{ fontSize: 12, margin: "0 0 3px", color: "rgba(255,255,255,.5)", fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-              {n.message}
-            </p>
+            <p style={{ fontSize: 13, margin: "0 0 2px", color: n.is_read ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.88)", fontWeight: n.is_read ? 400 : 700, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title || "Notification"}</p>
+            <p style={{ fontSize: 12, margin: "0 0 3px", color: "rgba(255,255,255,.5)", fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{n.message}</p>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)" }}>{fmtTime(n.created_at)}</span>
           </div>
           {!n.is_read && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#0ef5d4", flexShrink: 0, marginTop: 4 }} />}
@@ -257,11 +214,7 @@ function NotificationBell({ notifications, onMarkAll, onMarkOne, isMobile }: {
         {unread > 0 && <span style={{ fontSize: 10, fontWeight: 800, background: "#ef4444", color: "#fff", borderRadius: 10, padding: "1px 6px" }}>{unread}</span>}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        {unread > 0 && (
-          <button onClick={onMarkAll} style={{ background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.2)", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, color: "#0ef5d4", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
-            <CheckCheck size={11} /> All read
-          </button>
-        )}
+        {unread > 0 && <button onClick={onMarkAll} style={{ background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.2)", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, color: "#0ef5d4", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", gap: 4 }}><CheckCheck size={11} /> All read</button>}
         {isMobile && <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", fontSize: 18 }}>×</button>}
       </div>
     </div>
@@ -414,13 +367,10 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, o
   const text = msgText(msg);
   const name = msgSenderName(msg);
   const senderColor = isOwn ? "#0ef5d4" : "#a78bfa";
-
   const seenCount = msg.read_by?.length ?? 0;
   const isSeen = seenCount > 0;
-
   const openCtx = (x: number, y: number) => { setCtxPos({ x, y }); setShowCtx(true); };
 
-  // Don't render empty messages (could be from the old broken trigger)
   if (!text && !msg.file_url) return null;
 
   if (msg.type === "system") {
@@ -434,57 +384,30 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, o
   return (
     <div className="msg-in" style={{ display: "flex", flexDirection: isOwn ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, marginBottom: 4 }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}>
-
       <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={msg.sender_avatar_url} />
-
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 3, flexDirection: isOwn ? "row-reverse" : "row" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Geist',system-ui,sans-serif" }}>
-            {isOwn ? "You" : name}
-          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Geist',system-ui,sans-serif" }}>{isOwn ? "You" : name}</span>
           <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)" }}>{fmtTime(msg.created_at)}</span>
           {!isOwn && isOnline && <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 600 }}>● online</span>}
         </div>
-
         <div style={{ position: "relative" }}>
           {msg.reply_to_text && (
-            <div style={{
-              background: isOwn ? "rgba(0,0,0,.2)" : "rgba(255,255,255,.06)",
-              borderLeft: `3px solid ${isOwn ? "rgba(255,255,255,.4)" : "#a78bfa"}`,
-              borderRadius: "8px 8px 0 0", padding: "5px 10px", marginBottom: -2,
-            }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: isOwn ? "rgba(255,255,255,.6)" : "#a78bfa", margin: "0 0 1px", fontFamily: "'Geist',system-ui,sans-serif" }}>
-                {msg.reply_to_sender_name || "Unknown"}
-              </p>
-              <p style={{ fontSize: 11, color: isOwn ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
-                {msg.reply_to_text}
-              </p>
+            <div style={{ background: isOwn ? "rgba(0,0,0,.2)" : "rgba(255,255,255,.06)", borderLeft: `3px solid ${isOwn ? "rgba(255,255,255,.4)" : "#a78bfa"}`, borderRadius: "8px 8px 0 0", padding: "5px 10px", marginBottom: -2 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: isOwn ? "rgba(255,255,255,.6)" : "#a78bfa", margin: "0 0 1px", fontFamily: "'Geist',system-ui,sans-serif" }}>{msg.reply_to_sender_name || "Unknown"}</p>
+              <p style={{ fontSize: 11, color: isOwn ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{msg.reply_to_text}</p>
             </div>
           )}
-
           <div
             onContextMenu={e => { if (!isMobile) { e.preventDefault(); openCtx(e.clientX, e.clientY); } }}
             onTouchStart={() => { if (isMobile) longRef.current = setTimeout(() => openCtx(0, 0), 500); }}
             onTouchEnd={() => { if (longRef.current) clearTimeout(longRef.current); }}
-            style={{
-              padding: "9px 13px",
-              background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : "rgba(255,255,255,.08)",
-              border: isOwn ? "none" : "1px solid rgba(255,255,255,.09)",
-              borderRadius: msg.reply_to_text
-                ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px")
-                : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"),
-              fontSize: 13.5, lineHeight: 1.55,
-              color: isOwn ? "#060912" : "rgba(255,255,255,.92)",
-              fontFamily: "'Geist',system-ui,sans-serif",
-              wordBreak: "break-word", cursor: "default",
-            }}
-          >
+            style={{ padding: "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : "rgba(255,255,255,.08)", border: isOwn ? "none" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: "default" }}>
             {msg.file_url
               ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer" style={{ color: isOwn ? "#060912" : "#0ef5d4", textDecoration: "underline" }}>📎 {text || msg.file_name}</a>
               : text}
             {msg.edited_at && <span style={{ fontSize: 10, color: isOwn ? "rgba(0,0,0,.4)" : "rgba(255,255,255,.3)", marginLeft: 6 }}>(edited)</span>}
           </div>
-
           {!isMobile && hovered && (
             <div style={{ position: "absolute", top: -34, [isOwn ? "left" : "right"]: 0, display: "flex", gap: 3, zIndex: 10 }}>
               <div style={{ position: "relative" }}>
@@ -499,28 +422,15 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, o
             </div>
           )}
         </div>
-
         <ReactionRow reactions={msg.reactions || []} onToggle={onReact} />
-
         {isOwn && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3, alignItems: "center", gap: 2 }}>
-            {isSeen
-              ? <CheckCheck size={13} color="#0ef5d4" />
-              : <Check size={13} color="rgba(255,255,255,.35)" />}
-            <span style={{ fontSize: 9, color: isSeen ? "#0ef5d4" : "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif" }}>
-              {isSeen ? "Seen" : "Sent"}
-            </span>
+            {isSeen ? <CheckCheck size={13} color="#0ef5d4" /> : <Check size={13} color="rgba(255,255,255,.35)" />}
+            <span style={{ fontSize: 9, color: isSeen ? "#0ef5d4" : "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif" }}>{isSeen ? "Seen" : "Sent"}</span>
           </div>
         )}
       </div>
-
-      {showCtx && (
-        <CtxMenu
-          isOwn={isOwn} x={ctxPos.x} y={ctxPos.y} isMobile={isMobile}
-          onReact={onReact} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onCopy={onCopy}
-          onClose={() => setShowCtx(false)}
-        />
-      )}
+      {showCtx && <CtxMenu isOwn={isOwn} x={ctxPos.x} y={ctxPos.y} isMobile={isMobile} onReact={onReact} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onCopy={onCopy} onClose={() => setShowCtx(false)} />}
     </div>
   );
 }
@@ -626,9 +536,11 @@ function NewChannelModal({ teamId, onClose, onCreated }: { teamId: string; onClo
 
 // ─── Chat Area ────────────────────────────────────────────────────────────────
 
-function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers }: {
+function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers, onMarkRead }: {
   activeChannel: Channel; currentUserId: string; isMobile: boolean;
   onBack: () => void; onlineUsers: Map<string, OnlineUser>;
+  /** Called after messages load so the parent can mark channel as read */
+  onMarkRead: () => void;
 }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -639,20 +551,15 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
-  const [totalParticipants, setTotalParticipants] = useState(2);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // keep a stable ref so the realtime callback always calls latest onMarkRead
+  const onMarkReadRef = useRef(onMarkRead);
+  useEffect(() => { onMarkReadRef.current = onMarkRead; }, [onMarkRead]);
 
   const isDM = activeChannel.type === "dm" && !!activeChannel.conversationId;
-
-  useEffect(() => {
-    if (!activeChannel.conversationId) return;
-    supabase.from("conversation_participants").select("user_id", { count: "exact", head: true })
-      .eq("conversation_id", activeChannel.conversationId)
-      .then(({ count }) => { if (count) setTotalParticipants(count); });
-  }, [activeChannel.conversationId]);
 
   const load = useCallback(async () => {
     if (isDM && activeChannel.conversationId) {
@@ -681,17 +588,31 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
       }
     }
     setLoading(false);
+    // ── Mark channel as read every time messages load ──────────────────────
+    onMarkReadRef.current();
   }, [isDM, activeChannel.id, activeChannel.conversationId]);
 
-  useEffect(() => { setLoading(true); setMessages([]); setReplyTo(null); setEditingId(null); setText(""); load(); }, [activeChannel.id]);
+  // Reset + load when channel changes
+  useEffect(() => {
+    setLoading(true);
+    setMessages([]);
+    setReplyTo(null);
+    setEditingId(null);
+    setText("");
+    load();
+  }, [activeChannel.id]);
 
+  // Realtime: new messages in this channel
   useEffect(() => {
     const table = isDM ? "team_messages" : "deal_channel_messages";
     const filter = isDM ? `conversation_id=eq.${activeChannel.conversationId}` : `channel_id=eq.${activeChannel.id}`;
-    const ch = supabase.channel(`msgs-rt-${activeChannel.id}`).on("postgres_changes", { event: "*", schema: "public", table, filter }, load).subscribe();
+    const ch = supabase.channel(`msgs-rt-${activeChannel.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table, filter }, load)
+      .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.id, activeChannel.conversationId, isDM, load]);
 
+  // Realtime: reactions / read receipts (DM only)
   useEffect(() => {
     if (!isDM) return;
     const ch = supabase.channel(`extras-rt-${activeChannel.conversationId}`)
@@ -701,6 +622,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.conversationId, isDM, load]);
 
+  // Typing indicator channel
   useEffect(() => {
     const ch = supabase.channel(`typing-${activeChannel.id}`);
     typingChannelRef.current = ch;
@@ -766,7 +688,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
   const copyMsg = (m: Msg) => navigator.clipboard.writeText(msgText(m)).then(() => toast.success("Copied!")).catch(() => toast.error("Copy failed"));
   const startReply = (m: Msg) => { setReplyTo(m); inputRef.current?.focus(); };
 
-  // Filter out empty/broken messages for display
   const displayMessages = messages.filter(m => {
     if (m.is_deleted) return false;
     const t = msgText(m);
@@ -775,6 +696,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      {/* Header */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
         {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
         <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: activeChannel.type === "dm" ? "rgba(167,139,250,.1)" : "rgba(14,245,212,.08)", border: `1px solid ${activeChannel.type === "dm" ? "rgba(167,139,250,.2)" : "rgba(14,245,212,.15)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: activeChannel.type === "dm" ? "#a78bfa" : "#0ef5d4" }}>
@@ -786,6 +708,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         </div>
       </div>
 
+      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 4px", minHeight: 0 }}>
         {loading ? (
           <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
@@ -815,7 +738,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
                       <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
                     </div>
                   )}
-
                   {editingId === msg.id ? (
                     <div style={{ margin: "4px 0 8px", padding: "8px 12px", background: "rgba(14,245,212,.06)", borderRadius: 10, border: "1px solid rgba(14,245,212,.2)" }}>
                       <textarea value={editText} onChange={e => setEditText(e.target.value)}
@@ -829,15 +751,10 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
                     </div>
                   ) : (
                     <div style={{ marginBottom: 6 }}>
-                      <MsgBubble
-                        msg={msg} isOwn={isOwn} isMobile={isMobile}
-                        isOnline={!isOwn && senderOnline}
-                        onReact={e => handleReact(msg.id, e)}
-                        onReply={() => startReply(msg)}
+                      <MsgBubble msg={msg} isOwn={isOwn} isMobile={isMobile} isOnline={!isOwn && senderOnline}
+                        onReact={e => handleReact(msg.id, e)} onReply={() => startReply(msg)}
                         onEdit={() => { setEditingId(msg.id); setEditText(msgText(msg)); }}
-                        onDelete={() => deleteMsg(msg.id)}
-                        onCopy={() => copyMsg(msg)}
-                      />
+                        onDelete={() => deleteMsg(msg.id)} onCopy={() => copyMsg(msg)} />
                     </div>
                   )}
                 </div>
@@ -848,6 +765,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         )}
       </div>
 
+      {/* Typing indicator */}
       {typingUsers.length > 0 && (
         <div style={{ padding: "3px 16px", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
           <span className="pdot" /><span className="pdot" /><span className="pdot" />
@@ -857,29 +775,25 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers 
         </div>
       )}
 
+      {/* Reply preview */}
       {replyTo && (
         <div style={{ margin: "0 14px 4px", padding: "6px 10px", background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <CornerUpLeft size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Geist',system-ui,sans-serif" }}>
-              Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Geist',system-ui,sans-serif" }}>Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}</span>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msgText(replyTo)}</p>
           </div>
           <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", flexShrink: 0 }}><X size={14} /></button>
         </div>
       )}
 
+      {/* Input */}
       <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "8px 10px 8px 14px", transition: "border-color .15s" }}>
-          <textarea
-            ref={inputRef} value={text}
-            onChange={e => { setText(e.target.value); sendTyping(); }}
+          <textarea ref={inputRef} value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={`Message ${activeChannel.type === "dm" ? activeChannel.name : "#" + activeChannel.name}…`}
-            rows={1}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }}
-          />
+            rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
           <button onClick={send} disabled={!text.trim() || sending} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed", transition: "all .15s" }}>
             <Send size={14} />
           </button>
@@ -896,7 +810,7 @@ export default function MessagesPage() {
   const { user } = useAuth();
   const { team, members } = useTeam();
   const teamId = team?.id;
-  const { conversations } = useTeamMessaging(teamId);
+  const { conversations, refetchConversations } = useTeamMessaging(teamId);
 
   const [dealChannels, setDealChannels] = useState<Channel[]>([]);
   const [loadingCh, setLoadingCh] = useState(true);
@@ -910,11 +824,16 @@ export default function MessagesPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
 
+  // Keep stable ref to active channel so async callbacks don't capture stale value
+  const activeChannelRef = useRef<Channel | null>(null);
+  useEffect(() => { activeChannelRef.current = activeChannel; }, [activeChannel]);
+
   useEffect(() => {
     const chk = () => setIsMobile(window.innerWidth < 768);
     chk(); window.addEventListener("resize", chk); return () => window.removeEventListener("resize", chk);
   }, []);
 
+  // Presence heartbeat
   useEffect(() => {
     if (!user || !teamId) return;
     const beat = () => (supabase as any).rpc("upsert_user_presence", { p_status: "available", p_team_id: teamId, p_last_page: "messages" });
@@ -923,6 +842,7 @@ export default function MessagesPage() {
     return () => clearInterval(t);
   }, [user, teamId]);
 
+  // Online users tracker
   useEffect(() => {
     if (!teamId) return;
     const fetch = async () => {
@@ -953,6 +873,59 @@ export default function MessagesPage() {
 
   useEffect(() => { loadDealChannels(); }, [teamId]);
 
+  // ── Real-time read-receipt sync ──────────────────────────────────────────────
+  // When conversation_participants.last_read_at or deal_channel_members.last_read_at
+  // changes (e.g. you have two tabs open, or another team member's data updates),
+  // refresh the relevant sidebar section so unread badges stay accurate.
+  useEffect(() => {
+    if (!user || !teamId) return;
+    const ch = supabase
+      .channel(`read-sync-${teamId}-${user.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "conversation_participants",
+        filter: `user_id=eq.${user.id}`,
+      }, () => refetchConversations())
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "deal_channel_members",
+        filter: `user_id=eq.${user.id}`,
+      }, () => loadDealChannels())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user?.id, teamId, refetchConversations, loadDealChannels]);
+
+  // ── Mark channel as read ────────────────────────────────────────────────────
+  // 1. Optimistically zero the badge in local state (instant UI response)
+  // 2. Call mark_channel_read RPC (persists to DB)
+  // 3. Refresh the relevant sidebar section (confirms authoritative count)
+  const markAsRead = useCallback(async (ch: Channel) => {
+    if (!user || !ch) return;
+
+    // Optimistic update — zero badge immediately before any DB round-trip
+    if (ch.type !== "dm") {
+      setDealChannels(prev => prev.map(c => c.id === ch.id ? { ...c, unread_count: 0 } : c));
+    }
+
+    try {
+      await (supabase as any).rpc("mark_channel_read", {
+        p_channel_id:      ch.type !== "dm" ? ch.id : null,
+        p_conversation_id: ch.conversationId ?? null,
+      });
+    } catch (e) {
+      console.warn("mark_channel_read failed (non-fatal):", e);
+    }
+
+    // Confirm via server refresh
+    if (ch.type === "dm") {
+      refetchConversations();
+    } else {
+      loadDealChannels();
+    }
+  }, [user, refetchConversations, loadDealChannels]);
+
   const dmChannels = useMemo((): Channel[] => conversations.map(c => {
     const other = c.participants[0];
     const name = other ? (other.full_name || other.email?.split("@")[0] || "Unknown") : c.participants.length > 0 ? `Group (${c.participants.length + 1})` : "Chat";
@@ -981,10 +954,7 @@ export default function MessagesPage() {
     const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
       loadNotifs();
       const n = payload.new as any;
-      // Show toast with title + message separately (new format)
-      if (n?.message) {
-        toast(n.title || "New notification", { description: n.message });
-      }
+      if (n?.message) toast(n.title || "New notification", { description: n.message });
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
@@ -999,7 +969,12 @@ export default function MessagesPage() {
     setNotifications(p => p.map(n => n.id === id ? { ...n, is_read: true } : n));
   };
 
-  const selectChannel = (ch: Channel) => { setActiveChannel(ch); if (isMobile) setMobileView("chat"); };
+  // Select a channel: optimistically clear badge + persist read receipt
+  const selectChannel = (ch: Channel) => {
+    setActiveChannel(ch);
+    if (isMobile) setMobileView("chat");
+    markAsRead(ch); // fire immediately — no waiting
+  };
 
   if (!teamId) return (
     <DashboardLayout>
@@ -1045,6 +1020,7 @@ export default function MessagesPage() {
           <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
         ) : (
           <>
+            {/* DMs */}
             <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>● Direct Messages</span>
               <button onClick={() => setShowNewDM(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
@@ -1062,6 +1038,7 @@ export default function MessagesPage() {
             })}
             {dmChs.length === 0 && <button onClick={() => setShowNewDM(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", border: "none", background: "transparent", cursor: "pointer", color: "rgba(255,255,255,.25)", fontSize: 12, fontFamily: "'Geist',system-ui,sans-serif" }}><Plus size={13} /> Message a teammate</button>}
 
+            {/* Team channels */}
             {teamChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1072,6 +1049,7 @@ export default function MessagesPage() {
               </>
             )}
 
+            {/* Deal channels */}
             {dealChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px" }}>
@@ -1110,7 +1088,8 @@ export default function MessagesPage() {
           onClose={() => setShowNewDM(false)}
           onCreated={(convoId, name) => {
             setShowNewDM(false);
-            selectChannel({ id: `dm-${convoId}`, name, type: "dm", conversationId: convoId, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: null, last_msg_at: null, unread_count: 0, msg_count: 0, is_muted: false });
+            const newCh: Channel = { id: `dm-${convoId}`, name, type: "dm", conversationId: convoId, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: null, last_msg_at: null, unread_count: 0, msg_count: 0, is_muted: false };
+            selectChannel(newCh);
           }}
         />
       )}
@@ -1124,7 +1103,14 @@ export default function MessagesPage() {
         {(!isMobile || mobileView === "chat") && (
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
             {activeChannel ? (
-              <ChatArea activeChannel={activeChannel} currentUserId={user?.id ?? ""} isMobile={isMobile} onBack={() => setMobileView("list")} onlineUsers={onlineUsers} />
+              <ChatArea
+                activeChannel={activeChannel}
+                currentUserId={user?.id ?? ""}
+                isMobile={isMobile}
+                onBack={() => setMobileView("list")}
+                onlineUsers={onlineUsers}
+                onMarkRead={() => activeChannelRef.current && markAsRead(activeChannelRef.current)}
+              />
             ) : (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
                 {isMobile && <button onClick={() => setMobileView("list")} style={{ position: "absolute", top: 16, left: 16, background: "none", border: "none", cursor: "pointer", color: "#0ef5d4" }}><ChevronLeft size={22} /></button>}
