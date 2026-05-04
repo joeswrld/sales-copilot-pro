@@ -120,7 +120,15 @@ function initials(name: string | null | undefined) {
   if (!name) return "?";
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
-function msgText(m: Msg) { return m.message_text || m.content || ""; }
+function msgText(m: Msg) {
+  let raw = m.message_text || m.content || "";
+  // Strip duplicated sender prefix patterns like "Name sent a message: 'actual text'"
+  const prefixPattern = /^.+?\s+sent a message:\s*['"]?/i;
+  if (prefixPattern.test(raw)) {
+    raw = raw.replace(prefixPattern, "").replace(/['"]?\s*$/, "");
+  }
+  return raw;
+}
 function msgSenderId(m: Msg) { return m.sender_id || m.user_id || null; }
 function msgSenderName(m: Msg) {
   return m.sender_full_name || m.sender_email?.split("@")[0] || "Unknown";
