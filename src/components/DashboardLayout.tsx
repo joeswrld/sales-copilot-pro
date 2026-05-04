@@ -266,18 +266,26 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {/* User menu */}
             <button
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.06)]"
-              onClick={() => navigate("p/rofile")}
+              onClick={() => navigate("/profile")}
             >
-              <div
-                className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"
-                style={{
-                  background: "rgba(26,240,196,0.15)",
-                  border: "1px solid rgba(26,240,196,0.2)",
-                  color: "#1af0c4",
-                }}
-              >
-                {emailInitial}
-              </div>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-6 h-6 rounded-[5px] shrink-0 object-cover"
+                />
+              ) : (
+                <div
+                  className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"
+                  style={{
+                    background: "rgba(26,240,196,0.15)",
+                    border: "1px solid rgba(26,240,196,0.2)",
+                    color: "#1af0c4",
+                  }}
+                >
+                  {emailInitial}
+                </div>
+              )}
               <span className="hidden sm:block text-[12px] font-medium text-[rgba(255,255,255,0.55)] max-w-[100px] truncate">
                 {displayName}
               </span>
