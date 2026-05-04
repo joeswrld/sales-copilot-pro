@@ -74,6 +74,7 @@ interface Msg {
   // enriched
   sender_full_name?: string | null;
   sender_email?: string | null;
+  sender_avatar_url?: string | null;
   // reply preview
   reply_to_text?: string | null;
   reply_to_sender_name?: string | null;
@@ -119,7 +120,15 @@ function initials(name: string | null | undefined) {
   if (!name) return "?";
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
-function msgText(m: Msg) { return m.message_text || m.content || ""; }
+function msgText(m: Msg) {
+  let raw = m.message_text || m.content || "";
+  // Strip duplicated sender prefix patterns like "Name sent a message: 'actual text'"
+  const prefixPattern = /^.+?\s+sent a message:\s*['"]?/i;
+  if (prefixPattern.test(raw)) {
+    raw = raw.replace(prefixPattern, "").replace(/['"]?\s*$/, "");
+  }
+  return raw;
+}
 function msgSenderId(m: Msg) { return m.sender_id || m.user_id || null; }
 function msgSenderName(m: Msg) {
   return m.sender_full_name || m.sender_email?.split("@")[0] || "Unknown";
@@ -149,20 +158,31 @@ textarea:focus,input:focus{outline:none!important}
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({ name, size = 32, color = "#0ef5d4", isOnline = false }: {
-  name?: string | null; size?: number; color?: string; isOnline?: boolean;
+function MsgAvatar({ name, size = 32, color = "#0ef5d4", isOnline = false, avatarUrl }: {
+  name?: string | null; size?: number; color?: string; isOnline?: boolean; avatarUrl?: string | null;
 }) {
   return (
     <div style={{ position: "relative", flexShrink: 0 }}>
-      <div style={{
-        width: size, height: size, borderRadius: size * 0.3,
-        background: `${color}18`, border: `1px solid ${color}30`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: size * 0.38, fontWeight: 700, color,
-        fontFamily: "'Geist',system-ui,sans-serif",
-      }}>
-        {initials(name)}
-      </div>
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={name || "User"}
+          style={{
+            width: size, height: size, borderRadius: size * 0.3,
+            objectFit: "cover", border: `1px solid ${color}30`,
+          }}
+        />
+      ) : (
+        <div style={{
+          width: size, height: size, borderRadius: size * 0.3,
+          background: `${color}18`, border: `1px solid ${color}30`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: size * 0.38, fontWeight: 700, color,
+          fontFamily: "'Geist',system-ui,sans-serif",
+        }}>
+          {initials(name)}
+        </div>
+      )}
       {isOnline && (
         <div style={{
           position: "absolute", bottom: -1, right: -1,
@@ -406,7 +426,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}>
 
       {/* Avatar — always shown */}
-      <Avatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} />
+      <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={(msg as any).sender_avatar_url} />
 
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
         {/* Sender name — always above the bubble */}
@@ -482,8 +502,8 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
         {isOwn && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3, alignItems: "center", gap: 2 }}>
             {isSeen
-              ? <CheckCheck size={13} color="#0ef5d4" title={`Seen by ${seenCount} participant${seenCount > 1 ? "s" : ""}`} />
-              : <Check size={13} color="rgba(255,255,255,.35)" title="Sent" />}
+              ? <CheckCheck size={13} color="#0ef5d4" />
+              : <Check size={13} color="rgba(255,255,255,.35)" />}
             <span style={{ fontSize: 9, color: isSeen ? "#0ef5d4" : "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif" }}>
               {isSeen ? "Seen" : "Sent"}
             </span>
@@ -551,7 +571,7 @@ function NewDMModal({ members, currentUserId, conversations, teamId, onClose, on
                 <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${checked ? "#0ef5d4" : "rgba(255,255,255,.3)"}`, background: checked ? "#0ef5d4" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {checked && <span style={{ fontSize: 11, color: "#060912", fontWeight: 800 }}>✓</span>}
                 </div>
-                <Avatar name={name} size={32} color={checked ? "#0ef5d4" : "#a78bfa"} isOnline={online} />
+                <MsgAvatar name={name} size={32} color={checked ? "#0ef5d4" : "#a78bfa"} isOnline={online} avatarUrl={m.profile?.avatar_url} />
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif" }}>{name}</p>
                   <p style={{ fontSize: 11, color: online ? "#22c55e" : "rgba(255,255,255,.3)", margin: 0 }}>{online ? "● Online" : "○ Offline"}</p>

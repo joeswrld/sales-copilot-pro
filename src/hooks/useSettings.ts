@@ -37,6 +37,7 @@ export interface UserProfile {
   id: string;
   full_name: string | null;
   email: string | null;
+  avatar_url: string | null;
   plan_type: string;
   calls_used: number;
   calls_limit: number;

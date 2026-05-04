@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,41 +8,85 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { User, Mail, Shield, Trash2, Save, Calendar, Users } from "lucide-react";
+import { User, Mail, Shield, Trash2, Save, Calendar, Users, Camera } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useTeamUsage } from "@/hooks/useTeamUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { profile, isLoading, updateProfile } = useUserProfile();
   const { teamUsage } = useTeamUsage();
+  const queryClient = useQueryClient();
 
   const [fullName, setFullName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const displayName = fullName ?? profile?.full_name ?? "";
   const email = user?.email ?? profile?.email ?? "";
   const initial = (displayName || email)?.[0]?.toUpperCase() || "U";
   const createdAt = user?.created_at ? format(new Date(user.created_at), "MMMM d, yyyy") : "—";
+  const avatarUrl = profile?.avatar_url;
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please upload an image file", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum 2MB allowed", variant: "destructive" });
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filePath = `${user.id}/avatar.${ext}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+      const { error: updateErr } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+        .eq("id", user.id);
+      if (updateErr) throw updateErr;
+
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      toast({ title: "Avatar updated!" });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSaveName = async () => {
     if (!user) return;
@@ -53,8 +97,6 @@ export default function ProfilePage() {
         .update({ full_name: fullName ?? displayName, updated_at: new Date().toISOString() })
         .eq("id", user.id);
       if (error) throw error;
-
-      // Also update auth metadata
       await supabase.auth.updateUser({ data: { full_name: fullName ?? displayName } });
       toast({ title: "Profile updated" });
     } catch (err: any) {
@@ -78,7 +120,6 @@ export default function ProfilePage() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-
       toast({ title: "Account deleted", description: "Your account has been permanently removed." });
       await signOut();
       navigate("/");
@@ -112,11 +153,32 @@ export default function ProfilePage() {
         <Card className="bg-card border-border">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
-                <AvatarFallback className="bg-primary/20 text-primary text-xl font-bold">
-                  {initial}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative group">
+                <Avatar className="h-16 w-16">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
+                  <AvatarFallback className="bg-primary/20 text-primary text-xl font-bold">
+                    {initial}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  {uploadingAvatar ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Camera className="w-5 h-5 text-white" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                />
+              </div>
               <div>
                 <CardTitle className="font-display">{displayName || "No name set"}</CardTitle>
                 <CardDescription className="flex items-center gap-1.5 mt-0.5">

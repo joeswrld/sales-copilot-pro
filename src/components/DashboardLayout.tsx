@@ -4,12 +4,12 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
-
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging } from "@/hooks/useTeamMessaging";
+import { useUserProfile } from "@/hooks/useSettings";
 import { TeamUsageSidebarPill } from "@/components/TeamMinuteUsageComponents";
 import { cn } from "@/lib/utils";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
@@ -106,9 +106,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { unreadCount }    = useNotifications();
   const { team }           = useTeam();
   const { totalUnread }    = useTeamMessaging(team?.id);
+  const { profile }        = useUserProfile();
 
   const displayName  = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const emailInitial = displayName[0]?.toUpperCase() || "U";
+  const avatarUrl    = profile?.avatar_url;
   const messagesUnread = totalUnread + unreadCount;
 
   const primaryNav: NavItem[] = [
@@ -159,16 +161,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[rgba(255,255,255,0.04)] transition-colors cursor-pointer"
           onClick={handleSignOut}
         >
-          <div
-            className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 uppercase"
-            style={{
-              background: "linear-gradient(135deg, rgba(26,240,196,0.2) 0%, rgba(11,191,160,0.2) 100%)",
-              border: "1px solid rgba(26,240,196,0.2)",
-              color: "#1af0c4",
-            }}
-          >
-            {emailInitial}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="w-7 h-7 rounded-md shrink-0 object-cover"
+            />
+          ) : (
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 uppercase"
+              style={{
+                background: "linear-gradient(135deg, rgba(26,240,196,0.2) 0%, rgba(11,191,160,0.2) 100%)",
+                border: "1px solid rgba(26,240,196,0.2)",
+                color: "#1af0c4",
+              }}
+            >
+              {emailInitial}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-[12px] font-semibold text-[rgba(255,255,255,0.85)] truncate leading-none mb-0.5">{displayName}</p>
             <p className="text-[10px] text-[rgba(255,255,255,0.32)] truncate leading-none">{user?.email}</p>
@@ -256,18 +266,26 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {/* User menu */}
             <button
               className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.06)]"
-              onClick={() => navigate("p/rofile")}
+              onClick={() => navigate("/profile")}
             >
-              <div
-                className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"
-                style={{
-                  background: "rgba(26,240,196,0.15)",
-                  border: "1px solid rgba(26,240,196,0.2)",
-                  color: "#1af0c4",
-                }}
-              >
-                {emailInitial}
-              </div>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-6 h-6 rounded-[5px] shrink-0 object-cover"
+                />
+              ) : (
+                <div
+                  className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"
+                  style={{
+                    background: "rgba(26,240,196,0.15)",
+                    border: "1px solid rgba(26,240,196,0.2)",
+                    color: "#1af0c4",
+                  }}
+                >
+                  {emailInitial}
+                </div>
+              )}
               <span className="hidden sm:block text-[12px] font-medium text-[rgba(255,255,255,0.55)] max-w-[100px] truncate">
                 {displayName}
               </span>
