@@ -417,7 +417,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, totalParticipants, onReact,
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}>
 
       {/* Avatar — always shown */}
-      <Avatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} />
+      <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={(msg as any).sender_avatar_url} />
 
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
         {/* Sender name — always above the bubble */}
@@ -562,7 +562,7 @@ function NewDMModal({ members, currentUserId, conversations, teamId, onClose, on
                 <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${checked ? "#0ef5d4" : "rgba(255,255,255,.3)"}`, background: checked ? "#0ef5d4" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {checked && <span style={{ fontSize: 11, color: "#060912", fontWeight: 800 }}>✓</span>}
                 </div>
-                <Avatar name={name} size={32} color={checked ? "#0ef5d4" : "#a78bfa"} isOnline={online} />
+                <MsgAvatar name={name} size={32} color={checked ? "#0ef5d4" : "#a78bfa"} isOnline={online} avatarUrl={m.profile?.avatar_url} />
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif" }}>{name}</p>
                   <p style={{ fontSize: 11, color: online ? "#22c55e" : "rgba(255,255,255,.3)", margin: 0 }}>{online ? "● Online" : "○ Offline"}</p>
