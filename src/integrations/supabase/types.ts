@@ -4851,6 +4851,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mark_channel_read: {
+        Args: { p_channel_id?: string; p_conversation_id?: string }
+        Returns: undefined
+      }
       mark_inactive_users_away: { Args: never; Returns: undefined }
       mark_reminder_sent: {
         Args: { p_meeting_id: string; p_reminder_type: string }
