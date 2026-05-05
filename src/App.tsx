@@ -10,6 +10,9 @@ import AdminPanel from "./pages/AdminPanel";
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
+// 🔒 Error Boundary + global handlers
+import { ErrorBoundary, useGlobalErrorHandlers } from "@/components/ErrorBoundary";
+
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardHome from "./pages/DashboardHome";
@@ -41,7 +44,6 @@ import InviteLanding from "./pages/InviteLanding";
 import DealDetailPage from "./pages/DealDetailPage";
 import SecurityCompliancePage from "./pages/SecurityCompliancePage";
 
-
 import {
   PrivacyPage,
   TermsPage,
@@ -57,15 +59,28 @@ import {
   PressPage,
 } from "./pages/MarketingPages";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: any) => {
+        // Don't retry on 401/403/404
+        if ([401, 403, 404].includes(error?.status)) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
 
-// BrowserRouter must be the outermost wrapper so that
-// PlanEnforcementProvider and UpgradeModal can use useNavigate.
+// Inner component so we can use hooks inside providers
+function AppWithGlobalHandlers({ children }: { children: React.ReactNode }) {
+  useGlobalErrorHandlers();
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   return (
     <BrowserRouter>
       <PlanEnforcementProvider>
-        {/* Global upgrade modal — rendered once at root level */}
         <UpgradeModal />
         <DebugInspector />
         <PWABanner />
@@ -77,14 +92,10 @@ function AppRoutes() {
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-<Route path="/invite/:token" element={<InviteLanding />} />
+          <Route path="/invite/:token" element={<InviteLanding />} />
+
           {/* Marketing */}
-          {/*<Route path="/integrations" element={<IntegrationsPage />} /> */}
           <Route path="/changelog" element={<Changelogpage />} />
-          {/*<Route path="/about" element={<AboutPage />} /> */}
-          {/*<Route path="/blog" element={<BlogPage />} />*/}
-          {/*<Route path="/careers" element={<CareersPage />} />*/}
-          {/*<Route path="/press" element={<PressPage />} />*/}
 
           {/* Legal */}
           <Route path="/privacy" element={<PrivacyPage />} />
@@ -103,27 +114,32 @@ function AppRoutes() {
             path="/admin"
             element={
               <AdminRoute>
-                <AdminPanel />
+                <ErrorBoundary>
+                  <AdminPanel />
+                </ErrorBoundary>
               </AdminRoute>
             }
           />
 
-          {/* Protected */}
+          {/* Protected — each wrapped in its own ErrorBoundary */}
           <Route
             path="/onboarding"
             element={
               <ProtectedRoute>
-                <OnboardingPage />
+                <ErrorBoundary>
+                  <OnboardingPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
-        
 
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <DashboardHome />
+                <ErrorBoundary>
+                  <DashboardHome />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -132,7 +148,9 @@ function AppRoutes() {
             path="/calls"
             element={
               <ProtectedRoute>
-                <CallsList />
+                <ErrorBoundary>
+                  <CallsList />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -141,7 +159,9 @@ function AppRoutes() {
             path="/calls/:id"
             element={
               <ProtectedRoute>
-                <CallDetail />
+                <ErrorBoundary>
+                  <CallDetail />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -150,7 +170,9 @@ function AppRoutes() {
             path="/live"
             element={
               <ProtectedRoute>
-                <LiveCall />
+                <ErrorBoundary>
+                  <LiveCall />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -159,7 +181,9 @@ function AppRoutes() {
             path="/live/:id"
             element={
               <ProtectedRoute>
-                <LiveMeeting />
+                <ErrorBoundary>
+                  <LiveMeeting />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -168,17 +192,30 @@ function AppRoutes() {
             path="/deals"
             element={
               <ProtectedRoute>
-                <DealsPage />
+                <ErrorBoundary>
+                  <DealsPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
-          <Route path="/deals/:id" element={<ProtectedRoute><DealDetailPage /></ProtectedRoute>} />
+          <Route
+            path="/deals/:id"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <DealDetailPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/analytics"
             element={
               <ProtectedRoute>
-                <Analytics />
+                <ErrorBoundary>
+                  <Analytics />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -187,7 +224,9 @@ function AppRoutes() {
             path="/team"
             element={
               <ProtectedRoute>
-                <TeamPage />
+                <ErrorBoundary>
+                  <TeamPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -196,27 +235,34 @@ function AppRoutes() {
             path="/messages"
             element={
               <ProtectedRoute>
-                <MessagesPage />
+                <ErrorBoundary>
+                  <MessagesPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
 
+          {/* 🔒 SettingsPage now protected */}
           <Route
             path="/settings"
             element={
-             <ProtectedRoute>
-                <SettingsPage />
-             </ProtectedRoute>
-              
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <SettingsPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
             }
           />
 
+          {/* 🔒 IntegrationsDashboardPage now protected */}
           <Route
             path="/dashboard/integrations"
             element={
-             
-                <IntegrationsDashboardPage />
-              
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <IntegrationsDashboardPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
             }
           />
 
@@ -224,7 +270,9 @@ function AppRoutes() {
             path="/profile"
             element={
               <ProtectedRoute>
-                <ProfilePage />
+                <ErrorBoundary>
+                  <ProfilePage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -233,7 +281,9 @@ function AppRoutes() {
             path="/billing"
             element={
               <ProtectedRoute>
-                <BillingPage />
+                <ErrorBoundary>
+                  <BillingPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -242,7 +292,9 @@ function AppRoutes() {
             path="/coach"
             element={
               <ProtectedRoute>
-                <AIChatPage />
+                <ErrorBoundary>
+                  <AIChatPage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -251,7 +303,9 @@ function AppRoutes() {
             path="/security-compliance"
             element={
               <ProtectedRoute>
-                <SecurityCompliancePage />
+                <ErrorBoundary>
+                  <SecurityCompliancePage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -275,7 +329,12 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <AppRoutes />
+          {/* Global error boundary wraps everything */}
+          <ErrorBoundary>
+            <AppWithGlobalHandlers>
+              <AppRoutes />
+            </AppWithGlobalHandlers>
+          </ErrorBoundary>
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
