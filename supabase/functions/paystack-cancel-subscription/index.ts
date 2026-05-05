@@ -16,7 +16,7 @@ async function resolveUser(
     return null;
   }
 
-  // Method 1: service-role getUser (validates expiry + signature)
+  // Validate JWT via service-role getUser (checks signature + expiry)
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,33 +26,12 @@ async function resolveUser(
     if (!error && data?.user?.id) {
       return { userId: data.user.id, userEmail: data.user.email ?? "" };
     }
-    if (error) console.warn("service-role getUser error:", error.message);
+    if (error) console.warn("resolveUser: getUser error:", error.message);
   } catch (e) {
-    console.warn("service-role getUser threw:", e);
+    console.warn("resolveUser: getUser threw:", e);
   }
 
-  // Method 2: decode JWT payload (no signature check — safe since verify_jwt=false)
-  // Properly pad base64url before decoding to avoid silent parse failures
-  try {
-    const parts = token.split(".");
-    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(
-      atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, "="))
-    );
-    if (payload?.sub) {
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < nowSeconds) {
-        console.warn(
-          `JWT decode fallback: token expired ${nowSeconds - payload.exp}s ago`
-        );
-      }
-      return { userId: payload.sub, userEmail: payload.email ?? "" };
-    }
-  } catch (e) {
-    console.warn("JWT decode fallback failed:", e);
-  }
-
-  console.error("resolveUser: all methods exhausted");
+  console.error("resolveUser: authentication failed");
   return null;
 }
 
