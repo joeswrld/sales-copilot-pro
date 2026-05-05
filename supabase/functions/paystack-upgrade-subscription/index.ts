@@ -48,23 +48,17 @@ function calculateProration(
   return { proratedAmountNgn: netAmountNgn, daysRemaining, creditNgn };
 }
 
-/**
- * Robust user resolution — tries three methods in order:
- *  1. Service-role getUser(token)  ← most reliable for valid Supabase JWTs
- *  2. JWT payload decode           ← fallback when service-role call fails
- *  3. Returns null                 ← caller returns 401
- */
 async function resolveUser(
   authHeader: string
 ): Promise<{ userId: string; userEmail: string } | null> {
   const token = authHeader.replace("Bearer ", "").trim();
 
-  if (!token) {
-    console.error("resolveUser: empty token");
+  if (!token || token.split(".").length !== 3) {
+    console.error("resolveUser: token missing or malformed");
     return null;
   }
 
-  // Method 1: service-role getUser — works for all valid Supabase JWTs
+  // Validate JWT via service-role getUser (checks signature + expiry)
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -72,28 +66,14 @@ async function resolveUser(
     );
     const { data, error } = await admin.auth.getUser(token);
     if (!error && data?.user?.id) {
-      console.log("resolveUser: resolved via service-role getUser:", data.user.id);
       return { userId: data.user.id, userEmail: data.user.email ?? "" };
     }
-    if (error) console.warn("resolveUser: service-role getUser error:", error.message);
+    if (error) console.warn("resolveUser: getUser error:", error.message);
   } catch (e) {
-    console.warn("resolveUser: service-role getUser threw:", e);
+    console.warn("resolveUser: getUser threw:", e);
   }
 
-  // Method 2: decode JWT payload without verification
-  // Safe here because verify_jwt=false and we trust Supabase-issued tokens
-  try {
-    const parts   = token.split(".");
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    if (payload?.sub) {
-      console.log("resolveUser: resolved via JWT decode:", payload.sub);
-      return { userId: payload.sub, userEmail: payload.email ?? "" };
-    }
-  } catch (e) {
-    console.warn("resolveUser: JWT decode fallback failed:", e);
-  }
-
-  console.error("resolveUser: all methods failed");
+  console.error("resolveUser: authentication failed");
   return null;
 }
 

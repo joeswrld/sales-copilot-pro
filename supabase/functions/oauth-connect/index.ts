@@ -24,9 +24,6 @@ const providers: Record<string, ProviderConfig> = {
       "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email",
     clientIdEnv: "GOOGLE_CLIENT_ID",
   },
-  // ── Google Calendar (used by the calendar sync / Live Call feature) ───────
-  // Shares the same Google OAuth app as google_meet but is tracked separately
-  // in the integrations table so connection state is independent.
   google_calendar: {
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     scopes: [
@@ -58,6 +55,23 @@ const providers: Record<string, ProviderConfig> = {
     clientIdEnv: "SLACK_CLIENT_ID",
   },
 };
+
+// HMAC-sign the OAuth state to prevent forgery
+async function signState(payload: string, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  const sigHex = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${btoa(payload)}.${sigHex}`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -112,10 +126,15 @@ Deno.serve(async (req) => {
 
     const callbackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/oauth-callback`;
 
-    // Encode state with provider + user ID for callback
-    const state = btoa(JSON.stringify({ provider, userId, redirect_uri: redirect_uri || "" }));
+    // Validate redirect_uri against allowlist
+    const allowedRedirects = ["", "/settings", "/integrations", "/dashboard/integrations"];
+    const safeRedirect = allowedRedirects.includes(redirect_uri || "") ? (redirect_uri || "") : "";
 
-    // Google providers need access_type=offline and prompt=consent to get a refresh token
+    // HMAC-sign the state to prevent forgery
+    const statePayload = JSON.stringify({ provider, userId, redirect_uri: safeRedirect });
+    const hmacSecret = Deno.env.get("INTEGRATION_ENCRYPTION_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const state = await signState(statePayload, hmacSecret);
+
     const isGoogle = provider === "google_meet" || provider === "google_calendar";
 
     const params = new URLSearchParams({

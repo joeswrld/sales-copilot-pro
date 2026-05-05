@@ -24,33 +24,17 @@ type PaystackTx = {
   } | null;
 };
 
-/**
- * Robust user resolution — three methods in priority order.
- *
- * Method 1: service-role admin.auth.getUser(token) — most reliable.
- *   Works for any valid non-expired Supabase JWT.
- *
- * Method 2: JWT payload decode — safe fallback since verify_jwt=false.
- *   Handles cases where service-role call fails (e.g. network hiccup).
- *   Does NOT verify signature but we trust Supabase-issued tokens here.
- *
- * Method 3: return null → caller sends 401.
- *
- * The "Invalid JWT" error in logs came from the client sending a near-expired
- * or already-expired access token. The client fix (5-minute proactive refresh)
- * prevents this, but we keep the decode fallback as belt-and-suspenders.
- */
 async function resolveUser(
   authHeader: string
 ): Promise<{ userId: string; userEmail: string } | null> {
   const token = authHeader.replace("Bearer ", "").trim();
 
   if (!token || token.split(".").length !== 3) {
-    console.error("resolveUser: token is missing or malformed");
+    console.error("resolveUser: token missing or malformed");
     return null;
   }
 
-  // Method 1: service-role getUser — validates signature + expiry
+  // Validate JWT via service-role getUser (checks signature + expiry)
   try {
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -58,43 +42,14 @@ async function resolveUser(
     );
     const { data, error } = await admin.auth.getUser(token);
     if (!error && data?.user?.id) {
-      console.log("resolveUser: resolved via service-role getUser:", data.user.id);
       return { userId: data.user.id, userEmail: data.user.email ?? "" };
     }
-    if (error) {
-      console.warn("resolveUser: service-role getUser failed:", error.message);
-    }
+    if (error) console.warn("resolveUser: getUser error:", error.message);
   } catch (e) {
-    console.warn("resolveUser: service-role getUser threw:", e);
+    console.warn("resolveUser: getUser threw:", e);
   }
 
-  // Method 2: decode JWT payload without cryptographic verification
-  // (safe here because verify_jwt=false and we trust Supabase-issued tokens)
-  try {
-    const parts = token.split(".");
-    // Pad base64url to standard base64 before decoding
-    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, "=")));
-
-    if (payload?.sub) {
-      // Check if token is expired — if so, still return user but log it.
-      // The client should have sent a fresh token; if it didn't, this is a
-      // best-effort attempt to avoid a blank-screen 401.
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < nowSeconds) {
-        console.warn(
-          `resolveUser: JWT decode fallback used but token expired ${nowSeconds - payload.exp}s ago. ` +
-          "Client should refresh more aggressively."
-        );
-      }
-      console.log("resolveUser: resolved via JWT decode fallback:", payload.sub);
-      return { userId: payload.sub, userEmail: payload.email ?? "" };
-    }
-  } catch (e) {
-    console.warn("resolveUser: JWT decode fallback failed:", e);
-  }
-
-  console.error("resolveUser: all methods exhausted — returning null");
+  console.error("resolveUser: authentication failed");
   return null;
 }
 

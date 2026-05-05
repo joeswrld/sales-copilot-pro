@@ -44,6 +44,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Ownership check: verify the user owns this call
+    const { data: ownedCall, error: ownErr } = await anonClient
+      .from("calls")
+      .select("id")
+      .eq("id", call_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (ownErr || !ownedCall) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Check if action already exists
     const { data: existing } = await supabase
       .from("call_actions")

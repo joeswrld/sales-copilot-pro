@@ -33,6 +33,17 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing call_id or audio_base64" }), { status: 400, headers: corsHeaders });
     }
 
+    // Ownership check: verify the user owns this call
+    const { data: ownedCall, error: ownErr } = await supabase
+      .from("calls")
+      .select("id")
+      .eq("id", call_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (ownErr || !ownedCall) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -183,7 +194,8 @@ If the audio is unclear or too short, still provide your best analysis based on 
       await adminClient
         .from("calls")
         .update({ sentiment_score: analysis.engagement_score })
-        .eq("id", call_id);
+        .eq("id", call_id)
+        .eq("user_id", userId);
     }
 
     return new Response(JSON.stringify({ 
