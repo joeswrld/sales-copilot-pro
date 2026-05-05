@@ -118,12 +118,14 @@ async function processRecording(
       if (uploadErr) {
         console.error("Storage upload error:", uploadErr);
       } else {
-        // Get public URL
-        const { data: urlData } = supabase.storage
+        // Create a signed URL (valid for 7 days) since bucket is private
+        const { data: signedData, error: signErr } = await supabase.storage
           .from("call-recordings")
-          .getPublicUrl(filePath);
-        permanentUrl = urlData.publicUrl;
-        console.log("Recording uploaded to storage:", permanentUrl);
+          .createSignedUrl(filePath, 60 * 60 * 24 * 7); // 7 days
+        if (!signErr && signedData?.signedUrl) {
+          permanentUrl = signedData.signedUrl;
+        }
+        console.log("Recording uploaded to storage:", filePath);
       }
     }
   } catch (e) {
