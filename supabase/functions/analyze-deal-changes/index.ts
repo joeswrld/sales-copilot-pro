@@ -44,6 +44,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Ownership check: verify the user owns this deal
+    const { data: ownedDeal, error: ownErr } = await anonClient
+      .from("deals")
+      .select("id")
+      .eq("id", deal_id)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    if (ownErr || !ownedDeal) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Fetch deal calls with summaries
     const { data: calls, error: callsErr } = await supabase
       .from("calls")
