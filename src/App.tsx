@@ -204,8 +204,9 @@ function AppRoutes() {
           <Route
             path="/settings"
             element={
-             
+             <ProtectedRoute>
                 <SettingsPage />
+             </ProtectedRoute>
               
             }
           />
