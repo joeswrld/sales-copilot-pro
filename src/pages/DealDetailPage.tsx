@@ -1,6 +1,10 @@
 /**
  * DealDetailPage.tsx — AI Deal Intelligence Hub
- * Fully responsive: stacked on mobile, 3-col grid on desktop
+ *
+ * FIXES:
+ * 1. Skeleton loading state (no empty <div/> while loading)
+ * 2. Responsive CSS — removed fixed px widths, uses flex/grid + clamp()
+ * 3. Error boundary wrapping
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -17,6 +21,8 @@ import {
   Edit3, Check, X, Clock, BarChart3, Sparkles, ExternalLink,
   Shield, RefreshCw, Plus, Link2, Mic, ChevronDown, ChevronUp
 } from "lucide-react";
+import { DealDetailSkeleton } from "@/components/Skeletons";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -82,8 +88,6 @@ function HealthGauge({ score, compact = false }: { score: number; compact?: bool
   );
 }
 
-// ─── Insight Pill ──────────────────────────────────────────────────────────
-
 function InsightPill({ insight }: { insight: any }) {
   const isStr = typeof insight === "string";
   const text = isStr ? insight : (insight.text ?? "");
@@ -104,8 +108,6 @@ function InsightPill({ insight }: { insight: any }) {
   );
 }
 
-// ─── Risk Flag ─────────────────────────────────────────────────────────────
-
 function RiskFlag({ flag }: { flag: any }) {
   const isStr = typeof flag === "string";
   const text = isStr ? flag : (flag.text ?? "");
@@ -120,8 +122,6 @@ function RiskFlag({ flag }: { flag: any }) {
     </div>
   );
 }
-
-// ─── Call Item ──────────────────────────────────────────────────────────────
 
 function CallItem({ call }: { call: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -139,7 +139,7 @@ function CallItem({ call }: { call: any }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'DM Sans', sans-serif" }}>{call.name}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
             <span>{format(new Date(call.date), "MMM d, yyyy")}</span>
             {call.duration_minutes && <span>{call.duration_minutes}m</span>}
           </div>
@@ -175,8 +175,6 @@ function CallItem({ call }: { call: any }) {
   );
 }
 
-// ─── Link Call Modal ────────────────────────────────────────────────────────
-
 function LinkCallModal({ dealId, onLinked, onClose }: { dealId: string; onLinked: () => void; onClose: () => void }) {
   const { user } = useAuth();
   const [calls, setCalls] = useState<any[]>([]);
@@ -209,7 +207,13 @@ function LinkCallModal({ dealId, onLinked, onClose }: { dealId: string; onLinked
       style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ width: "100%", maxWidth: 480, background: "linear-gradient(135deg, #0c1018, #111827)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px 20px 0 0", padding: "20px 20px calc(20px + env(safe-area-inset-bottom, 0px))", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+      <div style={{
+        width: "100%", maxWidth: "min(480px, 100vw)",
+        background: "linear-gradient(135deg, #0c1018, #111827)",
+        border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px 20px 0 0",
+        padding: "20px 20px calc(20px + env(safe-area-inset-bottom, 0px))",
+        maxHeight: "80vh", display: "flex", flexDirection: "column"
+      }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)" }} />
         </div>
@@ -247,8 +251,6 @@ function LinkCallModal({ dealId, onLinked, onClose }: { dealId: string; onLinked
   );
 }
 
-// ─── Collapsible Section (mobile) ──────────────────────────────────────────
-
 function CollapsibleSection({ title, icon: Icon, defaultOpen = true, children, accent }: {
   title: string; icon: React.ElementType; defaultOpen?: boolean; children: React.ReactNode; accent?: string;
 }) {
@@ -272,12 +274,13 @@ function CollapsibleSection({ title, icon: Icon, defaultOpen = true, children, a
 
 // ─── MAIN ──────────────────────────────────────────────────────────────────
 
-export default function DealDetailPage() {
+function DealDetailPageInner() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [data, setData] = useState<DealDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [comment, setComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -287,28 +290,47 @@ export default function DealDetailPage() {
   const [linkCallOpen, setLinkCallOpen] = useState(false);
   const commentEndRef = useRef<HTMLDivElement>(null);
 
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 900);
+  // Responsive: detect viewport width
+  const [vpWidth, setVpWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1024
+  );
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 900);
-    window.addEventListener("resize", check, { passive: true });
-    return () => window.removeEventListener("resize", check);
+    const handle = () => setVpWidth(window.innerWidth);
+    window.addEventListener("resize", handle, { passive: true });
+    return () => window.removeEventListener("resize", handle);
   }, []);
+  const isMobile = vpWidth < 900;
 
   const loadDetail = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setError(null);
     try {
       const { data: result } = await (supabase as any).rpc("get_deal_detail_v2", { p_deal_id: id });
-      if (result) setData(result as DealDetail);
-      else {
-        const { data: deal } = await (supabase as any).from("deals").select("*").eq("id", id).eq("owner_id", user?.id).single();
-        const { data: calls } = await supabase.from("calls").select("*, call_summaries(summary, next_steps, objections)").eq("deal_id" as any, id).order("date", { ascending: false });
-        const { data: ai } = await (supabase as any).from("deal_ai_analysis").select("*").eq("deal_id", id).order("analyzed_at", { ascending: false }).limit(1).maybeSingle();
+      if (result) {
+        setData(result as DealDetail);
+      } else {
+        // Fallback
+        const { data: deal, error: dealErr } = await (supabase as any)
+          .from("deals").select("*").eq("id", id).eq("owner_id", user?.id).single();
+        if (dealErr) throw dealErr;
+        const { data: calls } = await supabase
+          .from("calls")
+          .select("*, call_summaries(summary, next_steps, objections)")
+          .eq("deal_id" as any, id)
+          .order("date", { ascending: false });
+        const { data: ai } = await (supabase as any)
+          .from("deal_ai_analysis").select("*").eq("deal_id", id)
+          .order("analyzed_at", { ascending: false }).limit(1).maybeSingle();
         if (deal) setData({ deal, calls: calls ?? [], ai, comments: [], timeline: [] });
+        else setError("Deal not found.");
       }
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || "Failed to load deal.");
+    } finally {
+      setLoading(false);
+    }
   }, [id, user?.id]);
 
   useEffect(() => { loadDetail(); }, [loadDetail]);
@@ -353,8 +375,8 @@ export default function DealDetailPage() {
     if (!comment.trim() || !id) return;
     setSendingComment(true);
     try {
-      const { error } = await (supabase as any).from("deal_comments").insert({ deal_id: id, user_id: user?.id, content: comment.trim() });
-      if (error) throw error;
+      const { error: e } = await (supabase as any).from("deal_comments").insert({ deal_id: id, user_id: user?.id, content: comment.trim() });
+      if (e) throw e;
       setComment("");
       loadDetail();
     } catch (e: any) {
@@ -365,31 +387,37 @@ export default function DealDetailPage() {
   };
 
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
   `;
 
+  // ── Loading: show skeleton ─────────────────────────────────────────────
   if (loading) {
     return (
       <DashboardLayout>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 300 }}>
-          <Loader2 style={{ width: 28, height: 28, color: "#60a5fa", animation: "spin 1s linear infinite" }} />
-        </div>
+        <style>{css}</style>
+        <DealDetailSkeleton />
       </DashboardLayout>
     );
   }
 
-  if (!data || !data.deal) {
+  // ── Error state ────────────────────────────────────────────────────────
+  if (error || !data || !data.deal) {
     return (
       <DashboardLayout>
+        <style>{css}</style>
         <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.3)" }}>
           <Target style={{ width: 40, height: 40, margin: "0 auto 12px", opacity: 0.3 }} />
-          <p>Deal not found.</p>
-          <button onClick={() => navigate("/deals")} style={{ marginTop: 12, padding: "8px 16px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.6)", cursor: "pointer" }}>Back to Deals</button>
+          <p style={{ marginBottom: 8, fontSize: 15, color: "rgba(255,255,255,.5)", fontFamily: "'DM Sans', sans-serif" }}>
+            {error ?? "Deal not found."}
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <button onClick={loadDetail} style={{ padding: "8px 16px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "rgba(255,255,255,.6)", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+              <RefreshCw style={{ width: 13, height: 13 }} /> Retry
+            </button>
+            <button onClick={() => navigate("/deals")} style={{ padding: "8px 16px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "rgba(255,255,255,.6)", cursor: "pointer" }}>Back to Deals</button>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -404,11 +432,10 @@ export default function DealDetailPage() {
   const stageCfg = getStageCfg(deal.stage);
   const sentimentTrend = deal.sentiment_trend ?? ai?.sentiment_trend;
 
-  // ── Shared panel content blocks ─────────────────────────────────────────
+  // ── Shared content blocks ──────────────────────────────────────────────
 
   const DealInfoContent = () => (
     <div>
-      {/* Stage */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Stage</div>
         {editStage ? (
@@ -428,16 +455,12 @@ export default function DealDetailPage() {
           </button>
         )}
       </div>
-
-      {/* Value */}
       {deal.value && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>Value</div>
           <div style={{ fontSize: 20, fontWeight: 900, color: "#22c55e" }}>{formatCurrency(deal.value)}</div>
         </div>
       )}
-
-      {/* Probability */}
       {deal.probability != null && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 5 }}>Close Probability</div>
@@ -449,8 +472,6 @@ export default function DealDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Close Date */}
       {deal.close_date && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>Close Date</div>
@@ -460,8 +481,6 @@ export default function DealDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Trend */}
       {sentimentTrend && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>Trend</div>
@@ -471,8 +490,6 @@ export default function DealDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Stats */}
       <div style={{ display: "flex", gap: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ textAlign: "center", flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 900, color: "#60a5fa" }}>{calls.length}</div>
@@ -491,10 +508,7 @@ export default function DealDetailPage() {
       {editNextStep ? (
         <div>
           <textarea
-            autoFocus
-            value={nextStepDraft}
-            onChange={e => setNextStepDraft(e.target.value)}
-            rows={3}
+            autoFocus value={nextStepDraft} onChange={e => setNextStepDraft(e.target.value)} rows={3}
             style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(96,165,250,0.3)", borderRadius: 8, padding: "9px 10px", color: "#f0f6fc", fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: "none", outline: "none", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
@@ -515,30 +529,11 @@ export default function DealDetailPage() {
     </>
   );
 
-  const HealthContent = () => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-      <HealthGauge score={health} compact={isMobile} />
-      {ai?.analyzed_at && (
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "center" }}>
-          Updated {formatDistanceToNow(new Date(ai.analyzed_at), { addSuffix: true })}
-        </div>
-      )}
-      {!ai && (
-        <button onClick={handleAnalyze} disabled={analyzing} style={{ padding: "8px 14px", background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 8, color: "#a78bfa", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-          {analyzing ? "Analyzing…" : "Run AI Analysis"}
-        </button>
-      )}
-    </div>
-  );
-
   const CallsContent = () => (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>({calls.length} calls)</span>
-        <button
-          onClick={() => setLinkCallOpen(true)}
-          style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 8, color: "#60a5fa", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-        >
+        <button onClick={() => setLinkCallOpen(true)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 8, color: "#60a5fa", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
           <Link2 style={{ width: 11, height: 11 }} />Link Call
         </button>
       </div>
@@ -562,30 +557,24 @@ export default function DealDetailPage() {
               {(c.author?.full_name ?? c.author?.email ?? "?")[0]?.toUpperCase()}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>{c.author?.full_name ?? c.author?.email ?? "Unknown"}</span>
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</span>
               </div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.5, margin: 0 }}>{c.content}</p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.5, margin: 0, wordBreak: "break-word" }}>{c.content}</p>
             </div>
           </div>
         ))}
         <div ref={commentEndRef} />
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <textarea
-          value={comment}
-          onChange={e => setComment(e.target.value)}
+        <textarea value={comment} onChange={e => setComment(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleComment(); } }}
-          placeholder="Add a note…"
-          rows={2}
+          placeholder="Add a note…" rows={2}
           style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "9px 12px", color: "#f0f6fc", fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: "none", outline: "none" }}
         />
-        <button
-          onClick={handleComment}
-          disabled={!comment.trim() || sendingComment}
-          style={{ width: 38, height: 38, borderRadius: 10, background: comment.trim() ? "rgba(167,139,250,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${comment.trim() ? "rgba(167,139,250,0.4)" : "rgba(255,255,255,0.06)"}`, color: comment.trim() ? "#a78bfa" : "rgba(255,255,255,0.2)", cursor: comment.trim() ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end", flexShrink: 0 }}
-        >
+        <button onClick={handleComment} disabled={!comment.trim() || sendingComment}
+          style={{ width: 38, height: 38, borderRadius: 10, background: comment.trim() ? "rgba(167,139,250,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${comment.trim() ? "rgba(167,139,250,0.4)" : "rgba(255,255,255,0.06)"}`, color: comment.trim() ? "#a78bfa" : "rgba(255,255,255,0.2)", cursor: comment.trim() ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end", flexShrink: 0 }}>
           {sendingComment ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Send style={{ width: 14, height: 14 }} />}
         </button>
       </div>
@@ -599,17 +588,15 @@ export default function DealDetailPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 14 : 20, fontFamily: "'DM Sans', sans-serif", animation: "fadeInUp 0.3s ease" }}>
 
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <button
-            onClick={() => navigate("/deals")}
-            style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,0.5)", flexShrink: 0, marginTop: 2, WebkitTapHighlightColor: "transparent" }}
-          >
+        {/* Header — responsive */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <button onClick={() => navigate("/deals")}
+            style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,0.5)", flexShrink: 0, marginTop: 2, WebkitTapHighlightColor: "transparent" }}>
             <ArrowLeft style={{ width: 15, height: 15 }} />
           </button>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: isMobile ? 18 : 24, fontWeight: 900, color: "#f0f6fc", margin: 0, letterSpacing: "-0.4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "nowrap" : "normal" }}>{deal.name}</h1>
+          <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+            <h1 style={{ fontSize: "clamp(18px, 3vw, 24px)", fontWeight: 900, color: "#f0f6fc", margin: 0, letterSpacing: "-0.4px", wordBreak: "break-word" }}>{deal.name}</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
               {deal.company && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: 4 }}><Building2 style={{ width: 11, height: 11 }} />{deal.company}</span>}
               <span style={{ fontSize: 11, fontWeight: 700, color: stageCfg.color, background: `${stageCfg.color}15`, border: `1px solid ${stageCfg.color}30`, borderRadius: 20, padding: "2px 10px" }}>{stageCfg.label}</span>
@@ -617,24 +604,19 @@ export default function DealDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={analyzing}
-            style={{ display: "flex", alignItems: "center", gap: isMobile ? 0 : 7, padding: isMobile ? "0" : "9px 16px", width: isMobile ? 36 : "auto", height: isMobile ? 36 : "auto", justifyContent: "center", background: analyzing ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 11, color: "#fff", fontSize: 12, fontWeight: 700, cursor: analyzing ? "not-allowed" : "pointer", boxShadow: analyzing ? "none" : "0 6px 20px rgba(99,102,241,0.35)", flexShrink: 0, WebkitTapHighlightColor: "transparent" }}
-          >
+          <button onClick={handleAnalyze} disabled={analyzing}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 16px", background: analyzing ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "none", borderRadius: 11, color: "#fff", fontSize: 12, fontWeight: 700, cursor: analyzing ? "not-allowed" : "pointer", boxShadow: analyzing ? "none" : "0 6px 20px rgba(99,102,241,0.35)", flexShrink: 0, WebkitTapHighlightColor: "transparent" }}>
             {analyzing ? <Loader2 style={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} /> : <Brain style={{ width: 15, height: 15 }} />}
             {!isMobile && (analyzing ? "Analyzing…" : "AI Analysis")}
           </button>
         </div>
 
-        {/* ── MOBILE: Stacked collapsible sections ────────────────────────── */}
+        {/* Mobile: collapsible stacked layout */}
         {isMobile ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-            {/* Health summary strip */}
-            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <HealthGauge score={health} compact />
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
                 {insights.slice(0, 1).map((ins: any, i: number) => <InsightPill key={i} insight={ins} />)}
                 {riskFlags.length > 0 && <RiskFlag flag={riskFlags[0]} />}
                 {!insights.length && !riskFlags.length && nextBestAction && (
@@ -643,34 +625,12 @@ export default function DealDetailPage() {
               </div>
             </div>
 
-            <CollapsibleSection title="Deal Info" icon={Target} defaultOpen={true}>
-              <DealInfoContent />
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Next Step" icon={Zap} defaultOpen={true} accent="#60a5fa">
-              <NextStepContent />
-            </CollapsibleSection>
-
-            <CollapsibleSection title={`Call Timeline (${calls.length})`} icon={Phone} defaultOpen={true} accent="#60a5fa">
-              <CallsContent />
-            </CollapsibleSection>
-
-            <CollapsibleSection title={`Team Notes (${comments.length})`} icon={MessageSquare} defaultOpen={false} accent="#a78bfa">
-              <NotesContent />
-            </CollapsibleSection>
-
-            {insights.length > 0 && (
-              <CollapsibleSection title="AI Insights" icon={Sparkles} defaultOpen={false} accent="#a78bfa">
-                {insights.map((ins: any, i: number) => <InsightPill key={i} insight={ins} />)}
-              </CollapsibleSection>
-            )}
-
-            {riskFlags.length > 0 && (
-              <CollapsibleSection title="Risk Flags" icon={Shield} defaultOpen={false} accent="#ef4444">
-                {riskFlags.map((f: any, i: number) => <RiskFlag key={i} flag={f} />)}
-              </CollapsibleSection>
-            )}
-
+            <CollapsibleSection title="Deal Info" icon={Target} defaultOpen={true}><DealInfoContent /></CollapsibleSection>
+            <CollapsibleSection title="Next Step" icon={Zap} defaultOpen={true} accent="#60a5fa"><NextStepContent /></CollapsibleSection>
+            <CollapsibleSection title={`Call Timeline (${calls.length})`} icon={Phone} defaultOpen={true} accent="#60a5fa"><CallsContent /></CollapsibleSection>
+            <CollapsibleSection title={`Team Notes (${comments.length})`} icon={MessageSquare} defaultOpen={false} accent="#a78bfa"><NotesContent /></CollapsibleSection>
+            {insights.length > 0 && <CollapsibleSection title="AI Insights" icon={Sparkles} defaultOpen={false} accent="#a78bfa">{insights.map((ins: any, i: number) => <InsightPill key={i} insight={ins} />)}</CollapsibleSection>}
+            {riskFlags.length > 0 && <CollapsibleSection title="Risk Flags" icon={Shield} defaultOpen={false} accent="#ef4444">{riskFlags.map((f: any, i: number) => <RiskFlag key={i} flag={f} />)}</CollapsibleSection>}
             {buyingSignals.length > 0 && (
               <CollapsibleSection title="Buying Signals" icon={CheckCircle2} defaultOpen={false} accent="#22c55e">
                 {buyingSignals.map((s: any, i: number) => (
@@ -683,8 +643,8 @@ export default function DealDetailPage() {
             )}
           </div>
         ) : (
-          /* ── DESKTOP: 3-column grid ──────────────────────────────────────── */
-          <div style={{ display: "grid", gridTemplateColumns: "250px 1fr 280px", gap: 16, alignItems: "start" }}>
+          /* Desktop: 3-column grid — responsive fractions, no fixed px */
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 250px) 1fr minmax(220px, 280px)", gap: 16, alignItems: "start" }}>
 
             {/* LEFT */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -692,14 +652,12 @@ export default function DealDetailPage() {
                 <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14 }}>Deal Info</div>
                 <DealInfoContent />
               </div>
-
               <div style={{ background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 14, padding: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(96,165,250,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
                   <Target style={{ width: 10, height: 10 }} />Next Step
                 </div>
                 <NextStepContent />
               </div>
-
               {nextBestAction && (
                 <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 14, padding: 14 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(167,139,250,0.8)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
@@ -711,12 +669,11 @@ export default function DealDetailPage() {
             </div>
 
             {/* CENTER */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", display: "flex", alignItems: "center", gap: 7 }}>
-                    <Phone style={{ width: 14, height: 14, color: "#60a5fa" }} />
-                    Call Timeline
+                    <Phone style={{ width: 14, height: 14, color: "#60a5fa" }} />Call Timeline
                   </div>
                   <button onClick={() => setLinkCallOpen(true)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 8, color: "#60a5fa", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                     <Link2 style={{ width: 11, height: 11 }} />Link Call
@@ -729,7 +686,6 @@ export default function DealDetailPage() {
                   </div>
                 ) : calls.map((c: any) => <CallItem key={c.id} call={c} />)}
               </div>
-
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
                   <MessageSquare style={{ width: 14, height: 14, color: "#a78bfa" }} />
@@ -740,12 +696,18 @@ export default function DealDetailPage() {
             </div>
 
             {/* RIGHT */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 5 }}>
                   <Activity style={{ width: 11, height: 11 }} />Deal Health
                 </div>
-                <HealthContent />
+                <HealthGauge score={health} />
+                {ai?.analyzed_at && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", textAlign: "center" }}>Updated {formatDistanceToNow(new Date(ai.analyzed_at), { addSuffix: true })}</div>}
+                {!ai && (
+                  <button onClick={handleAnalyze} disabled={analyzing} style={{ padding: "8px 14px", background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 8, color: "#a78bfa", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    {analyzing ? "Analyzing…" : "Run AI Analysis"}
+                  </button>
+                )}
               </div>
 
               {insights.length > 0 && (
@@ -785,9 +747,7 @@ export default function DealDetailPage() {
                   <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Activity</div>
                   {timeline.slice(0, 6).map((e: any, i: number) => (
                     <div key={e.id ?? i} style={{ display: "flex", gap: 9, paddingBottom: 10, position: "relative" }}>
-                      {i < Math.min(timeline.length - 1, 5) && (
-                        <div style={{ position: "absolute", left: 5, top: 16, bottom: 0, width: 1, background: "rgba(255,255,255,0.06)" }} />
-                      )}
+                      {i < Math.min(timeline.length - 1, 5) && <div style={{ position: "absolute", left: 5, top: 16, bottom: 0, width: 1, background: "rgba(255,255,255,0.06)" }} />}
                       <div style={{ width: 11, height: 11, borderRadius: "50%", background: "rgba(96,165,250,0.3)", border: "1px solid rgba(96,165,250,0.4)", flexShrink: 0, marginTop: 2, zIndex: 1 }} />
                       <div>
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>{e.title}</div>
@@ -803,7 +763,7 @@ export default function DealDetailPage() {
                 {[
                   { label: "Start a Call", icon: Phone, to: "/live" },
                   { label: "View All Calls", icon: BarChart3, to: "/calls" },
-                ].map(({ label, icon: Icon, to }) => (
+                ].map(({ label, to, icon: Icon }) => (
                   <Link key={to} to={to} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 9, textDecoration: "none", color: "rgba(255,255,255,0.55)", fontSize: 12, marginBottom: 6 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Icon style={{ width: 12, height: 12 }} />{label}</span>
                     <ChevronRight style={{ width: 12, height: 12 }} />
@@ -815,5 +775,14 @@ export default function DealDetailPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// Wrap inner page with error boundary
+export default function DealDetailPage() {
+  return (
+    <ErrorBoundary>
+      <DealDetailPageInner />
+    </ErrorBoundary>
   );
 }
