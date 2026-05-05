@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // Ownership check: verify the user owns this deal
-    const { data: ownedDeal, error: ownErr } = await anonClient
+    const { data: ownedDeal, error: ownErr } = await supabase
       .from("deals")
       .select("id")
       .eq("id", deal_id)
