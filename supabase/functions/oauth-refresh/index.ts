@@ -87,7 +87,40 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Auth check — require valid JWT and enforce ownership
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authErr } = await anonClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { provider, user_id } = await req.json();
+
+    // Enforce ownership
+    if (user_id && user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const effectiveUserId = user.id;
 
     if (!provider || !refreshConfigs[provider]) {
       return new Response(
@@ -107,7 +140,7 @@ Deno.serve(async (req) => {
     const { data: integration, error: fetchErr } = await supabase
       .from("integrations")
       .select("*")
-      .eq("user_id", user_id)
+      .eq("user_id", effectiveUserId)
       .eq("provider", provider)
       .single();
 
@@ -154,7 +187,6 @@ Deno.serve(async (req) => {
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok || tokenData.error) {
-      // Mark as disconnected on refresh failure
       await supabase
         .from("integrations")
         .update({
@@ -163,7 +195,7 @@ Deno.serve(async (req) => {
           refresh_token_encrypted: null,
           expires_at: null,
         })
-        .eq("user_id", user_id)
+        .eq("user_id", effectiveUserId)
         .eq("provider", provider);
 
       return new Response(
@@ -189,7 +221,7 @@ Deno.serve(async (req) => {
         expires_at: expiresAt,
         status: "connected",
       })
-      .eq("user_id", user_id)
+      .eq("user_id", effectiveUserId)
       .eq("provider", provider);
 
     return new Response(

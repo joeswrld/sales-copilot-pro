@@ -21,9 +21,32 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Auth check — require valid JWT and enforce ownership
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authErr } = await anonClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+
     const { call_id, user_id } = await req.json();
-    if (!call_id || !user_id) {
-      return new Response(JSON.stringify({ error: "Missing call_id or user_id" }), { status: 400, headers: corsHeaders });
+    if (!call_id) {
+      return new Response(JSON.stringify({ error: "Missing call_id" }), { status: 400, headers: corsHeaders });
+    }
+
+    // Enforce ownership: user_id must match the authenticated user
+    const effectiveUserId = user.id;
+    if (user_id && user_id !== effectiveUserId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
     }
 
     const supabase = createClient(
@@ -35,7 +58,7 @@ serve(async (req) => {
     const { data: slackInt } = await supabase
       .from("integrations")
       .select("*")
-      .eq("user_id", user_id)
+      .eq("user_id", effectiveUserId)
       .eq("provider", "slack")
       .eq("status", "connected")
       .maybeSingle();
@@ -46,22 +69,27 @@ serve(async (req) => {
       });
     }
 
-    // Get call summary
-    const { data: summary } = await supabase
-      .from("call_summaries")
-      .select("*")
-      .eq("call_id", call_id)
-      .maybeSingle();
-
+    // Verify the user owns this call
     const { data: call } = await supabase
       .from("calls")
-      .select("name, platform, duration_minutes, sentiment_score")
+      .select("name, platform, duration_minutes, sentiment_score, user_id")
       .eq("id", call_id)
       .single();
 
     if (!call) {
       return new Response(JSON.stringify({ error: "Call not found" }), { status: 404, headers: corsHeaders });
     }
+
+    if (call.user_id !== effectiveUserId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
+    }
+
+    // Get call summary
+    const { data: summary } = await supabase
+      .from("call_summaries")
+      .select("*")
+      .eq("call_id", call_id)
+      .maybeSingle();
 
     // Decrypt Slack token
     const encKey = Deno.env.get("INTEGRATION_ENCRYPTION_KEY")!;
@@ -97,7 +125,7 @@ serve(async (req) => {
       } as any);
     }
 
-    // Post to Slack (default channel or user's DM)
+    // Post to Slack
     const channelId = slackInt.channel_id || "general";
     const slackRes = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
@@ -116,7 +144,7 @@ serve(async (req) => {
 
     // Log sync
     await supabase.from("crm_sync_logs").insert({
-      user_id,
+      user_id: effectiveUserId,
       call_id,
       provider: "slack",
       status: slackData.ok ? "success" : "failed",
