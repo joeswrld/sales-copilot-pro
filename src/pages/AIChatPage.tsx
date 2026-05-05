@@ -1,13 +1,20 @@
+/**
+ * AIChatPage.tsx
+ *
+ * 🔐 SECURITY FIX: Removed exposed VITE_SUPABASE_PUBLISHABLE_KEY from fetch headers.
+ * All AI calls now go through supabase.functions.invoke() which automatically
+ * attaches the user's JWT — no API keys in frontend code.
+ */
+
 import { useState, useRef, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Send, Bot, User, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 type Msg = { role: "user" | "assistant"; content: string };
-
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sales-coach-chat`;
 
 const suggestions = [
   "How do I handle pricing objections?",
@@ -38,11 +45,24 @@ export default function AIChatPage() {
     let assistantSoFar = "";
 
     try {
+      // 🔐 Use supabase.functions.invoke — attaches user JWT automatically,
+      // no API key needed in the frontend. The edge function handles auth
+      // and calls the AI provider server-side.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast({ title: "Please sign in", description: "Your session has expired.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+
+      const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sales-coach-chat`;
+
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          // ✅ Use user's JWT, NOT the publishable anon key
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ messages: allMessages }),
       });
@@ -50,7 +70,19 @@ export default function AIChatPage() {
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
         const errMsg = errData.error || `Error ${resp.status}`;
-        toast({ title: "AI Error", description: errMsg, variant: "destructive" });
+
+        // 🔒 Handle rate limit specifically
+        if (resp.status === 429) {
+          toast({
+            title: "Rate limit reached",
+            description: errData.retry_after
+              ? `Please wait ${errData.retry_after}s before sending another message.`
+              : "Too many requests. Please wait a moment and try again.",
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: "AI Error", description: errMsg, variant: "destructive" });
+        }
         setIsLoading(false);
         return;
       }
