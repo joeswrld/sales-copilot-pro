@@ -39,7 +39,7 @@ import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
 import DealDetailPage from "./pages/DealDetailPage";
-
+import SecurityCompliancePage from "./pages/SecurityCompliancePage";
 
 
 import {
@@ -242,6 +242,15 @@ function AppRoutes() {
             element={
               <ProtectedRoute>
                 <AIChatPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/security-compliance"
+            element={
+              <ProtectedRoute>
+                <SecurityCompliancePage />
               </ProtectedRoute>
             }
           />
