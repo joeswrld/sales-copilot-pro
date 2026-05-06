@@ -2192,6 +2192,36 @@ export type Database = {
           },
         ]
       }
+      edge_function_errors: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          error_type: string
+          function_name: string
+          id: string
+          metadata: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          error_type: string
+          function_name: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          error_type?: string
+          function_name?: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       google_tokens: {
         Row: {
           access_token: string
@@ -3080,6 +3110,60 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_daily: {
+        Row: {
+          day: string
+          function_name: string
+          id: string
+          request_count: number
+          user_id: string
+        }
+        Insert: {
+          day: string
+          function_name: string
+          id?: string
+          request_count?: number
+          user_id: string
+        }
+        Update: {
+          day?: string
+          function_name?: string
+          id?: string
+          request_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      rate_limit_log: {
+        Row: {
+          created_at: string | null
+          function_name: string
+          id: string
+          request_count: number
+          updated_at: string | null
+          user_id: string
+          window_minute: string
+        }
+        Insert: {
+          created_at?: string | null
+          function_name: string
+          id?: string
+          request_count?: number
+          updated_at?: string | null
+          user_id: string
+          window_minute: string
+        }
+        Update: {
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          request_count?: number
+          updated_at?: string | null
+          user_id?: string
+          window_minute?: string
+        }
+        Relationships: []
+      }
       salesforce_sync_logs: {
         Row: {
           action: string
@@ -3329,6 +3413,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sdk_failure_log: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          failure_type: string
+          id: string
+          sdk_name: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          failure_type: string
+          id?: string
+          sdk_name: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          failure_type?: string
+          id?: string
+          sdk_name?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
@@ -4332,6 +4446,15 @@ export type Database = {
         Args: { p_feature: string; p_user_id: string }
         Returns: boolean
       }
+      check_rate_limit: {
+        Args: {
+          p_function_name: string
+          p_per_day_limit?: number
+          p_per_minute_limit?: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
       check_team_quota: {
         Args: { p_team_id: string; p_user_id: string }
         Returns: Json
@@ -4348,6 +4471,7 @@ export type Database = {
           plan_id: string
         }[]
       }
+      cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_stale_typing: { Args: never; Returns: undefined }
       create_deal_room_for_call: {
         Args: {
