@@ -1,4 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
+import { logSecurityEvent } from "../_shared/security-logger.ts";
+
+const RATE_CONFIG = { maxRequests: 10, windowMs: 60_000, maxFailures: 5, blockDurationMs: 900_000 };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,9 +83,16 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Rate limit by IP
+    const ip = getClientIP(req);
+    const blocked = checkRateLimit(ip, "oauth-connect", RATE_CONFIG);
+    if (blocked) return blocked;
+
     const { provider, redirect_uri } = await req.json();
 
     if (!provider || !providers[provider]) {
+      recordFailure(ip, "oauth-connect", RATE_CONFIG);
+      await logSecurityEvent({ event_type: "oauth_invalid_provider", severity: "warn", source_ip: ip, details: { provider } });
       return new Response(
         JSON.stringify({ error: "Invalid provider" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
