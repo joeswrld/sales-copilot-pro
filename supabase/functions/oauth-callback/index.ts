@@ -103,6 +103,8 @@ Deno.serve(async (req) => {
       // ignore
     }
     if (!state) {
+      recordFailure(ip, "oauth-callback", RATE_CONFIG);
+      await logSecurityEvent({ event_type: "oauth_callback_invalid_state", severity: "warn", source_ip: ip, user_agent: req.headers.get("user-agent") || undefined });
       return new Response(`<html><body><p>Invalid or tampered state parameter.</p></body></html>`, {
         headers: { "Content-Type": "text/html" },
       });
