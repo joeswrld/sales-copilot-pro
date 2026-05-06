@@ -3110,6 +3110,33 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_blocks: {
+        Row: {
+          blocked_until: string
+          created_at: string
+          endpoint: string
+          id: string
+          identifier: string
+          reason: string | null
+        }
+        Insert: {
+          blocked_until: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          identifier: string
+          reason?: string | null
+        }
+        Update: {
+          blocked_until?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          identifier?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       rate_limit_daily: {
         Row: {
           day: string
@@ -3439,6 +3466,39 @@ export type Database = {
           failure_type?: string
           id?: string
           sdk_name?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      security_events: {
+        Row: {
+          created_at: string
+          details: Json | null
+          event_type: string
+          id: string
+          severity: string
+          source_ip: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          id?: string
+          severity?: string
+          source_ip?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          id?: string
+          severity?: string
+          source_ip?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
