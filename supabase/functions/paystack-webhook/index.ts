@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac } from "node:crypto";
+import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
+import { logSecurityEvent } from "../_shared/security-logger.ts";
+
+const RATE_CONFIG = { maxRequests: 30, windowMs: 60_000, maxFailures: 10, blockDurationMs: 600_000 };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,12 +22,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const ip = getClientIP(req);
+    const blocked = checkRateLimit(ip, "paystack-webhook", RATE_CONFIG);
+    if (blocked) return blocked;
+
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
     const rawBody = await req.text();
     const signature = req.headers.get("x-paystack-signature") || "";
 
     if (!verifySignature(rawBody, signature, PAYSTACK_SECRET)) {
       console.error("Invalid webhook signature");
+      recordFailure(ip, "paystack-webhook", RATE_CONFIG);
+      await logSecurityEvent({ event_type: "paystack_invalid_signature", severity: "error", source_ip: ip, user_agent: req.headers.get("user-agent") || undefined });
       return new Response("Invalid signature", { status: 401 });
     }
 

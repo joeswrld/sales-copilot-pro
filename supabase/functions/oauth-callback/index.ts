@@ -1,4 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
+import { logSecurityEvent } from "../_shared/security-logger.ts";
+
+const RATE_CONFIG = { maxRequests: 15, windowMs: 60_000, maxFailures: 8, blockDurationMs: 900_000 };
 
 interface TokenExchangeConfig {
   tokenUrl: string;
@@ -60,6 +64,10 @@ async function verifyState(signedState: string, secret: string): Promise<{ provi
 }
 
 Deno.serve(async (req) => {
+  const ip = getClientIP(req);
+  const blocked = checkRateLimit(ip, "oauth-callback", RATE_CONFIG);
+  if (blocked) return blocked;
+
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const stateParam = url.searchParams.get("state");
@@ -95,6 +103,8 @@ Deno.serve(async (req) => {
       // ignore
     }
     if (!state) {
+      recordFailure(ip, "oauth-callback", RATE_CONFIG);
+      await logSecurityEvent({ event_type: "oauth_callback_invalid_state", severity: "warn", source_ip: ip, user_agent: req.headers.get("user-agent") || undefined });
       return new Response(`<html><body><p>Invalid or tampered state parameter.</p></body></html>`, {
         headers: { "Content-Type": "text/html" },
       });
