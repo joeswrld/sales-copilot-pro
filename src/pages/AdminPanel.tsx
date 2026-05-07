@@ -1,7 +1,8 @@
 /**
- * AdminPanel.tsx — v3
- * Fully responsive + Real Feature Flag System
- * Design: Industrial/utilitarian ops center — monospaced metrics, terminal-green accents
+ * AdminPanel.tsx — v4
+ * Billing section now has two tabs:
+ *   💳 Revenue  — existing charts
+ *   ⏱ Extra Minutes — monthly purchased-minutes analytics
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -64,6 +65,8 @@ const koboToNGN = (k: number) =>
 const fmt = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n/1_000).toFixed(1)}k` : String(n);
 const fmtTime = (ts: string) =>
   new Date(ts).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" });
+const fmtMins = (m: number) =>
+  m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard",    icon: "◈" },
@@ -125,12 +128,10 @@ export default function AdminPanel() {
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(34,211,238,0.4)} 70%{box-shadow:0 0 0 8px rgba(34,211,238,0)} }
         .admin-layout { display: flex; min-height: 100vh; }
-        /* ── Sidebar ── */
         .sidebar {
           width: 200px; background: var(--surface); border-right: 1px solid var(--border);
           display: flex; flex-direction: column; flex-shrink: 0;
           position: sticky; top: 0; height: 100vh; overflow: hidden; z-index: 30;
-          transition: width 0.2s ease;
         }
         .sidebar-logo {
           padding: 18px 16px 14px; border-bottom: 1px solid var(--border);
@@ -139,8 +140,7 @@ export default function AdminPanel() {
         .logo-mark {
           width: 28px; height: 28px; background: var(--accent); border-radius: 6px;
           display: flex; align-items: center; justify-content: center;
-          font-family: var(--mono); font-size: 13px; font-weight: 700; color: #000;
-          flex-shrink: 0;
+          font-family: var(--mono); font-size: 13px; font-weight: 700; color: #000; flex-shrink: 0;
         }
         .logo-text { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text); line-height: 1.3; }
         .logo-sub { font-size: 9px; color: var(--muted); letter-spacing: 0.12em; margin-top: 1px; }
@@ -158,22 +158,16 @@ export default function AdminPanel() {
         .admin-email { font-size: 10px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
         .signout-btn {
           width: 100%; padding: 7px 10px; background: var(--raised); border: 1px solid var(--border2);
-          color: var(--muted); border-radius: 7px; cursor: pointer; font-size: 12px; font-family: var(--sans);
-          transition: all 0.15s;
+          color: var(--muted); border-radius: 7px; cursor: pointer; font-size: 12px; font-family: var(--sans); transition: all 0.15s;
         }
         .signout-btn:hover { color: var(--red); border-color: var(--red); }
-        /* ── Mobile drawer overlay ── */
-        .drawer-overlay {
-          display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 40;
-        }
+        .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 40; }
         .drawer-sidebar {
           position: fixed; left: 0; top: 0; height: 100%; width: 220px;
           background: var(--surface); border-right: 1px solid var(--border); z-index: 50;
-          display: flex; flex-direction: column; animation: slideIn 0.2s ease;
-          transform: translateX(-100%); transition: transform 0.2s ease;
+          display: flex; flex-direction: column; transform: translateX(-100%); transition: transform 0.2s ease;
         }
         .drawer-sidebar.open { transform: translateX(0); }
-        /* ── Main ── */
         .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
         .topbar {
           background: var(--surface); border-bottom: 1px solid var(--border);
@@ -186,12 +180,10 @@ export default function AdminPanel() {
         .back-link { font-size: 12px; color: var(--muted); text-decoration: none; }
         .back-link:hover { color: var(--accent); }
         .content { flex: 1; padding: 20px; overflow-y: auto; animation: fadeUp 0.3s ease; }
-        /* ── KPI Grid ── */
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; margin-bottom: 18px; }
         .kpi-card {
           background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-          padding: 13px 14px; position: relative; overflow: hidden;
-          transition: border-color 0.2s;
+          padding: 13px 14px; position: relative; overflow: hidden; transition: border-color 0.2s;
         }
         .kpi-card:hover { border-color: var(--border2); }
         .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: var(--accent-color,var(--accent)); }
@@ -199,15 +191,12 @@ export default function AdminPanel() {
         .kpi-value { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
         .kpi-sub { font-size: 10px; color: var(--dim); margin-top: 5px; }
         .pulse-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-left: 6px; animation: blink 1.2s infinite; vertical-align: middle; }
-        /* ── Card ── */
         .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; }
         .card-header { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
         .card-icon { width: 28px; height: 28px; background: var(--raised); border: 1px solid var(--border2); border-radius: 7px; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
         .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
         .card-body { padding: 14px 16px; }
-        /* ── Two col ── */
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        /* ── Tables ── */
         .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         thead { position: sticky; top: 0; z-index: 1; }
@@ -215,61 +204,33 @@ export default function AdminPanel() {
         td { padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface); vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: var(--raised); }
-        /* ── Badges ── */
         .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .plan-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
-        /* ── Filter bar ── */
         .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
         .search-input, .select-input {
           background: var(--raised); border: 1px solid var(--border2); color: var(--text);
-          padding: 8px 12px; border-radius: 7px; font-size: 12px; font-family: var(--sans);
-          outline: none; transition: border-color 0.15s;
+          padding: 8px 12px; border-radius: 7px; font-size: 12px; font-family: var(--sans); outline: none; transition: border-color 0.15s;
         }
         .search-input { flex: 1; min-width: 160px; }
         .search-input:focus, .select-input:focus { border-color: var(--accent); }
         .select-input { cursor: pointer; }
-        /* ── Toggle ── */
         .toggle-wrap { display: flex; align-items: center; gap: 8px; }
-        .toggle {
-          width: 40px; height: 22px; background: var(--raised); border: 1px solid var(--border2);
-          border-radius: 11px; cursor: pointer; position: relative; transition: all 0.2s;
-          flex-shrink: 0;
-        }
+        .toggle { width: 40px; height: 22px; background: var(--raised); border: 1px solid var(--border2); border-radius: 11px; cursor: pointer; position: relative; transition: all 0.2s; flex-shrink: 0; }
         .toggle.on { background: var(--green); border-color: var(--green); }
-        .toggle.off { background: var(--raised); }
-        .toggle-knob {
-          position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
-          border-radius: 50%; background: #fff; transition: transform 0.2s;
-        }
+        .toggle-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
         .toggle.on .toggle-knob { transform: translateX(18px); }
-        /* ── Rollout slider ── */
         .rollout-bar { position: relative; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
         .rollout-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
-        /* ── Progress bars ── */
         .progress-bg { background: var(--border); border-radius: 4px; height: 5px; overflow: hidden; }
         .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
-        /* ── Pagination ── */
         .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
-        .page-btn {
-          background: var(--raised); border: 1px solid var(--border2); color: var(--muted);
-          padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; font-family: var(--sans);
-          transition: all 0.15s;
-        }
+        .page-btn { background: var(--raised); border: 1px solid var(--border2); color: var(--muted); padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; font-family: var(--sans); transition: all 0.15s; }
         .page-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
         .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        /* ── Action buttons ── */
-        .action-btn {
-          background: var(--raised); border: 1px solid var(--border2); color: var(--muted);
-          padding: 4px 8px; border-radius: 5px; cursor: pointer; font-size: 12px;
-          transition: all 0.15s; white-space: nowrap;
-        }
-        .action-btn:hover { color: var(--text); border-color: var(--border2); }
+        .action-btn { background: var(--raised); border: 1px solid var(--border2); color: var(--muted); padding: 4px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; transition: all 0.15s; white-space: nowrap; }
+        .action-btn:hover { color: var(--text); }
         .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        /* ── Flag row ── */
-        .flag-row {
-          display: flex; align-items: flex-start; gap: 14px; padding: 12px 0;
-          border-bottom: 1px solid var(--border);
-        }
+        .flag-row { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
         .flag-row:last-child { border-bottom: none; }
         .flag-info { flex: 1; min-width: 0; }
         .flag-key { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 2px; }
@@ -277,43 +238,26 @@ export default function AdminPanel() {
         .flag-desc { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
         .flag-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
         .flag-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
-        /* ── Health row ── */
         .health-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
         .health-row:last-child { border-bottom: none; }
         .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-        /* ── Modal ── */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
         .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; width: min(560px,100%); max-height: 85vh; overflow-y: auto; padding: 22px; animation: fadeUp 0.2s ease; }
         .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
         .close-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
         .close-btn:hover { color: var(--text); background: var(--raised); }
-        /* ── Info bar ── */
         .info-bar { background: rgba(34,211,238,0.07); border: 1px solid rgba(34,211,238,0.2); color: rgba(34,211,238,0.85); padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
         .warn-bar { background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.2); color: rgba(251,191,36,0.9); padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
-        /* ── Skeleton ── */
         .skeleton { background: var(--raised); border-radius: 8px; animation: blink 1.5s ease infinite; }
-        /* ── Search highlight ── */
         mark { background: rgba(34,211,238,0.2); color: var(--accent); border-radius: 2px; }
-        /* ── Emergency button ── */
-        .emergency-btn {
-          background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4);
-          color: var(--red); padding: 8px 16px; border-radius: 8px; cursor: pointer;
-          font-size: 12px; font-weight: 700; font-family: var(--sans); transition: all 0.15s;
-        }
+        .emergency-btn { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); color: var(--red); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: var(--sans); transition: all 0.15s; }
         .emergency-btn:hover { background: rgba(248,113,113,0.2); }
-        /* ── Category tabs ── */
         .cat-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-        .cat-tab {
-          padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
-          cursor: pointer; border: 1px solid var(--border); background: var(--raised); color: var(--muted);
-          transition: all 0.15s; white-space: nowrap;
-        }
+        .cat-tab { padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--raised); color: var(--muted); transition: all 0.15s; white-space: nowrap; }
         .cat-tab.active { color: #000; border-color: transparent; }
-        /* ── Revenue chart ── */
         .rev-chart { display: flex; align-items: flex-end; gap: 2px; height: 100px; }
         .rev-bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; transition: height 0.5s ease; cursor: pointer; }
         .rev-bar:hover { filter: brightness(1.3); }
-        /* ── Responsive breakpoints ── */
         @media (max-width: 900px) {
           .sidebar { display: none; }
           .hamburger { display: flex; align-items: center; }
@@ -340,28 +284,18 @@ export default function AdminPanel() {
       `}</style>
 
       <div className="admin-layout">
-        {/* ── Desktop Sidebar ── */}
         <aside className="sidebar">
-          <SidebarContents
-            user={user}
-            section={section}
-            onSelect={setSection}
-            onSignOut={async () => { await signOut(); navigate("/login"); }}
-          />
+          <SidebarContents user={user} section={section} onSelect={setSection}
+            onSignOut={async () => { await signOut(); navigate("/login"); }} />
         </aside>
 
-        {/* ── Mobile Drawer ── */}
         <div className={`drawer-overlay ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)} />
         <aside className={`drawer-sidebar ${drawerOpen ? "open" : ""}`}>
-          <SidebarContents
-            user={user}
-            section={section}
+          <SidebarContents user={user} section={section}
             onSelect={(s) => { setSection(s); setDrawerOpen(false); }}
-            onSignOut={async () => { await signOut(); navigate("/login"); }}
-          />
+            onSignOut={async () => { await signOut(); navigate("/login"); }} />
         </aside>
 
-        {/* ── Main ── */}
         <div className="main">
           <header className="topbar">
             <div className="topbar-left">
@@ -387,13 +321,11 @@ export default function AdminPanel() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIDEBAR CONTENTS (shared between desktop + mobile)
+// SIDEBAR
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SidebarContents({ user, section, onSelect, onSignOut }: {
-  user: any; section: string;
-  onSelect: (s: string) => void;
-  onSignOut: () => void;
+  user: any; section: string; onSelect: (s: string) => void; onSignOut: () => void;
 }) {
   return (
     <>
@@ -430,7 +362,7 @@ function DashboardSection() {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
   const load = useCallback(async () => {
-    const { data } = await (supabase as any).rpc("get_admin_comprehensive_stats");
+    const { data } = await (supabase as any).rpc("admin_get_comprehensive_stats");
     if (data) setStats(data as DashStats);
     setLoading(false);
   }, []);
@@ -445,14 +377,14 @@ function DashboardSection() {
   if (!stats) return <ErrorBlock msg="Could not load stats" />;
 
   const kpis = [
-    { label: "Total Users",     value: fmt(stats.total_users),          sub: `+${stats.new_users_7d} this week`, color: "#38bdf8" },
-    { label: "Paying Users",    value: fmt(stats.paying_users),         sub: `${Math.round(stats.paying_users/Math.max(stats.total_users,1)*100)}% conv.`, color: "#34d399" },
-    { label: "MRR",             value: koboToNGN(stats.mrr_kobo),       sub: "monthly recurring", color: "#a78bfa" },
+    { label: "Total Users",     value: fmt(stats.total_users),            sub: `+${stats.new_users_7d} this week`, color: "#38bdf8" },
+    { label: "Paying Users",    value: fmt(stats.paying_users),           sub: `${Math.round(stats.paying_users/Math.max(stats.total_users,1)*100)}% conv.`, color: "#34d399" },
+    { label: "MRR",             value: koboToNGN(stats.mrr_kobo),         sub: "monthly recurring", color: "#a78bfa" },
     { label: "Revenue 30d",     value: koboToNGN(stats.revenue_30d_kobo), sub: "paid", color: "#fbbf24" },
-    { label: "Active Today",    value: fmt(stats.active_today),         sub: `${stats.calls_today} calls`, color: "#06b6d4" },
-    { label: "Live Calls",      value: fmt(stats.live_calls),           sub: "right now", color: "#f87171", pulse: stats.live_calls > 0 },
-    { label: "Minutes Used",    value: fmt(stats.total_minutes_used),   sub: "this cycle", color: "#818cf8" },
-    { label: "Failed Webhooks", value: fmt(stats.failed_webhooks),      sub: "last 24h", color: stats.failed_webhooks > 0 ? "#f87171" : "#34d399" },
+    { label: "Active Today",    value: fmt(stats.active_today),           sub: `${stats.calls_today} calls`, color: "#06b6d4" },
+    { label: "Live Calls",      value: fmt(stats.live_calls),             sub: "right now", color: "#f87171", pulse: stats.live_calls > 0 },
+    { label: "Minutes Used",    value: fmt(stats.total_minutes_used),     sub: "this cycle", color: "#818cf8" },
+    { label: "Failed Webhooks", value: fmt(stats.failed_webhooks),        sub: "last 24h", color: stats.failed_webhooks > 0 ? "#f87171" : "#34d399" },
   ];
 
   const planDist = stats.plan_distribution || {};
@@ -486,12 +418,12 @@ function DashboardSection() {
           <div className="card-header"><span className="card-icon">◉</span><span className="card-title">System Health</span></div>
           <div className="card-body">
             {[
-              { label: "Database",        status: true, detail: "< 50ms" },
-              { label: "Edge Functions",  status: true, detail: "Deno Deploy" },
-              { label: "Realtime",        status: true, detail: `${stats.live_calls} active` },
-              { label: "Paystack",        status: stats.failed_webhooks < 5, detail: stats.failed_webhooks > 0 ? `${stats.failed_webhooks} failed` : "Healthy" },
-              { label: "100ms Infra",     status: true, detail: "HMS SDK" },
-              { label: "AI Gateway",      status: true, detail: "Gemini Flash" },
+              { label: "Database",       status: true,                       detail: "< 50ms" },
+              { label: "Edge Functions", status: true,                       detail: "Deno Deploy" },
+              { label: "Realtime",       status: true,                       detail: `${stats.live_calls} active` },
+              { label: "Paystack",       status: stats.failed_webhooks < 5,  detail: stats.failed_webhooks > 0 ? `${stats.failed_webhooks} failed` : "Healthy" },
+              { label: "100ms Infra",    status: true,                       detail: "HMS SDK" },
+              { label: "AI Gateway",     status: true,                       detail: "Gemini Flash" },
             ].map(s => (
               <div key={s.label} className="health-row">
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -546,9 +478,8 @@ function UsersSection() {
       if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
       toast.success("Done");
       load();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally { setBusyId(null); }
+    } catch (e: any) { toast.error(e.message); }
+    finally { setBusyId(null); }
   };
 
   return (
@@ -640,12 +571,13 @@ function UsersSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BILLING
+// BILLING  (Revenue tab + Extra Minutes tab)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BillingSection() {
   const [rev, setRev] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"revenue" | "minutes">("revenue");
 
   useEffect(() => {
     (supabase as any).rpc("admin_get_revenue_analytics", { p_days: 30 })
@@ -660,53 +592,314 @@ function BillingSection() {
 
   return (
     <div>
-      <div className="kpi-grid">
-        <KpiCard label="Revenue 7d"   value={koboToNGN(rev.total_7d_kobo || 0)}   sub="last 7 days"    color="#34d399" />
-        <KpiCard label="Revenue 30d"  value={koboToNGN(rev.total_30d_kobo || 0)}  sub="last 30 days"   color="#a78bfa" />
-        <KpiCard label="Active Subs"  value={fmt((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.user_count, 0))} sub="paying now" color="#38bdf8" />
-        <KpiCard label="MRR"          value={koboToNGN((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.monthly_kobo, 0))} sub="monthly recurring" color="#fbbf24" />
+      {/* Tab switcher */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {(["revenue", "minutes"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{
+              padding: "7px 18px", borderRadius: 8, border: "1px solid",
+              borderColor: tab === t ? "var(--accent)" : "var(--border2)",
+              background: tab === t ? "rgba(34,211,238,0.1)" : "var(--raised)",
+              color: tab === t ? "var(--accent)" : "var(--muted)",
+              cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--sans)",
+              transition: "all 0.15s",
+            }}>
+            {t === "revenue" ? "💳 Revenue" : "⏱ Extra Minutes"}
+          </button>
+        ))}
       </div>
-      <div className="two-col">
-        <div className="card">
-          <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Last 30 Days</span></div>
-          <div className="card-body">
-            <div className="rev-chart">
-              {dailyData.slice(-30).map((d, i) => (
-                <div key={i} className="rev-bar"
-                  style={{ background: "var(--purple)", opacity: 0.6 + (d.amount_kobo / maxRev) * 0.4, height: `${Math.max(3, (d.amount_kobo / maxRev) * 96)}px` }}
-                  title={`${d.date}: ${koboToNGN(d.amount_kobo)}`} />
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span style={{ fontSize: 10, color: "var(--muted)" }}>30 days ago</span>
-              <span style={{ fontSize: 10, color: "var(--muted)" }}>Today</span>
-            </div>
+
+      {tab === "revenue" && (
+        <>
+          <div className="kpi-grid">
+            <KpiCard label="Revenue 7d"  value={koboToNGN(rev.total_7d_kobo || 0)}  sub="last 7 days"  color="#34d399" />
+            <KpiCard label="Revenue 30d" value={koboToNGN(rev.total_30d_kobo || 0)} sub="last 30 days" color="#a78bfa" />
+            <KpiCard label="Active Subs" value={fmt((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.user_count, 0))} sub="paying now" color="#38bdf8" />
+            <KpiCard label="MRR"         value={koboToNGN((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.monthly_kobo, 0))} sub="monthly recurring" color="#fbbf24" />
           </div>
-        </div>
-        <div className="card">
-          <div className="card-header"><span className="card-icon">◎</span><span className="card-title">Revenue by Plan</span></div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {(rev.plan_revenue || []).sort((a: any, b: any) => b.monthly_kobo - a.monthly_kobo).map((r: any) => {
-              const pk = PLANS.find(p => r.plan_name?.toLowerCase().includes(p)) || "free";
-              return (
-                <div key={r.plan_name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span className="plan-badge" style={{ background: PLAN_COLORS[pk] + "22", color: PLAN_COLORS[pk] }}>{r.plan_name}</span>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.user_count} users</span>
-                  </div>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{koboToNGN(r.monthly_kobo)}</span>
+          <div className="two-col">
+            <div className="card">
+              <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Last 30 Days</span></div>
+              <div className="card-body">
+                <div className="rev-chart">
+                  {dailyData.slice(-30).map((d, i) => (
+                    <div key={i} className="rev-bar"
+                      style={{ background: "var(--purple)", opacity: 0.6 + (d.amount_kobo / maxRev) * 0.4, height: `${Math.max(3, (d.amount_kobo / maxRev) * 96)}px` }}
+                      title={`${d.date}: ${koboToNGN(d.amount_kobo)}`} />
+                  ))}
                 </div>
-              );
-            })}
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                  <span style={{ fontSize: 10, color: "var(--muted)" }}>30 days ago</span>
+                  <span style={{ fontSize: 10, color: "var(--muted)" }}>Today</span>
+                </div>
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-header"><span className="card-icon">◎</span><span className="card-title">Revenue by Plan</span></div>
+              <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(rev.plan_revenue || []).sort((a: any, b: any) => b.monthly_kobo - a.monthly_kobo).map((r: any) => {
+                  const pk = PLANS.find(p => r.plan_name?.toLowerCase().includes(p)) || "free";
+                  return (
+                    <div key={r.plan_name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span className="plan-badge" style={{ background: PLAN_COLORS[pk] + "22", color: PLAN_COLORS[pk] }}>{r.plan_name}</span>
+                        <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.user_count} users</span>
+                      </div>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{koboToNGN(r.monthly_kobo)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+
+      {tab === "minutes" && <ExtraMinutesSection />}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FEATURE FLAGS — THE REAL SYSTEM
+// EXTRA MINUTES SUB-SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ExtraMinutesSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"monthly" | "buyers" | "recent">("monthly");
+
+  useEffect(() => {
+    (supabase as any).rpc("admin_get_extra_minutes_analytics", { p_months: 12 })
+      .then(({ data: d }: any) => { if (d) setData(d); setLoading(false); });
+  }, []);
+
+  if (loading) return <SkeletonGrid count={5} height={48} />;
+  if (!data)   return <ErrorBlock msg="Could not load extra minutes data" />;
+
+  const monthly: any[]  = data.monthly    || [];
+  const buyers:  any[]  = data.top_buyers || [];
+  const recent:  any[]  = data.recent     || [];
+  const totals           = data.totals    || {};
+  const currentMonth     = data.current_month || {};
+
+  const maxMins = Math.max(...monthly.map((m: any) => m.total_minutes), 1);
+  const planCol = (p: string) => PLAN_COLORS[p] || "var(--muted)";
+
+  const subTabStyle = (active: boolean): React.CSSProperties => ({
+    padding: "5px 14px", borderRadius: 20, border: "1px solid",
+    borderColor: active ? "var(--accent)" : "var(--border)",
+    background: active ? "rgba(34,211,238,0.08)" : "var(--raised)",
+    color: active ? "var(--accent)" : "var(--muted)",
+    cursor: "pointer", fontSize: 11, fontWeight: 700,
+    fontFamily: "var(--sans)", transition: "all 0.15s",
+  });
+
+  return (
+    <div>
+      {/* KPI row */}
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <KpiCard label="Total Purchases"    value={fmt(totals.total_purchases || 0)}         sub="all time"                                   color="#38bdf8" />
+        <KpiCard label="Total Mins Sold"    value={fmtMins(totals.total_minutes_sold || 0)}  sub="all time"                                   color="#a78bfa" />
+        <KpiCard label="Unique Buyers"      value={fmt(totals.total_buyers || 0)}            sub="all time"                                   color="#34d399" />
+        <KpiCard label="This Month"         value={fmtMins(currentMonth.total_minutes || 0)} sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
+      </div>
+
+      {/* Sub-view tabs */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
+        <button style={subTabStyle(view === "monthly")} onClick={() => setView("monthly")}>📅 Monthly</button>
+        <button style={subTabStyle(view === "buyers")}  onClick={() => setView("buyers")}>🏆 Top Buyers</button>
+        <button style={subTabStyle(view === "recent")}  onClick={() => setView("recent")}>🕐 Recent</button>
+      </div>
+
+      {/* ── Monthly chart + table ── */}
+      {view === "monthly" && (
+        monthly.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--muted)", fontSize: 13 }}>
+            No extra minute purchases yet
+          </div>
+        ) : (
+          <>
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-header">
+                <span className="card-icon">⏱</span>
+                <span className="card-title">Extra Minutes Purchased — Last 12 Months</span>
+              </div>
+              <div className="card-body">
+                {/* Bar chart */}
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120, marginBottom: 8 }}>
+                  {[...monthly].reverse().map((m: any, i: number) => {
+                    const pct = m.total_minutes / maxMins;
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                        <span style={{ fontSize: 9, color: "var(--muted)", fontFamily: "var(--mono)", writingMode: "vertical-rl", transform: "rotate(180deg)", height: 28, overflow: "hidden" }}>
+                          {fmtMins(m.total_minutes)}
+                        </span>
+                        <div
+                          title={`${m.month}: ${fmtMins(m.total_minutes)} across ${m.purchases} purchase${m.purchases !== 1 ? "s" : ""} by ${m.unique_buyers} user${m.unique_buyers !== 1 ? "s" : ""}`}
+                          onMouseEnter={e => (e.currentTarget.style.filter = "brightness(1.35)")}
+                          onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}
+                          style={{
+                            width: "100%", height: `${Math.max(4, pct * 80)}px`,
+                            borderRadius: "3px 3px 0 0",
+                            background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
+                            cursor: "pointer", transition: "filter 0.15s",
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* X-axis labels */}
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[...monthly].reverse().map((m: any, i: number) => (
+                    <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>
+                      {m.month.slice(5)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Monthly table */}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th>Purchases</th>
+                    <th>Minutes Sold</th>
+                    <th>Unique Buyers</th>
+                    <th>Avg / Purchase</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthly.map((m: any) => (
+                    <tr key={m.month}>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{m.month}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{m.purchases}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <div style={{ width: 64, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
+                            <div style={{ height: "100%", width: `${(m.total_minutes / maxMins) * 100}%`, background: "#a78bfa", borderRadius: 2 }} />
+                          </div>
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>
+                            {fmtMins(m.total_minutes)}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>{m.unique_buyers}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
+                        {m.purchases > 0 ? fmtMins(Math.round(m.total_minutes / m.purchases)) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+      )}
+
+      {/* ── Top buyers ── */}
+      {view === "buyers" && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>User</th>
+                <th>Plan</th>
+                <th>Purchases</th>
+                <th>Total Minutes</th>
+                <th>Last Purchase</th>
+              </tr>
+            </thead>
+            <tbody>
+              {buyers.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+              ) : buyers.map((b: any, i: number) => (
+                <tr key={b.email}>
+                  <td style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--dim)" }}>
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                  </td>
+                  <td>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{b.full_name || "—"}</div>
+                    <div style={{ fontSize: 10, color: "var(--muted)" }}>{b.email}</div>
+                  </td>
+                  <td>
+                    <span className="plan-badge" style={{ background: planCol(b.plan_type) + "22", color: planCol(b.plan_type) }}>
+                      {b.plan_type}
+                    </span>
+                  </td>
+                  <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{b.purchases}</td>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>
+                      {fmtMins(b.total_minutes)}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {b.last_purchase_at ? new Date(b.last_purchase_at).toLocaleDateString("en-NG") : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Recent purchases ── */}
+      {view === "recent" && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>User</th>
+                <th>Plan</th>
+                <th>Minutes Added</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.length === 0 ? (
+                <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+              ) : recent.map((r: any) => (
+                <tr key={r.id}>
+                  <td style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                    {new Date(r.verified_at).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" })}
+                  </td>
+                  <td>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{r.full_name || "—"}</div>
+                    <div style={{ fontSize: 10, color: "var(--muted)" }}>{r.email}</div>
+                  </td>
+                  <td>
+                    <span className="plan-badge" style={{ background: planCol(r.plan_type) + "22", color: planCol(r.plan_type) }}>
+                      {r.plan_type}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>
+                      +{fmtMins(r.minutes_added)}
+                    </span>
+                  </td>
+                  <td>
+                    <code style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--dim)", background: "var(--raised)", padding: "2px 6px", borderRadius: 4 }}>
+                      {r.paystack_reference}
+                    </code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE FLAGS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FeatureFlagsSection() {
@@ -721,30 +914,22 @@ function FeatureFlagsSection() {
 
   const loadFlags = useCallback(async () => {
     const { data } = await (supabase as any)
-      .from("feature_flags")
-      .select("*")
-      .order("category")
-      .order("key");
+      .from("feature_flags").select("*").order("category").order("key");
     if (data) setFlags(data as FeatureFlag[]);
     setLoading(false);
   }, []);
 
   useEffect(() => {
     loadFlags();
-    // Realtime subscription
     const ch = supabase.channel("admin-flags-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "feature_flags" }, () => {
-        loadFlags();
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "feature_flags" }, () => loadFlags())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [loadFlags]);
 
   const toggle = async (flag: FeatureFlag) => {
     setBusyKey(flag.key);
-    const { error } = await (supabase as any).rpc("admin_toggle_feature_flag", {
-      p_key: flag.key, p_enabled: !flag.enabled,
-    });
+    const { error } = await (supabase as any).rpc("admin_toggle_feature_flag", { p_key: flag.key, p_enabled: !flag.enabled });
     if (error) toast.error("Failed: " + error.message);
     else {
       toast.success(`${flag.name} ${!flag.enabled ? "enabled" : "disabled"}`);
@@ -757,10 +942,7 @@ function FeatureFlagsSection() {
     if (!emergencyConfirm) { setEmergencyConfirm(true); return; }
     const { error } = await (supabase as any).rpc("admin_emergency_disable_all_flags");
     if (error) toast.error("Emergency disable failed: " + error.message);
-    else {
-      toast.success("All feature flags disabled");
-      loadFlags();
-    }
+    else { toast.success("All feature flags disabled"); loadFlags(); }
     setEmergencyConfirm(false);
   };
 
@@ -773,15 +955,13 @@ function FeatureFlagsSection() {
   });
 
   const enabledCount = filtered.filter(f => f.enabled).length;
-  const disabledCount = filtered.length - enabledCount;
 
   return (
     <div>
-      {/* Header bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <span className="badge" style={{ background: "rgba(52,211,153,0.1)", color: "var(--green)" }}>✓ {enabledCount} on</span>
-          <span className="badge" style={{ background: "rgba(248,113,113,0.1)", color: "var(--red)" }}>✗ {disabledCount} off</span>
+          <span className="badge" style={{ background: "rgba(248,113,113,0.1)", color: "var(--red)" }}>✗ {filtered.length - enabledCount} off</span>
           <span className="badge" style={{ background: "var(--raised)", color: "var(--muted)" }}>{flags.length} total</span>
         </div>
         <button className="emergency-btn" onClick={emergency}>
@@ -789,14 +969,12 @@ function FeatureFlagsSection() {
         </button>
       </div>
 
-      <div className="info-bar">⌁ Changes apply instantly — all connected clients update via Supabase Realtime. Backend edge functions independently verify flags via <code style={{ background: "rgba(34,211,238,0.1)", padding: "0 4px", borderRadius: 3 }}>check_feature_flag()</code> RPC.</div>
+      <div className="info-bar">⌁ Changes apply instantly — all clients update via Supabase Realtime.</div>
 
-      {/* Filter bar */}
       <div className="filter-bar">
         <input className="search-input" placeholder="Search flags…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Category tabs */}
       <div className="cat-tabs">
         {categories.map(c => (
           <button key={c} className={`cat-tab ${catFilter === c ? "active" : ""}`}
@@ -842,11 +1020,7 @@ function FeatureFlagsSection() {
                 </div>
                 <div className="flag-controls">
                   <div className="toggle-wrap">
-                    <button
-                      className={`toggle ${flag.enabled ? "on" : "off"}`}
-                      disabled={busyKey === flag.key}
-                      onClick={() => toggle(flag)}
-                      title={flag.enabled ? "Disable flag" : "Enable flag"}>
+                    <button className={`toggle ${flag.enabled ? "on" : "off"}`} disabled={busyKey === flag.key} onClick={() => toggle(flag)}>
                       <span className="toggle-knob" />
                     </button>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: flag.enabled ? "var(--green)" : "var(--muted)", minWidth: 24 }}>
@@ -869,13 +1043,11 @@ function FeatureFlagsSection() {
         </div>
       )}
 
-      {editFlag && <FlagEditModal flag={editFlag} onClose={() => setEditFlag(null)} onSaved={loadFlags} />}
+      {editFlag  && <FlagEditModal  flag={editFlag}  onClose={() => setEditFlag(null)}  onSaved={loadFlags} />}
       {showAudit && <FlagAuditModal flag={showAudit} onClose={() => setShowAudit(null)} />}
     </div>
   );
 }
-
-// ─── Flag Edit Modal ──────────────────────────────────────────────────────────
 
 function FlagEditModal({ flag, onClose, onSaved }: { flag: FeatureFlag; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({ ...flag, plan_access_str: flag.plan_access.join(",") });
@@ -885,12 +1057,8 @@ function FlagEditModal({ flag, onClose, onSaved }: { flag: FeatureFlag; onClose:
     setSaving(true);
     const planAccess = form.plan_access_str.split(",").map(s => s.trim()).filter(Boolean);
     const { error } = await (supabase as any).rpc("admin_update_feature_flag", {
-      p_key: flag.key,
-      p_enabled: form.enabled,
-      p_plan_access: planAccess,
-      p_rollout_pct: form.rollout_pct,
-      p_description: form.description,
-      p_is_beta: form.is_beta,
+      p_key: flag.key, p_enabled: form.enabled, p_plan_access: planAccess,
+      p_rollout_pct: form.rollout_pct, p_description: form.description, p_is_beta: form.is_beta,
     });
     if (error) toast.error("Save failed: " + error.message);
     else { toast.success("Flag updated"); onSaved(); onClose(); }
@@ -917,7 +1085,7 @@ function FlagEditModal({ flag, onClose, onSaved }: { flag: FeatureFlag; onClose:
               value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </div>
           <div>
-            <label style={labelStyle}>Allowed Plans (comma-separated)</label>
+            <label style={labelStyle}>Allowed Plans</label>
             <input style={inputStyle} value={form.plan_access_str}
               onChange={e => setForm(f => ({ ...f, plan_access_str: e.target.value }))}
               placeholder="free,starter,growth,scale" />
@@ -925,8 +1093,7 @@ function FlagEditModal({ flag, onClose, onSaved }: { flag: FeatureFlag; onClose:
               {PLANS.map(p => (
                 <button key={p} onClick={() => {
                   const arr = form.plan_access_str.split(",").map(s => s.trim()).filter(Boolean);
-                  const has = arr.includes(p);
-                  const next = has ? arr.filter(a => a !== p) : [...arr, p];
+                  const next = arr.includes(p) ? arr.filter(a => a !== p) : [...arr, p];
                   setForm(f => ({ ...f, plan_access_str: next.join(",") }));
                 }}
                   style={{ padding: "3px 9px", borderRadius: 12, border: "1px solid " + PLAN_COLORS[p], background: form.plan_access_str.includes(p) ? PLAN_COLORS[p] + "33" : "transparent", color: PLAN_COLORS[p], fontSize: 11, cursor: "pointer", fontFamily: "var(--mono)", fontWeight: 700 }}>
@@ -964,8 +1131,6 @@ function FlagEditModal({ flag, onClose, onSaved }: { flag: FeatureFlag; onClose:
   );
 }
 
-// ─── Flag Audit Modal ──────────────────────────────────────────────────────────
-
 function FlagAuditModal({ flag, onClose }: { flag: FeatureFlag; onClose: () => void }) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -976,7 +1141,7 @@ function FlagAuditModal({ flag, onClose }: { flag: FeatureFlag; onClose: () => v
   }, [flag.key]);
 
   const actionColor = (a: string) =>
-    a === "enabled" ? "var(--green)" : a === "disabled" ? "var(--red)" : a.includes("emergency") ? "var(--red)" : "var(--yellow)";
+    a === "enabled" ? "var(--green)" : a === "disabled" ? "var(--red)" : "var(--yellow)";
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1012,7 +1177,7 @@ function FlagAuditModal({ flag, onClose }: { flag: FeatureFlag; onClose: () => v
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FULL FLAG AUDIT LOG PAGE
+// AUDIT LOG PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FlagAuditSection() {
@@ -1092,26 +1257,26 @@ function AIInfraSection() {
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCard label="Total Calls"    value={fmt(metrics?.calls || 0)}        sub="all time"    color="#38bdf8" />
-        <KpiCard label="Live Calls"     value={fmt(metrics?.live || 0)}         sub="right now"   color="#f87171" pulse />
-        <KpiCard label="Transcripts"    value={fmt(metrics?.transcripts || 0)}  sub="total lines" color="#34d399" />
-        <KpiCard label="Edge Errors"    value={fmt(metrics?.errors || 0)}       sub="logged"      color={metrics?.errors ? "#f87171" : "#34d399"} />
-        <KpiCard label="Minutes (cycle)" value={fmt(metrics?.mins || 0)}        sub="this month"  color="#a78bfa" />
-        <KpiCard label="AI Gateway"     value="Online"                          sub="Gemini Flash" color="#34d399" />
+        <KpiCard label="Total Calls"     value={fmt(metrics?.calls || 0)}        sub="all time"    color="#38bdf8" />
+        <KpiCard label="Live Calls"      value={fmt(metrics?.live || 0)}          sub="right now"   color="#f87171" pulse />
+        <KpiCard label="Transcripts"     value={fmt(metrics?.transcripts || 0)}   sub="total lines" color="#34d399" />
+        <KpiCard label="Edge Errors"     value={fmt(metrics?.errors || 0)}        sub="logged"      color={metrics?.errors ? "#f87171" : "#34d399"} />
+        <KpiCard label="Minutes (cycle)" value={fmt(metrics?.mins || 0)}          sub="this month"  color="#a78bfa" />
+        <KpiCard label="AI Gateway"      value="Online"                           sub="Gemini Flash" color="#34d399" />
       </div>
       <div className="card">
         <div className="card-header"><span className="card-icon">◉</span><span className="card-title">Infrastructure</span></div>
         <div className="card-body">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
             {[
-              { svc: "100ms Video", detail: "HMS SDK active" },
-              { svc: "Supabase DB", detail: "< 50ms latency" },
-              { svc: "Realtime", detail: "WebSocket active" },
-              { svc: "Paystack Billing", detail: "Webhook enabled" },
-              { svc: "Edge Functions", detail: "Deno Deploy" },
-              { svc: "Lovable AI", detail: "Gemini Flash 2.0" },
-              { svc: "Push Notifications", detail: "VAPID + FCM" },
-              { svc: "pg_cron", detail: "Reminder scheduler" },
+              { svc: "100ms Video",         detail: "HMS SDK active" },
+              { svc: "Supabase DB",          detail: "< 50ms latency" },
+              { svc: "Realtime",             detail: "WebSocket active" },
+              { svc: "Paystack Billing",     detail: "Webhook enabled" },
+              { svc: "Edge Functions",       detail: "Deno Deploy" },
+              { svc: "Lovable AI",           detail: "Gemini Flash 2.0" },
+              { svc: "Push Notifications",   detail: "VAPID + FCM" },
+              { svc: "pg_cron",              detail: "Reminder scheduler" },
             ].map(s => (
               <div key={s.svc} style={{ background: "var(--raised)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
                 <span className="status-dot" style={{ background: "var(--green)", boxShadow: "0 0 6px var(--green)" }} />
@@ -1146,9 +1311,9 @@ function SecuritySection() {
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCard label="Events Total"  value={fmt(events.length)}                                       sub="all time"   color="#f87171" />
-        <KpiCard label="High Severity" value={fmt(events.filter(e => e.severity === "high").length)}    sub="events"     color="#f87171" />
-        <KpiCard label="Medium"        value={fmt(events.filter(e => e.severity === "medium").length)}  sub="events"     color="#fbbf24" />
+        <KpiCard label="Events Total"  value={fmt(events.length)}                                      sub="all time" color="#f87171" />
+        <KpiCard label="High Severity" value={fmt(events.filter(e => e.severity === "high").length)}   sub="events"   color="#f87171" />
+        <KpiCard label="Medium"        value={fmt(events.filter(e => e.severity === "medium").length)} sub="events"   color="#fbbf24" />
         <KpiCard label="Low / Info"    value={fmt(events.filter(e => !["high","medium"].includes(e.severity)).length)} sub="events" color="#34d399" />
       </div>
       <div className="card">
@@ -1213,7 +1378,7 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
           {fields.map(f => (
             <div key={f.label} style={{ background: "var(--raised)", padding: "10px 12px", borderRadius: 8 }}>
               <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{f.label}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", fontFamily: typeof f.value === "string" && /^\d/.test(f.value) ? "var(--mono)" : "var(--sans)" }}>{f.value}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{f.value}</div>
             </div>
           ))}
         </div>
@@ -1223,7 +1388,7 @@ function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REUSABLE UI PRIMITIVES
+// PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, color, pulse }: {
