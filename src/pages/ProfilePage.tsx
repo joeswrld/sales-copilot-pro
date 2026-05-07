@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { TeamUsageBillingCard } from "@/components/TeamMinuteUsageComponents"; 
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -229,6 +230,8 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+            <TeamUsageBillingCard className="mb-2" />
 
         {/* Usage Card */}
         <Card className="bg-card border-border">
