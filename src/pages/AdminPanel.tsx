@@ -2,7 +2,7 @@
  * AdminPanel.tsx — v4
  * Billing section now has two tabs:
  *   💳 Revenue  — existing charts
- *   ⏱ Extra Minutes — monthly purchased-minutes analytics
+ *   ⏱ Extra Minutes — monthly purchased-minutes analytics (with ₦ revenue)
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -661,13 +661,14 @@ function BillingSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXTRA MINUTES SUB-SECTION
+// EXTRA MINUTES SUB-SECTION — v2 (with ₦ revenue)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ExtraMinutesSection() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"monthly" | "buyers" | "recent">("monthly");
+  const [chartMode, setChartMode] = useState<"minutes" | "revenue">("revenue");
 
   useEffect(() => {
     (supabase as any).rpc("admin_get_extra_minutes_analytics", { p_months: 12 })
@@ -684,6 +685,7 @@ function ExtraMinutesSection() {
   const currentMonth     = data.current_month || {};
 
   const maxMins = Math.max(...monthly.map((m: any) => m.total_minutes), 1);
+  const maxRev  = Math.max(...monthly.map((m: any) => m.revenue_kobo  || 0), 1);
   const planCol = (p: string) => PLAN_COLORS[p] || "var(--muted)";
 
   const subTabStyle = (active: boolean): React.CSSProperties => ({
@@ -695,17 +697,26 @@ function ExtraMinutesSection() {
     fontFamily: "var(--sans)", transition: "all 0.15s",
   });
 
+  const chartToggleStyle = (active: boolean): React.CSSProperties => ({
+    padding: "3px 10px", borderRadius: 6, border: "1px solid",
+    borderColor: active ? "var(--accent)" : "var(--border2)",
+    background: active ? "rgba(34,211,238,0.12)" : "transparent",
+    color: active ? "var(--accent)" : "var(--dim)",
+    cursor: "pointer", fontSize: 10, fontWeight: 700,
+    fontFamily: "var(--mono)", transition: "all 0.12s",
+  });
+
   return (
     <div>
-      {/* KPI row */}
+      {/* ── KPI row — leads with revenue ── */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <KpiCard label="Total Purchases"    value={fmt(totals.total_purchases || 0)}         sub="all time"                                   color="#38bdf8" />
-        <KpiCard label="Total Mins Sold"    value={fmtMins(totals.total_minutes_sold || 0)}  sub="all time"                                   color="#a78bfa" />
-        <KpiCard label="Unique Buyers"      value={fmt(totals.total_buyers || 0)}            sub="all time"                                   color="#34d399" />
-        <KpiCard label="This Month"         value={fmtMins(currentMonth.total_minutes || 0)} sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
+        <KpiCard label="Total Revenue"   value={koboToNGN(totals.total_revenue_kobo || 0)}  sub="all time bundles"                          color="#34d399" />
+        <KpiCard label="This Month Rev." value={koboToNGN(currentMonth.revenue_kobo || 0)}  sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
+        <KpiCard label="Total Mins Sold" value={fmtMins(totals.total_minutes_sold || 0)}    sub="all time"                                   color="#a78bfa" />
+        <KpiCard label="Unique Buyers"   value={fmt(totals.total_buyers || 0)}              sub={`${totals.total_purchases || 0} purchases`} color="#38bdf8" />
       </div>
 
-      {/* Sub-view tabs */}
+      {/* ── Sub-view tabs ── */}
       <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
         <button style={subTabStyle(view === "monthly")} onClick={() => setView("monthly")}>📅 Monthly</button>
         <button style={subTabStyle(view === "buyers")}  onClick={() => setView("buyers")}>🏆 Top Buyers</button>
@@ -721,28 +732,40 @@ function ExtraMinutesSection() {
         ) : (
           <>
             <div className="card" style={{ marginBottom: 14 }}>
-              <div className="card-header">
-                <span className="card-icon">⏱</span>
-                <span className="card-title">Extra Minutes Purchased — Last 12 Months</span>
+              <div className="card-header" style={{ justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="card-icon">⏱</span>
+                  <span className="card-title">Extra Minutes — Last 12 Months</span>
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button style={chartToggleStyle(chartMode === "revenue")} onClick={() => setChartMode("revenue")}>₦ Revenue</button>
+                  <button style={chartToggleStyle(chartMode === "minutes")} onClick={() => setChartMode("minutes")}>⏱ Minutes</button>
+                </div>
               </div>
               <div className="card-body">
-                {/* Bar chart */}
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 130, marginBottom: 8 }}>
                   {[...monthly].reverse().map((m: any, i: number) => {
-                    const pct = m.total_minutes / maxMins;
+                    const isRev = chartMode === "revenue";
+                    const val   = isRev ? (m.revenue_kobo || 0) : m.total_minutes;
+                    const max   = isRev ? maxRev : maxMins;
+                    const pct   = val / max;
+                    const label = isRev ? koboToNGN(m.revenue_kobo || 0) : fmtMins(m.total_minutes);
+                    const tip   = `${m.month}: ${koboToNGN(m.revenue_kobo || 0)} · ${fmtMins(m.total_minutes)} · ${m.purchases} purchase${m.purchases !== 1 ? "s" : ""}`;
                     return (
                       <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                        <span style={{ fontSize: 9, color: "var(--muted)", fontFamily: "var(--mono)", writingMode: "vertical-rl", transform: "rotate(180deg)", height: 28, overflow: "hidden" }}>
-                          {fmtMins(m.total_minutes)}
+                        <span style={{ fontSize: 8, color: "var(--muted)", fontFamily: "var(--mono)", writingMode: "vertical-rl", transform: "rotate(180deg)", height: 32, overflow: "hidden", textAlign: "center" }}>
+                          {label}
                         </span>
                         <div
-                          title={`${m.month}: ${fmtMins(m.total_minutes)} across ${m.purchases} purchase${m.purchases !== 1 ? "s" : ""} by ${m.unique_buyers} user${m.unique_buyers !== 1 ? "s" : ""}`}
+                          title={tip}
                           onMouseEnter={e => (e.currentTarget.style.filter = "brightness(1.35)")}
                           onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}
                           style={{
-                            width: "100%", height: `${Math.max(4, pct * 80)}px`,
+                            width: "100%", height: `${Math.max(4, pct * 88)}px`,
                             borderRadius: "3px 3px 0 0",
-                            background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
+                            background: isRev
+                              ? "linear-gradient(180deg, #34d399 0%, #059669 100%)"
+                              : "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
                             cursor: "pointer", transition: "filter 0.15s",
                           }}
                         />
@@ -750,7 +773,6 @@ function ExtraMinutesSection() {
                     );
                   })}
                 </div>
-                {/* X-axis labels */}
                 <div style={{ display: "flex", gap: 4 }}>
                   {[...monthly].reverse().map((m: any, i: number) => (
                     <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>
@@ -758,42 +780,77 @@ function ExtraMinutesSection() {
                     </div>
                   ))}
                 </div>
+                <div style={{ display: "flex", gap: 16, marginTop: 10, justifyContent: "center" }}>
+                  <span style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: "linear-gradient(180deg,#34d399,#059669)", display: "inline-block" }} />Revenue
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: "linear-gradient(180deg,#a78bfa,#6d28d9)", display: "inline-block" }} />Minutes
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Monthly table */}
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Month</th>
-                    <th>Purchases</th>
+                    <th>Revenue</th>
                     <th>Minutes Sold</th>
-                    <th>Unique Buyers</th>
-                    <th>Avg / Purchase</th>
+                    <th>Purchases</th>
+                    <th>Buyers</th>
+                    <th>Avg Rev/Purchase</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {monthly.map((m: any) => (
-                    <tr key={m.month}>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{m.month}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{m.purchases}</td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                          <div style={{ width: 64, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
-                            <div style={{ height: "100%", width: `${(m.total_minutes / maxMins) * 100}%`, background: "#a78bfa", borderRadius: 2 }} />
+                  {monthly.map((m: any) => {
+                    const rev    = m.revenue_kobo || 0;
+                    const revPct = rev / maxRev;
+                    return (
+                      <tr key={m.month}>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{m.month}</td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 56, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
+                              <div style={{ height: "100%", width: `${revPct * 100}%`, background: "#34d399", borderRadius: 2 }} />
+                            </div>
+                            <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#34d399" }}>
+                              {koboToNGN(rev)}
+                            </span>
                           </div>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>
-                            {fmtMins(m.total_minutes)}
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>{m.unique_buyers}</td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
-                        {m.purchases > 0 ? fmtMins(Math.round(m.total_minutes / m.purchases)) : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 56, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
+                              <div style={{ height: "100%", width: `${(m.total_minutes / maxMins) * 100}%`, background: "#a78bfa", borderRadius: 2 }} />
+                            </div>
+                            <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>
+                              {fmtMins(m.total_minutes)}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{m.purchases}</td>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>{m.unique_buyers}</td>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
+                          {m.purchases > 0 ? koboToNGN(Math.round(rev / m.purchases)) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{ background: "var(--raised)" }}>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>TOTAL</td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#34d399" }}>
+                      {koboToNGN(monthly.reduce((a: number, m: any) => a + (m.revenue_kobo || 0), 0))}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>
+                      {fmtMins(monthly.reduce((a: number, m: any) => a + m.total_minutes, 0))}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700 }}>
+                      {monthly.reduce((a: number, m: any) => a + m.purchases, 0)}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -801,7 +858,7 @@ function ExtraMinutesSection() {
         )
       )}
 
-      {/* ── Top buyers ── */}
+      {/* ── Top buyers — with Total Paid column ── */}
       {view === "buyers" && (
         <div className="table-wrap">
           <table>
@@ -811,13 +868,14 @@ function ExtraMinutesSection() {
                 <th>User</th>
                 <th>Plan</th>
                 <th>Purchases</th>
-                <th>Total Minutes</th>
+                <th>Minutes</th>
+                <th>Total Paid</th>
                 <th>Last Purchase</th>
               </tr>
             </thead>
             <tbody>
               {buyers.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
               ) : buyers.map((b: any, i: number) => (
                 <tr key={b.email}>
                   <td style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--dim)" }}>
@@ -834,8 +892,13 @@ function ExtraMinutesSection() {
                   </td>
                   <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{b.purchases}</td>
                   <td>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>
                       {fmtMins(b.total_minutes)}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#34d399" }}>
+                      {koboToNGN(b.total_revenue_kobo || 0)}
                     </span>
                   </td>
                   <td style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -848,7 +911,7 @@ function ExtraMinutesSection() {
         </div>
       )}
 
-      {/* ── Recent purchases ── */}
+      {/* ── Recent purchases — with Amount Paid column ── */}
       {view === "recent" && (
         <div className="table-wrap">
           <table>
@@ -858,12 +921,13 @@ function ExtraMinutesSection() {
                 <th>User</th>
                 <th>Plan</th>
                 <th>Minutes Added</th>
+                <th>Amount Paid</th>
                 <th>Reference</th>
               </tr>
             </thead>
             <tbody>
               {recent.length === 0 ? (
-                <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
               ) : recent.map((r: any) => (
                 <tr key={r.id}>
                   <td style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
@@ -881,6 +945,11 @@ function ExtraMinutesSection() {
                   <td>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>
                       +{fmtMins(r.minutes_added)}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: r.amount_kobo > 0 ? "#34d399" : "var(--dim)" }}>
+                      {r.amount_kobo > 0 ? koboToNGN(r.amount_kobo) : "—"}
                     </span>
                   </td>
                   <td>
