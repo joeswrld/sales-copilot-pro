@@ -1,22 +1,15 @@
 /**
- * AdminPanel.tsx — v5 (+ Analytics Section)
+ * AdminPanel.tsx — v6 (Line Charts + Revenue Fix)
  *
- * CHANGES FROM v4:
- *  - Added "Analytics" nav item between Billing and Feature Flags
- *  - New AnalyticsSection component with:
- *      • SaaS KPIs (MRR, ARR, ARPU, LTV, growth %, churn)
- *      • Revenue time-series chart (subscriptions vs bundles)
- *      • User growth chart (new + cumulative)
- *      • Plan distribution bar
- *      • Usage analytics (calls/day, minutes/day, feature adoption)
- *      • Operational health panel
- *      • Export CSV/PDF
- *      • Realtime refresh via Supabase channel
- *      • Time-range filter (7d / 30d / 90d / 12m)
- *  - NAV_ITEMS updated to include analytics
- *  - All SQL functions (admin_get_saas_metrics, admin_get_revenue_breakdown,
- *    admin_get_usage_analytics, admin_get_operational_health,
- *    admin_get_user_growth) deployed via migration
+ * CHANGES FROM v5:
+ *  - All analytics bar charts replaced with Chart.js line charts
+ *  - Extra minutes revenue labels clarified to "received" (actual Paystack amounts)
+ *  - Added loadChartJs() lazy loader + shared LC color constants
+ *  - OverviewTab: revenue trend → line chart
+ *  - RevenueTab: stacked bars → multi-line chart
+ *  - UsersAnalyticsTab: growth bars → line charts
+ *  - UsageTab: calls/mins bars → line charts
+ *  - ExtraMinutesSection: bar → dual-axis line chart, labels say "received"
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -105,6 +98,18 @@ const CAT_COLORS: Record<string, string> = {
   notifications: "#4ade80", developer: "#818cf8", beta: "#f87171"
 };
 
+// ── Shared line-chart colours ────────────────────────────────────────────────
+const LC = {
+  green:    "#34d399",
+  blue:     "#38bdf8",
+  purple:   "#a78bfa",
+  amber:    "#fbbf24",
+  coral:    "#f87171",
+  cyan:     "#06b6d4",
+  gridLine: "rgba(255,255,255,0.06)",
+  tickColor:"#637085",
+};
+
 const koboToNGN = (k: number) =>
   `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
 const fmt = (n: number) =>
@@ -126,6 +131,39 @@ const NAV_ITEMS = [
   { id: "security",   label: "Security",      icon: "◐" },
   { id: "auditlog",   label: "Audit Log",     icon: "◳" },
 ];
+
+// ── Load Chart.js once lazily ─────────────────────────────────────────────────
+function loadChartJs(): Promise<void> {
+  return new Promise((resolve) => {
+    if ((window as any).Chart) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+    s.onload = () => resolve();
+    document.head.appendChild(s);
+  });
+}
+
+function chartDefaults() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 600 },
+    plugins: {
+      legend: { display: false },
+      tooltip: { mode: "index" as const, intersect: false },
+    },
+    scales: {
+      x: {
+        ticks: { color: LC.tickColor, font: { size: 10 }, maxRotation: 45, autoSkip: false },
+        grid:  { color: LC.gridLine },
+      },
+      y: {
+        ticks: { color: LC.tickColor, font: { size: 10 } },
+        grid:  { color: LC.gridLine },
+      },
+    },
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT
@@ -245,7 +283,7 @@ export default function AdminPanel() {
         .delta-flat { color: var(--muted); }
         .pulse-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-left: 6px; animation: blink 1.2s infinite; vertical-align: middle; }
         .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; }
-        .card-header { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+        .card-header { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
         .card-icon { width: 28px; height: 28px; background: var(--raised); border: 1px solid var(--border2); border-radius: 7px; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
         .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
         .card-body { padding: 14px 16px; }
@@ -309,22 +347,12 @@ export default function AdminPanel() {
         .cat-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
         .cat-tab { padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--raised); color: var(--muted); transition: all 0.15s; white-space: nowrap; }
         .cat-tab.active { color: #000; border-color: transparent; }
-        .rev-chart { display: flex; align-items: flex-end; gap: 2px; height: 100px; }
-        .rev-bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; transition: height 0.5s ease; cursor: pointer; }
-        .rev-bar:hover { filter: brightness(1.3); }
-        /* ── Analytics-specific ── */
         .an-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 18px; }
         .an-tab { padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid var(--border2); background: var(--raised); color: var(--muted); transition: all 0.15s; font-family: var(--sans); }
         .an-tab.active { background: rgba(34,211,238,0.1); color: var(--accent); border-color: var(--accent); }
         .range-tabs { display: flex; gap: 4px; }
         .range-tab { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--dim); transition: all 0.12s; font-family: var(--mono); }
         .range-tab.active { background: var(--accent); color: #000; border-color: var(--accent); }
-        .spark-chart { display: flex; align-items: flex-end; gap: 1.5px; }
-        .spark-bar { border-radius: 1px 1px 0 0; min-height: 2px; transition: height 0.4s; cursor: pointer; }
-        .spark-bar:hover { filter: brightness(1.4); }
-        .tooltip-wrap { position: relative; }
-        .tooltip-wrap:hover .tooltip-box { display: block; }
-        .tooltip-box { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1a2740; border: 1px solid var(--border2); padding: 5px 9px; border-radius: 6px; font-size: 10px; color: var(--text); white-space: nowrap; z-index: 10; pointer-events: none; font-family: var(--mono); }
         .export-btn { background: var(--raised); border: 1px solid var(--border2); color: var(--muted); padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700; font-family: var(--sans); transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
         .export-btn:hover { color: var(--accent); border-color: var(--accent); }
         .metric-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
@@ -333,6 +361,9 @@ export default function AdminPanel() {
         .metric-value { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text); }
         .live-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 700; background: rgba(52,211,153,0.1); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
         .live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: blink 1s infinite; }
+        .chart-legend { display: flex; gap: 14px; font-size: 10px; color: var(--muted); flex-wrap: wrap; }
+        .chart-legend-item { display: flex; align-items: center; gap: 5px; }
+        .chart-legend-line { width: 18px; height: 2px; border-radius: 1px; display: inline-block; }
         @media (max-width: 900px) {
           .sidebar { display: none; }
           .hamburger { display: flex; align-items: center; }
@@ -435,22 +466,19 @@ function SidebarContents({ user, section, onSelect, onSignOut }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ════════════════════════════════════════════════════════════════════════════
-//  ANALYTICS SECTION  ← new
-// ════════════════════════════════════════════════════════════════════════════
+// ANALYTICS SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 type RangeKey = "7d" | "30d" | "90d" | "12m";
-
-const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90, "12m": 365 };
-const RANGE_MONTHS: Record<RangeKey, number> = { "7d": 1, "30d": 1, "90d": 3, "12m": 12 };
+const RANGE_DAYS:   Record<RangeKey, number> = { "7d": 7,  "30d": 30, "90d": 90, "12m": 365 };
+const RANGE_MONTHS: Record<RangeKey, number> = { "7d": 1,  "30d": 1,  "90d": 3,  "12m": 12  };
 
 function AnalyticsSection() {
-  const [activeTab, setActiveTab] = useState<"overview" | "revenue" | "users" | "usage" | "ops">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"revenue"|"users"|"usage"|"ops">("overview");
   const [range, setRange]         = useState<RangeKey>("30d");
   const [saas,    setSaas]        = useState<SaasMetrics | null>(null);
-  const [revData, setRevData]     = useState<{ monthly: RevenueMonth[]; plan_distribution: any[]; bundle_stats: any; total_sub_revenue_kobo: number; total_bundle_revenue_kobo: number } | null>(null);
-  const [usageData, setUsageData] = useState<{ daily_calls: UsageDay[]; feature_usage: FeatureUsage[]; totals: any } | null>(null);
+  const [revData, setRevData]     = useState<any>(null);
+  const [usageData, setUsageData] = useState<any>(null);
   const [ops,     setOps]         = useState<OperationalHealth | null>(null);
   const [growth,  setGrowth]      = useState<GrowthMonth[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -460,7 +488,6 @@ function AnalyticsSection() {
     setLoading(true);
     const days   = RANGE_DAYS[range];
     const months = RANGE_MONTHS[range];
-
     const [saasRes, revRes, usageRes, opsRes, growthRes] = await Promise.all([
       (supabase as any).rpc("admin_get_saas_metrics"),
       (supabase as any).rpc("admin_get_revenue_breakdown", { p_months: months }),
@@ -468,19 +495,16 @@ function AnalyticsSection() {
       (supabase as any).rpc("admin_get_operational_health"),
       (supabase as any).rpc("admin_get_user_growth",       { p_months: months }),
     ]);
-
-    if (saasRes.data)  setSaas(saasRes.data);
-    if (revRes.data)   setRevData(revRes.data);
-    if (usageRes.data) setUsageData(usageRes.data);
-    if (opsRes.data)   setOps(opsRes.data);
+    if (saasRes.data)   setSaas(saasRes.data);
+    if (revRes.data)    setRevData(revRes.data);
+    if (usageRes.data)  setUsageData(usageRes.data);
+    if (opsRes.data)    setOps(opsRes.data);
     if (growthRes.data) setGrowth(Array.isArray(growthRes.data) ? growthRes.data : []);
-
     setLoading(false);
   }, [range]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime: refresh when calls or subscriptions change
   useEffect(() => {
     if (rtChannelRef.current) supabase.removeChannel(rtChannelRef.current);
     const ch = supabase.channel("analytics-rt")
@@ -492,7 +516,6 @@ function AnalyticsSection() {
     return () => { supabase.removeChannel(ch); };
   }, [load]);
 
-  // ── CSV export ──
   const exportCSV = () => {
     if (!saas || !revData) return;
     const rows: string[][] = [
@@ -507,7 +530,7 @@ function AnalyticsSection() {
       ["ARPU (₦)", String((saas.arpu_kobo / 100).toFixed(0))],
       ["LTV (₦)", String((saas.ltv_kobo / 100).toFixed(0))],
       [],
-      ["Month", "Sub Revenue (₦)", "Bundle Revenue (₦)", "Total (₦)"],
+      ["Month", "Sub Revenue (₦)", "Extra Min. Revenue Received (₦)", "Total (₦)"],
       ...(revData.monthly || []).map((m: RevenueMonth) => [
         m.month,
         String((m.sub_revenue_kobo / 100).toFixed(0)),
@@ -524,16 +547,15 @@ function AnalyticsSection() {
   };
 
   const tabs = [
-    { id: "overview", label: "Overview"  },
-    { id: "revenue",  label: "Revenue"   },
-    { id: "users",    label: "Users"     },
-    { id: "usage",    label: "Usage"     },
-    { id: "ops",      label: "Operations"},
+    { id: "overview", label: "Overview"   },
+    { id: "revenue",  label: "Revenue"    },
+    { id: "users",    label: "Users"      },
+    { id: "usage",    label: "Usage"      },
+    { id: "ops",      label: "Operations" },
   ] as const;
 
   return (
     <div>
-      {/* Header bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div className="an-tabs">
           {tabs.map(t => (
@@ -544,7 +566,7 @@ function AnalyticsSection() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div className="range-tabs">
-            {(["7d", "30d", "90d", "12m"] as RangeKey[]).map(r => (
+            {(["7d","30d","90d","12m"] as RangeKey[]).map(r => (
               <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => setRange(r)}>{r}</button>
             ))}
           </div>
@@ -569,28 +591,82 @@ function AnalyticsSection() {
   );
 }
 
-// ── Overview tab ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// OVERVIEW TAB
+// ─────────────────────────────────────────────────────────────────────────────
 
 function OverviewTab({ saas, revData, ops, usageData }: {
   saas: SaasMetrics | null; revData: any; ops: OperationalHealth | null; usageData: any;
 }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef  = useRef<any>(null);
+
+  const monthly: RevenueMonth[] = revData?.monthly ? [...revData.monthly].reverse() : [];
+  const totalMins  = usageData?.totals?.total_minutes ?? 0;
+  const totalCalls = usageData?.totals?.total_calls ?? 0;
+
+  useEffect(() => {
+    if (!canvasRef.current || monthly.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (chartRef.current) chartRef.current.destroy();
+      chartRef.current = new C(canvasRef.current, {
+        type: "line",
+        data: {
+          labels: monthly.map(m => m.month.slice(2)),
+          datasets: [
+            {
+              label: "Subscriptions",
+              data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
+              borderColor: LC.green,
+              backgroundColor: "rgba(52,211,153,0.08)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.green,
+              tension: 0.35,
+              fill: true,
+            },
+            {
+              label: "Extra min. received",
+              data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
+              borderColor: LC.purple,
+              backgroundColor: "rgba(167,139,250,0.07)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.purple,
+              tension: 0.35,
+              fill: true,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: {
+          ...chartDefaults(),
+          scales: {
+            ...chartDefaults().scales,
+            y: {
+              ...chartDefaults().scales.y,
+              ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
+            },
+          },
+        },
+      });
+    });
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, [monthly.map(m => m.total_kobo).join(",")]);
+
   if (!saas) return <ErrorBlock msg="No data" />;
 
   const kpis = [
-    { label: "MRR",            value: koboToNGN(saas.mrr_kobo),        delta: saas.mrr_growth_pct,  color: "#34d399" },
-    { label: "ARR",            value: koboToNGN(saas.arr_kobo),        delta: saas.mrr_growth_pct,  color: "#a78bfa" },
-    { label: "Paying Users",   value: fmt(saas.paying_users),          delta: null,                  color: "#38bdf8" },
-    { label: "Conversion",     value: `${saas.conversion_rate}%`,      delta: null,                  color: "#fbbf24" },
-    { label: "ARPU / month",   value: koboToNGN(saas.arpu_kobo),       delta: null,                  color: "#fb923c" },
-    { label: "LTV (est.)",     value: koboToNGN(saas.ltv_kobo),        delta: null,                  color: "#818cf8" },
-    { label: "Churn Rate",     value: `${saas.churn_rate}%`,           delta: null,                  color: saas.churn_rate > 5 ? "#f87171" : "#34d399" },
-    { label: "New Users 30d",  value: fmt(saas.new_users_30d),         delta: saas.user_growth_pct,  color: "#06b6d4" },
+    { label: "MRR",           value: koboToNGN(saas.mrr_kobo),       delta: saas.mrr_growth_pct,  color: "#34d399" },
+    { label: "ARR",           value: koboToNGN(saas.arr_kobo),       delta: saas.mrr_growth_pct,  color: "#a78bfa" },
+    { label: "Paying users",  value: fmt(saas.paying_users),         delta: null,                  color: "#38bdf8" },
+    { label: "Conversion",    value: `${saas.conversion_rate}%`,     delta: null,                  color: "#fbbf24" },
+    { label: "ARPU / month",  value: koboToNGN(saas.arpu_kobo),      delta: null,                  color: "#fb923c" },
+    { label: "LTV (est.)",    value: koboToNGN(saas.ltv_kobo),       delta: null,                  color: "#818cf8" },
+    { label: "Churn rate",    value: `${saas.churn_rate}%`,          delta: null,                  color: saas.churn_rate > 5 ? "#f87171" : "#34d399" },
+    { label: "New users 30d", value: fmt(saas.new_users_30d),        delta: saas.user_growth_pct,  color: "#06b6d4" },
   ];
-
-  const monthly: RevenueMonth[] = revData?.monthly || [];
-  const maxTotal = Math.max(...monthly.map((m: RevenueMonth) => m.total_kobo), 1);
-  const totalMins = usageData?.totals?.total_minutes ?? 0;
-  const totalCalls = usageData?.totals?.total_calls ?? 0;
 
   return (
     <div>
@@ -599,33 +675,24 @@ function OverviewTab({ saas, revData, ops, usageData }: {
       </div>
 
       <div className="two-col">
-        {/* Revenue mini-chart */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Trend</span></div>
-          <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 90 }}>
-              {[...monthly].reverse().map((m, i) => {
-                const subH  = Math.max(2, (m.sub_revenue_kobo / maxTotal) * 86);
-                const bunH  = Math.max(0, (m.bundle_revenue_kobo / maxTotal) * 86);
-                return (
-                  <div key={i} className="tooltip-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 1 }}>
-                    <div className="tooltip-box">{m.month}<br />{koboToNGN(m.total_kobo)}</div>
-                    {bunH > 0 && <div style={{ width: "100%", height: `${bunH}px`, background: "#a78bfa", borderRadius: "1px 1px 0 0" }} />}
-                    <div style={{ width: "100%", height: `${subH}px`, background: "#34d399", borderRadius: bunH > 0 ? 0 : "1px 1px 0 0" }} />
-                  </div>
-                );
-              })}
+          <div className="card-header">
+            <span className="card-icon">◆</span>
+            <span className="card-title">Revenue trend</span>
+            <div className="chart-legend" style={{ marginLeft: "auto" }}>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Subscriptions</span>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple, borderTop: `2px dashed ${LC.purple}`, height: 0 }} />Extra min.</span>
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 10, color: "var(--muted)" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, background: "#34d399", borderRadius: 2, display: "inline-block" }} />Subscriptions</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, background: "#a78bfa", borderRadius: 2, display: "inline-block" }} />Bundles</span>
+          </div>
+          <div className="card-body">
+            <div style={{ position: "relative", height: 140 }}>
+              <canvas ref={canvasRef} role="img" aria-label="Revenue trend line chart">Revenue trend data</canvas>
             </div>
           </div>
         </div>
 
-        {/* Quick metrics */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">◉</span><span className="card-title">Quick Metrics</span></div>
+          <div className="card-header"><span className="card-icon">◉</span><span className="card-title">Quick metrics</span></div>
           <div className="card-body">
             <div className="metric-row"><span className="metric-label">Total calls (period)</span><span className="metric-value">{fmt(totalCalls)}</span></div>
             <div className="metric-row"><span className="metric-label">Minutes used (period)</span><span className="metric-value">{fmtMins(totalMins)}</span></div>
@@ -637,9 +704,8 @@ function OverviewTab({ saas, revData, ops, usageData }: {
         </div>
       </div>
 
-      {/* Plan distribution */}
       <div className="card">
-        <div className="card-header"><span className="card-icon">◈</span><span className="card-title">Plan Distribution</span></div>
+        <div className="card-header"><span className="card-icon">◈</span><span className="card-title">Plan distribution</span></div>
         <div className="card-body">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
             {(revData?.plan_distribution || []).map((p: any) => {
@@ -651,9 +717,7 @@ function OverviewTab({ saas, revData, ops, usageData }: {
                     <span className="plan-badge" style={{ background: PLAN_COLORS[pk] + "22", color: PLAN_COLORS[pk] }}>{p.plan_key || "free"}</span>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{p.user_count}</span>
                   </div>
-                  <div className="progress-bg">
-                    <div className="progress-fill" style={{ width: `${pct}%`, background: PLAN_COLORS[pk] }} />
-                  </div>
+                  <div className="progress-bg"><div className="progress-fill" style={{ width: `${pct}%`, background: PLAN_COLORS[pk] }} /></div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 10, color: "var(--muted)" }}>
                     <span>{pct}% of users</span>
                     <span>{koboToNGN(p.monthly_kobo || 0)}/mo</span>
@@ -668,68 +732,118 @@ function OverviewTab({ saas, revData, ops, usageData }: {
   );
 }
 
-// ── Revenue tab ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// REVENUE TAB
+// ─────────────────────────────────────────────────────────────────────────────
 
 function RevenueTab({ revData, saas }: { revData: any; saas: SaasMetrics | null }) {
-  const monthly: RevenueMonth[] = revData?.monthly || [];
-  const bundles = revData?.bundle_stats || {};
-  const maxTotal = Math.max(...monthly.map((m: RevenueMonth) => m.total_kobo), 1);
-  const totalSub    = revData?.total_sub_revenue_kobo || 0;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef  = useRef<any>(null);
+
+  const monthly: RevenueMonth[] = revData?.monthly ? [...revData.monthly].reverse() : [];
+  const bundles    = revData?.bundle_stats || {};
+  const totalSub    = revData?.total_sub_revenue_kobo    || 0;
   const totalBundle = revData?.total_bundle_revenue_kobo || 0;
   const totalAll    = totalSub + totalBundle;
+
+  useEffect(() => {
+    if (!canvasRef.current || monthly.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (chartRef.current) chartRef.current.destroy();
+      chartRef.current = new C(canvasRef.current, {
+        type: "line",
+        data: {
+          labels: monthly.map(m => m.month.slice(2)),
+          datasets: [
+            {
+              label: "Total revenue",
+              data: monthly.map(m => Math.round(m.total_kobo / 100)),
+              borderColor: LC.amber,
+              backgroundColor: "rgba(251,191,36,0.06)",
+              borderWidth: 2.5,
+              pointRadius: 4,
+              pointBackgroundColor: LC.amber,
+              tension: 0.35,
+              fill: true,
+              order: 0,
+            },
+            {
+              label: "Subscriptions",
+              data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
+              borderColor: LC.green,
+              backgroundColor: "rgba(52,211,153,0.06)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.green,
+              tension: 0.35,
+              fill: true,
+              order: 1,
+            },
+            {
+              label: "Extra min. received",
+              data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
+              borderColor: LC.purple,
+              backgroundColor: "rgba(167,139,250,0.06)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.purple,
+              tension: 0.35,
+              borderDash: [5, 3],
+              fill: true,
+              order: 2,
+            },
+          ],
+        },
+        options: {
+          ...chartDefaults(),
+          scales: {
+            ...chartDefaults().scales,
+            y: {
+              ...chartDefaults().scales.y,
+              ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
+            },
+          },
+        },
+      });
+    });
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, [monthly.map(m => m.total_kobo).join(",")]);
 
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCard label="Total Revenue"        value={koboToNGN(totalAll)}         sub="all time"           color="#34d399" />
-        <KpiCard label="Subscription Rev."    value={koboToNGN(totalSub)}         sub={`${saas?.paying_users ?? 0} active subs`} color="#38bdf8" />
-        <KpiCard label="Extra Min. Revenue"   value={koboToNGN(totalBundle)}      sub={`${bundles.total_purchases ?? 0} purchases`} color="#a78bfa" />
-        <KpiCard label="MRR"                  value={koboToNGN(saas?.mrr_kobo ?? 0)} sub="monthly recurring" color="#fbbf24" />
-        <KpiCard label="ARR"                  value={koboToNGN(saas?.arr_kobo ?? 0)} sub="annualised"        color="#818cf8" />
-        <KpiCard label="ARPU"                 value={koboToNGN(saas?.arpu_kobo ?? 0)} sub="per paying user" color="#fb923c" />
-        <KpiCard label="LTV (est. 12mo)"      value={koboToNGN(saas?.ltv_kobo ?? 0)}  sub="avg lifetime value" color="#06b6d4" />
-        <KpiCard label="Bundle Min. Sold"     value={fmtMins(bundles.total_minutes_sold ?? 0)} sub={`${bundles.unique_buyers ?? 0} buyers`} color="#f472b6" />
+        <KpiCard label="Total revenue"         value={koboToNGN(totalAll)}                         sub="all time"                                    color="#34d399" />
+        <KpiCard label="Subscription revenue"  value={koboToNGN(totalSub)}                         sub={`${saas?.paying_users ?? 0} active subs`}    color="#38bdf8" />
+        <KpiCard label="Extra min. received"   value={koboToNGN(totalBundle)}                      sub={`${bundles.total_purchases ?? 0} purchases`} color="#a78bfa" />
+        <KpiCard label="MRR"                   value={koboToNGN(saas?.mrr_kobo ?? 0)}              sub="monthly recurring"                           color="#fbbf24" />
+        <KpiCard label="ARR"                   value={koboToNGN(saas?.arr_kobo ?? 0)}              sub="annualised"                                  color="#818cf8" />
+        <KpiCard label="ARPU"                  value={koboToNGN(saas?.arpu_kobo ?? 0)}             sub="per paying user"                             color="#fb923c" />
+        <KpiCard label="LTV (est. 12mo)"       value={koboToNGN(saas?.ltv_kobo ?? 0)}              sub="avg lifetime value"                          color="#06b6d4" />
+        <KpiCard label="Extra min. sold"       value={fmtMins(bundles.total_minutes_sold ?? 0)}    sub={`${bundles.unique_buyers ?? 0} buyers`}      color="#f472b6" />
       </div>
 
-      {/* Stacked bar chart */}
       <div className="card">
-        <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Breakdown by Month</span></div>
+        <div className="card-header">
+          <span className="card-icon">◆</span>
+          <span className="card-title">Revenue by month</span>
+          <div className="chart-legend" style={{ marginLeft: "auto" }}>
+            <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.amber }} />Total</span>
+            <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Subs</span>
+            <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple }} />Extra min.</span>
+          </div>
+        </div>
         <div className="card-body">
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 140 }}>
-            {[...monthly].reverse().map((m, i) => {
-              const subH  = Math.max(2, (m.sub_revenue_kobo / maxTotal) * 134);
-              const bunH  = Math.max(0, (m.bundle_revenue_kobo / maxTotal) * 134);
-              return (
-                <div key={i} className="tooltip-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 1 }}>
-                  <div className="tooltip-box">
-                    {m.month}<br />
-                    Sub: {koboToNGN(m.sub_revenue_kobo)}<br />
-                    Bundle: {koboToNGN(m.bundle_revenue_kobo)}<br />
-                    Total: {koboToNGN(m.total_kobo)}
-                  </div>
-                  {bunH > 0 && <div style={{ width: "100%", height: `${bunH}px`, background: "linear-gradient(180deg,#a78bfa,#6d28d9)", borderRadius: "2px 2px 0 0" }} />}
-                  <div style={{ width: "100%", height: `${subH}px`, background: "linear-gradient(180deg,#34d399,#059669)", borderRadius: bunH > 0 ? 0 : "2px 2px 0 0" }} />
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ display: "flex", marginTop: 6, gap: 4 }}>
-            {[...monthly].reverse().map((m, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>{m.month.slice(5)}</div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
-            <span style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: "#34d399", display: "inline-block" }} />Subscriptions</span>
-            <span style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: "#a78bfa", display: "inline-block" }} />Extra Minutes</span>
+          <div style={{ position: "relative", height: 220 }}>
+            <canvas ref={canvasRef} role="img" aria-label="Multi-line chart of monthly revenue by type">Revenue breakdown by month</canvas>
           </div>
         </div>
       </div>
 
-      {/* Monthly table */}
       <div className="table-wrap">
         <table>
           <thead><tr>
-            <th>Month</th><th>Sub Revenue</th><th>Bundle Revenue</th><th>Total</th><th>Payments</th>
+            <th>Month</th><th>Sub revenue</th><th>Extra min. received</th><th>Total</th><th>Payments</th>
           </tr></thead>
           <tbody>
             {monthly.length === 0 ? (
@@ -757,89 +871,156 @@ function RevenueTab({ revData, saas }: { revData: any; saas: SaasMetrics | null 
   );
 }
 
-// ── Users analytics tab ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS ANALYTICS TAB
+// ─────────────────────────────────────────────────────────────────────────────
 
 function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null; growth: GrowthMonth[]; revData: any }) {
-  if (!saas) return <ErrorBlock msg="No data" />;
+  const newCanvasRef  = useRef<HTMLCanvasElement>(null);
+  const newChartRef   = useRef<any>(null);
+  const cumCanvasRef  = useRef<HTMLCanvasElement>(null);
+  const cumChartRef   = useRef<any>(null);
 
-  const maxGrowth = Math.max(...growth.map(g => g.new_users), 1);
-  const maxCumul  = Math.max(...growth.map(g => g.cumulative_users), 1);
+  const sorted = [...growth];
+
+  useEffect(() => {
+    if (!newCanvasRef.current || sorted.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (newChartRef.current) newChartRef.current.destroy();
+      newChartRef.current = new C(newCanvasRef.current, {
+        type: "line",
+        data: {
+          labels: sorted.map(g => g.month.slice(5)),
+          datasets: [
+            {
+              label: "New users",
+              data: sorted.map(g => g.new_users),
+              borderColor: LC.blue,
+              backgroundColor: "rgba(56,189,248,0.08)",
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBackgroundColor: LC.blue,
+              tension: 0.35,
+              fill: true,
+            },
+            {
+              label: "New paying",
+              data: sorted.map(g => g.new_paying),
+              borderColor: LC.green,
+              backgroundColor: "rgba(52,211,153,0.06)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.green,
+              tension: 0.35,
+              fill: true,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: chartDefaults(),
+      });
+    });
+    return () => { if (newChartRef.current) { newChartRef.current.destroy(); newChartRef.current = null; } };
+  }, [sorted.map(g => g.new_users).join(",")]);
+
+  useEffect(() => {
+    if (!cumCanvasRef.current || sorted.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (cumChartRef.current) cumChartRef.current.destroy();
+      cumChartRef.current = new C(cumCanvasRef.current, {
+        type: "line",
+        data: {
+          labels: sorted.map(g => g.month.slice(5)),
+          datasets: [
+            {
+              label: "Total users",
+              data: sorted.map(g => g.cumulative_users),
+              borderColor: LC.purple,
+              backgroundColor: "rgba(167,139,250,0.08)",
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBackgroundColor: LC.purple,
+              tension: 0.35,
+              fill: true,
+            },
+            {
+              label: "Total paying",
+              data: sorted.map(g => g.cumulative_paying),
+              borderColor: LC.amber,
+              backgroundColor: "rgba(251,191,36,0.06)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.amber,
+              tension: 0.35,
+              fill: true,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: chartDefaults(),
+      });
+    });
+    return () => { if (cumChartRef.current) { cumChartRef.current.destroy(); cumChartRef.current = null; } };
+  }, [sorted.map(g => g.cumulative_users).join(",")]);
+
+  if (!saas) return <ErrorBlock msg="No data" />;
 
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCardDelta label="Total Users"      value={fmt(saas.total_users)}    delta={saas.user_growth_pct}  color="#38bdf8" />
-        <KpiCard      label="Paying Users"     value={fmt(saas.paying_users)}   sub={`${saas.conversion_rate}% of total`} color="#34d399" />
-        <KpiCard      label="Free Users"       value={fmt(saas.free_users)}     sub="not converted"           color="#64748b" />
-        <KpiCard      label="New (30d)"        value={fmt(saas.new_users_30d)}  sub={`prev: ${saas.new_users_prev_30d}`} color="#fbbf24" />
-        <KpiCard      label="Conversion Rate"  value={`${saas.conversion_rate}%`} sub="free → paid"           color="#a78bfa" />
-        <KpiCard      label="Churn Rate"       value={`${saas.churn_rate}%`}    sub="30-day"                  color={saas.churn_rate > 5 ? "#f87171" : "#34d399"} />
+        <KpiCardDelta label="Total users"     value={fmt(saas.total_users)}    delta={saas.user_growth_pct}  color="#38bdf8" />
+        <KpiCard      label="Paying users"    value={fmt(saas.paying_users)}   sub={`${saas.conversion_rate}% of total`} color="#34d399" />
+        <KpiCard      label="Free users"      value={fmt(saas.free_users)}     sub="not converted"           color="#64748b" />
+        <KpiCard      label="New (30d)"       value={fmt(saas.new_users_30d)}  sub={`prev: ${saas.new_users_prev_30d}`} color="#fbbf24" />
+        <KpiCard      label="Conversion rate" value={`${saas.conversion_rate}%`} sub="free → paid"           color="#a78bfa" />
+        <KpiCard      label="Churn rate"      value={`${saas.churn_rate}%`}    sub="30-day"                  color={saas.churn_rate > 5 ? "#f87171" : "#34d399"} />
       </div>
 
       <div className="two-col">
-        {/* New users per month bars */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">◎</span><span className="card-title">New Users / Month</span></div>
-          <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 110 }}>
-              {[...growth].map((g, i) => {
-                const newH  = Math.max(2, (g.new_users / maxGrowth) * 106);
-                const paidH = Math.max(0, (g.new_paying / maxGrowth) * 106);
-                return (
-                  <div key={i} className="tooltip-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 1 }}>
-                    <div className="tooltip-box">{g.month}<br />New: {g.new_users}<br />Paying: {g.new_paying}</div>
-                    <div style={{ width: "100%", height: `${newH}px`, background: "rgba(56,189,248,0.3)", borderRadius: "2px 2px 0 0", position: "relative" }}>
-                      {paidH > 0 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${paidH}px`, background: "#38bdf8", borderRadius: 0 }} />}
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="card-header">
+            <span className="card-icon">◎</span>
+            <span className="card-title">New users / month</span>
+            <div className="chart-legend" style={{ marginLeft: "auto" }}>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.blue }} />All</span>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Paying</span>
             </div>
-            <div style={{ display: "flex", marginTop: 5, gap: 3 }}>
-              {[...growth].map((g, i) => (
-                <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>{g.month.slice(5)}</div>
-              ))}
+          </div>
+          <div className="card-body">
+            <div style={{ position: "relative", height: 160 }}>
+              <canvas ref={newCanvasRef} role="img" aria-label="Line chart of new users per month">New users data</canvas>
             </div>
           </div>
         </div>
 
-        {/* Cumulative */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">◇</span><span className="card-title">Cumulative Growth</span></div>
-          <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 110 }}>
-              {[...growth].map((g, i) => {
-                const h = Math.max(2, (g.cumulative_users / maxCumul) * 106);
-                const ph = Math.max(0, (g.cumulative_paying / maxCumul) * 106);
-                return (
-                  <div key={i} className="tooltip-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-                    <div className="tooltip-box">{g.month}<br />Total: {g.cumulative_users}<br />Paying: {g.cumulative_paying}</div>
-                    <div style={{ width: "100%", height: `${h}px`, background: "rgba(167,139,250,0.25)", borderRadius: "2px 2px 0 0", position: "relative" }}>
-                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${ph}px`, background: "#a78bfa" }} />
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="card-header">
+            <span className="card-icon">◇</span>
+            <span className="card-title">Cumulative growth</span>
+            <div className="chart-legend" style={{ marginLeft: "auto" }}>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple }} />Total</span>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.amber }} />Paying</span>
             </div>
-            <div style={{ display: "flex", marginTop: 5, gap: 3 }}>
-              {[...growth].map((g, i) => (
-                <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>{g.month.slice(5)}</div>
-              ))}
+          </div>
+          <div className="card-body">
+            <div style={{ position: "relative", height: 160 }}>
+              <canvas ref={cumCanvasRef} role="img" aria-label="Line chart of cumulative user growth">Cumulative growth data</canvas>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Growth table */}
       <div className="table-wrap">
         <table>
           <thead><tr>
-            <th>Month</th><th>New Users</th><th>New Paying</th><th>Conv %</th><th>Total Users</th><th>Total Paying</th>
+            <th>Month</th><th>New users</th><th>New paying</th><th>Conv %</th><th>Total users</th><th>Total paying</th>
           </tr></thead>
           <tbody>
-            {growth.length === 0 ? (
+            {sorted.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No data yet</td></tr>
-            ) : [...growth].map((g: GrowthMonth) => (
+            ) : sorted.map((g: GrowthMonth) => (
               <tr key={g.month}>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{g.month}</td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{g.new_users}</td>
@@ -858,72 +1039,126 @@ function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null
   );
 }
 
-// ── Usage tab ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// USAGE TAB
+// ─────────────────────────────────────────────────────────────────────────────
 
 function UsageTab({ usageData }: { usageData: any }) {
-  const daily: UsageDay[]  = usageData?.daily_calls || [];
-  const features: FeatureUsage[] = usageData?.feature_usage || [];
-  const totals = usageData?.totals || {};
+  const callsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const callsChartRef  = useRef<any>(null);
+  const minsCanvasRef  = useRef<HTMLCanvasElement>(null);
+  const minsChartRef   = useRef<any>(null);
 
-  const maxCalls = Math.max(...daily.map(d => d.call_count), 1);
-  const maxMins  = Math.max(...daily.map(d => d.total_minutes), 1);
+  const daily: UsageDay[]        = usageData?.daily_calls || [];
+  const features: FeatureUsage[] = usageData?.feature_usage || [];
+  const totals                   = usageData?.totals || {};
+  const sortedDaily              = [...daily].reverse();
+
+  useEffect(() => {
+    if (!callsCanvasRef.current || sortedDaily.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (callsChartRef.current) callsChartRef.current.destroy();
+      callsChartRef.current = new C(callsCanvasRef.current, {
+        type: "line",
+        data: {
+          labels: sortedDaily.map(d => d.day.slice(5)),
+          datasets: [{
+            label: "Calls",
+            data: sortedDaily.map(d => d.call_count),
+            borderColor: LC.blue,
+            backgroundColor: "rgba(56,189,248,0.08)",
+            borderWidth: 2,
+            pointRadius: 2,
+            pointBackgroundColor: LC.blue,
+            tension: 0.3,
+            fill: true,
+          }],
+        },
+        options: {
+          ...chartDefaults(),
+          plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} calls` } } },
+        },
+      });
+    });
+    return () => { if (callsChartRef.current) { callsChartRef.current.destroy(); callsChartRef.current = null; } };
+  }, [sortedDaily.map(d => d.call_count).join(",")]);
+
+  useEffect(() => {
+    if (!minsCanvasRef.current || sortedDaily.length === 0) return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (minsChartRef.current) minsChartRef.current.destroy();
+      minsChartRef.current = new C(minsCanvasRef.current, {
+        type: "line",
+        data: {
+          labels: sortedDaily.map(d => d.day.slice(5)),
+          datasets: [{
+            label: "Minutes",
+            data: sortedDaily.map(d => Math.round(d.total_minutes)),
+            borderColor: LC.purple,
+            backgroundColor: "rgba(167,139,250,0.08)",
+            borderWidth: 2,
+            pointRadius: 2,
+            pointBackgroundColor: LC.purple,
+            tension: 0.3,
+            fill: true,
+          }],
+        },
+        options: {
+          ...chartDefaults(),
+          plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} min` } } },
+        },
+      });
+    });
+    return () => { if (minsChartRef.current) { minsChartRef.current.destroy(); minsChartRef.current = null; } };
+  }, [sortedDaily.map(d => d.total_minutes).join(",")]);
 
   const FEAT_LABELS: Record<string, { label: string; color: string; icon: string }> = {
-    ai_summaries:    { label: "AI Summaries",    color: "#a78bfa", icon: "◉" },
-    transcripts:     { label: "Transcript Lines", color: "#38bdf8", icon: "≡" },
-    objections:      { label: "Objections Det.", color: "#f87171", icon: "⊗" },
-    coaching_clips:  { label: "Coaching Clips",  color: "#fbbf24", icon: "▷" },
-    deal_rooms:      { label: "Deal Rooms",       color: "#34d399", icon: "◆" },
+    ai_summaries:   { label: "AI Summaries",     color: "#a78bfa", icon: "◉" },
+    transcripts:    { label: "Transcript lines",  color: "#38bdf8", icon: "≡" },
+    objections:     { label: "Objections det.",   color: "#f87171", icon: "⊗" },
+    coaching_clips: { label: "Coaching clips",    color: "#fbbf24", icon: "▷" },
+    deal_rooms:     { label: "Deal rooms",        color: "#34d399", icon: "◆" },
   };
 
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCard label="Total Calls"       value={fmt(totals.total_calls ?? 0)}   sub="this period"    color="#38bdf8" />
-        <KpiCard label="Total Minutes"     value={fmtMins(totals.total_minutes ?? 0)} sub="recorded"   color="#a78bfa" />
-        <KpiCard label="Avg Call Length"   value={fmtMins(Math.round(totals.avg_duration ?? 0))} sub="per call" color="#34d399" />
-        <KpiCard label="Active Users"      value={fmt(totals.active_users ?? 0)}  sub="called this period" color="#fbbf24" />
-        <KpiCard label="Avg Sentiment"     value={`${Math.round(totals.avg_sentiment ?? 0)}%`} sub="call health" color={totals.avg_sentiment > 60 ? "#34d399" : "#f87171"} />
-        <KpiCard label="Live Now"          value={fmt(totals.live_calls ?? 0)}    sub="in progress"    color="#f87171" pulse={totals.live_calls > 0} />
+        <KpiCard label="Total calls"     value={fmt(totals.total_calls ?? 0)}                   sub="this period"        color="#38bdf8" />
+        <KpiCard label="Total minutes"   value={fmtMins(totals.total_minutes ?? 0)}             sub="recorded"           color="#a78bfa" />
+        <KpiCard label="Avg call length" value={fmtMins(Math.round(totals.avg_duration ?? 0))} sub="per call"           color="#34d399" />
+        <KpiCard label="Active users"    value={fmt(totals.active_users ?? 0)}                  sub="called this period" color="#fbbf24" />
+        <KpiCard label="Avg sentiment"   value={`${Math.round(totals.avg_sentiment ?? 0)}%`}   sub="call health"        color={totals.avg_sentiment > 60 ? "#34d399" : "#f87171"} />
+        <KpiCard label="Live now"        value={fmt(totals.live_calls ?? 0)}                    sub="in progress"        color="#f87171" pulse={totals.live_calls > 0} />
       </div>
 
       <div className="two-col">
-        {/* Calls per day */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">◈</span><span className="card-title">Calls Per Day</span></div>
+          <div className="card-header"><span className="card-icon">◈</span><span className="card-title">Calls per day</span></div>
           <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 100 }}>
-              {daily.map((d, i) => (
-                <div key={i} className="tooltip-wrap" style={{ flex: 1 }}>
-                  <div className="tooltip-box">{d.day}<br />{d.call_count} calls<br />{fmtMins(Math.round(d.total_minutes))}</div>
-                  <div style={{ width: "100%", height: `${Math.max(2, (d.call_count / maxCalls) * 96)}px`, background: "linear-gradient(180deg,#38bdf8,#0284c7)", borderRadius: "2px 2px 0 0" }} />
-                </div>
-              ))}
-            </div>
-            {daily.length === 0 && <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No calls this period</div>}
+            {sortedDaily.length === 0
+              ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No calls this period</div>
+              : <div style={{ position: "relative", height: 150 }}>
+                  <canvas ref={callsCanvasRef} role="img" aria-label="Line chart of daily call volume">Calls per day</canvas>
+                </div>}
           </div>
         </div>
 
-        {/* Minutes per day */}
         <div className="card">
-          <div className="card-header"><span className="card-icon">⌛</span><span className="card-title">Minutes Per Day</span></div>
+          <div className="card-header"><span className="card-icon">⌛</span><span className="card-title">Minutes per day</span></div>
           <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 100 }}>
-              {daily.map((d, i) => (
-                <div key={i} className="tooltip-wrap" style={{ flex: 1 }}>
-                  <div className="tooltip-box">{d.day}<br />{fmtMins(Math.round(d.total_minutes))}</div>
-                  <div style={{ width: "100%", height: `${Math.max(2, (d.total_minutes / maxMins) * 96)}px`, background: "linear-gradient(180deg,#a78bfa,#6d28d9)", borderRadius: "2px 2px 0 0" }} />
-                </div>
-              ))}
-            </div>
-            {daily.length === 0 && <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No usage this period</div>}
+            {sortedDaily.length === 0
+              ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No usage this period</div>
+              : <div style={{ position: "relative", height: 150 }}>
+                  <canvas ref={minsCanvasRef} role="img" aria-label="Line chart of daily call minutes">Minutes per day</canvas>
+                </div>}
           </div>
         </div>
       </div>
 
-      {/* Feature adoption */}
       <div className="card">
-        <div className="card-header"><span className="card-icon">◇</span><span className="card-title">Feature Adoption</span></div>
+        <div className="card-header"><span className="card-icon">◇</span><span className="card-title">Feature adoption</span></div>
         <div className="card-body">
           {features.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No feature data</div>
@@ -956,7 +1191,9 @@ function UsageTab({ usageData }: { usageData: any }) {
   );
 }
 
-// ── Operations tab ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// OPS TAB  (unchanged from v5)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function OpsTab({ ops }: { ops: OperationalHealth | null }) {
   if (!ops) return <ErrorBlock msg="No operational data" />;
@@ -977,7 +1214,6 @@ function OpsTab({ ops }: { ops: OperationalHealth | null }) {
 
   return (
     <div>
-      {/* System status banner */}
       <div style={{
         background: overallOk ? "rgba(52,211,153,0.07)" : "rgba(251,191,36,0.07)",
         border: `1px solid ${overallOk ? "rgba(52,211,153,0.25)" : "rgba(251,191,36,0.25)"}`,
@@ -999,7 +1235,6 @@ function OpsTab({ ops }: { ops: OperationalHealth | null }) {
       </div>
 
       <div className="two-col">
-        {/* Health checklist */}
         <div className="card">
           <div className="card-header"><span className="card-icon">◉</span><span className="card-title">System Health</span></div>
           <div className="card-body">
@@ -1015,7 +1250,6 @@ function OpsTab({ ops }: { ops: OperationalHealth | null }) {
           </div>
         </div>
 
-        {/* Top error functions */}
         <div className="card">
           <div className="card-header"><span className="card-icon">⊗</span><span className="card-title">Edge Function Errors (24h)</span></div>
           <div className="card-body">
@@ -1039,7 +1273,7 @@ function OpsTab({ ops }: { ops: OperationalHealth | null }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXISTING SECTIONS (unchanged from v4 — pass-through)
+// DASHBOARD SECTION  (unchanged from v5)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DashboardSection() {
@@ -1125,6 +1359,10 @@ function DashboardSection() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS SECTION  (unchanged from v5)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function UsersSection() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -1233,6 +1471,10 @@ function UsersSection() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING SECTION  (unchanged shell — ExtraMinutesSection updated below)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function BillingSection() {
   const [rev, setRev] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1270,9 +1512,9 @@ function BillingSection() {
             <div className="card">
               <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Last 30 Days</span></div>
               <div className="card-body">
-                <div className="rev-chart">
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 96 }}>
                   {dailyData.slice(-30).map((d, i) => (
-                    <div key={i} className="rev-bar" style={{ background: "var(--purple)", opacity: 0.6 + (d.amount_kobo / maxRev) * 0.4, height: `${Math.max(3, (d.amount_kobo / maxRev) * 96)}px` }} title={`${d.date}: ${koboToNGN(d.amount_kobo)}`} />
+                    <div key={i} style={{ flex: 1, background: "var(--purple)", opacity: 0.6 + (d.amount_kobo / maxRev) * 0.4, height: `${Math.max(3, (d.amount_kobo / maxRev) * 92)}px`, borderRadius: "2px 2px 0 0", cursor: "default" }} title={`${d.date}: ${koboToNGN(d.amount_kobo)}`} />
                   ))}
                 </div>
               </div>
@@ -1302,139 +1544,189 @@ function BillingSection() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTRA MINUTES SECTION  (updated: line chart + "received" labels)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ExtraMinutesSection() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData]       = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"monthly" | "buyers" | "recent">("monthly");
-  const [chartMode, setChartMode] = useState<"minutes" | "revenue">("revenue");
+  const [view, setView]       = useState<"monthly"|"buyers"|"recent">("monthly");
+  const canvasRef             = useRef<HTMLCanvasElement>(null);
+  const chartRef              = useRef<any>(null);
 
   useEffect(() => {
     (supabase as any).rpc("admin_get_extra_minutes_analytics", { p_months: 12 })
       .then(({ data: d }: any) => { if (d) setData(d); setLoading(false); });
   }, []);
 
+  const monthly: any[]  = data?.monthly || [];
+  const buyers: any[]   = data?.top_buyers || [];
+  const recent: any[]   = data?.recent || [];
+  const totals           = data?.totals || {};
+  const currentMonth     = data?.current_month || {};
+  const sortedMonthly    = [...monthly].reverse();
+
+  useEffect(() => {
+    if (!canvasRef.current || sortedMonthly.length === 0 || view !== "monthly") return;
+    loadChartJs().then(() => {
+      const C = (window as any).Chart;
+      if (chartRef.current) chartRef.current.destroy();
+      chartRef.current = new C(canvasRef.current, {
+        type: "line",
+        data: {
+          labels: sortedMonthly.map((m: any) => m.month.slice(5)),
+          datasets: [
+            {
+              label: "Revenue received (₦)",
+              data: sortedMonthly.map((m: any) => Math.round((m.revenue_kobo || 0) / 100)),
+              borderColor: LC.green,
+              backgroundColor: "rgba(52,211,153,0.08)",
+              borderWidth: 2.5,
+              pointRadius: 4,
+              pointBackgroundColor: LC.green,
+              tension: 0.35,
+              fill: true,
+              yAxisID: "yRev",
+            },
+            {
+              label: "Minutes sold",
+              data: sortedMonthly.map((m: any) => m.total_minutes),
+              borderColor: LC.purple,
+              backgroundColor: "rgba(167,139,250,0.06)",
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: LC.purple,
+              tension: 0.35,
+              fill: false,
+              borderDash: [4, 3],
+              yAxisID: "yMins",
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 600 },
+          plugins: { legend: { display: false }, tooltip: { mode: "index" as const, intersect: false } },
+          scales: {
+            x:    { ticks: { color: LC.tickColor, font: { size: 10 }, maxRotation: 45 }, grid: { color: LC.gridLine } },
+            yRev: { position: "left"  as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` }, grid: { color: LC.gridLine } },
+            yMins:{ position: "right" as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `${v}m` }, grid: { drawOnChartArea: false } },
+          },
+        },
+      });
+    });
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, [view, sortedMonthly.map((m: any) => m.revenue_kobo).join(",")]);
+
   if (loading) return <SkeletonGrid count={5} height={48} />;
   if (!data)   return <ErrorBlock msg="Could not load extra minutes data" />;
 
-  const monthly: any[] = data.monthly || [];
-  const buyers: any[]  = data.top_buyers || [];
-  const recent: any[]  = data.recent || [];
-  const totals          = data.totals || {};
-  const currentMonth    = data.current_month || {};
-  const maxMins = Math.max(...monthly.map((m: any) => m.total_minutes), 1);
-  const maxRevM = Math.max(...monthly.map((m: any) => m.revenue_kobo || 0), 1);
   const planCol = (p: string) => PLAN_COLORS[p] || "var(--muted)";
-
   const subTabStyle = (active: boolean): React.CSSProperties => ({
     padding: "5px 14px", borderRadius: 20, border: "1px solid",
-    borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "rgba(34,211,238,0.08)" : "var(--raised)",
-    color: active ? "var(--accent)" : "var(--muted)", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "var(--sans)", transition: "all 0.15s",
+    borderColor: active ? "var(--accent)" : "var(--border)",
+    background: active ? "rgba(34,211,238,0.08)" : "var(--raised)",
+    color: active ? "var(--accent)" : "var(--muted)",
+    cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "var(--sans)", transition: "all 0.15s",
   });
 
   return (
     <div>
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <KpiCard label="Total Revenue"   value={koboToNGN(totals.total_revenue_kobo || 0)}  sub="all time"                             color="#34d399" />
-        <KpiCard label="This Month Rev." value={koboToNGN(currentMonth.revenue_kobo || 0)}  sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
-        <KpiCard label="Total Mins Sold" value={fmtMins(totals.total_minutes_sold || 0)}    sub="all time"                             color="#a78bfa" />
-        <KpiCard label="Unique Buyers"   value={fmt(totals.total_buyers || 0)}              sub={`${totals.total_purchases || 0} purchases`} color="#38bdf8" />
+        <KpiCard label="Total received"      value={koboToNGN(totals.total_revenue_kobo || 0)}  sub="all Paystack payments"                  color="#34d399" />
+        <KpiCard label="This month received" value={koboToNGN(currentMonth.revenue_kobo || 0)}  sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
+        <KpiCard label="Total mins sold"     value={fmtMins(totals.total_minutes_sold || 0)}     sub="all time"                               color="#a78bfa" />
+        <KpiCard label="Unique buyers"       value={fmt(totals.total_buyers || 0)}               sub={`${totals.total_purchases || 0} purchases`} color="#38bdf8" />
       </div>
+
       <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
         <button style={subTabStyle(view === "monthly")} onClick={() => setView("monthly")}>📅 Monthly</button>
-        <button style={subTabStyle(view === "buyers")}  onClick={() => setView("buyers")}>🏆 Top Buyers</button>
+        <button style={subTabStyle(view === "buyers")}  onClick={() => setView("buyers")}>🏆 Top buyers</button>
         <button style={subTabStyle(view === "recent")}  onClick={() => setView("recent")}>🕐 Recent</button>
       </div>
-      {view === "monthly" && monthly.length > 0 && (
+
+      {view === "monthly" && (
         <>
           <div className="card" style={{ marginBottom: 14 }}>
-            <div className="card-header" style={{ justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="card-icon">⏱</span><span className="card-title">Extra Minutes — Last 12 Months</span>
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {(["revenue","minutes"] as const).map(m => (
-                  <button key={m} onClick={() => setChartMode(m)} style={{ padding: "3px 10px", borderRadius: 6, border: "1px solid", borderColor: chartMode === m ? "var(--accent)" : "var(--border2)", background: chartMode === m ? "rgba(34,211,238,0.12)" : "transparent", color: chartMode === m ? "var(--accent)" : "var(--dim)", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)", transition: "all 0.12s" }}>
-                    {m === "revenue" ? "₦ Revenue" : "⏱ Minutes"}
-                  </button>
-                ))}
+            <div className="card-header">
+              <span className="card-icon">⏱</span>
+              <span className="card-title">Extra minutes — last 12 months</span>
+              <div className="chart-legend" style={{ marginLeft: "auto" }}>
+                <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Revenue received</span>
+                <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple }} />Mins sold</span>
               </div>
             </div>
             <div className="card-body">
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 130, marginBottom: 8 }}>
-                {[...monthly].reverse().map((m: any, i: number) => {
-                  const isRev = chartMode === "revenue";
-                  const val = isRev ? (m.revenue_kobo || 0) : m.total_minutes;
-                  const max = isRev ? maxRevM : maxMins;
-                  const pct = val / max;
-                  return (
-                    <div key={i} className="tooltip-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div className="tooltip-box">{m.month}: {isRev ? koboToNGN(m.revenue_kobo || 0) : fmtMins(m.total_minutes)}</div>
-                      <div style={{ width: "100%", height: `${Math.max(4, pct * 88)}px`, borderRadius: "3px 3px 0 0", background: isRev ? "linear-gradient(180deg,#34d399,#059669)" : "linear-gradient(180deg,#a78bfa,#6d28d9)", cursor: "pointer" }} />
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[...monthly].reverse().map((m: any, i: number) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden" }}>{m.month.slice(5)}</div>
-                ))}
+              <div style={{ position: "relative", height: 200 }}>
+                <canvas ref={canvasRef} role="img" aria-label="Line chart of extra minutes revenue received and minutes sold per month">Extra minutes monthly data</canvas>
               </div>
             </div>
           </div>
+
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Month</th><th>Revenue</th><th>Minutes Sold</th><th>Purchases</th><th>Buyers</th></tr></thead>
+              <thead><tr><th>Month</th><th>Revenue received</th><th>Mins sold</th><th>Purchases</th><th>Buyers</th></tr></thead>
               <tbody>
-                {monthly.map((m: any) => (
-                  <tr key={m.month}>
-                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{m.month}</td>
-                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#34d399" }}>{koboToNGN(m.revenue_kobo || 0)}</td>
-                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>{fmtMins(m.total_minutes)}</td>
-                    <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{m.purchases}</td>
-                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>{m.unique_buyers}</td>
-                  </tr>
-                ))}
+                {sortedMonthly.length === 0
+                  ? <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+                  : sortedMonthly.map((m: any) => (
+                    <tr key={m.month}>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)" }}>{m.month}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#34d399" }}>{koboToNGN(m.revenue_kobo || 0)}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>{fmtMins(m.total_minutes)}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{m.purchases}</td>
+                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>{m.unique_buyers}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
         </>
       )}
+
       {view === "buyers" && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>User</th><th>Plan</th><th>Purchases</th><th>Minutes</th><th>Total Paid</th></tr></thead>
+            <thead><tr><th>#</th><th>User</th><th>Plan</th><th>Purchases</th><th>Minutes</th><th>Total paid</th></tr></thead>
             <tbody>
-              {buyers.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
-              : buyers.map((b: any, i: number) => (
-                <tr key={b.email}>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--dim)" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`}</td>
-                  <td><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{b.full_name || "—"}</div><div style={{ fontSize: 10, color: "var(--muted)" }}>{b.email}</div></td>
-                  <td><span className="plan-badge" style={{ background: planCol(b.plan_type) + "22", color: planCol(b.plan_type) }}>{b.plan_type}</span></td>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{b.purchases}</td>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>{fmtMins(b.total_minutes)}</td>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#34d399" }}>{koboToNGN(b.total_revenue_kobo || 0)}</td>
-                </tr>
-              ))}
+              {buyers.length === 0
+                ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+                : buyers.map((b: any, i: number) => (
+                  <tr key={b.email}>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--dim)" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`}</td>
+                    <td><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{b.full_name || "—"}</div><div style={{ fontSize: 10, color: "var(--muted)" }}>{b.email}</div></td>
+                    <td><span className="plan-badge" style={{ background: planCol(b.plan_type) + "22", color: planCol(b.plan_type) }}>{b.plan_type}</span></td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{b.purchases}</td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>{fmtMins(b.total_minutes)}</td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#34d399" }}>{koboToNGN(b.total_revenue_kobo || 0)}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
       )}
+
       {view === "recent" && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Date</th><th>User</th><th>Plan</th><th>Minutes Added</th><th>Amount Paid</th><th>Reference</th></tr></thead>
+            <thead><tr><th>Date</th><th>User</th><th>Plan</th><th>Mins added</th><th>Amount paid</th><th>Reference</th></tr></thead>
             <tbody>
-              {recent.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
-              : recent.map((r: any) => (
-                <tr key={r.id}>
-                  <td style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{new Date(r.verified_at).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" })}</td>
-                  <td><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{r.full_name || "—"}</div><div style={{ fontSize: 10, color: "var(--muted)" }}>{r.email}</div></td>
-                  <td><span className="plan-badge" style={{ background: planCol(r.plan_type) + "22", color: planCol(r.plan_type) }}>{r.plan_type}</span></td>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>+{fmtMins(r.minutes_added)}</td>
-                  <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: r.amount_kobo > 0 ? "#34d399" : "var(--dim)" }}>{r.amount_kobo > 0 ? koboToNGN(r.amount_kobo) : "—"}</td>
-                  <td><code style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--dim)", background: "var(--raised)", padding: "2px 6px", borderRadius: 4 }}>{r.paystack_reference}</code></td>
-                </tr>
-              ))}
+              {recent.length === 0
+                ? <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No purchases yet</td></tr>
+                : recent.map((r: any) => (
+                  <tr key={r.id}>
+                    <td style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{new Date(r.verified_at).toLocaleString("en-NG", { dateStyle: "short", timeStyle: "short" })}</td>
+                    <td><div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{r.full_name || "—"}</div><div style={{ fontSize: 10, color: "var(--muted)" }}>{r.email}</div></td>
+                    <td><span className="plan-badge" style={{ background: planCol(r.plan_type) + "22", color: planCol(r.plan_type) }}>{r.plan_type}</span></td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: "#a78bfa" }}>+{fmtMins(r.minutes_added)}</td>
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 700, color: r.amount_kobo > 0 ? "#34d399" : "var(--dim)" }}>
+                      {r.amount_kobo > 0 ? koboToNGN(r.amount_kobo) : "—"}
+                    </td>
+                    <td><code style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--dim)", background: "var(--raised)", padding: "2px 6px", borderRadius: 4 }}>{r.paystack_reference}</code></td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -1442,6 +1734,10 @@ function ExtraMinutesSection() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE FLAGS SECTION  (unchanged from v5)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function FeatureFlagsSection() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
@@ -1633,6 +1929,10 @@ function FlagAuditModal({ flag, onClose }: { flag: FeatureFlag; onClose: () => v
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG SECTION  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function FlagAuditSection() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1669,6 +1969,10 @@ function FlagAuditSection() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI INFRA SECTION  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function AIInfraSection() {
   const [metrics, setMetrics] = useState<any>(null);
@@ -1721,6 +2025,10 @@ function AIInfraSection() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY SECTION  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function SecuritySection() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1761,6 +2069,10 @@ function SecuritySection() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER MODAL  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
   const fields = [
@@ -1818,8 +2130,8 @@ function KpiCardDelta({ label, value, delta, color }: {
   label: string; value: string; delta: number | null; color: string;
 }) {
   const deltaClass = delta === null ? "" : delta > 0 ? "delta-up" : delta < 0 ? "delta-down" : "delta-flat";
-  const deltaStr = delta === null ? "" : `${delta > 0 ? "+" : ""}${delta}%`;
-  const deltaIcon = delta === null ? "" : delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
+  const deltaStr   = delta === null ? "" : `${delta > 0 ? "+" : ""}${delta}%`;
+  const deltaIcon  = delta === null ? "" : delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
   return (
     <div className="kpi-card" style={{ "--accent-color": color } as React.CSSProperties}>
       <div className="kpi-label">{label}</div>
