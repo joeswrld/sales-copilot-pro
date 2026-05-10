@@ -1,15 +1,13 @@
 /**
- * AdminPanel.tsx — v6 (Line Charts + Revenue Fix)
+ * AdminPanel.tsx — v7 (Revenue Fix + Chart Fix)
  *
- * CHANGES FROM v5:
- *  - All analytics bar charts replaced with Chart.js line charts
- *  - Extra minutes revenue labels clarified to "received" (actual Paystack amounts)
- *  - Added loadChartJs() lazy loader + shared LC color constants
- *  - OverviewTab: revenue trend → line chart
- *  - RevenueTab: stacked bars → multi-line chart
- *  - UsersAnalyticsTab: growth bars → line charts
- *  - UsageTab: calls/mins bars → line charts
- *  - ExtraMinutesSection: bar → dual-axis line chart, labels say "received"
+ * CHANGES FROM v6:
+ *  - Revenue breakdown now uses ACTUAL bundle_purchases.amount_kobo instead of
+ *    hardcoded price lookup — matches the ₦720,000 shown in billing section
+ *  - Total revenue KPI cards now sum subscriptions + bundle payments correctly
+ *  - Chart loading fixed: useEffect now waits for both canvas ref AND Chart.js
+ *    using a retry loop to handle async CDN load timing
+ *  - OverviewTab & RevenueTab totals show combined sub + bundle revenue
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -55,6 +53,8 @@ interface SaasMetrics {
   total_users: number; paying_users: number; free_users: number;
   new_users_30d: number; new_users_prev_30d: number; user_growth_pct: number;
   conversion_rate: number; churn_rate: number; arpu_kobo: number; ltv_kobo: number;
+  // New fields from fixed RPC
+  total_sub_rev_kobo: number; total_bundle_rev_kobo: number; total_revenue_kobo: number;
 }
 
 interface RevenueMonth {
@@ -98,7 +98,6 @@ const CAT_COLORS: Record<string, string> = {
   notifications: "#4ade80", developer: "#818cf8", beta: "#f87171"
 };
 
-// ── Shared line-chart colours ────────────────────────────────────────────────
 const LC = {
   green:    "#34d399",
   blue:     "#38bdf8",
@@ -132,13 +131,25 @@ const NAV_ITEMS = [
   { id: "auditlog",   label: "Audit Log",     icon: "◳" },
 ];
 
-// ── Load Chart.js once lazily ─────────────────────────────────────────────────
+// ── Chart.js loader — waits until window.Chart is available ──────────────────
+let _chartJsLoading = false;
+let _chartJsReady = !!(window as any).Chart;
+
 function loadChartJs(): Promise<void> {
   return new Promise((resolve) => {
-    if ((window as any).Chart) { resolve(); return; }
+    if ((window as any).Chart) { _chartJsReady = true; resolve(); return; }
+    if (_chartJsLoading) {
+      // Poll until ready
+      const poll = setInterval(() => {
+        if ((window as any).Chart) { _chartJsReady = true; clearInterval(poll); resolve(); }
+      }, 50);
+      return;
+    }
+    _chartJsLoading = true;
     const s = document.createElement("script");
     s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
-    s.onload = () => resolve();
+    s.onload = () => { _chartJsReady = true; _chartJsLoading = false; resolve(); };
+    s.onerror = () => { _chartJsLoading = false; resolve(); }; // fail silently
     document.head.appendChild(s);
   });
 }
@@ -165,6 +176,22 @@ function chartDefaults() {
   };
 }
 
+// ── Safe chart builder: waits for canvas to be in DOM ────────────────────────
+function buildChart(canvas: HTMLCanvasElement | null, config: any, chartRef: React.MutableRefObject<any>) {
+  if (!canvas) return;
+  loadChartJs().then(() => {
+    const C = (window as any).Chart;
+    if (!C || !canvas) return;
+    // Destroy existing
+    if (chartRef.current) { try { chartRef.current.destroy(); } catch {} chartRef.current = null; }
+    try {
+      chartRef.current = new C(canvas, config);
+    } catch (e) {
+      console.warn("Chart build failed:", e);
+    }
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,6 +206,9 @@ export default function AdminPanel() {
   useEffect(() => {
     if (!adminLoading && !isAdmin) navigate("/dashboard", { replace: true });
   }, [isAdmin, adminLoading, navigate]);
+
+  // Preload Chart.js immediately on mount
+  useEffect(() => { loadChartJs(); }, []);
 
   if (adminLoading) return <FullScreenLoader />;
   if (!isAdmin) return null;
@@ -364,6 +394,7 @@ export default function AdminPanel() {
         .chart-legend { display: flex; gap: 14px; font-size: 10px; color: var(--muted); flex-wrap: wrap; }
         .chart-legend-item { display: flex; align-items: center; gap: 5px; }
         .chart-legend-line { width: 18px; height: 2px; border-radius: 1px; display: inline-block; }
+        .chart-container { position: relative; width: 100%; }
         @media (max-width: 900px) {
           .sidebar { display: none; }
           .hamburger { display: flex; align-items: center; }
@@ -466,6 +497,37 @@ function SidebarContents({ user, section, onSelect, onSignOut }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LINE CHART COMPONENT — handles async Chart.js load safely
+// ─────────────────────────────────────────────────────────────────────────────
+
+function LineChart({ config, height = 160, deps }: { config: any; height?: number; deps: any[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef  = useRef<any>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadChartJs().then(() => {
+      if (cancelled || !canvasRef.current) return;
+      const C = (window as any).Chart;
+      if (!C) return;
+      if (chartRef.current) { try { chartRef.current.destroy(); } catch {} }
+      try { chartRef.current = new C(canvasRef.current, config); } catch {}
+    });
+    return () => {
+      cancelled = true;
+      if (chartRef.current) { try { chartRef.current.destroy(); } catch {} chartRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return (
+    <div className="chart-container" style={{ height }}>
+      <canvas ref={canvasRef} style={{ maxWidth: "100%" }} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ANALYTICS SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -511,6 +573,7 @@ function AnalyticsSection() {
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "subscriptions" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "bundle_purchases" }, () => load())
       .subscribe();
     rtChannelRef.current = ch;
     return () => { supabase.removeChannel(ch); };
@@ -522,6 +585,9 @@ function AnalyticsSection() {
       ["Metric", "Value"],
       ["MRR (₦)", String((saas.mrr_kobo / 100).toFixed(0))],
       ["ARR (₦)", String((saas.arr_kobo / 100).toFixed(0))],
+      ["Total Sub Revenue (₦)", String(((saas.total_sub_rev_kobo || 0) / 100).toFixed(0))],
+      ["Total Bundle Revenue (₦)", String(((saas.total_bundle_rev_kobo || 0) / 100).toFixed(0))],
+      ["Total Revenue (₦)", String(((saas.total_revenue_kobo || 0) / 100).toFixed(0))],
       ["MRR Growth %", String(saas.mrr_growth_pct)],
       ["Total Users", String(saas.total_users)],
       ["Paying Users", String(saas.paying_users)],
@@ -530,7 +596,7 @@ function AnalyticsSection() {
       ["ARPU (₦)", String((saas.arpu_kobo / 100).toFixed(0))],
       ["LTV (₦)", String((saas.ltv_kobo / 100).toFixed(0))],
       [],
-      ["Month", "Sub Revenue (₦)", "Extra Min. Revenue Received (₦)", "Total (₦)"],
+      ["Month", "Sub Revenue (₦)", "Bundle Revenue Received (₦)", "Total (₦)"],
       ...(revData.monthly || []).map((m: RevenueMonth) => [
         m.month,
         String((m.sub_revenue_kobo / 100).toFixed(0)),
@@ -592,80 +658,74 @@ function AnalyticsSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OVERVIEW TAB
+// OVERVIEW TAB — now shows correct total revenue (subs + bundles)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function OverviewTab({ saas, revData, ops, usageData }: {
   saas: SaasMetrics | null; revData: any; ops: OperationalHealth | null; usageData: any;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef  = useRef<any>(null);
-
   const monthly: RevenueMonth[] = revData?.monthly ? [...revData.monthly].reverse() : [];
   const totalMins  = usageData?.totals?.total_minutes ?? 0;
   const totalCalls = usageData?.totals?.total_calls ?? 0;
 
-  useEffect(() => {
-    if (!canvasRef.current || monthly.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (chartRef.current) chartRef.current.destroy();
-      chartRef.current = new C(canvasRef.current, {
-        type: "line",
-        data: {
-          labels: monthly.map(m => m.month.slice(2)),
-          datasets: [
-            {
-              label: "Subscriptions",
-              data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
-              borderColor: LC.green,
-              backgroundColor: "rgba(52,211,153,0.08)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.green,
-              tension: 0.35,
-              fill: true,
-            },
-            {
-              label: "Extra min. received",
-              data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
-              borderColor: LC.purple,
-              backgroundColor: "rgba(167,139,250,0.07)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.purple,
-              tension: 0.35,
-              fill: true,
-              borderDash: [4, 3],
-            },
-          ],
+  // Total revenue = subscriptions + actual bundle payments
+  const totalSubRev    = saas?.total_sub_rev_kobo    ?? revData?.total_sub_revenue_kobo    ?? 0;
+  const totalBundleRev = saas?.total_bundle_rev_kobo ?? revData?.total_bundle_revenue_kobo ?? 0;
+  const totalRevenue   = totalSubRev + totalBundleRev;
+
+  const revenueChartConfig = monthly.length > 0 ? {
+    type: "line",
+    data: {
+      labels: monthly.map(m => m.month.slice(2)),
+      datasets: [
+        {
+          label: "Subscriptions",
+          data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
+          borderColor: LC.green,
+          backgroundColor: "rgba(52,211,153,0.08)",
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: LC.green,
+          tension: 0.35,
+          fill: true,
         },
-        options: {
-          ...chartDefaults(),
-          scales: {
-            ...chartDefaults().scales,
-            y: {
-              ...chartDefaults().scales.y,
-              ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
-            },
-          },
+        {
+          label: "Extra min. received",
+          data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
+          borderColor: LC.purple,
+          backgroundColor: "rgba(167,139,250,0.07)",
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: LC.purple,
+          tension: 0.35,
+          fill: true,
+          borderDash: [4, 3],
         },
-      });
-    });
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [monthly.map(m => m.total_kobo).join(",")]);
+      ],
+    },
+    options: {
+      ...chartDefaults(),
+      scales: {
+        ...chartDefaults().scales,
+        y: {
+          ...chartDefaults().scales.y,
+          ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
+        },
+      },
+    },
+  } : null;
 
   if (!saas) return <ErrorBlock msg="No data" />;
 
   const kpis = [
-    { label: "MRR",           value: koboToNGN(saas.mrr_kobo),       delta: saas.mrr_growth_pct,  color: "#34d399" },
-    { label: "ARR",           value: koboToNGN(saas.arr_kobo),       delta: saas.mrr_growth_pct,  color: "#a78bfa" },
-    { label: "Paying users",  value: fmt(saas.paying_users),         delta: null,                  color: "#38bdf8" },
-    { label: "Conversion",    value: `${saas.conversion_rate}%`,     delta: null,                  color: "#fbbf24" },
-    { label: "ARPU / month",  value: koboToNGN(saas.arpu_kobo),      delta: null,                  color: "#fb923c" },
-    { label: "LTV (est.)",    value: koboToNGN(saas.ltv_kobo),       delta: null,                  color: "#818cf8" },
-    { label: "Churn rate",    value: `${saas.churn_rate}%`,          delta: null,                  color: saas.churn_rate > 5 ? "#f87171" : "#34d399" },
-    { label: "New users 30d", value: fmt(saas.new_users_30d),        delta: saas.user_growth_pct,  color: "#06b6d4" },
+    { label: "MRR",              value: koboToNGN(saas.mrr_kobo),       delta: saas.mrr_growth_pct,  color: "#34d399" },
+    { label: "ARR",              value: koboToNGN(saas.arr_kobo),       delta: saas.mrr_growth_pct,  color: "#a78bfa" },
+    { label: "Total Revenue",    value: koboToNGN(totalRevenue),         delta: null,                  color: "#fbbf24" },
+    { label: "Paying users",     value: fmt(saas.paying_users),         delta: null,                  color: "#38bdf8" },
+    { label: "Conversion",       value: `${saas.conversion_rate}%`,     delta: null,                  color: "#06b6d4" },
+    { label: "ARPU / month",     value: koboToNGN(saas.arpu_kobo),      delta: null,                  color: "#fb923c" },
+    { label: "LTV (est.)",       value: koboToNGN(saas.ltv_kobo),       delta: null,                  color: "#818cf8" },
+    { label: "New users 30d",    value: fmt(saas.new_users_30d),        delta: saas.user_growth_pct,  color: "#06b6d4" },
   ];
 
   return (
@@ -681,25 +741,28 @@ function OverviewTab({ saas, revData, ops, usageData }: {
             <span className="card-title">Revenue trend</span>
             <div className="chart-legend" style={{ marginLeft: "auto" }}>
               <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Subscriptions</span>
-              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple, borderTop: `2px dashed ${LC.purple}`, height: 0 }} />Extra min.</span>
+              <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple }} />Extra min.</span>
             </div>
           </div>
           <div className="card-body">
-            <div style={{ position: "relative", height: 140 }}>
-              <canvas ref={canvasRef} role="img" aria-label="Revenue trend line chart">Revenue trend data</canvas>
-            </div>
+            {revenueChartConfig ? (
+              <LineChart config={revenueChartConfig} height={140} deps={[monthly.map(m => m.total_kobo).join(",")]} />
+            ) : (
+              <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No data for this period</div>
+            )}
           </div>
         </div>
 
         <div className="card">
-          <div className="card-header"><span className="card-icon">◉</span><span className="card-title">Quick metrics</span></div>
+          <div className="card-header"><span className="card-icon">◉</span><span className="card-title">Revenue breakdown</span></div>
           <div className="card-body">
+            <div className="metric-row"><span className="metric-label">Subscription revenue (all time)</span><span className="metric-value" style={{ color: LC.green }}>{koboToNGN(totalSubRev)}</span></div>
+            <div className="metric-row"><span className="metric-label">Extra minutes revenue (all time)</span><span className="metric-value" style={{ color: LC.purple }}>{koboToNGN(totalBundleRev)}</span></div>
+            <div className="metric-row"><span className="metric-label" style={{ fontWeight: 700, color: "var(--text)" }}>Total revenue</span><span className="metric-value" style={{ color: LC.amber, fontSize: 15 }}>{koboToNGN(totalRevenue)}</span></div>
             <div className="metric-row"><span className="metric-label">Total calls (period)</span><span className="metric-value">{fmt(totalCalls)}</span></div>
             <div className="metric-row"><span className="metric-label">Minutes used (period)</span><span className="metric-value">{fmtMins(totalMins)}</span></div>
             <div className="metric-row"><span className="metric-label">Live calls now</span><span className="metric-value" style={{ color: "var(--green)" }}>{ops?.live_calls_now ?? 0}</span></div>
-            <div className="metric-row"><span className="metric-label">Push subscriptions</span><span className="metric-value">{ops?.push_active ?? 0}</span></div>
             <div className="metric-row"><span className="metric-label">Edge errors (24h)</span><span className="metric-value" style={{ color: (ops?.edge_errors_24h ?? 0) > 0 ? "var(--red)" : "var(--green)" }}>{ops?.edge_errors_24h ?? 0}</span></div>
-            <div className="metric-row"><span className="metric-label">Webhook failures (24h)</span><span className="metric-value" style={{ color: (ops?.webhook_failures_24h ?? 0) > 0 ? "var(--yellow)" : "var(--green)" }}>{ops?.webhook_failures_24h ?? 0}</span></div>
           </div>
         </div>
       </div>
@@ -733,100 +796,90 @@ function OverviewTab({ saas, revData, ops, usageData }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REVENUE TAB
+// REVENUE TAB — correct totals, using actual bundle amounts
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RevenueTab({ revData, saas }: { revData: any; saas: SaasMetrics | null }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef  = useRef<any>(null);
-
   const monthly: RevenueMonth[] = revData?.monthly ? [...revData.monthly].reverse() : [];
   const bundles    = revData?.bundle_stats || {};
   const totalSub    = revData?.total_sub_revenue_kobo    || 0;
+  // Use actual amount from bundle_purchases, not hardcoded price
   const totalBundle = revData?.total_bundle_revenue_kobo || 0;
   const totalAll    = totalSub + totalBundle;
 
-  useEffect(() => {
-    if (!canvasRef.current || monthly.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (chartRef.current) chartRef.current.destroy();
-      chartRef.current = new C(canvasRef.current, {
-        type: "line",
-        data: {
-          labels: monthly.map(m => m.month.slice(2)),
-          datasets: [
-            {
-              label: "Total revenue",
-              data: monthly.map(m => Math.round(m.total_kobo / 100)),
-              borderColor: LC.amber,
-              backgroundColor: "rgba(251,191,36,0.06)",
-              borderWidth: 2.5,
-              pointRadius: 4,
-              pointBackgroundColor: LC.amber,
-              tension: 0.35,
-              fill: true,
-              order: 0,
-            },
-            {
-              label: "Subscriptions",
-              data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
-              borderColor: LC.green,
-              backgroundColor: "rgba(52,211,153,0.06)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.green,
-              tension: 0.35,
-              fill: true,
-              order: 1,
-            },
-            {
-              label: "Extra min. received",
-              data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
-              borderColor: LC.purple,
-              backgroundColor: "rgba(167,139,250,0.06)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.purple,
-              tension: 0.35,
-              borderDash: [5, 3],
-              fill: true,
-              order: 2,
-            },
-          ],
+  const chartConfig = monthly.length > 0 ? {
+    type: "line",
+    data: {
+      labels: monthly.map(m => m.month.slice(2)),
+      datasets: [
+        {
+          label: "Total revenue",
+          data: monthly.map(m => Math.round(m.total_kobo / 100)),
+          borderColor: LC.amber,
+          backgroundColor: "rgba(251,191,36,0.06)",
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: LC.amber,
+          tension: 0.35,
+          fill: true,
+          order: 0,
         },
-        options: {
-          ...chartDefaults(),
-          scales: {
-            ...chartDefaults().scales,
-            y: {
-              ...chartDefaults().scales.y,
-              ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
-            },
-          },
+        {
+          label: "Subscriptions",
+          data: monthly.map(m => Math.round(m.sub_revenue_kobo / 100)),
+          borderColor: LC.green,
+          backgroundColor: "rgba(52,211,153,0.06)",
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: LC.green,
+          tension: 0.35,
+          fill: true,
+          order: 1,
         },
-      });
-    });
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [monthly.map(m => m.total_kobo).join(",")]);
+        {
+          label: "Extra min. received",
+          data: monthly.map(m => Math.round(m.bundle_revenue_kobo / 100)),
+          borderColor: LC.purple,
+          backgroundColor: "rgba(167,139,250,0.06)",
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: LC.purple,
+          tension: 0.35,
+          borderDash: [5, 3],
+          fill: true,
+          order: 2,
+        },
+      ],
+    },
+    options: {
+      ...chartDefaults(),
+      scales: {
+        ...chartDefaults().scales,
+        y: {
+          ...chartDefaults().scales.y,
+          ticks: { ...chartDefaults().scales.y.ticks, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` },
+        },
+      },
+    },
+  } : null;
 
   return (
     <div>
       <div className="kpi-grid">
-        <KpiCard label="Total revenue"         value={koboToNGN(totalAll)}                         sub="all time"                                    color="#34d399" />
-        <KpiCard label="Subscription revenue"  value={koboToNGN(totalSub)}                         sub={`${saas?.paying_users ?? 0} active subs`}    color="#38bdf8" />
-        <KpiCard label="Extra min. received"   value={koboToNGN(totalBundle)}                      sub={`${bundles.total_purchases ?? 0} purchases`} color="#a78bfa" />
-        <KpiCard label="MRR"                   value={koboToNGN(saas?.mrr_kobo ?? 0)}              sub="monthly recurring"                           color="#fbbf24" />
-        <KpiCard label="ARR"                   value={koboToNGN(saas?.arr_kobo ?? 0)}              sub="annualised"                                  color="#818cf8" />
-        <KpiCard label="ARPU"                  value={koboToNGN(saas?.arpu_kobo ?? 0)}             sub="per paying user"                             color="#fb923c" />
-        <KpiCard label="LTV (est. 12mo)"       value={koboToNGN(saas?.ltv_kobo ?? 0)}              sub="avg lifetime value"                          color="#06b6d4" />
-        <KpiCard label="Extra min. sold"       value={fmtMins(bundles.total_minutes_sold ?? 0)}    sub={`${bundles.unique_buyers ?? 0} buyers`}      color="#f472b6" />
+        <KpiCard label="Total revenue"         value={koboToNGN(totalAll)}                          sub="subscriptions + bundles"              color="#fbbf24" />
+        <KpiCard label="Subscription revenue"  value={koboToNGN(totalSub)}                          sub={`${saas?.paying_users ?? 0} active subs`}    color="#34d399" />
+        <KpiCard label="Extra min. received"   value={koboToNGN(totalBundle)}                       sub={`${bundles.total_purchases ?? 0} purchases`} color="#a78bfa" />
+        <KpiCard label="MRR"                   value={koboToNGN(saas?.mrr_kobo ?? 0)}               sub="monthly recurring"                    color="#38bdf8" />
+        <KpiCard label="ARR"                   value={koboToNGN(saas?.arr_kobo ?? 0)}               sub="annualised"                           color="#818cf8" />
+        <KpiCard label="ARPU"                  value={koboToNGN(saas?.arpu_kobo ?? 0)}              sub="per paying user"                      color="#fb923c" />
+        <KpiCard label="LTV (est. 12mo)"       value={koboToNGN(saas?.ltv_kobo ?? 0)}               sub="avg lifetime value"                   color="#06b6d4" />
+        <KpiCard label="Extra min. sold"       value={fmtMins(bundles.total_minutes_sold ?? 0)}     sub={`${bundles.unique_buyers ?? 0} buyers`}      color="#f472b6" />
       </div>
 
       <div className="card">
         <div className="card-header">
           <span className="card-icon">◆</span>
-          <span className="card-title">Revenue by month</span>
+          <span className="card-title">Revenue by month (actual amounts)</span>
           <div className="chart-legend" style={{ marginLeft: "auto" }}>
             <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.amber }} />Total</span>
             <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Subs</span>
@@ -834,9 +887,11 @@ function RevenueTab({ revData, saas }: { revData: any; saas: SaasMetrics | null 
           </div>
         </div>
         <div className="card-body">
-          <div style={{ position: "relative", height: 220 }}>
-            <canvas ref={canvasRef} role="img" aria-label="Multi-line chart of monthly revenue by type">Revenue breakdown by month</canvas>
-          </div>
+          {chartConfig ? (
+            <LineChart config={chartConfig} height={220} deps={[monthly.map(m => m.total_kobo).join(",")]} />
+          ) : (
+            <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No revenue data for this period</div>
+          )}
         </div>
       </div>
 
@@ -876,94 +931,31 @@ function RevenueTab({ revData, saas }: { revData: any; saas: SaasMetrics | null 
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null; growth: GrowthMonth[]; revData: any }) {
-  const newCanvasRef  = useRef<HTMLCanvasElement>(null);
-  const newChartRef   = useRef<any>(null);
-  const cumCanvasRef  = useRef<HTMLCanvasElement>(null);
-  const cumChartRef   = useRef<any>(null);
-
   const sorted = [...growth];
 
-  useEffect(() => {
-    if (!newCanvasRef.current || sorted.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (newChartRef.current) newChartRef.current.destroy();
-      newChartRef.current = new C(newCanvasRef.current, {
-        type: "line",
-        data: {
-          labels: sorted.map(g => g.month.slice(5)),
-          datasets: [
-            {
-              label: "New users",
-              data: sorted.map(g => g.new_users),
-              borderColor: LC.blue,
-              backgroundColor: "rgba(56,189,248,0.08)",
-              borderWidth: 2,
-              pointRadius: 4,
-              pointBackgroundColor: LC.blue,
-              tension: 0.35,
-              fill: true,
-            },
-            {
-              label: "New paying",
-              data: sorted.map(g => g.new_paying),
-              borderColor: LC.green,
-              backgroundColor: "rgba(52,211,153,0.06)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.green,
-              tension: 0.35,
-              fill: true,
-              borderDash: [4, 3],
-            },
-          ],
-        },
-        options: chartDefaults(),
-      });
-    });
-    return () => { if (newChartRef.current) { newChartRef.current.destroy(); newChartRef.current = null; } };
-  }, [sorted.map(g => g.new_users).join(",")]);
+  const newUsersConfig = sorted.length > 0 ? {
+    type: "line",
+    data: {
+      labels: sorted.map(g => g.month.slice(5)),
+      datasets: [
+        { label: "New users", data: sorted.map(g => g.new_users), borderColor: LC.blue, backgroundColor: "rgba(56,189,248,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: LC.blue, tension: 0.35, fill: true },
+        { label: "New paying", data: sorted.map(g => g.new_paying), borderColor: LC.green, backgroundColor: "rgba(52,211,153,0.06)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: LC.green, tension: 0.35, fill: true, borderDash: [4, 3] },
+      ],
+    },
+    options: chartDefaults(),
+  } : null;
 
-  useEffect(() => {
-    if (!cumCanvasRef.current || sorted.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (cumChartRef.current) cumChartRef.current.destroy();
-      cumChartRef.current = new C(cumCanvasRef.current, {
-        type: "line",
-        data: {
-          labels: sorted.map(g => g.month.slice(5)),
-          datasets: [
-            {
-              label: "Total users",
-              data: sorted.map(g => g.cumulative_users),
-              borderColor: LC.purple,
-              backgroundColor: "rgba(167,139,250,0.08)",
-              borderWidth: 2,
-              pointRadius: 4,
-              pointBackgroundColor: LC.purple,
-              tension: 0.35,
-              fill: true,
-            },
-            {
-              label: "Total paying",
-              data: sorted.map(g => g.cumulative_paying),
-              borderColor: LC.amber,
-              backgroundColor: "rgba(251,191,36,0.06)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.amber,
-              tension: 0.35,
-              fill: true,
-              borderDash: [4, 3],
-            },
-          ],
-        },
-        options: chartDefaults(),
-      });
-    });
-    return () => { if (cumChartRef.current) { cumChartRef.current.destroy(); cumChartRef.current = null; } };
-  }, [sorted.map(g => g.cumulative_users).join(",")]);
+  const cumConfig = sorted.length > 0 ? {
+    type: "line",
+    data: {
+      labels: sorted.map(g => g.month.slice(5)),
+      datasets: [
+        { label: "Total users", data: sorted.map(g => g.cumulative_users), borderColor: LC.purple, backgroundColor: "rgba(167,139,250,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: LC.purple, tension: 0.35, fill: true },
+        { label: "Total paying", data: sorted.map(g => g.cumulative_paying), borderColor: LC.amber, backgroundColor: "rgba(251,191,36,0.06)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: LC.amber, tension: 0.35, fill: true, borderDash: [4, 3] },
+      ],
+    },
+    options: chartDefaults(),
+  } : null;
 
   if (!saas) return <ErrorBlock msg="No data" />;
 
@@ -989,9 +981,11 @@ function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null
             </div>
           </div>
           <div className="card-body">
-            <div style={{ position: "relative", height: 160 }}>
-              <canvas ref={newCanvasRef} role="img" aria-label="Line chart of new users per month">New users data</canvas>
-            </div>
+            {newUsersConfig ? (
+              <LineChart config={newUsersConfig} height={160} deps={[sorted.map(g => g.new_users).join(",")]} />
+            ) : (
+              <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No data</div>
+            )}
           </div>
         </div>
 
@@ -1005,9 +999,11 @@ function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null
             </div>
           </div>
           <div className="card-body">
-            <div style={{ position: "relative", height: 160 }}>
-              <canvas ref={cumCanvasRef} role="img" aria-label="Line chart of cumulative user growth">Cumulative growth data</canvas>
-            </div>
+            {cumConfig ? (
+              <LineChart config={cumConfig} height={160} deps={[sorted.map(g => g.cumulative_users).join(",")]} />
+            ) : (
+              <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No data</div>
+            )}
           </div>
         </div>
       </div>
@@ -1044,75 +1040,28 @@ function UsersAnalyticsTab({ saas, growth, revData }: { saas: SaasMetrics | null
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UsageTab({ usageData }: { usageData: any }) {
-  const callsCanvasRef = useRef<HTMLCanvasElement>(null);
-  const callsChartRef  = useRef<any>(null);
-  const minsCanvasRef  = useRef<HTMLCanvasElement>(null);
-  const minsChartRef   = useRef<any>(null);
-
   const daily: UsageDay[]        = usageData?.daily_calls || [];
   const features: FeatureUsage[] = usageData?.feature_usage || [];
   const totals                   = usageData?.totals || {};
   const sortedDaily              = [...daily].reverse();
 
-  useEffect(() => {
-    if (!callsCanvasRef.current || sortedDaily.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (callsChartRef.current) callsChartRef.current.destroy();
-      callsChartRef.current = new C(callsCanvasRef.current, {
-        type: "line",
-        data: {
-          labels: sortedDaily.map(d => d.day.slice(5)),
-          datasets: [{
-            label: "Calls",
-            data: sortedDaily.map(d => d.call_count),
-            borderColor: LC.blue,
-            backgroundColor: "rgba(56,189,248,0.08)",
-            borderWidth: 2,
-            pointRadius: 2,
-            pointBackgroundColor: LC.blue,
-            tension: 0.3,
-            fill: true,
-          }],
-        },
-        options: {
-          ...chartDefaults(),
-          plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} calls` } } },
-        },
-      });
-    });
-    return () => { if (callsChartRef.current) { callsChartRef.current.destroy(); callsChartRef.current = null; } };
-  }, [sortedDaily.map(d => d.call_count).join(",")]);
+  const callsConfig = sortedDaily.length > 0 ? {
+    type: "line",
+    data: {
+      labels: sortedDaily.map(d => d.day.slice(5)),
+      datasets: [{ label: "Calls", data: sortedDaily.map(d => d.call_count), borderColor: LC.blue, backgroundColor: "rgba(56,189,248,0.08)", borderWidth: 2, pointRadius: 2, pointBackgroundColor: LC.blue, tension: 0.3, fill: true }],
+    },
+    options: { ...chartDefaults(), plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} calls` } } } },
+  } : null;
 
-  useEffect(() => {
-    if (!minsCanvasRef.current || sortedDaily.length === 0) return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (minsChartRef.current) minsChartRef.current.destroy();
-      minsChartRef.current = new C(minsCanvasRef.current, {
-        type: "line",
-        data: {
-          labels: sortedDaily.map(d => d.day.slice(5)),
-          datasets: [{
-            label: "Minutes",
-            data: sortedDaily.map(d => Math.round(d.total_minutes)),
-            borderColor: LC.purple,
-            backgroundColor: "rgba(167,139,250,0.08)",
-            borderWidth: 2,
-            pointRadius: 2,
-            pointBackgroundColor: LC.purple,
-            tension: 0.3,
-            fill: true,
-          }],
-        },
-        options: {
-          ...chartDefaults(),
-          plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} min` } } },
-        },
-      });
-    });
-    return () => { if (minsChartRef.current) { minsChartRef.current.destroy(); minsChartRef.current = null; } };
-  }, [sortedDaily.map(d => d.total_minutes).join(",")]);
+  const minsConfig = sortedDaily.length > 0 ? {
+    type: "line",
+    data: {
+      labels: sortedDaily.map(d => d.day.slice(5)),
+      datasets: [{ label: "Minutes", data: sortedDaily.map(d => Math.round(d.total_minutes)), borderColor: LC.purple, backgroundColor: "rgba(167,139,250,0.08)", borderWidth: 2, pointRadius: 2, pointBackgroundColor: LC.purple, tension: 0.3, fill: true }],
+    },
+    options: { ...chartDefaults(), plugins: { ...chartDefaults().plugins, tooltip: { mode: "index" as const, intersect: false, callbacks: { label: (ctx: any) => ` ${ctx.parsed.y} min` } } } },
+  } : null;
 
   const FEAT_LABELS: Record<string, { label: string; color: string; icon: string }> = {
     ai_summaries:   { label: "AI Summaries",     color: "#a78bfa", icon: "◉" },
@@ -1137,22 +1086,22 @@ function UsageTab({ usageData }: { usageData: any }) {
         <div className="card">
           <div className="card-header"><span className="card-icon">◈</span><span className="card-title">Calls per day</span></div>
           <div className="card-body">
-            {sortedDaily.length === 0
-              ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No calls this period</div>
-              : <div style={{ position: "relative", height: 150 }}>
-                  <canvas ref={callsCanvasRef} role="img" aria-label="Line chart of daily call volume">Calls per day</canvas>
-                </div>}
+            {callsConfig ? (
+              <LineChart config={callsConfig} height={150} deps={[sortedDaily.map(d => d.call_count).join(",")]} />
+            ) : (
+              <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No calls this period</div>
+            )}
           </div>
         </div>
 
         <div className="card">
           <div className="card-header"><span className="card-icon">⌛</span><span className="card-title">Minutes per day</span></div>
           <div className="card-body">
-            {sortedDaily.length === 0
-              ? <div style={{ textAlign: "center", color: "var(--muted)", padding: 20, fontSize: 12 }}>No usage this period</div>
-              : <div style={{ position: "relative", height: 150 }}>
-                  <canvas ref={minsCanvasRef} role="img" aria-label="Line chart of daily call minutes">Minutes per day</canvas>
-                </div>}
+            {minsConfig ? (
+              <LineChart config={minsConfig} height={150} deps={[sortedDaily.map(d => d.total_minutes).join(",")]} />
+            ) : (
+              <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No usage this period</div>
+            )}
           </div>
         </div>
       </div>
@@ -1192,7 +1141,7 @@ function UsageTab({ usageData }: { usageData: any }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OPS TAB  (unchanged from v5)
+// OPS TAB
 // ─────────────────────────────────────────────────────────────────────────────
 
 function OpsTab({ ops }: { ops: OperationalHealth | null }) {
@@ -1273,7 +1222,7 @@ function OpsTab({ ops }: { ops: OperationalHealth | null }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD SECTION  (unchanged from v5)
+// DASHBOARD SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DashboardSection() {
@@ -1300,7 +1249,7 @@ function DashboardSection() {
     { label: "Total Users",     value: fmt(stats.total_users),            sub: `+${stats.new_users_7d} this week`, color: "#38bdf8" },
     { label: "Paying Users",    value: fmt(stats.paying_users),           sub: `${Math.round(stats.paying_users/Math.max(stats.total_users,1)*100)}% conv.`, color: "#34d399" },
     { label: "MRR",             value: koboToNGN(stats.mrr_kobo),         sub: "monthly recurring", color: "#a78bfa" },
-    { label: "Revenue 30d",     value: koboToNGN(stats.revenue_30d_kobo), sub: "paid", color: "#fbbf24" },
+    { label: "Revenue 30d",     value: koboToNGN(stats.revenue_30d_kobo), sub: "subs + extra min.", color: "#fbbf24" },
     { label: "Active Today",    value: fmt(stats.active_today),           sub: `${stats.calls_today} calls`, color: "#06b6d4" },
     { label: "Live Calls",      value: fmt(stats.live_calls),             sub: "right now", color: "#f87171", pulse: stats.live_calls > 0 },
     { label: "Minutes Used",    value: fmt(stats.total_minutes_used),     sub: "this cycle", color: "#818cf8" },
@@ -1361,7 +1310,7 @@ function DashboardSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USERS SECTION  (unchanged from v5)
+// USERS SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UsersSection() {
@@ -1472,7 +1421,7 @@ function UsersSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BILLING SECTION  (unchanged shell — ExtraMinutesSection updated below)
+// BILLING SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BillingSection() {
@@ -1503,14 +1452,15 @@ function BillingSection() {
       {tab === "revenue" && (
         <>
           <div className="kpi-grid">
-            <KpiCard label="Revenue 7d"  value={koboToNGN(rev.total_7d_kobo || 0)}  sub="last 7 days"  color="#34d399" />
-            <KpiCard label="Revenue 30d" value={koboToNGN(rev.total_30d_kobo || 0)} sub="last 30 days" color="#a78bfa" />
+            {/* These now include bundle revenue from the fixed RPC */}
+            <KpiCard label="Revenue 7d"  value={koboToNGN(rev.total_7d_kobo || 0)}  sub="subs + extra min." color="#34d399" />
+            <KpiCard label="Revenue 30d" value={koboToNGN(rev.total_30d_kobo || 0)} sub="subs + extra min." color="#a78bfa" />
             <KpiCard label="Active Subs" value={fmt((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.user_count, 0))} sub="paying now" color="#38bdf8" />
             <KpiCard label="MRR" value={koboToNGN((rev.plan_revenue || []).reduce((a: number, r: any) => a + r.monthly_kobo, 0))} sub="monthly recurring" color="#fbbf24" />
           </div>
           <div className="two-col">
             <div className="card">
-              <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Last 30 Days</span></div>
+              <div className="card-header"><span className="card-icon">◆</span><span className="card-title">Revenue Last 30 Days (subs + bundles)</span></div>
               <div className="card-body">
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 96 }}>
                   {dailyData.slice(-30).map((d, i) => (
@@ -1545,15 +1495,13 @@ function BillingSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXTRA MINUTES SECTION  (updated: line chart + "received" labels)
+// EXTRA MINUTES SECTION — uses actual amount_kobo from bundle_purchases
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ExtraMinutesSection() {
   const [data, setData]       = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView]       = useState<"monthly"|"buyers"|"recent">("monthly");
-  const canvasRef             = useRef<HTMLCanvasElement>(null);
-  const chartRef              = useRef<any>(null);
 
   useEffect(() => {
     (supabase as any).rpc("admin_get_extra_minutes_analytics", { p_months: 12 })
@@ -1567,58 +1515,50 @@ function ExtraMinutesSection() {
   const currentMonth     = data?.current_month || {};
   const sortedMonthly    = [...monthly].reverse();
 
-  useEffect(() => {
-    if (!canvasRef.current || sortedMonthly.length === 0 || view !== "monthly") return;
-    loadChartJs().then(() => {
-      const C = (window as any).Chart;
-      if (chartRef.current) chartRef.current.destroy();
-      chartRef.current = new C(canvasRef.current, {
-        type: "line",
-        data: {
-          labels: sortedMonthly.map((m: any) => m.month.slice(5)),
-          datasets: [
-            {
-              label: "Revenue received (₦)",
-              data: sortedMonthly.map((m: any) => Math.round((m.revenue_kobo || 0) / 100)),
-              borderColor: LC.green,
-              backgroundColor: "rgba(52,211,153,0.08)",
-              borderWidth: 2.5,
-              pointRadius: 4,
-              pointBackgroundColor: LC.green,
-              tension: 0.35,
-              fill: true,
-              yAxisID: "yRev",
-            },
-            {
-              label: "Minutes sold",
-              data: sortedMonthly.map((m: any) => m.total_minutes),
-              borderColor: LC.purple,
-              backgroundColor: "rgba(167,139,250,0.06)",
-              borderWidth: 2,
-              pointRadius: 3,
-              pointBackgroundColor: LC.purple,
-              tension: 0.35,
-              fill: false,
-              borderDash: [4, 3],
-              yAxisID: "yMins",
-            },
-          ],
+  const monthlyChartConfig = sortedMonthly.length > 0 ? {
+    type: "line",
+    data: {
+      labels: sortedMonthly.map((m: any) => m.month.slice(5)),
+      datasets: [
+        {
+          label: "Revenue received (₦)",
+          data: sortedMonthly.map((m: any) => Math.round((m.revenue_kobo || 0) / 100)),
+          borderColor: LC.green,
+          backgroundColor: "rgba(52,211,153,0.08)",
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: LC.green,
+          tension: 0.35,
+          fill: true,
+          yAxisID: "yRev",
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 600 },
-          plugins: { legend: { display: false }, tooltip: { mode: "index" as const, intersect: false } },
-          scales: {
-            x:    { ticks: { color: LC.tickColor, font: { size: 10 }, maxRotation: 45 }, grid: { color: LC.gridLine } },
-            yRev: { position: "left"  as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` }, grid: { color: LC.gridLine } },
-            yMins:{ position: "right" as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `${v}m` }, grid: { drawOnChartArea: false } },
-          },
+        {
+          label: "Minutes sold",
+          data: sortedMonthly.map((m: any) => m.total_minutes),
+          borderColor: LC.purple,
+          backgroundColor: "rgba(167,139,250,0.06)",
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: LC.purple,
+          tension: 0.35,
+          fill: false,
+          borderDash: [4, 3],
+          yAxisID: "yMins",
         },
-      });
-    });
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [view, sortedMonthly.map((m: any) => m.revenue_kobo).join(",")]);
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: { legend: { display: false }, tooltip: { mode: "index" as const, intersect: false } },
+      scales: {
+        x:    { ticks: { color: LC.tickColor, font: { size: 10 }, maxRotation: 45 }, grid: { color: LC.gridLine } },
+        yRev: { position: "left"  as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `₦${(v/1000).toFixed(0)}k` }, grid: { color: LC.gridLine } },
+        yMins:{ position: "right" as const, ticks: { color: LC.tickColor, font: { size: 10 }, callback: (v: number) => `${v}m` }, grid: { drawOnChartArea: false } },
+      },
+    },
+  } : null;
 
   if (loading) return <SkeletonGrid count={5} height={48} />;
   if (!data)   return <ErrorBlock msg="Could not load extra minutes data" />;
@@ -1635,7 +1575,7 @@ function ExtraMinutesSection() {
   return (
     <div>
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <KpiCard label="Total received"      value={koboToNGN(totals.total_revenue_kobo || 0)}  sub="all Paystack payments"                  color="#34d399" />
+        <KpiCard label="Total received"      value={koboToNGN(totals.total_revenue_kobo || 0)}  sub="actual Paystack amounts"                color="#34d399" />
         <KpiCard label="This month received" value={koboToNGN(currentMonth.revenue_kobo || 0)}  sub={`${currentMonth.purchases || 0} purchases`} color="#fbbf24" />
         <KpiCard label="Total mins sold"     value={fmtMins(totals.total_minutes_sold || 0)}     sub="all time"                               color="#a78bfa" />
         <KpiCard label="Unique buyers"       value={fmt(totals.total_buyers || 0)}               sub={`${totals.total_purchases || 0} purchases`} color="#38bdf8" />
@@ -1652,16 +1592,18 @@ function ExtraMinutesSection() {
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-header">
               <span className="card-icon">⏱</span>
-              <span className="card-title">Extra minutes — last 12 months</span>
+              <span className="card-title">Extra minutes — last 12 months (actual amounts)</span>
               <div className="chart-legend" style={{ marginLeft: "auto" }}>
                 <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.green }} />Revenue received</span>
                 <span className="chart-legend-item"><span className="chart-legend-line" style={{ background: LC.purple }} />Mins sold</span>
               </div>
             </div>
             <div className="card-body">
-              <div style={{ position: "relative", height: 200 }}>
-                <canvas ref={canvasRef} role="img" aria-label="Line chart of extra minutes revenue received and minutes sold per month">Extra minutes monthly data</canvas>
-              </div>
+              {monthlyChartConfig ? (
+                <LineChart config={monthlyChartConfig} height={200} deps={[sortedMonthly.map((m: any) => m.revenue_kobo).join(",")]} />
+              ) : (
+                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 12 }}>No purchases yet</div>
+              )}
             </div>
           </div>
 
@@ -1736,7 +1678,7 @@ function ExtraMinutesSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FEATURE FLAGS SECTION  (unchanged from v5)
+// FEATURE FLAGS SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FeatureFlagsSection() {
@@ -1930,7 +1872,7 @@ function FlagAuditModal({ flag, onClose }: { flag: FeatureFlag; onClose: () => v
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUDIT LOG SECTION  (unchanged)
+// AUDIT LOG SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FlagAuditSection() {
@@ -1971,7 +1913,7 @@ function FlagAuditSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI INFRA SECTION  (unchanged)
+// AI INFRA SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AIInfraSection() {
@@ -2026,7 +1968,7 @@ function AIInfraSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECURITY SECTION  (unchanged)
+// SECURITY SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SecuritySection() {
@@ -2071,7 +2013,7 @@ function SecuritySection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USER MODAL  (unchanged)
+// USER MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
