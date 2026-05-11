@@ -1,11 +1,11 @@
 // src/hooks/useSubscription.ts
-// FIXES v2:
-//  1. transactionsQuery — only runs ONCE on mount (no polling), not every 30s.
-//     Transaction history doesn't change in real-time; re-fetched only on demand.
-//  2. pendingSyncQuery — only runs when status is genuinely "pending"; reduced to 20s.
-//  3. profileQuery — reduced from 30s to 2min polling (billing_status rarely changes).
-//  4. paymentQuery — reduced from 30s to 2min polling.
-//  5. getSessionToken — serialised, prevents concurrent auth lock contention.
+// BILLING FIX v3:
+//  1. Payment cancellation NEVER changes active_plan
+//  2. Proper pending_plan / payment_status state machine
+//  3. Only verified Paystack webhook/callback upgrades plan
+//  4. "Retry" nudge only shown when subscription is ACTUALLY expired/inactive
+//  5. markAbandoned now explicitly sets payment_status=cancelled and clears
+//     pending_plan without touching active_plan or profiles.plan_type
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +28,15 @@ export interface Subscription {
   card_brand: string | null;
   created_at: string;
   updated_at: string;
+  // ── New billing-state fields ──────────────────────────────────────
+  /** The plan the user is actually on right now (never cleared on cancel) */
+  active_plan?: string | null;
+  /** The plan they tried to upgrade/switch to — cleared on cancel */
+  pending_plan?: string | null;
+  /** "idle" | "pending" | "success" | "cancelled" | "failed" */
+  payment_status?: string | null;
+  /** When the subscription access actually expires */
+  expires_at?: string | null;
 }
 
 export interface SubscriptionTransaction {
@@ -60,7 +69,7 @@ export interface PaymentRecord {
   id: string;
   user_id: string;
   plan_selected: string;
-  status: "initialized" | "pending" | "success" | "failed" | "abandoned";
+  status: "initialized" | "pending" | "success" | "failed" | "abandoned" | "cancelled";
   paystack_reference: string | null;
   amount_kobo: number | null;
   currency: string;
@@ -69,11 +78,21 @@ export interface PaymentRecord {
 }
 
 export interface BillingState {
+  /** The user's ACTUAL current plan (never downgraded by a cancel) */
+  activePlanKey: string;
+  /** True only if the subscription row has status="active" AND not expired */
   billingStatus: "active" | "inactive" | "past_due";
   planType: string;
   latestPayment: PaymentRecord | null;
+  /**
+   * True when there is an INCOMPLETE checkout that was neither verified as
+   * successful NOR abandoned — and the subscription is NOT already active.
+   * We do NOT show this banner if the user already has a paid plan.
+   */
   hasIncompleteCheckout: boolean;
   pendingPlanKey: string | null;
+  /** Was the last payment attempt explicitly cancelled by the user? */
+  paymentCancelled: boolean;
 }
 
 // ── Serialized session refresh ────────────────────────────────────────────────
@@ -159,6 +178,26 @@ async function invokeWithAuth(
   return result;
 }
 
+// ── Helper: is a subscription row actually active and not expired? ─────────────
+function isSubscriptionCurrentlyActive(sub: Subscription | null): boolean {
+  if (!sub) return false;
+  if (sub.status !== "active") return false;
+  if (sub.expires_at) {
+    return new Date(sub.expires_at) > new Date();
+  }
+  // No expires_at = still active (Paystack controls renewal)
+  return true;
+}
+
+// ── Normalize plan key helper ─────────────────────────────────────────────────
+function normalizePlanKey(planName: string): string {
+  const n = (planName ?? "").toLowerCase();
+  if (n.includes("scale"))   return "scale";
+  if (n.includes("growth"))  return "growth";
+  if (n.includes("starter")) return "starter";
+  return "free";
+}
+
 export function useSubscription() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -177,7 +216,6 @@ export function useSubscription() {
       return data as Subscription | null;
     },
     enabled: !!user,
-    // Fast poll only while pending; otherwise 5 minutes
     refetchInterval: (q) => {
       const data = q.state.data as Subscription | null;
       return data?.status === "pending" ? 10_000 : 5 * 60_000;
@@ -185,7 +223,6 @@ export function useSubscription() {
   });
 
   // ── Profile billing status ─────────────────────────────────────────────
-  // FIX: reduced from 30s → 2 minutes. Billing status changes are rare.
   const profileQuery = useQuery({
     queryKey: ["billing-profile", user?.id],
     queryFn: async () => {
@@ -202,7 +239,6 @@ export function useSubscription() {
   });
 
   // ── Latest payment record ──────────────────────────────────────────────
-  // FIX: reduced from 30s → 2 minutes.
   const paymentQuery = useQuery({
     queryKey: ["latest-payment", user?.id],
     queryFn: async (): Promise<PaymentRecord | null> => {
@@ -222,30 +258,53 @@ export function useSubscription() {
 
   // ── Derived billing state ──────────────────────────────────────────────
   const billingState: BillingState = (() => {
+    const sub = query.data ?? null;
     const profileBillingStatus = profileQuery.data?.billing_status ?? "inactive";
     const planType = profileQuery.data?.plan_type ?? "free";
     const latestPayment = paymentQuery.data ?? null;
 
-    const billingStatus: BillingState["billingStatus"] =
-      profileBillingStatus === "active"
-        ? "active"
-        : profileBillingStatus === "past_due"
-        ? "past_due"
-        : "inactive";
+    // "Active" means the subscription row is active AND not expired
+    const isReallyActive = isSubscriptionCurrentlyActive(sub);
 
+    const billingStatus: BillingState["billingStatus"] = isReallyActive
+      ? "active"
+      : profileBillingStatus === "past_due"
+      ? "past_due"
+      : "inactive";
+
+    // The plan the user is ACTUALLY on — prefer subscription row's active_plan
+    // field; fall back to plan_name; then to profile plan_type.
+    // This is NEVER cleared on payment cancellation.
+    const activePlanKey =
+      sub?.active_plan ??
+      (isReallyActive ? normalizePlanKey(sub?.plan_name ?? "") : null) ??
+      planType ??
+      "free";
+
+    // Payment-cancelled flag: set by markAbandoned, cleared on next success
+    const paymentCancelled =
+      (sub?.payment_status === "cancelled") ||
+      (latestPayment?.status === "abandoned") ||
+      (latestPayment?.status === "cancelled");
+
+    // Only show the "incomplete checkout" banner when:
+    // 1. There IS a pending payment record
+    // 2. The subscription is NOT already active (user doesn't need the nudge)
+    // 3. The payment was NOT explicitly cancelled
     const hasIncompleteCheckout =
       !!latestPayment &&
-      (latestPayment.status === "initialized" ||
-        latestPayment.status === "pending" ||
-        latestPayment.status === "abandoned") &&
-      billingStatus !== "active";
+      (latestPayment.status === "initialized" || latestPayment.status === "pending") &&
+      !isReallyActive &&
+      !paymentCancelled;
 
     return {
+      activePlanKey,
       billingStatus,
       planType,
       latestPayment,
       hasIncompleteCheckout,
       pendingPlanKey: hasIncompleteCheckout ? latestPayment?.plan_selected ?? null : null,
+      paymentCancelled,
     };
   })();
 
@@ -271,6 +330,11 @@ export function useSubscription() {
     },
     onSuccess: (data) => {
       sessionStorage.setItem("fixsense_pending_payment_ref", data.reference);
+      // Store the CURRENT active plan so we can detect/restore if cancelled
+      sessionStorage.setItem(
+        "fixsense_pre_checkout_plan",
+        billingState.activePlanKey
+      );
       window.location.href = data.authorization_url;
     },
     onError: (err: Error) => {
@@ -357,6 +421,10 @@ export function useSubscription() {
     },
     onSuccess: (data) => {
       sessionStorage.setItem("fixsense_pending_payment_ref", data.reference);
+      sessionStorage.setItem(
+        "fixsense_pre_checkout_plan",
+        billingState.activePlanKey
+      );
       window.location.href = data.authorization_url;
     },
     onError: (err: Error) => {
@@ -364,18 +432,42 @@ export function useSubscription() {
     },
   });
 
-  // ── Mark abandoned ─────────────────────────────────────────────────────
+  // ── Mark checkout as abandoned/cancelled ───────────────────────────────
+  // KEY FIX: This ONLY marks the payment record and sets payment_status=cancelled.
+  // It NEVER touches active_plan, profiles.plan_type, or subscription.status.
   const markAbandoned = useMutation({
     mutationFn: async (reference: string) => {
+      // 1. Mark the payment row as abandoned (server-side)
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         mark_abandoned: true,
         reference,
+        // Tell the edge function: do NOT touch active_plan
+        preserve_active_plan: true,
       });
       if (error) throw new Error(error.message ?? "Failed to mark abandoned");
+
+      // 2. Locally update ONLY payment_status on the subscription row
+      //    Crucially: only update non-active rows (active subscriptions are untouched)
+      if (user?.id) {
+        await (supabase as any)
+          .from("subscriptions")
+          .update({
+            payment_status: "cancelled",
+            pending_plan: null,
+          })
+          .eq("user_id", user.id)
+          .neq("status", "active"); // NEVER update an active subscription row
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["latest-payment"] });
+      queryClient.invalidateQueries({ queryKey: ["subscription"] });
+    },
+    // Non-fatal — log but don't crash
+    onError: (err: Error) => {
+      console.warn("markAbandoned (non-fatal):", err.message);
     },
   });
 
@@ -385,6 +477,8 @@ export function useSubscription() {
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         reference: options?.reference ?? null,
         include_transactions: options?.includeTransactions ?? false,
+        // Ensure the edge function knows it can only UPGRADE, never downgrade
+        respect_active_plan: true,
       });
       if (error) throw new Error(error.message ?? "Failed to verify payment");
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -403,14 +497,10 @@ export function useSubscription() {
   });
 
   // ── Transaction history ────────────────────────────────────────────────
-  // FIX: No automatic polling — transactions don't change in real-time.
-  // staleTime=5min means it only re-fetches when user explicitly navigates
-  // to the billing page or calls refetch().
   const transactionsQuery = useQuery({
     queryKey: ["subscription-transactions", user?.id],
     queryFn: async (): Promise<SubscriptionTransaction[]> => {
       if (!user) return [];
-      // Small delay to avoid racing with other auth calls on page load
       await new Promise((r) => setTimeout(r, 800));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: true,
@@ -420,14 +510,12 @@ export function useSubscription() {
       return ((data as any)?.transactions ?? []) as SubscriptionTransaction[];
     },
     enabled: !!user,
-    // FIX: No refetchInterval — only fetches on mount + explicit invalidation
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     retry: 1,
   });
 
   // ── Pending sync ───────────────────────────────────────────────────────
-  // FIX: only active when truly pending, poll at 20s (was 8-15s)
   const pendingSyncQuery = useQuery({
     queryKey: ["subscription-pending-sync", user?.id, query.data?.status],
     queryFn: async () => {
@@ -435,6 +523,7 @@ export function useSubscription() {
       await new Promise((r) => setTimeout(r, 1500));
       const { data, error } = await invokeWithAuth("paystack-sync-subscription", {
         include_transactions: false,
+        respect_active_plan: true,
       });
       if (error) throw new Error(error.message ?? "Sync failed");
       if ((data as any)?.updated) {
@@ -450,8 +539,7 @@ export function useSubscription() {
   });
 
   const getCurrentPlanKey = () => {
-    if (billingState.billingStatus !== "active") return "free";
-    return billingState.planType ?? "free";
+    return billingState.activePlanKey ?? "free";
   };
 
   return {
