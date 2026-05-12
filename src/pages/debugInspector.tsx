@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useAuth } from "@/contexts/AuthContext";
 
 /* ─── Types ────────────────────────────────────────────────────────────────── */
 
@@ -172,9 +174,22 @@ function formatForCopy(list: ConsoleEntry[]) {
   ).join("\n\n");
 }
 
-/* ─── Component ────────────────────────────────────────────────────────────── */
+/* ─── Admin gate wrapper ───────────────────────────────────────────────────── */
 
 export const DebugInspector = () => {
+  const { user } = useAuth();
+  const { isAdmin, loading } = useIsAdmin();
+
+  // Don't mount the panel at all for non-admins.
+  // While loading, render nothing to avoid flicker.
+  if (!user || loading || !isAdmin) return null;
+
+  return <DebugInspectorPanel />;
+};
+
+/* ─── Inner panel (only mounts for admins) ─────────────────────────────────── */
+
+function DebugInspectorPanel() {
   const [open, setOpen]             = useState(false);
   const [tab, setTab]               = useState<Tab>("all");
   const [filter, setFilter]         = useState("");
@@ -284,7 +299,6 @@ export const DebugInspector = () => {
 
   const errorCount = counts.errors;
 
-  /* short tab labels on mobile */
   const tabLabel: Record<Tab, string> = {
     all:      isMobile ? "All"  : "all",
     errors:   isMobile ? "Err"  : "errors",
@@ -293,7 +307,6 @@ export const DebugInspector = () => {
     network:  isMobile ? "Net"  : "network",
   };
 
-  /* ── shared inline styles ── */
   const AB: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: 4,
     padding: isMobile ? "6px 9px" : "3px 8px",
@@ -309,7 +322,7 @@ export const DebugInspector = () => {
       {/* ── Trigger ── */}
       <button
         onClick={() => setOpen(o => !o)}
-        title="Toggle Debug Console"
+        title="Toggle Debug Console (Admin Only)"
         style={{
           position: "fixed",
           bottom: isMobile ? 14 : 16,
@@ -341,6 +354,10 @@ export const DebugInspector = () => {
             padding: "1px 6px", fontSize: 11, fontWeight: 700, lineHeight: 1.4,
           }}>{errorCount > 99 ? "99+" : errorCount}</span>
         )}
+        <span style={{
+          background: "rgba(167,139,250,0.15)", color: "#a78bfa",
+          borderRadius: 3, padding: "1px 5px", fontSize: 9, fontWeight: 700,
+        }}>ADMIN</span>
       </button>
 
       {/* ── Panel ── */}
@@ -418,7 +435,7 @@ export const DebugInspector = () => {
               ))}
             </div>
 
-            {/* Filter input — own row on mobile */}
+            {/* Filter input */}
             <div style={{
               position: "relative",
               flex: isMobile ? "1 1 100%" : "1",
@@ -462,8 +479,6 @@ export const DebugInspector = () => {
 
             {/* Action buttons */}
             <div style={{ marginLeft: isMobile ? 0 : "auto", display: "flex", gap: 6, flexShrink: 0 }}>
-
-              {/* Copy visible */}
               <button onClick={() => doCopy("filtered")} title="Copy visible entries" style={AB}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
@@ -471,29 +486,19 @@ export const DebugInspector = () => {
                 </svg>
                 {copied === "filtered" ? <span style={{ color: "#34d399" }}>✓ Copied</span> : "Copy"}
               </button>
-
-              {/* Copy ALL */}
-              <button
-                onClick={() => doCopy("all")}
-                title="Copy all entries (ignore filters)"
-                style={{ ...AB, color: copied === "all" ? "#34d399" : "#94a3b8", borderColor: copied === "all" ? "#34d399" : "#1e2d3d" }}
-              >
+              <button onClick={() => doCopy("all")} title="Copy all entries" style={{ ...AB, color: copied === "all" ? "#34d399" : "#94a3b8", borderColor: copied === "all" ? "#34d399" : "#1e2d3d" }}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <rect x="1" y="1" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
                   <rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
                 </svg>
                 {copied === "all" ? <span style={{ color: "#34d399" }}>✓ Done</span> : "Copy All"}
               </button>
-
-              {/* Clear */}
               <button onClick={clear} title="Clear all" style={{ ...AB, color: "#f87171" }}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
                 {isMobile ? "" : "Clear"}
               </button>
-
-              {/* Close */}
               <button onClick={() => setOpen(false)} title="Close" style={AB}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M2 10l8-8M10 10L2 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -572,69 +577,41 @@ export const DebugInspector = () => {
                     </div>
 
                     {/* Timestamp */}
-                    <span style={{
-                      color: "#334155", fontSize: 10, paddingTop: 3,
-                      minWidth: isMobile ? 70 : 80, flexShrink: 0,
-                    }}>{fmt(e.time)}</span>
+                    <span style={{ color: "#334155", fontSize: 10, paddingTop: 3, minWidth: isMobile ? 70 : 80, flexShrink: 0 }}>{fmt(e.time)}</span>
 
                     {/* Kind badge */}
                     {kindLabel && (
                       <span style={{
-                        background: e.kind === "build" ? "rgba(168,85,247,0.15)"
-                          : e.kind === "network" ? "rgba(59,130,246,0.15)"
-                          : "rgba(148,163,184,0.08)",
-                        color: e.kind === "build" ? "#c084fc"
-                          : e.kind === "network" ? "#60a5fa" : "#64748b",
+                        background: e.kind === "build" ? "rgba(168,85,247,0.15)" : e.kind === "network" ? "rgba(59,130,246,0.15)" : "rgba(148,163,184,0.08)",
+                        color: e.kind === "build" ? "#c084fc" : e.kind === "network" ? "#60a5fa" : "#64748b",
                         borderRadius: 3, padding: "1px 5px", fontSize: 9,
                         marginRight: 5, marginTop: 3, flexShrink: 0,
                       }}>{kindLabel}</span>
                     )}
 
                     {/* Message */}
-                    <span style={{
-                      color, fontSize: isMobile ? 12 : 11.5,
-                      lineHeight: 1.6, wordBreak: "break-word",
-                      flex: 1, paddingRight: 8,
-                    }}>
+                    <span style={{ color, fontSize: isMobile ? 12 : 11.5, lineHeight: 1.6, wordBreak: "break-word", flex: 1, paddingRight: 8 }}>
                       {e.message}
                     </span>
 
                     {/* Source — desktop only */}
                     {e.source && !isMobile && (
-                      <span style={{
-                        color: "#334155", fontSize: 10, paddingTop: 3,
-                        flexShrink: 0, paddingRight: 8,
-                        maxWidth: 130, overflow: "hidden",
-                        textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>{e.source}</span>
+                      <span style={{ color: "#334155", fontSize: 10, paddingTop: 3, flexShrink: 0, paddingRight: 8, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.source}</span>
                     )}
 
                     {/* Repeat count */}
                     {e.count > 1 && (
-                      <span style={{
-                        background: "rgba(96,165,250,0.12)", color: "#60a5fa",
-                        borderRadius: 3, padding: "1px 5px", fontSize: 9,
-                        marginRight: 6, marginTop: 3, flexShrink: 0,
-                      }}>{e.count}×</span>
+                      <span style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa", borderRadius: 3, padding: "1px 5px", fontSize: 9, marginRight: 6, marginTop: 3, flexShrink: 0 }}>{e.count}×</span>
                     )}
                   </div>
 
                   {/* Expanded detail */}
                   {isOpen && e.detail && (
-                    <div style={{
-                      background: "#060a10",
-                      borderLeft: `2px solid ${color}`,
-                      padding: "6px 16px 10px 20px",
-                    }}>
+                    <div style={{ background: "#060a10", borderLeft: `2px solid ${color}`, padding: "6px 16px 10px 20px" }}>
                       {e.source && isMobile && (
                         <div style={{ color: "#475569", fontSize: 10, marginBottom: 4 }}>{e.source}</div>
                       )}
-                      <pre style={{
-                        margin: 0, color: "#64748b",
-                        fontSize: isMobile ? 11 : 11,
-                        lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-all",
-                        maxHeight: 240, overflowY: "auto",
-                      }}>{e.detail}</pre>
+                      <pre style={{ margin: 0, color: "#64748b", fontSize: isMobile ? 11 : 11, lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 240, overflowY: "auto" }}>{e.detail}</pre>
                     </div>
                   )}
                 </div>
@@ -659,7 +636,7 @@ export const DebugInspector = () => {
       )}
     </>
   );
-};
+}
 
 /* ─── Shared static styles ─────────────────────────────────────────────────── */
 
