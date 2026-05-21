@@ -13,14 +13,10 @@ export function useIsAdmin() {
     if (!user) { setIsAdmin(false); setLoading(false); return; }
 
     (async () => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .maybeSingle();
+      // Use the is_admin() RPC which checks both admin_users and user_roles tables
+      const { data, error } = await (supabase as any).rpc("is_admin");
       if (active) {
-        setIsAdmin(!!data);
+        setIsAdmin(!error && data === true);
         setLoading(false);
       }
     })();
