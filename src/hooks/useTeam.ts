@@ -46,12 +46,10 @@ async function fetchMyTeamId(userId: string): Promise<string | null> {
     .eq("status", "active")
     .limit(1)
     .maybeSingle();
-
   if (error) throw error;
   return data?.team_id ?? null;
 }
 
-// Safe workspace upsert — calls the SECURITY DEFINER RPC to avoid RLS issues
 async function ensureWorkspaceForTeam(teamId: string, adminUserId: string): Promise<void> {
   try {
     await (supabase as any).rpc("ensure_workspace_for_team", {
@@ -151,19 +149,14 @@ export function useTeam() {
     staleTime: 15_000,
   });
 
-  // ── My pending invitations — uses the SECURITY DEFINER RPC ──────────────
-  // This correctly finds invitations for the logged-in user's email,
-  // regardless of whether they already have a team or not.
+  // My pending invitations — uses SECURITY DEFINER RPC
   const myInvitationsQuery = useQuery({
     queryKey: ["my-pending-invitations", userId],
     queryFn: async () => {
       if (!userId) return [];
-
-      // Use the new RPC for reliability
       const { data: rpcData, error: rpcError } = await (supabase as any).rpc(
         "get_my_pending_invitations"
       );
-
       if (!rpcError && rpcData) {
         return (rpcData as any[]).map((inv: any) => ({
           id: inv.id,
@@ -177,22 +170,18 @@ export function useTeam() {
           teams: { name: inv.team_name },
         })) as PendingInvitation[];
       }
-
       // Fallback: direct query
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
         .eq("id", userId)
         .maybeSingle();
-
       if (!profile?.email) return [];
-
       const { data, error } = await supabase
         .from("team_invitations")
         .select("*, teams(name)")
         .eq("status", "pending")
         .ilike("email", profile.email);
-
       if (error) {
         console.warn("my invitations fetch:", error.message);
         return [];
@@ -201,7 +190,7 @@ export function useTeam() {
     },
     enabled: !!userId,
     staleTime: 15_000,
-    refetchInterval: 30_000, // Poll every 30s so banner appears promptly
+    refetchInterval: 30_000,
   });
 
   const adminPlanQuery = useQuery({
@@ -216,29 +205,24 @@ export function useTeam() {
         .eq("status", "active")
         .limit(1)
         .maybeSingle();
-
       if (!adminMember?.user_id) return "free";
-
       const { data: sub } = await supabase
         .from("subscriptions" as any)
         .select("plan_name, status")
         .eq("user_id", adminMember.user_id)
         .eq("status", "active")
         .maybeSingle();
-
       if ((sub as any)?.plan_name) {
         const name = (sub as any).plan_name.toLowerCase();
-        if (name.includes("scale"))   return "scale";
-        if (name.includes("growth"))  return "growth";
+        if (name.includes("scale")) return "scale";
+        if (name.includes("growth")) return "growth";
         if (name.includes("starter")) return "starter";
       }
-
       const { data: profile } = await supabase
         .from("profiles")
         .select("plan_type")
         .eq("id", adminMember.user_id)
         .maybeSingle();
-
       return profile?.plan_type ?? "free";
     },
     enabled: !!teamId,
@@ -254,10 +238,9 @@ export function useTeam() {
     queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
   };
 
-  // ── CREATE TEAM ─────────────────────────────────────────────────────────────
+  // ── CREATE TEAM ──────────────────────────────────────────────────────────────
   const createTeam = useMutation({
     mutationFn: async (name: string) => {
-      // Use the updated SECURITY DEFINER function that auto-creates workspace
       const { data, error } = await supabase.rpc("create_team_with_owner", {
         team_name: name || "My Team",
       });
@@ -286,7 +269,7 @@ export function useTeam() {
 
       const isExistingUser = !!existingProfile;
 
-      // Insert invitation — DB trigger auto-generates invite_token
+      // Insert invitation — DB trigger auto-generates invite_token + 30-day expiry
       const { data: invRow, error: invErr } = await supabase
         .from("team_invitations")
         .insert({ team_id: teamId, email, role, invited_by: userId! })
@@ -301,7 +284,7 @@ export function useTeam() {
       const inviteToken: string | null = (invRow as any)?.invite_token ?? null;
 
       if (isExistingUser && existingProfile) {
-        // Pre-create member row as "invited" status so banner shows immediately
+        // Pre-create member row as "invited" so banner shows immediately
         const { error: memErr } = await supabase
           .from("team_members")
           .insert({
@@ -317,13 +300,6 @@ export function useTeam() {
         if (memErr && memErr.code !== "23505") {
           console.warn("Pre-creating member row failed:", memErr.message);
         }
-
-        // Send in-app notification
-        await supabase.from("notifications").insert({
-          user_id: existingProfile.id,
-          type: "system",
-          message: `You've been invited to join a team as ${role}. Check your dashboard to accept.`,
-        });
       }
 
       // Send invite email
@@ -335,7 +311,9 @@ export function useTeam() {
             inviterName: user?.user_metadata?.full_name ?? user?.email,
             role,
             inviteToken,
-            signupUrl: `${window.location.origin}/login`,
+            signupUrl: `${window.location.origin}`,
+            team_id: teamId,
+            isResend: false,
           },
         });
       } catch (emailErr) {
@@ -358,7 +336,54 @@ export function useTeam() {
     },
   });
 
-  // ── CANCEL INVITATION ───────────────────────────────────────────────────────
+  // ── RESEND INVITATION ────────────────────────────────────────────────────────
+  const resendInvite = useMutation({
+    mutationFn: async (invitation: PendingInvitation) => {
+      if (!teamId) throw new Error("No team");
+
+      // Use the DB RPC to delete old invite and create a fresh one with new token+expiry
+      const { data: rpcResult, error: rpcErr } = await (supabase as any).rpc("resend_team_invite", {
+        p_invitation_id: invitation.id,
+      });
+
+      if (rpcErr) throw rpcErr;
+      if (!rpcResult?.success) throw new Error(rpcResult?.error || "Resend failed");
+
+      const newToken: string = rpcResult.invite_token;
+
+      // Re-send the email with the new token
+      try {
+        await supabase.functions.invoke("send-invite-email", {
+          body: {
+            email: invitation.email,
+            teamName: teamQuery.data?.name ?? "a team",
+            inviterName: user?.user_metadata?.full_name ?? user?.email,
+            role: invitation.role,
+            inviteToken: newToken,
+            signupUrl: `${window.location.origin}`,
+            team_id: teamId,
+            isResend: true,
+          },
+        });
+      } catch (emailErr) {
+        console.warn("Resend email failed (non-fatal):", emailErr);
+      }
+
+      return { inviteToken: newToken };
+    },
+    onSuccess: () => {
+      toast({
+        title: "Invitation resent!",
+        description: "A fresh invite link has been sent.",
+      });
+      invalidate();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to resend", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // ── CANCEL INVITATION ────────────────────────────────────────────────────────
   const cancelInvitation = useMutation({
     mutationFn: async (invitationId: string) => {
       const { error } = await supabase
@@ -376,7 +401,7 @@ export function useTeam() {
     },
   });
 
-  // ── UPDATE ROLE ─────────────────────────────────────────────────────────────
+  // ── UPDATE ROLE ──────────────────────────────────────────────────────────────
   const updateRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
       const { error } = await supabase
@@ -394,7 +419,7 @@ export function useTeam() {
     },
   });
 
-  // ── REMOVE MEMBER ───────────────────────────────────────────────────────────
+  // ── REMOVE MEMBER ────────────────────────────────────────────────────────────
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
       const { error } = await supabase
@@ -412,7 +437,7 @@ export function useTeam() {
     },
   });
 
-  // ── ACCEPT INVITATION (token-based) — uses SECURITY DEFINER RPC ────────────
+  // ── ACCEPT INVITATION (token-based) ─────────────────────────────────────────
   const acceptInvitationByToken = useMutation({
     mutationFn: async (token: string) => {
       const { data, error } = await (supabase as any).rpc(
@@ -431,18 +456,16 @@ export function useTeam() {
     },
   });
 
-  // ── ACCEPT INVITATION (legacy email-based) ──────────────────────────────────
+  // ── ACCEPT INVITATION (legacy email-based) ───────────────────────────────────
   const acceptInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
-
       const { data: profile } = await supabase
         .from("profiles")
         .select("email")
         .eq("id", userId)
         .maybeSingle();
 
-      // Update invitation status
       await supabase
         .from("team_invitations")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
@@ -450,7 +473,6 @@ export function useTeam() {
         .eq("status", "pending")
         .ilike("email", profile?.email ?? "");
 
-      // Upsert as active member
       const { error } = await supabase
         .from("team_members")
         .upsert(
@@ -459,7 +481,6 @@ export function useTeam() {
         );
       if (error) throw error;
 
-      // Ensure workspace (non-fatal)
       const { data: adminMember } = await supabase
         .from("team_members")
         .select("user_id")
@@ -481,7 +502,7 @@ export function useTeam() {
     },
   });
 
-  // ── DECLINE INVITATION ──────────────────────────────────────────────────────
+  // ── DECLINE INVITATION ────────────────────────────────────────────────────────
   const declineInvitation = useMutation({
     mutationFn: async (inviteTeamId: string) => {
       if (!userId) throw new Error("Not authenticated");
@@ -521,12 +542,11 @@ export function useTeam() {
     pendingInvitations: invitationsQuery.data ?? [],
     myPendingInvitations: myInvitationsQuery.data ?? [],
     adminPlanKey: adminPlanQuery.data ?? "free",
-    teamLoading:
-      teamIdQuery.isLoading ||
-      (!!teamId && teamQuery.isLoading),
+    teamLoading: teamIdQuery.isLoading || (!!teamId && teamQuery.isLoading),
     membersLoading: membersQuery.isLoading,
     createTeam,
     inviteMember,
+    resendInvite,
     cancelInvitation,
     updateRole,
     removeMember,
