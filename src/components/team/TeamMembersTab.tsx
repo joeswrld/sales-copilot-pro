@@ -12,19 +12,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   UserPlus, MoreHorizontal, Shield, ShieldCheck, User, Trash2,
-  RefreshCw, Clock, X, ArrowUp, Users, Sparkles, Mail,
+  RefreshCw, Clock, X, ArrowUp, Users, Sparkles, Mail, Copy, Send,
 } from "lucide-react";
-import type { TeamMember } from "@/hooks/useTeam";
+import type { TeamMember, PendingInvitation } from "@/hooks/useTeam";
 import { getTeamMembersLimit } from "@/config/plans";
-
-interface PendingInvitation {
-  id: string;
-  email: string;
-  role: string;
-  created_at: string;
-  /** true when the email belongs to an existing Fixsense account */
-  isExistingUser?: boolean;
-}
+import { toast } from "@/components/ui/use-toast";
 
 interface Props {
   members: TeamMember[];
@@ -36,7 +28,9 @@ interface Props {
   onUpdateRole: (data: { memberId: string; role: string }) => void;
   onRemove: (memberId: string) => void;
   onCancelInvitation: (invitationId: string) => void;
+  onResendInvitation: (invitation: PendingInvitation) => void;
   inviting: boolean;
+  resending?: boolean;
 }
 
 const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, manager: Shield, member: User };
@@ -48,13 +42,15 @@ const roleColors: Record<string, string> = {
 
 export default function TeamMembersTab({
   members, pendingInvitations, currentRole, currentUserId, adminPlanKey,
-  onInvite, onUpdateRole, onRemove, onCancelInvitation, inviting,
+  onInvite, onUpdateRole, onRemove, onCancelInvitation, onResendInvitation,
+  inviting, resending,
 }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const teamMembersLimit = getTeamMembersLimit(adminPlanKey);
@@ -78,6 +74,29 @@ export default function TeamMembersTab({
     setInviteOpen(false);
   };
 
+  const handleResend = async (inv: PendingInvitation) => {
+    setResendingId(inv.id);
+    try {
+      await onResendInvitation(inv);
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleCopyInviteLink = async (inv: PendingInvitation) => {
+    if (!inv.invite_token) {
+      toast({ title: "No invite link available", description: "Try resending the invitation.", variant: "destructive" });
+      return;
+    }
+    const url = `${window.location.origin}/invite/${inv.invite_token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Invite link copied!", description: url });
+    } catch {
+      toast({ title: `Invite link: ${url}`, duration: 8000 } as any);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Team capacity bar */}
@@ -95,12 +114,12 @@ export default function TeamMembersTab({
           <Progress value={isTeamUnlimited ? 0 : teamPct} className="h-2.5" />
           {isAtLimit && (
             <p className="text-xs text-destructive mt-2 font-medium">
-              You have reached the team member limit for your plan. Upgrade to add more members.
+              Team member limit reached. Upgrade to add more.
             </p>
           )}
           {!isTeamUnlimited && teamPct >= 80 && !isAtLimit && (
             <p className="text-xs text-accent mt-2 font-medium">
-              You are using {totalMembers} of {teamMembersLimit} team seats. Consider upgrading your plan.
+              Using {totalMembers} of {teamMembersLimit} seats.
             </p>
           )}
         </CardContent>
@@ -256,45 +275,77 @@ export default function TeamMembersTab({
             {pendingInvitations.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between p-2 rounded-lg bg-secondary/30"
+                className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 gap-2"
               >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar className="h-8 w-8 shrink-0">
                     <AvatarFallback className="bg-muted text-muted-foreground text-xs font-bold">
                       {inv.email[0]?.toUpperCase() || "?"}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{inv.email}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{inv.email}</p>
                     <div className="flex items-center gap-2 flex-wrap mt-0.5">
                       <p className="text-xs text-muted-foreground capitalize">
-                        {inv.role} · Invited {new Date(inv.created_at).toLocaleDateString()}
+                        {inv.role} · {new Date(inv.created_at).toLocaleDateString()}
                       </p>
-                      {inv.isExistingUser ? (
+                      {inv.invite_token ? (
                         <Badge
                           variant="outline"
                           className="text-[9px] h-4 px-1.5 text-primary border-primary/30 gap-1"
                         >
                           <Sparkles className="w-2.5 h-2.5" />
-                          Existing user · notified
+                          Link invite
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="text-[9px] h-4 px-1.5 gap-1">
                           <Mail className="w-2.5 h-2.5" />
-                          Email invite sent
+                          Email sent
                         </Badge>
                       )}
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={() => onCancelInvitation(inv.id)}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Copy invite link */}
+                  {inv.invite_token && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      title="Copy invite link"
+                      onClick={() => handleCopyInviteLink(inv)}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  {/* Resend */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-primary"
+                    title="Resend invitation"
+                    disabled={resendingId === inv.id || resending}
+                    onClick={() => handleResend(inv)}
+                  >
+                    {resendingId === inv.id
+                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      : <Send className="w-3.5 h-3.5" />
+                    }
+                  </Button>
+                  {/* Cancel */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    title="Cancel invitation"
+                    onClick={() => onCancelInvitation(inv.id)}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -307,8 +358,8 @@ export default function TeamMembersTab({
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
-              Send an invite by email. Existing Fixsense users will get an in-app notification to accept.
-              {!isTeamUnlimited && ` You can add ${teamMembersLimit - totalMembers} more member${teamMembersLimit - totalMembers !== 1 ? "s" : ""} on your current plan.`}
+              Send an invite by email. Existing Fixsense users get an in-app notification.
+              {!isTeamUnlimited && ` You can add ${teamMembersLimit - totalMembers} more member${teamMembersLimit - totalMembers !== 1 ? "s" : ""}.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -362,7 +413,7 @@ export default function TeamMembersTab({
             <DialogDescription>
               You've reached the team member limit for the{" "}
               <strong className="text-foreground capitalize">{adminPlanKey}</strong> plan (
-              {teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade your plan to add more team members.
+              {teamMembersLimit} member{teamMembersLimit !== 1 ? "s" : ""}). Upgrade to add more.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 pt-2">
@@ -386,9 +437,9 @@ export default function TeamMembersTab({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove{" "}
+              Remove{" "}
               {removeTarget?.profile?.full_name || removeTarget?.invited_email} from the team?
-              They will lose access to team analytics and meetings.
+              They'll lose access to team analytics and meetings.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
