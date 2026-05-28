@@ -16,6 +16,7 @@ import TeamCoachingTab from "@/components/team/TeamCoachingTab";
 import TeamSettingsTab from "@/components/team/TeamSettingsTab";
 import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
 import { LockedCard } from "@/components/plan/PlanGate";
+import type { PendingInvitation } from "@/hooks/useTeam";
 
 export default function TeamPage() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export default function TeamPage() {
     team, teamLoading, role, members, membersLoading,
     pendingInvitations, adminPlanKey,
     createTeam, inviteMember, cancelInvitation, updateRole, removeMember,
+    resendInvite,
   } = useTeam();
   useMessageNotifications(team?.id);
   const [createOpen, setCreateOpen] = useState(false);
@@ -31,8 +33,7 @@ export default function TeamPage() {
 
   const isAdmin = role === "admin";
 
-  // ── Plan gate: Team features require Starter plan or above ──────────────
-  // team_messages is the feature key that maps to Starter+ in PlanEnforcementContext
+  // ── Plan gate ──────────────────────────────────────────────────────────────
   if (planLoading) {
     return (
       <DashboardLayout>
@@ -59,8 +60,6 @@ export default function TeamPage() {
     );
   }
 
-  // ── Normal team page rendering (Starter+ users only) ─────────────────────
-
   if (teamLoading) {
     return (
       <DashboardLayout>
@@ -75,7 +74,6 @@ export default function TeamPage() {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4 space-y-4">
-          {/* Show any pending invitations for this user even before they have a team */}
           <div className="w-full max-w-md">
             <TeamInvitationsBanner />
           </div>
@@ -122,6 +120,11 @@ export default function TeamPage() {
       </DashboardLayout>
     );
   }
+
+  // ── Handler: resend — uses the hook's resendInvite mutation ───────────────
+  const handleResendInvitation = async (inv: PendingInvitation) => {
+    await resendInvite.mutateAsync(inv);
+  };
 
   return (
     <DashboardLayout>
@@ -171,7 +174,9 @@ export default function TeamPage() {
               onUpdateRole={(data) => updateRole.mutate(data)}
               onRemove={(id) => removeMember.mutate(id)}
               onCancelInvitation={(id) => cancelInvitation.mutate(id)}
+              onResendInvitation={handleResendInvitation}
               inviting={inviteMember.isPending}
+              resending={resendInvite.isPending}
             />
           </TabsContent>
 
