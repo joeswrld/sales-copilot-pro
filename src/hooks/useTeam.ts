@@ -284,21 +284,17 @@ export function useTeam() {
       const inviteToken: string | null = (invRow as any)?.invite_token ?? null;
 
       if (isExistingUser && existingProfile) {
-        // Pre-create member row as "invited" so banner shows immediately
-        const { error: memErr } = await supabase
-          .from("team_members")
-          .insert({
-            team_id: teamId,
-            user_id: existingProfile.id,
-            role,
-            status: "invited",
-            invited_email: email,
-          })
-          .select()
-          .maybeSingle();
+        // Use upsert via the safe DB function to avoid 409 duplicate key errors
+        const { error: memErr } = await (supabase as any).rpc("upsert_team_member", {
+          p_team_id: teamId,
+          p_user_id: existingProfile.id,
+          p_role: role,
+          p_status: "invited",
+          p_invited_email: email,
+        });
 
-        if (memErr && memErr.code !== "23505") {
-          console.warn("Pre-creating member row failed:", memErr.message);
+        if (memErr) {
+          console.warn("upsert_team_member failed (non-fatal):", memErr.message);
         }
       }
 
@@ -341,7 +337,6 @@ export function useTeam() {
     mutationFn: async (invitation: PendingInvitation) => {
       if (!teamId) throw new Error("No team");
 
-      // Use the DB RPC to delete old invite and create a fresh one with new token+expiry
       const { data: rpcResult, error: rpcErr } = await (supabase as any).rpc("resend_team_invite", {
         p_invitation_id: invitation.id,
       });
@@ -351,7 +346,6 @@ export function useTeam() {
 
       const newToken: string = rpcResult.invite_token;
 
-      // Re-send the email with the new token
       try {
         await supabase.functions.invoke("send-invite-email", {
           body: {
@@ -473,12 +467,14 @@ export function useTeam() {
         .eq("status", "pending")
         .ilike("email", profile?.email ?? "");
 
-      const { error } = await supabase
-        .from("team_members")
-        .upsert(
-          { team_id: inviteTeamId, user_id: userId, role: "member", status: "active" },
-          { onConflict: "team_id,user_id" }
-        );
+      // Use upsert to avoid duplicate key errors
+      const { error } = await (supabase as any).rpc("upsert_team_member", {
+        p_team_id: inviteTeamId,
+        p_user_id: userId,
+        p_role: "member",
+        p_status: "active",
+        p_invited_email: null,
+      });
       if (error) throw error;
 
       const { data: adminMember } = await supabase
