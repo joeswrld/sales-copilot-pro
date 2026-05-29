@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveMeeting Preview</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0c13; color: #fff; min-height: 100vh; }
+
+.meeting-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0a0c13;
+}
+
+/* TOP NAV */
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(13,15,24,0.98);
+  flex-shrink: 0;
+  gap: 12px;
+}
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.live-dot { display: flex; align-items: center; gap: 6px; }
+.live-dot .dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.8); }
+.live-dot span { font-size: 10px; font-weight: 600; color: #f87171; letter-spacing: 0.08em; }
+.divider { width: 1px; height: 16px; background: rgba(255,255,255,0.1); }
+.meeting-title { font-size: 13px; font-weight: 500; color: #fff; }
+.type-badge { display: flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.22); font-size: 11px; color: #a5b4fc; }
+
+.nav-center { display: flex; align-items: center; gap: 14px; }
+.timer { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: monospace; font-weight: 600; color: rgba(255,255,255,0.9); }
+.minutes-pill { display: flex; align-items: center; gap: 9px; padding: 5px 11px; border-radius: 9px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); }
+.minutes-pill span { font-size: 11px; color: rgba(255,255,255,0.45); }
+.progress-bar { width: 60px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+.progress-bar .fill { height: 100%; border-radius: 4px; background: #6366f1; width: 42%; }
+.rec-pill { display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.18); }
+.rec-dot { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.rec-pill span { font-size: 11px; color: #f87171; font-weight: 500; }
+
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.avatars { display: flex; }
+.av { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #0a0c13; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; margin-right: -7px; }
+.av.speaking { background: linear-gradient(135deg,#10b981,#059669); }
+.av.purple { background: linear-gradient(135deg,#6366f1,#8b5cf6); }
+.av.gray { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
+.me-av { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; box-shadow: 0 0 8px rgba(99,102,241,0.3); margin-left: 8px; }
+
+/* MAIN */
+.main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+/* LEFT SIDEBAR */
+.sidebar-left {
+  width: 168px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  background: rgba(9,11,18,0.85);
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 7px; border-radius: 7px; cursor: pointer; position: relative; }
+.tab.active { background: rgba(99,102,241,0.15); }
+.tab-icon { font-size: 13px; }
+.tab.active .tab-icon { color: #a5b4fc; }
+.tab:not(.active) .tab-icon { color: rgba(255,255,255,0.3); }
+.tab-label { font-size: 9px; font-weight: 500; }
+.tab.active .tab-label { color: #a5b4fc; }
+.tab:not(.active) .tab-label { color: rgba(255,255,255,0.3); }
+.tab-badge { position: absolute; top: -2px; right: -2px; width: 13px; height: 13px; border-radius: 50%; background: #6366f1; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+
+.participants { padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; }
+.p-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 9px; }
+.p-item.speaking { background: rgba(52,211,153,0.07); }
+.p-av { position: relative; }
+.p-av-circle { width: 29px; height: 29px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+.p-av-circle.green-border { border: 2px solid rgba(52,211,153,0.5); background: linear-gradient(135deg,rgba(99,102,241,0.5),rgba(139,92,246,0.4)); }
+.p-av-circle.normal { background: linear-gradient(135deg,#6366f1,#8b5cf6); }
+.p-av-circle.dim { background: rgba(99,102,241,0.25); }
+.p-av-circle.dim2 { background: rgba(99,102,241,0.18); }
+.speaking-dot { position: absolute; bottom: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: #34d399; border: 1.5px solid #0a0c13; }
+.p-info { flex: 1; min-width: 0; }
+.p-name { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-status { font-size: 9px; color: rgba(255,255,255,0.3); }
+.p-status.speaking-text { color: #34d399; }
+.mic-on { font-size: 11px; color: rgba(255,255,255,0.25); }
+.mic-off { font-size: 11px; color: #f87171; }
+
+.sound-bars { display: flex; align-items: flex-end; gap: 2px; }
+.sb { width: 3px; border-radius: 1.5px; background: #34d399; }
+
+.chat-preview { padding: 10px; margin-top: 4px; }
+.chat-label { font-size: 9px; color: rgba(255,255,255,0.2); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px; }
+.chat-msgs { display: flex; flex-direction: column; gap: 5px; }
+.chat-bubble { padding: 6px 9px; border-radius: 8px; }
+.chat-bubble.incoming { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); }
+.chat-bubble.incoming .sender { font-size: 9px; color: rgba(255,255,255,0.35); margin-bottom: 2px; }
+.chat-bubble.incoming p { font-size: 10px; color: rgba(255,255,255,0.7); line-height: 1.3; }
+.chat-bubble.outgoing { background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.22); align-self: flex-end; }
+.chat-bubble.outgoing p { font-size: 10px; color: rgba(255,255,255,0.7); line-height: 1.3; }
+
+/* CENTER */
+.center { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 10px; gap: 8px; background: #0d0f18; }
+
+.video-main { flex: 2; border-radius: 14px; border: 2px solid rgba(52,211,153,0.45); position: relative; overflow: hidden; background: #111420; min-height: 150px; }
+.video-bg { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 35%, rgba(52,211,153,0.05) 0%, transparent 70%); }
+.video-avatar-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.big-av { width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg,rgba(99,102,241,0.5),rgba(139,92,246,0.4)); border: 2px solid rgba(52,211,153,0.5); display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600; }
+.video-namebar { position: absolute; bottom: 0; left: 0; right: 0; padding: 9px 13px; background: linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 100%); display: flex; align-items: center; justify-content: space-between; }
+.namebar-left { display: flex; align-items: center; gap: 8px; }
+.speaking-wave { display: flex; align-items: flex-end; gap: 2px; }
+.sw { width: 3px; border-radius: 1.5px; background: #34d399; }
+.namebar-name { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.9); }
+.signal-bars { display: flex; align-items: flex-end; gap: 2px; }
+.sbar { width: 3px; border-radius: 1.5px; }
+.sbar.on { background: #34d399; }
+.sbar.off { background: rgba(255,255,255,0.2); }
+
+.video-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; min-height: 90px; }
+.video-tile { border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: #0f111a; position: relative; overflow: hidden; }
+.tile-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.tile-av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+.tile-av.host { background: linear-gradient(135deg,rgba(99,102,241,0.4),rgba(139,92,246,0.3)); }
+.tile-av.guest1 { background: rgba(99,102,241,0.25); }
+.tile-av.guest2 { background: rgba(99,102,241,0.2); }
+.tile-mic-off { position: absolute; top: 5px; left: 5px; font-size: 10px; color: #f87171; }
+.tile-namebar { position: absolute; bottom: 0; left: 0; right: 0; padding: 5px 8px; }
+.tile-name { font-size: 10px; color: rgba(255,255,255,0.8); }
+.host-tag { font-size: 9px; background: rgba(99,102,241,0.25); color: #a5b4fc; padding: 1px 5px; border-radius: 4px; margin-left: 4px; }
+
+.ai-status-bar { padding: 8px 13px; border-radius: 10px; background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.ai-status-bar .left { display: flex; align-items: center; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.5); }
+.ai-status-bar .insight-count { color: #818cf8; font-weight: 500; }
+.ai-status-bar .right { font-size: 11px; color: rgba(129,140,248,0.7); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.control-bar { padding: 8px 14px; border-radius: 16px; background: rgba(13,15,24,0.95); border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.ctrl-group { display: flex; gap: 4px; }
+.ctrl-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,0.07); cursor: pointer; position: relative; border: none; color: #fff; }
+.ctrl-btn:hover { background: rgba(255,255,255,0.11); }
+.ctrl-btn svg, .ctrl-btn i { font-size: 16px; }
+.ctrl-btn span { font-size: 9px; color: rgba(255,255,255,0.6); }
+.ctrl-btn .badge { position: absolute; top: -2px; right: -2px; width: 14px; height: 14px; border-radius: 50%; background: #6366f1; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+.end-btn { display: flex; align-items: center; gap: 6px; padding: 9px 17px; border-radius: 10px; background: #dc2626; border: none; color: #fff; font-size: 12px; font-weight: 500; cursor: pointer; }
+.end-btn:hover { background: #b91c1c; }
+
+/* RIGHT AI PANEL */
+.sidebar-right {
+  width: 238px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(255,255,255,0.06);
+  background: rgba(9,11,18,0.85);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ai-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.ai-header-left { display: flex; align-items: center; gap: 9px; }
+.ai-icon { width: 22px; height: 22px; border-radius: 7px; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.25); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #818cf8; }
+.ai-title { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.85); }
+.ai-live { display: flex; align-items: center; gap: 5px; }
+.ai-live .ldot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; }
+.ai-live span { font-size: 9px; font-weight: 600; color: #34d399; letter-spacing: 0.06em; }
+
+.ai-tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.ai-tab { flex: 1; text-align: center; padding: 8px; font-size: 10px; cursor: pointer; border-bottom: 2px solid transparent; color: rgba(255,255,255,0.3); }
+.ai-tab.active { border-bottom-color: #6366f1; color: #a5b4fc; font-weight: 500; }
+
+.ai-content { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+
+.stat-card { padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); }
+.stat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.stat-label { font-size: 10px; color: rgba(255,255,255,0.4); font-weight: 500; }
+.stat-value { font-size: 13px; font-weight: 500; }
+.stat-value.green { color: #34d399; }
+.stat-value.amber { color: #fbbf24; }
+.sentiment-bar { height: 5px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+.sentiment-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg,#10b981,#34d399); width: 74%; }
+
+.ratio-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.ratio-you { font-size: 10px; color: #818cf8; }
+.ratio-warn { font-size: 9px; color: #fbbf24; }
+.ratio-them { font-size: 10px; color: #a78bfa; }
+.ratio-bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,0.08); display: flex; overflow: hidden; }
+.ratio-you-fill { height: 100%; background: linear-gradient(90deg,#6366f1,#8b5cf6); width: 58%; }
+.ratio-them-fill { height: 100%; background: linear-gradient(90deg,#8b5cf6,#a78bfa); width: 42%; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mini-stat { padding: 8px; border-radius: 9px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); text-align: center; }
+.mini-stat .val { font-size: 16px; font-weight: 500; color: rgba(255,255,255,0.85); }
+.mini-stat .val.green { color: #34d399; }
+.mini-stat .val.amber { color: #fbbf24; }
+.mini-stat .lbl { font-size: 9px; color: rgba(255,255,255,0.3); margin-top: 2px; }
+
+.section-label { font-size: 9px; color: rgba(255,255,255,0.25); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.insight-card { padding: 9px; border-radius: 9px; }
+.insight-card.objection { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2); }
+.insight-card.competitor { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.18); }
+.insight-card.coaching { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); }
+.insight-card.signal { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.18); }
+
+.insight-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.insight-type { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.insight-type.amber { color: #fbbf24; }
+.insight-type.sky { color: #38bdf8; }
+.insight-type.violet { color: #a78bfa; }
+.insight-type.green { color: #34d399; }
+.insight-time { font-size: 9px; color: rgba(255,255,255,0.2); margin-left: auto; }
+.insight-title { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.85); margin: 0 0 3px; }
+.insight-desc { font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.4; margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="meeting-workspace">
+
+  <!-- TOP NAV -->
+  <div class="top-nav">
+    <div class="nav-left">
+      <div class="live-dot">
+        <div class="dot"></div>
+        <span>LIVE</span>
+      </div>
+      <div class="divider"></div>
+      <span class="meeting-title">Discovery Call with Acme Corp</span>
+      <div class="type-badge">
+        🏷 Discovery
+      </div>
+    </div>
+
+    <div class="nav-center">
+      <div class="timer">⏱ 23:41</div>
+      <div class="minutes-pill">
+        <span>126 / 300 mins</span>
+        <div class="progress-bar"><div class="fill"></div></div>
+      </div>
+      <div class="rec-pill">
+        <div class="rec-dot"></div>
+        <span>Recording</span>
+      </div>
+    </div>
+
+    <div class="nav-right">
+      <div class="avatars">
+        <div class="av speaking" title="Sarah Johnson">SJ</div>
+        <div class="av purple" title="Michael Chen">MC</div>
+        <div class="av gray" title="+2 more">+2</div>
+      </div>
+      <div class="me-av" title="You (Joseph)">JO</div>
+    </div>
+  </div>
+
+  <!-- MAIN 3-COLUMN -->
+  <div class="main">
+
+    <!-- LEFT SIDEBAR -->
+    <div class="sidebar-left">
+      <div class="sidebar-tabs">
+        <div class="tab active">
+          <span class="tab-icon">👥</span>
+          <span class="tab-label">People</span>
+        </div>
+        <div class="tab" style="position:relative;">
+          <span class="tab-icon">💬</span>
+          <span class="tab-label">Chat</span>
+          <span class="tab-badge">3</span>
+        </div>
+        <div class="tab">
+          <span class="tab-icon">📝</span>
+          <span class="tab-label">Notes</span>
+        </div>
+        <div class="tab">
+          <span class="tab-icon">🏷</span>
+          <span class="tab-label">Deals</span>
+        </div>
+      </div>
+
+      <div class="participants">
+        <!-- Speaking -->
+        <div class="p-item speaking">
+          <div class="p-av">
+            <div class="p-av-circle green-border">SJ</div>
+            <div class="speaking-dot"></div>
+          </div>
+          <div class="p-info">
+            <div class="p-name">Sarah J.</div>
+            <div class="p-status speaking-text">Speaking...</div>
+          </div>
+          <div class="sound-bars">
+            <div class="sb" style="height:4px;"></div>
+            <div class="sb" style="height:8px;"></div>
+            <div class="sb" style="height:11px;"></div>
+            <div class="sb" style="height:6px;"></div>
+          </div>
+        </div>
+
+        <div class="p-item">
+          <div class="p-av"><div class="p-av-circle normal">JO</div></div>
+          <div class="p-info">
+            <div class="p-name">You</div>
+            <div class="p-status">Host</div>
+          </div>
+          <span class="mic-on">🎙</span>
+        </div>
+
+        <div class="p-item">
+          <div class="p-av"><div class="p-av-circle dim">MC</div></div>
+          <div class="p-info">
+            <div class="p-name">Michael C.</div>
+            <div class="p-status">Guest</div>
+          </div>
+          <span class="mic-off">🔇</span>
+        </div>
+
+        <div class="p-item">
+          <div class="p-av"><div class="p-av-circle dim2">DK</div></div>
+          <div class="p-info">
+            <div class="p-name">Daniel K.</div>
+            <div class="p-status">Guest</div>
+          </div>
+          <span class="mic-off">🔇</span>
+        </div>
+      </div>
+
+      <div class="chat-preview">
+        <div class="chat-label">Team Chat</div>
+        <div class="chat-msgs">
+          <div class="chat-bubble incoming">
+            <div class="sender">Sarah J.</div>
+            <p>Can you share the pricing deck?</p>
+          </div>
+          <div class="chat-bubble outgoing">
+            <p>Sure, sharing now. Check the Files tab.</p>
+          </div>
+          <div class="chat-bubble incoming">
+            <div class="sender">Michael C.</div>
+            <p>Integration timeline looks tight 👀</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER VIDEO GRID -->
+    <div class="center">
+
+      <!-- Main speaker tile -->
+      <div class="video-main">
+        <div class="video-bg"></div>
+        <div class="video-avatar-center">
+          <div class="big-av">SJ</div>
+        </div>
+        <div class="video-namebar">
+          <div class="namebar-left">
+            <div class="speaking-wave">
+              <div class="sw" style="height:4px;"></div>
+              <div class="sw" style="height:8px;"></div>
+              <div class="sw" style="height:6px;"></div>
+            </div>
+            <span class="namebar-name">Sarah Johnson</span>
+          </div>
+          <div class="signal-bars">
+            <div class="sbar on" style="height:4px;"></div>
+            <div class="sbar on" style="height:7px;"></div>
+            <div class="sbar on" style="height:10px;"></div>
+            <div class="sbar on" style="height:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom 3 tiles -->
+      <div class="video-grid">
+        <div class="video-tile">
+          <div class="tile-center"><div class="tile-av host">JO</div></div>
+          <div class="tile-namebar">
+            <span class="tile-name">You</span>
+            <span class="host-tag">Host</span>
+          </div>
+        </div>
+        <div class="video-tile">
+          <div class="tile-center"><div class="tile-av guest1">MC</div></div>
+          <div class="tile-mic-off">🔇</div>
+          <div class="tile-namebar"><span class="tile-name">Michael C.</span></div>
+        </div>
+        <div class="video-tile">
+          <div class="tile-center"><div class="tile-av guest2">DK</div></div>
+          <div class="tile-mic-off">🔇</div>
+          <div class="tile-namebar"><span class="tile-name">Daniel K.</span></div>
+        </div>
+      </div>
+
+      <!-- AI status bar -->
+      <div class="ai-status-bar">
+        <div class="left">
+          ✨ AI is actively analyzing the conversation
+          <span class="insight-count">· 4 insights detected</span>
+        </div>
+        <div class="right">View live insights →</div>
+      </div>
+
+      <!-- Control bar -->
+      <div class="control-bar">
+        <div class="ctrl-group">
+          <button class="ctrl-btn" aria-label="Toggle microphone">🎙<span>Mic</span></button>
+          <button class="ctrl-btn" aria-label="Toggle camera">📹<span>Camera</span></button>
+          <button class="ctrl-btn" aria-label="Share screen">🖥<span>Share</span></button>
+        </div>
+        <div class="ctrl-group">
+          <button class="ctrl-btn" aria-label="Chat, 3 unread">
+            💬<span>Chat</span>
+            <span class="badge">3</span>
+          </button>
+          <button class="ctrl-btn" aria-label="AI Assistant">✨<span>AI</span></button>
+          <button class="ctrl-btn" aria-label="Record">⏺<span>Record</span></button>
+          <button class="ctrl-btn" aria-label="Participants">👥<span>People</span></button>
+        </div>
+        <div class="ctrl-group" style="align-items:center;">
+          <button class="ctrl-btn" aria-label="More options">⋯<span>More</span></button>
+          <button class="end-btn" aria-label="End call">📵 End Call</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT AI PANEL -->
+    <div class="sidebar-right">
+      <div class="ai-header">
+        <div class="ai-header-left">
+          <div class="ai-icon">🧠</div>
+          <span class="ai-title">AI Assistant</span>
+        </div>
+        <div class="ai-live">
+          <div class="ldot"></div>
+          <span>LIVE</span>
+        </div>
+      </div>
+
+      <div class="ai-tabs">
+        <div class="ai-tab">Transcript</div>
+        <div class="ai-tab active">Insights</div>
+        <div class="ai-tab">Coaching</div>
+      </div>
+
+      <div class="ai-content">
+
+        <!-- Sentiment -->
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">Overall Sentiment</span>
+            <span class="stat-value green">74%</span>
+          </div>
+          <div class="sentiment-bar"><div class="sentiment-fill"></div></div>
+        </div>
+
+        <!-- Talk ratio -->
+        <div class="stat-card">
+          <div class="ratio-row">
+            <span class="ratio-you">You 58%</span>
+            <span class="ratio-warn">⚠ Let them talk more</span>
+            <span class="ratio-them">Prospect 42%</span>
+          </div>
+          <div class="ratio-bar">
+            <div class="ratio-you-fill"></div>
+            <div class="ratio-them-fill"></div>
+          </div>
+        </div>
+
+        <!-- Stats 2x2 -->
+        <div class="stats-grid">
+          <div class="mini-stat"><div class="val">4</div><div class="lbl">Questions</div></div>
+          <div class="mini-stat"><div class="val">3</div><div class="lbl">Topics</div></div>
+          <div class="mini-stat"><div class="val green" style="font-size:13px;">High</div><div class="lbl">Engagement</div></div>
+          <div class="mini-stat"><div class="val amber">1</div><div class="lbl">Objections</div></div>
+        </div>
+
+        <p class="section-label">AI Insights</p>
+
+        <div class="insight-card objection">
+          <div class="insight-header">
+            <span>⚠️</span>
+            <span class="insight-type amber">Objection</span>
+            <span class="insight-time">10:21</span>
+          </div>
+          <p class="insight-title">Pricing objection detected</p>
+          <p class="insight-desc">Try asking about budget and timeline to qualify further.</p>
+        </div>
+
+        <div class="insight-card competitor">
+          <div class="insight-header">
+            <span>🎯</span>
+            <span class="insight-type sky">Competitor</span>
+            <span class="insight-time">10:22</span>
+          </div>
+          <p class="insight-title">HubSpot mentioned</p>
+          <p class="insight-desc">Highlight your AI-native approach vs their legacy stack.</p>
+        </div>
+
+        <div class="insight-card coaching">
+          <div class="insight-header">
+            <span>💡</span>
+            <span class="insight-type violet">Coaching</span>
+            <span class="insight-time">10:23</span>
+          </div>
+          <p class="insight-title">Ask a follow-up question</p>
+          <p class="insight-desc">Sarah is engaged — ask about the decision timeline now.</p>
+        </div>
+
+        <div class="insight-card signal">
+          <div class="insight-header">
+            <span>📈</span>
+            <span class="insight-type green">Buying Signal</span>
+            <span class="insight-time">10:23</span>
+          </div>
+          <p class="insight-title">Positive sentiment increased</p>
+          <p class="insight-desc">Good moment to push for a next-step commitment.</p>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
