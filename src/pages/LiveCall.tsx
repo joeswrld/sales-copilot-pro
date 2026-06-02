@@ -757,7 +757,7 @@ export default function LiveCall() {
           .from("calls")
           .update({ status: "completed", end_time: new Date().toISOString(), duration_minutes: 0 })
           .eq("id", callRow.id)
-          .catch(() => {});
+          .then(() => {}, () => {});
       }
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("Meeting limit reached. Upgrade to continue.");
