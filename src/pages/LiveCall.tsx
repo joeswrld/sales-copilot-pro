@@ -592,7 +592,7 @@ function ZombieBanner({
                   : "border-yellow-500/30 text-yellow-400",
               )}
               onClick={doClear}
-              disabled={clearState === "clearing"}
+              disabled={(clearState as string) === "clearing"}
             >
               <RefreshCw className="w-3 h-3" /> Clear & Retry
             </Button>
