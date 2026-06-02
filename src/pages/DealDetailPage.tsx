@@ -314,10 +314,10 @@ function DealDetailPageInner() {
         const { data: deal, error: dealErr } = await (supabase as any)
           .from("deals").select("*").eq("id", id).eq("owner_id", user?.id).single();
         if (dealErr) throw dealErr;
-        const { data: calls } = await supabase
+        const { data: calls } = await (supabase as any)
           .from("calls")
           .select("*, call_summaries(summary, next_steps, objections)")
-          .eq("deal_id" as any, id)
+          .eq("deal_id", id)
           .order("date", { ascending: false });
         const { data: ai } = await (supabase as any)
           .from("deal_ai_analysis").select("*").eq("deal_id", id)
