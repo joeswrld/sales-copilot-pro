@@ -11,6 +11,7 @@
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
+import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
