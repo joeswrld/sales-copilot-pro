@@ -42,29 +42,27 @@ Deno.serve(async (req) => {
 
     const { email, teamName, inviterName, role, signupUrl, team_id } = await req.json();
 
-    if (!email || !teamName) {
+    if (!email || !teamName || !team_id) {
       return new Response(
-        JSON.stringify({ error: "email and teamName are required" }),
+        JSON.stringify({ error: "email, teamName and team_id are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Verify the caller is an admin/owner of the team if team_id is provided
-    if (team_id) {
-      const { data: membership } = await supabaseAdmin
-        .from("team_members")
-        .select("role")
-        .eq("team_id", team_id)
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .maybeSingle();
+    // Verify the caller is an admin/owner of the team — always required
+    const { data: membership } = await supabaseAdmin
+      .from("team_members")
+      .select("role")
+      .eq("team_id", team_id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
 
-      if (!membership || !["admin", "owner"].includes(membership.role)) {
-        return new Response(
-          JSON.stringify({ error: "Forbidden — must be a team admin" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden — must be a team admin" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const finalSignupUrl = signupUrl || "https://fixsense.com.ng/login";

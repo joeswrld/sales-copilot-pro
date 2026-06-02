@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_action_log: {
+        Row: {
+          action: string
+          admin_email: string
+          admin_id: string | null
+          created_at: string | null
+          details: Json | null
+          id: string
+          ip_address: string | null
+          severity: string | null
+          target_email: string | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          admin_email: string
+          admin_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          severity?: string | null
+          target_email?: string | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          admin_email?: string
+          admin_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          severity?: string | null
+          target_email?: string | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
       admin_audit_log: {
         Row: {
           action: string
@@ -77,6 +119,110 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_abuse_log: {
+        Row: {
+          blocked: boolean | null
+          created_at: string | null
+          endpoint: string
+          id: string
+          tokens_used: number | null
+          user_id: string | null
+        }
+        Insert: {
+          blocked?: boolean | null
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          tokens_used?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          blocked?: boolean | null
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          tokens_used?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_abuse_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_abuse_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ai_abuse_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      ai_usage_tracking: {
+        Row: {
+          billing_month: string
+          created_at: string | null
+          endpoint: string
+          id: string
+          last_request: string | null
+          requests_count: number | null
+          tokens_used: number | null
+          user_id: string | null
+        }
+        Insert: {
+          billing_month: string
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          last_request?: string | null
+          requests_count?: number | null
+          tokens_used?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          billing_month?: string
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          last_request?: string | null
+          requests_count?: number | null
+          tokens_used?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_tracking_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_tracking_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_tracking_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       api_keys: {
         Row: {
           created_at: string | null
@@ -126,10 +272,47 @@ export type Database = {
             foreignKeyName: "api_keys_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "api_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      api_rate_limits: {
+        Row: {
+          blocked_until: string | null
+          count: number | null
+          created_at: string | null
+          endpoint: string
+          id: string
+          key: string
+          window_start: string | null
+        }
+        Insert: {
+          blocked_until?: string | null
+          count?: number | null
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          key: string
+          window_start?: string | null
+        }
+        Update: {
+          blocked_until?: string | null
+          count?: number | null
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          key?: string
+          window_start?: string | null
+        }
+        Relationships: []
       }
       asana_configs: {
         Row: {
@@ -177,10 +360,62 @@ export type Database = {
             foreignKeyName: "asana_configs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "asana_configs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      billing_audit_log: {
+        Row: {
+          amount_kobo: number | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          new_plan: string | null
+          new_status: string | null
+          old_plan: string | null
+          old_status: string | null
+          paystack_reference: string | null
+          retry_count: number | null
+          user_id: string
+        }
+        Insert: {
+          amount_kobo?: number | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          new_plan?: string | null
+          new_status?: string | null
+          old_plan?: string | null
+          old_status?: string | null
+          paystack_reference?: string | null
+          retry_count?: number | null
+          user_id: string
+        }
+        Update: {
+          amount_kobo?: number | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          new_plan?: string | null
+          new_status?: string | null
+          old_plan?: string | null
+          old_status?: string | null
+          paystack_reference?: string | null
+          retry_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
       }
       bot_sessions: {
         Row: {
@@ -247,6 +482,7 @@ export type Database = {
       }
       bundle_purchases: {
         Row: {
+          amount_kobo: number
           id: string
           minutes_added: number
           paystack_reference: string
@@ -254,6 +490,7 @@ export type Database = {
           verified_at: string
         }
         Insert: {
+          amount_kobo?: number
           id?: string
           minutes_added: number
           paystack_reference: string
@@ -261,6 +498,7 @@ export type Database = {
           verified_at?: string
         }
         Update: {
+          amount_kobo?: number
           id?: string
           minutes_added?: number
           paystack_reference?: string
@@ -989,6 +1227,13 @@ export type Database = {
             foreignKeyName: "crm_contacts_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crm_contacts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1029,6 +1274,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_field_mappings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "crm_field_mappings_user_id_fkey"
@@ -1164,6 +1416,13 @@ export type Database = {
             foreignKeyName: "dcm_notification_prefs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "dcm_notification_prefs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1210,6 +1469,13 @@ export type Database = {
             foreignKeyName: "dcm_reactions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "dcm_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1248,6 +1514,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dcm_typing_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "dcm_typing_user_id_fkey"
@@ -1381,6 +1654,13 @@ export type Database = {
             foreignKeyName: "deal_channel_members_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_channel_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1458,6 +1738,13 @@ export type Database = {
             foreignKeyName: "deal_channel_messages_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_channel_messages_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1524,6 +1811,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_channels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "deal_channels_created_by_fkey"
@@ -1620,6 +1914,13 @@ export type Database = {
             foreignKeyName: "deal_message_mentions_mentioned_user_fkey"
             columns: ["mentioned_user"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_message_mentions_mentioned_user_fkey"
+            columns: ["mentioned_user"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1690,6 +1991,13 @@ export type Database = {
             foreignKeyName: "deal_message_tasks_assigned_to_fkey"
             columns: ["assigned_to"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_message_tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -1706,6 +2014,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_message_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "deal_message_tasks_created_by_fkey"
@@ -2057,6 +2372,13 @@ export type Database = {
             foreignKeyName: "deal_timeline_events_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_timeline_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -2180,6 +2502,13 @@ export type Database = {
             foreignKeyName: "deals_owner_id_fkey"
             columns: ["owner_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deals_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -2222,31 +2551,227 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_access_cache: {
+        Row: {
+          cached_at: string | null
+          expires_at: string | null
+          feature_flags: Json
+          is_suspended: boolean | null
+          minute_limit: number | null
+          minutes_used: number | null
+          plan_key: string
+          user_id: string
+        }
+        Insert: {
+          cached_at?: string | null
+          expires_at?: string | null
+          feature_flags?: Json
+          is_suspended?: boolean | null
+          minute_limit?: number | null
+          minutes_used?: number | null
+          plan_key?: string
+          user_id: string
+        }
+        Update: {
+          cached_at?: string | null
+          expires_at?: string | null
+          feature_flags?: Json
+          is_suspended?: boolean | null
+          minute_limit?: number | null
+          minutes_used?: number | null
+          plan_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_access_cache_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_access_cache_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_access_cache_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      feature_flag_audit: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by: string | null
+          changed_by_email: string | null
+          flag_id: string
+          flag_key: string
+          id: string
+          ip_address: string | null
+          new_value: Json | null
+          note: string | null
+          old_value: Json | null
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          flag_id: string
+          flag_key: string
+          id?: string
+          ip_address?: string | null
+          new_value?: Json | null
+          note?: string | null
+          old_value?: Json | null
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          flag_id?: string
+          flag_key?: string
+          id?: string
+          ip_address?: string | null
+          new_value?: Json | null
+          note?: string | null
+          old_value?: Json | null
+        }
+        Relationships: []
+      }
+      feature_flag_usage: {
+        Row: {
+          action: string
+          flag_key: string
+          id: string
+          plan_key: string | null
+          recorded_at: string
+          user_id: string | null
+        }
+        Insert: {
+          action?: string
+          flag_key: string
+          id?: string
+          plan_key?: string | null
+          recorded_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          flag_key?: string
+          id?: string
+          plan_key?: string | null
+          recorded_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      feature_flags: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          is_beta: boolean | null
+          is_internal: boolean
+          key: string
+          metadata: Json | null
+          name: string
+          plan_access: string[]
+          plan_gates: string[] | null
+          rollout_pct: number | null
+          updated_at: string | null
+          updated_by: string | null
+          updated_by_email: string | null
+          updated_by_uuid: string | null
+          usage_count: number
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id: string
+          is_beta?: boolean | null
+          is_internal?: boolean
+          key: string
+          metadata?: Json | null
+          name: string
+          plan_access?: string[]
+          plan_gates?: string[] | null
+          rollout_pct?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
+          updated_by_email?: string | null
+          updated_by_uuid?: string | null
+          usage_count?: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          is_beta?: boolean | null
+          is_internal?: boolean
+          key?: string
+          metadata?: Json | null
+          name?: string
+          plan_access?: string[]
+          plan_gates?: string[] | null
+          rollout_pct?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
+          updated_by_email?: string | null
+          updated_by_uuid?: string | null
+          usage_count?: number
+        }
+        Relationships: []
+      }
       google_tokens: {
         Row: {
           access_token: string
+          access_token_enc: string | null
           created_at: string | null
           email: string | null
+          enc_version: number | null
           expires_at: string
           refresh_token: string
+          refresh_token_enc: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           access_token: string
+          access_token_enc?: string | null
           created_at?: string | null
           email?: string | null
+          enc_version?: number | null
           expires_at: string
           refresh_token: string
+          refresh_token_enc?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           access_token?: string
+          access_token_enc?: string | null
           created_at?: string | null
           email?: string | null
+          enc_version?: number | null
           expires_at?: string
           refresh_token?: string
+          refresh_token_enc?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -2415,6 +2940,13 @@ export type Database = {
             foreignKeyName: "integration_tasks_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "integration_tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -2524,6 +3056,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      login_attempts: {
+        Row: {
+          attempts: number | null
+          blocked_until: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          ip: string
+          last_attempt: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          blocked_until?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          ip: string
+          last_attempt?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          blocked_until?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          ip?: string
+          last_attempt?: string | null
+        }
+        Relationships: []
       }
       meeting_comments: {
         Row: {
@@ -2814,6 +3376,13 @@ export type Database = {
             foreignKeyName: "notion_configs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "notion_configs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -2860,6 +3429,53 @@ export type Database = {
             columns: ["call_id"]
             isOneToOne: false
             referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_retry_schedule: {
+        Row: {
+          attempted_at: string | null
+          created_at: string
+          failure_reason: string | null
+          id: string
+          paystack_reference: string | null
+          retry_number: number
+          scheduled_at: string
+          subscription_id: string
+          succeeded: boolean | null
+          user_id: string
+        }
+        Insert: {
+          attempted_at?: string | null
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          paystack_reference?: string | null
+          retry_number?: number
+          scheduled_at: string
+          subscription_id: string
+          succeeded?: boolean | null
+          user_id: string
+        }
+        Update: {
+          attempted_at?: string | null
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          paystack_reference?: string | null
+          retry_number?: number
+          scheduled_at?: string
+          subscription_id?: string
+          succeeded?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_retry_schedule_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
             referencedColumns: ["id"]
           },
         ]
@@ -2950,44 +3566,53 @@ export type Database = {
       }
       plans: {
         Row: {
+          ai_requests_per_minute: number | null
           calls_limit: number
           feature_flags: Json
           features: Json
           id: string
           is_active: boolean
+          max_transcript_minutes_month: number | null
           minute_quota: number
           monthly_price_ngn_kobo: number
           monthly_price_usd: number
           name: string
           overage_rate_kobo: number
+          security_updated_at: string | null
           sort_order: number
           team_members_limit: number
         }
         Insert: {
+          ai_requests_per_minute?: number | null
           calls_limit?: number
           feature_flags?: Json
           features?: Json
           id: string
           is_active?: boolean
+          max_transcript_minutes_month?: number | null
           minute_quota?: number
           monthly_price_ngn_kobo?: number
           monthly_price_usd?: number
           name: string
           overage_rate_kobo?: number
+          security_updated_at?: string | null
           sort_order?: number
           team_members_limit?: number
         }
         Update: {
+          ai_requests_per_minute?: number | null
           calls_limit?: number
           feature_flags?: Json
           features?: Json
           id?: string
           is_active?: boolean
+          max_transcript_minutes_month?: number | null
           minute_quota?: number
           monthly_price_ngn_kobo?: number
           monthly_price_usd?: number
           name?: string
           overage_rate_kobo?: number
+          security_updated_at?: string | null
           sort_order?: number
           team_members_limit?: number
         }
@@ -3188,6 +3813,33 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           window_minute?: string
+        }
+        Relationships: []
+      }
+      rate_limit_requests: {
+        Row: {
+          count: number | null
+          created_at: string | null
+          endpoint: string
+          id: string
+          key: string
+          window_start: string | null
+        }
+        Insert: {
+          count?: number | null
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          key: string
+          window_start?: string | null
+        }
+        Update: {
+          count?: number | null
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          key?: string
+          window_start?: string | null
         }
         Relationships: []
       }
@@ -3471,6 +4123,39 @@ export type Database = {
         }
         Relationships: []
       }
+      security_audit_log: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          endpoint: string | null
+          event_type: string
+          id: string
+          ip: string | null
+          severity: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          endpoint?: string | null
+          event_type: string
+          id?: string
+          ip?: string | null
+          severity?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          endpoint?: string | null
+          event_type?: string
+          id?: string
+          ip?: string | null
+          severity?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       security_events: {
         Row: {
           created_at: string
@@ -3504,8 +4189,48 @@ export type Database = {
         }
         Relationships: []
       }
+      security_rate_events: {
+        Row: {
+          blocked_until: string | null
+          count: number | null
+          created_at: string | null
+          email: string | null
+          endpoint: string | null
+          event_type: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          blocked_until?: string | null
+          count?: number | null
+          created_at?: string | null
+          email?: string | null
+          endpoint?: string | null
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          blocked_until?: string | null
+          count?: number | null
+          created_at?: string | null
+          email?: string | null
+          endpoint?: string | null
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
+          active_plan: string | null
           amount_kobo: number
           billing_cycle_end: string | null
           billing_cycle_start: string | null
@@ -3513,25 +4238,35 @@ export type Database = {
           card_last4: string | null
           created_at: string
           currency: string
+          expires_at: string | null
           extra_minutes: number
           extra_minutes_expires_at: string | null
+          grace_period_ends_at: string | null
           id: string
+          last_payment_attempt: string | null
           minutes_limit: number | null
           minutes_used: number
           next_payment_date: string | null
+          next_retry_at: string | null
+          payment_failure_reason: string | null
+          payment_status: string | null
           paystack_customer_code: string | null
           paystack_email_token: string | null
           paystack_subscription_code: string | null
+          pending_plan: string | null
           plan: string | null
           plan_id: string | null
           plan_name: string
           plan_price_usd: number | null
+          retry_count: number
           status: string
+          subscription_status: string
           team_id: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          active_plan?: string | null
           amount_kobo?: number
           billing_cycle_end?: string | null
           billing_cycle_start?: string | null
@@ -3539,25 +4274,35 @@ export type Database = {
           card_last4?: string | null
           created_at?: string
           currency?: string
+          expires_at?: string | null
           extra_minutes?: number
           extra_minutes_expires_at?: string | null
+          grace_period_ends_at?: string | null
           id?: string
+          last_payment_attempt?: string | null
           minutes_limit?: number | null
           minutes_used?: number
           next_payment_date?: string | null
+          next_retry_at?: string | null
+          payment_failure_reason?: string | null
+          payment_status?: string | null
           paystack_customer_code?: string | null
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
+          pending_plan?: string | null
           plan?: string | null
           plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
+          retry_count?: number
           status?: string
+          subscription_status?: string
           team_id?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          active_plan?: string | null
           amount_kobo?: number
           billing_cycle_end?: string | null
           billing_cycle_start?: string | null
@@ -3565,20 +4310,29 @@ export type Database = {
           card_last4?: string | null
           created_at?: string
           currency?: string
+          expires_at?: string | null
           extra_minutes?: number
           extra_minutes_expires_at?: string | null
+          grace_period_ends_at?: string | null
           id?: string
+          last_payment_attempt?: string | null
           minutes_limit?: number | null
           minutes_used?: number
           next_payment_date?: string | null
+          next_retry_at?: string | null
+          payment_failure_reason?: string | null
+          payment_status?: string | null
           paystack_customer_code?: string | null
           paystack_email_token?: string | null
           paystack_subscription_code?: string | null
+          pending_plan?: string | null
           plan?: string | null
           plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
+          retry_count?: number
           status?: string
+          subscription_status?: string
           team_id?: string | null
           updated_at?: string
           user_id?: string
@@ -3606,6 +4360,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_metrics: {
+        Row: {
+          id: string
+          metadata: Json | null
+          metric_type: string
+          recorded_at: string | null
+          value: number
+        }
+        Insert: {
+          id?: string
+          metadata?: Json | null
+          metric_type: string
+          recorded_at?: string | null
+          value: number
+        }
+        Update: {
+          id?: string
+          metadata?: Json | null
+          metric_type?: string
+          recorded_at?: string | null
+          value?: number
+        }
+        Relationships: []
       }
       team_conversations: {
         Row: {
@@ -3734,6 +4512,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "team_members_user_id_fkey"
@@ -4294,6 +5079,13 @@ export type Database = {
             foreignKeyName: "webhook_subscriptions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "webhook_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "user_plan_features"
             referencedColumns: ["user_id"]
           },
@@ -4363,6 +5155,20 @@ export type Database = {
         }
         Relationships: []
       }
+      user_feature_access: {
+        Row: {
+          ai_rpm: number | null
+          effective_plan_id: string | null
+          feature_flags: Json | null
+          minute_quota: number | null
+          minutes_used_this_month: number | null
+          plan_type: string | null
+          suspended: boolean | null
+          team_members_limit: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
       user_plan_features: {
         Row: {
           calls_limit: number | null
@@ -4412,6 +5218,7 @@ export type Database = {
       admin_delete_user:
         | { Args: { p_user_id: string }; Returns: undefined }
         | { Args: { p_admin_id?: string; p_user_id: string }; Returns: Json }
+      admin_emergency_disable_all_flags: { Args: never; Returns: undefined }
       admin_get_all_users: {
         Args: never
         Returns: {
@@ -4433,7 +5240,35 @@ export type Database = {
           user_id: string
         }[]
       }
+      admin_get_audit_log: {
+        Args: { p_admin?: string; p_limit?: number; p_offset?: number }
+        Returns: Json
+      }
+      admin_get_comprehensive_stats: { Args: never; Returns: Json }
+      admin_get_extra_minutes_analytics: {
+        Args: { p_months?: number }
+        Returns: Json
+      }
+      admin_get_operational_health: { Args: never; Returns: Json }
+      admin_get_revenue_analytics: { Args: { p_days?: number }; Returns: Json }
+      admin_get_revenue_breakdown: {
+        Args: { p_months?: number }
+        Returns: Json
+      }
+      admin_get_saas_metrics: { Args: never; Returns: Json }
       admin_get_stats: { Args: never; Returns: Json }
+      admin_get_usage_analytics: { Args: { p_days?: number }; Returns: Json }
+      admin_get_user_growth: { Args: { p_months?: number }; Returns: Json }
+      admin_get_users_v2: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_plan?: string
+          p_search?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
       admin_log_action: {
         Args: {
           p_action: string
@@ -4441,6 +5276,17 @@ export type Database = {
           p_details?: Json
           p_target_email?: string
           p_target_id?: string
+        }
+        Returns: undefined
+      }
+      admin_log_action_v2: {
+        Args: {
+          p_action: string
+          p_details?: Json
+          p_severity?: string
+          p_target_email?: string
+          p_target_id?: string
+          p_target_type?: string
         }
         Returns: undefined
       }
@@ -4466,6 +5312,32 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: undefined
       }
+      admin_toggle_feature_flag:
+        | { Args: { p_enabled: boolean; p_key: string }; Returns: undefined }
+        | {
+            Args: { p_enabled: boolean; p_key: string; p_note?: string }
+            Returns: undefined
+          }
+      admin_update_feature_flag:
+        | {
+            Args: {
+              p_enabled: boolean
+              p_flag_id: string
+              p_plan_gates?: string[]
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_description?: string
+              p_enabled?: boolean
+              p_is_beta?: boolean
+              p_key: string
+              p_plan_access?: string[]
+              p_rollout_pct?: number
+            }
+            Returns: undefined
+          }
       admin_update_last_login: {
         Args: { p_user_id: string }
         Returns: undefined
@@ -4501,10 +5373,44 @@ export type Database = {
         Args: { _team_id: string }
         Returns: boolean
       }
+      check_ai_quota: {
+        Args: { p_endpoint: string; p_user_id: string }
+        Returns: Json
+      }
+      check_and_increment_ai_usage: {
+        Args: { p_endpoint: string; p_user_id: string }
+        Returns: Json
+      }
+      check_api_rate_limit: {
+        Args: {
+          p_endpoint: string
+          p_key: string
+          p_max_count: number
+          p_window_minutes?: number
+        }
+        Returns: Json
+      }
+      check_auth_attempt: {
+        Args: { p_email?: string; p_ip: string }
+        Returns: Json
+      }
       check_call_quota: { Args: { p_user_id: string }; Returns: Json }
-      check_feature_access: {
-        Args: { p_feature: string; p_user_id: string }
-        Returns: boolean
+      check_feature_access:
+        | { Args: { p_feature: string; p_user_id?: string }; Returns: boolean }
+        | { Args: { p_feature: string; p_user_id: string }; Returns: boolean }
+      check_feature_flag: {
+        Args: { p_key: string; p_plan_key?: string; p_user_id?: string }
+        Returns: Json
+      }
+      check_login_rate_limit: {
+        Args: {
+          p_email?: string
+          p_ip: string
+          p_max_by_email?: number
+          p_max_by_ip?: number
+          p_window_mins?: number
+        }
+        Returns: Json
       }
       check_rate_limit: {
         Args: {
@@ -4512,6 +5418,15 @@ export type Database = {
           p_per_day_limit?: number
           p_per_minute_limit?: number
           p_user_id: string
+        }
+        Returns: Json
+      }
+      check_rate_limit_v2: {
+        Args: {
+          p_endpoint: string
+          p_key: string
+          p_limit?: number
+          p_window_seconds?: number
         }
         Returns: Json
       }
@@ -4531,8 +5446,18 @@ export type Database = {
           plan_id: string
         }[]
       }
+      check_user_feature_access: {
+        Args: { p_feature: string; p_user_id: string }
+        Returns: boolean
+      }
+      cleanup_rate_limit_data: { Args: never; Returns: undefined }
+      cleanup_rate_limit_requests: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_stale_typing: { Args: never; Returns: undefined }
+      clear_auth_attempts: {
+        Args: { p_email?: string; p_ip: string }
+        Returns: undefined
+      }
       create_deal_room_for_call: {
         Args: {
           p_call_id: string
@@ -4588,6 +5513,14 @@ export type Database = {
         Args: { p_content: string; p_message_id: string }
         Returns: undefined
       }
+      enforce_feature_access: {
+        Args: { p_feature: string; p_user_id: string }
+        Returns: Json
+      }
+      enforce_quota_and_feature: {
+        Args: { p_feature: string; p_user_id: string }
+        Returns: Json
+      }
       ensure_activity_channel: { Args: { p_team_id: string }; Returns: string }
       ensure_deal_channel: {
         Args: { p_deal_id: string; p_team_id: string }
@@ -4597,9 +5530,20 @@ export type Database = {
         Args: { p_admin_user_id: string; p_team_id: string }
         Returns: undefined
       }
+      expire_grace_periods: { Args: never; Returns: number }
       force_clear_user_live_calls: {
         Args: { p_user_id: string }
         Returns: number
+      }
+      get_active_subscription_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          id: string
+          next_payment_date: string
+          paystack_subscription_code: string
+          plan_name: string
+          status: string
+        }[]
       }
       get_active_webhook_subscriptions: {
         Args: { p_event_type: string; p_user_id: string }
@@ -4610,6 +5554,7 @@ export type Database = {
           url: string
         }[]
       }
+      get_admin_comprehensive_stats: { Args: never; Returns: Json }
       get_admin_dashboard_stats: { Args: never; Returns: Json }
       get_admin_effective_plan_key: {
         Args: { p_admin_id: string }
@@ -4625,6 +5570,11 @@ export type Database = {
           p_plan_filter?: string
           p_search?: string
         }
+        Returns: Json
+      }
+      get_all_feature_flags: { Args: never; Returns: Json }
+      get_billing_status_for_user: {
+        Args: { p_user_id: string }
         Returns: Json
       }
       get_channel_messages: {
@@ -4731,6 +5681,10 @@ export type Database = {
       get_effective_calls_limit: { Args: { _user_id: string }; Returns: number }
       get_effective_plan: { Args: { _user_id: string }; Returns: string }
       get_effective_plan_id: { Args: { p_user_id: string }; Returns: string }
+      get_feature_flag_audit: {
+        Args: { p_flag_key?: string; p_limit?: number }
+        Returns: Json
+      }
       get_invitation_by_token: {
         Args: { p_token: string }
         Returns: {
@@ -4825,6 +5779,7 @@ export type Database = {
           view_count: number
         }[]
       }
+      get_team_invite_details: { Args: { p_token: string }; Returns: Json }
       get_team_messages_with_senders: {
         Args: { p_conversation_id: string; p_limit?: number }
         Returns: {
@@ -4856,6 +5811,7 @@ export type Database = {
       get_team_subscription: {
         Args: { p_team_id: string }
         Returns: {
+          active_plan: string | null
           amount_kobo: number
           billing_cycle_end: string | null
           billing_cycle_start: string | null
@@ -4863,20 +5819,29 @@ export type Database = {
           card_last4: string | null
           created_at: string
           currency: string
+          expires_at: string | null
           extra_minutes: number
           extra_minutes_expires_at: string | null
+          grace_period_ends_at: string | null
           id: string
+          last_payment_attempt: string | null
           minutes_limit: number | null
           minutes_used: number
           next_payment_date: string | null
+          next_retry_at: string | null
+          payment_failure_reason: string | null
+          payment_status: string | null
           paystack_customer_code: string | null
           paystack_email_token: string | null
           paystack_subscription_code: string | null
+          pending_plan: string | null
           plan: string | null
           plan_id: string | null
           plan_name: string
           plan_price_usd: number | null
+          retry_count: number
           status: string
+          subscription_status: string
           team_id: string | null
           updated_at: string
           user_id: string
@@ -4942,7 +5907,29 @@ export type Database = {
         }[]
       }
       get_user_entitlements: { Args: { p_user_id: string }; Returns: Json }
+      get_user_feature_access_secure: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
       get_user_plan_features: { Args: { p_user_id: string }; Returns: Json }
+      handle_payment_failure: {
+        Args: {
+          p_failure_reason?: string
+          p_paystack_reference?: string
+          p_subscription_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      handle_payment_success: {
+        Args: {
+          p_paystack_reference?: string
+          p_plan_name?: string
+          p_subscription_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -4962,6 +5949,11 @@ export type Database = {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
+      is_deal_channel_member: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
+      is_over_minute_quota: { Args: { p_user_id: string }; Returns: boolean }
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
@@ -5027,11 +6019,49 @@ export type Database = {
           value: number
         }[]
       }
-      log_call_usage: {
+      log_call_usage:
+        | {
+            Args: {
+              p_call_id: string
+              p_duration_minutes: number
+              p_user_id: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_call_id: string
+              p_duration_minutes: number
+              p_user_id: string
+            }
+            Returns: undefined
+          }
+      log_feature_access_attempt: {
         Args: {
-          p_call_id: string
-          p_duration_minutes: number
+          p_allowed: boolean
+          p_context?: string
+          p_feature: string
           p_user_id: string
+        }
+        Returns: undefined
+      }
+      log_plan_transition: {
+        Args: {
+          p_new_plan: string
+          p_old_plan: string
+          p_reason?: string
+          p_reference?: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      log_security_event: {
+        Args: {
+          p_details?: Json
+          p_event_type: string
+          p_severity?: string
+          p_source_ip?: string
+          p_user_id?: string
         }
         Returns: undefined
       }
@@ -5040,6 +6070,10 @@ export type Database = {
         Returns: undefined
       }
       mark_inactive_users_away: { Args: never; Returns: undefined }
+      mark_payment_cancelled: {
+        Args: { p_reference: string; p_user_id: string }
+        Returns: string
+      }
       mark_reminder_sent: {
         Args: { p_meeting_id: string; p_reminder_type: string }
         Returns: undefined
@@ -5052,13 +6086,38 @@ export type Database = {
         Args: { p_call_id: string; p_channel_id: string; p_insight: Json }
         Returns: string
       }
+      process_due_retries: { Args: never; Returns: number }
       propagate_team_plan: { Args: { p_admin_id: string }; Returns: undefined }
+      record_failed_auth: {
+        Args: { p_email?: string; p_ip: string }
+        Returns: undefined
+      }
+      record_login_attempt: {
+        Args: { p_email: string; p_ip: string; p_success: boolean }
+        Returns: Json
+      }
+      record_login_success: {
+        Args: { p_email?: string; p_ip: string }
+        Returns: undefined
+      }
       record_team_minute_usage: {
         Args: {
           p_call_id: string
           p_minutes: number
           p_team_id: string
           p_user_id: string
+        }
+        Returns: undefined
+      }
+      register_feature_flag: {
+        Args: {
+          p_category?: string
+          p_description?: string
+          p_enabled?: boolean
+          p_is_beta?: boolean
+          p_key: string
+          p_name: string
+          p_plan_access?: string[]
         }
         Returns: undefined
       }
@@ -5092,9 +6151,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      resend_team_invite: { Args: { p_invitation_id: string }; Returns: Json }
       reset_monthly_usage: { Args: never; Returns: number }
       reset_team_monthly_usage: { Args: never; Returns: number }
       resolve_minute_quota: { Args: { p_plan_name: string }; Returns: number }
+      safe_mark_abandoned: {
+        Args: { p_reference: string; p_user_id: string }
+        Returns: string
+      }
+      safe_pre_create_invited_member: {
+        Args: {
+          p_email: string
+          p_role: string
+          p_team_id: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       search_deal_messages: {
         Args: { p_query: string; p_team_id: string }
         Returns: {
@@ -5132,6 +6205,16 @@ export type Database = {
       }
       update_meeting_status: {
         Args: { p_meeting_id: string; p_status: string }
+        Returns: undefined
+      }
+      upsert_team_member: {
+        Args: {
+          p_invited_email?: string
+          p_role?: string
+          p_status?: string
+          p_team_id: string
+          p_user_id: string
+        }
         Returns: undefined
       }
       upsert_user_presence: {

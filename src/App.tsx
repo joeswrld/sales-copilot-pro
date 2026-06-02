@@ -82,7 +82,7 @@ function AppRoutes() {
     <BrowserRouter>
       <PlanEnforcementProvider>
         <UpgradeModal />
-        <DebugInspector />
+        {import.meta.env.DEV && <DebugInspector />}
         <PWABanner />
 
         <Routes>

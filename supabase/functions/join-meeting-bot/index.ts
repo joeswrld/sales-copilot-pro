@@ -43,6 +43,20 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify caller owns the call before mutating anything
+    const { data: callRow, error: callErr } = await supabase
+      .from("calls")
+      .select("id, user_id")
+      .eq("id", call_id)
+      .maybeSingle();
+
+    if (callErr || !callRow || callRow.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden — call not found or not owned by caller" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Detect platform
     let platform = "unknown";
     if (meeting_url.includes("meet.google.com")) platform = "google_meet";
