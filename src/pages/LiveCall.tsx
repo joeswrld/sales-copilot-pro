@@ -858,6 +858,7 @@ export default function LiveCall() {
 
   return (
     <DashboardLayout>
+      <EnablePushPrompt context="for scheduled meeting reminders" />
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {showPopup && roomInfo && callId && (
         <MeetingCreatedPopup
