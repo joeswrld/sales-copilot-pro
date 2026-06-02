@@ -1082,6 +1082,8 @@ export default function MessagesPage() {
     <DashboardLayout>
       <style>{CSS}</style>
 
+      <EnablePushPrompt context="for new messages" />
+
       {showNewChannel && <NewChannelModal teamId={teamId} onClose={() => setShowNewChannel(false)} onCreated={() => { setShowNewChannel(false); loadDealChannels(); }} />}
       {showNewDM && user && (
         <NewDMModal members={members} currentUserId={user.id} conversations={conversations} teamId={teamId} onlineUsers={onlineUsers}
