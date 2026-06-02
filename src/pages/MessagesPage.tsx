@@ -14,6 +14,7 @@ import {
   useState, useEffect, useRef, useCallback, useMemo,
 } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging, getConversationName } from "@/hooks/useTeamMessaging";
