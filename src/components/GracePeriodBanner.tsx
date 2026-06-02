@@ -12,7 +12,7 @@ import {
   AlertTriangle, X, RefreshCw, CreditCard,
   Clock, ChevronRight, Loader2, Shield, Zap,
 } from "lucide-react";
-import { useBillingRecovery } from "./useBillingRecovery";
+import { useBillingRecovery } from "@/hooks/useBillingRecovery";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
