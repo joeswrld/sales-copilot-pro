@@ -5949,6 +5949,10 @@ export type Database = {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
+      is_deal_channel_member: {
+        Args: { _channel_id: string }
+        Returns: boolean
+      }
       is_over_minute_quota: { Args: { p_user_id: string }; Returns: boolean }
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
