@@ -289,7 +289,7 @@ export function usePushNotifications(): PushNotificationState {
       // Subscribe — Chrome Android returns an FCM endpoint, that's fine and expected
       const newSub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey).buffer as ArrayBuffer,
       });
 
       const isFcm = newSub.endpoint.includes("fcm.googleapis.com");

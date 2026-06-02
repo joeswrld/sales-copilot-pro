@@ -26,7 +26,7 @@ import { useNotionConfig } from "@/hooks/useIntegrations";
 import { useAsanaConfig } from "@/hooks/useIntegrations";
 import { useWebhookSubscriptions, WEBHOOK_EVENTS } from "@/hooks/useIntegrations";
 import { useApiKeys } from "@/hooks/useIntegrations";
-import CrmFieldMappings from "@/components/crm/CrmFieldMappings";
+import CrmFieldMappings from "@/components/CrmFieldMappings";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";

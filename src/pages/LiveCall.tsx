@@ -592,7 +592,7 @@ function ZombieBanner({
                   : "border-yellow-500/30 text-yellow-400",
               )}
               onClick={doClear}
-              disabled={clearState === "clearing"}
+              disabled={(clearState as string) === "clearing"}
             >
               <RefreshCw className="w-3 h-3" /> Clear & Retry
             </Button>
@@ -757,7 +757,7 @@ export default function LiveCall() {
           .from("calls")
           .update({ status: "completed", end_time: new Date().toISOString(), duration_minutes: 0 })
           .eq("id", callRow.id)
-          .catch(() => {});
+          .then(() => {}, () => {});
       }
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("Meeting limit reached. Upgrade to continue.");

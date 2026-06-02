@@ -74,7 +74,7 @@ export function useEffectivePlan(): { effectivePlan: EffectivePlan | null; isLoa
       // ── 3. If no feature flags from DB, fall back to hardcoded config ────────
       if (Object.keys(featureFlags).length === 0) {
         const config = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.free;
-        featureFlags = config.feature_flags ?? {};
+        featureFlags = (config as any).feature_flags ?? {};
       }
 
       // ── 4. Get personal plan key for display purposes ────────────────────────

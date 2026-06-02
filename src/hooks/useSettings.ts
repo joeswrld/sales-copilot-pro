@@ -264,7 +264,7 @@ export function usePreferences() {
         if (insertError) throw insertError;
         data = inserted;
       }
-      return data as UserPreferences;
+      return data as unknown as UserPreferences;
     },
     enabled: !!user,
   });
