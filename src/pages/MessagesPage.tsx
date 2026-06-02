@@ -14,6 +14,7 @@ import {
   useState, useEffect, useRef, useCallback, useMemo,
 } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging, getConversationName } from "@/hooks/useTeamMessaging";
@@ -1081,6 +1082,8 @@ export default function MessagesPage() {
   return (
     <DashboardLayout>
       <style>{CSS}</style>
+
+      <EnablePushPrompt context="for new messages" />
 
       {showNewChannel && <NewChannelModal teamId={teamId} onClose={() => setShowNewChannel(false)} onCreated={() => { setShowNewChannel(false); loadDealChannels(); }} />}
       {showNewDM && user && (

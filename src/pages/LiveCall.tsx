@@ -11,6 +11,7 @@
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
+import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
@@ -857,6 +858,7 @@ export default function LiveCall() {
 
   return (
     <DashboardLayout>
+      <EnablePushPrompt context="for scheduled meeting reminders" />
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {showPopup && roomInfo && callId && (
         <MeetingCreatedPopup
