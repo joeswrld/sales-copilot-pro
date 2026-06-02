@@ -6088,6 +6088,7 @@ export type Database = {
       }
       process_due_retries: { Args: never; Returns: number }
       propagate_team_plan: { Args: { p_admin_id: string }; Returns: undefined }
+      read_internal_push_token: { Args: never; Returns: string }
       record_failed_auth: {
         Args: { p_email?: string; p_ip: string }
         Returns: undefined
