@@ -372,6 +372,69 @@ export type Database = {
           },
         ]
       }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_email: string | null
+          browser: string | null
+          category: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          details: Json
+          device: string | null
+          id: string
+          ip_address: string | null
+          risk_score: number
+          severity: string
+          target_id: string | null
+          target_type: string | null
+          team_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          browser?: string | null
+          category?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          details?: Json
+          device?: string | null
+          id?: string
+          ip_address?: string | null
+          risk_score?: number
+          severity?: string
+          target_id?: string | null
+          target_type?: string | null
+          team_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          browser?: string | null
+          category?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          details?: Json
+          device?: string | null
+          id?: string
+          ip_address?: string | null
+          risk_score?: number
+          severity?: string
+          target_id?: string | null
+          target_type?: string | null
+          team_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       billing_audit_log: {
         Row: {
           amount_kobo: number | null
@@ -5215,10 +5278,39 @@ export type Database = {
         Args: { p_expires_at?: string; p_minutes: number; p_user_id: string }
         Returns: Json
       }
+      admin_active_users: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          active_users: number
+          bucket: string
+        }[]
+      }
+      admin_arpu: {
+        Args: { _from: string; _to: string }
+        Returns: {
+          arpu: number
+          bucket: string
+        }[]
+      }
+      admin_churn_rate: {
+        Args: { _from: string; _to: string }
+        Returns: {
+          bucket: string
+          churn_rate: number
+        }[]
+      }
       admin_delete_user:
         | { Args: { p_user_id: string }; Returns: undefined }
         | { Args: { p_admin_id?: string; p_user_id: string }; Returns: Json }
       admin_emergency_disable_all_flags: { Args: never; Returns: undefined }
+      admin_extra_minutes_series: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          minutes: number
+          revenue: number
+        }[]
+      }
       admin_get_all_users: {
         Args: never
         Returns: {
@@ -5290,6 +5382,13 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_minutes_consumed: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          minutes: number
+        }[]
+      }
       admin_override_user_plan: {
         Args: {
           p_admin_id?: string
@@ -5308,9 +5407,34 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_plan_breakdown: {
+        Args: never
+        Returns: {
+          count: number
+          plan: string
+          revenue: number
+        }[]
+      }
+      admin_profit_cost: {
+        Args: { _from: string; _to: string }
+        Returns: {
+          bucket: string
+          cost: number
+          profit: number
+          revenue: number
+        }[]
+      }
       admin_reset_user_usage: {
         Args: { p_user_id: string }
         Returns: undefined
+      }
+      admin_revenue_series: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          payment_count: number
+          revenue: number
+        }[]
       }
       admin_toggle_feature_flag:
         | { Args: { p_enabled: boolean; p_key: string }; Returns: undefined }
@@ -5356,6 +5480,14 @@ export type Database = {
             }
             Returns: undefined
           }
+      admin_user_growth: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          cumulative: number
+          signups: number
+        }[]
+      }
       attach_call_to_deal: {
         Args: { p_call_id: string; p_deal_id: string }
         Returns: undefined
@@ -5458,6 +5590,7 @@ export type Database = {
         Args: { p_email?: string; p_ip: string }
         Returns: undefined
       }
+      compute_risk_score: { Args: { _user_id: string }; Returns: number }
       create_deal_room_for_call: {
         Args: {
           p_call_id: string
@@ -5906,6 +6039,35 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      get_user_activity: {
+        Args: { _limit?: number; _user_id: string }
+        Returns: {
+          action: string
+          actor_email: string | null
+          browser: string | null
+          category: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          details: Json
+          device: string | null
+          id: string
+          ip_address: string | null
+          risk_score: number
+          severity: string
+          target_id: string | null
+          target_type: string | null
+          team_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "audit_logs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_user_entitlements: { Args: { p_user_id: string }; Returns: Json }
       get_user_feature_access_secure: {
         Args: { p_user_id: string }
@@ -6018,6 +6180,19 @@ export type Database = {
           updated_at: string
           value: number
         }[]
+      }
+      log_audit: {
+        Args: {
+          _action: string
+          _category?: string
+          _details?: Json
+          _severity?: string
+          _target_id?: string
+          _target_type?: string
+          _team_id?: string
+          _user_id: string
+        }
+        Returns: string
       }
       log_call_usage:
         | {
