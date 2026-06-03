@@ -304,7 +304,11 @@ export default function AdminPanel() {
               <span className="topbar-title">{NAV_ITEMS.find(n => n.id === section)?.label}</span>
               {section === "analytics" && <span className="live-badge"><span className="live-dot" />Live</span>}
             </div>
-            <Link to="/dashboard" className="back-link">← App</Link>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Link to="/admin/analytics" className="back-link" style={{ background: "rgba(56,189,248,.12)", borderColor: "rgba(56,189,248,.3)" }}>📊 Analytics</Link>
+              <Link to="/admin/activity" className="back-link" style={{ background: "rgba(167,139,250,.12)", borderColor: "rgba(167,139,250,.3)" }}>🛰 Activity Center</Link>
+              <Link to="/dashboard" className="back-link">← App</Link>
+            </div>
           </header>
           <div className="content" key={section}>
             <ErrorBoundarySection>
