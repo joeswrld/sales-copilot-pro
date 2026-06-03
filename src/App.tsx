@@ -122,6 +122,26 @@ function AppRoutes() {
               </AdminRoute>
             }
           />
+          <Route
+            path="/admin/analytics"
+            element={
+              <AdminRoute>
+                <ErrorBoundary>
+                  <AdminAnalyticsPage />
+                </ErrorBoundary>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/activity"
+            element={
+              <AdminRoute>
+                <ErrorBoundary>
+                  <AdminActivityPage />
+                </ErrorBoundary>
+              </AdminRoute>
+            }
+          />
 
           {/* Protected — each wrapped in its own ErrorBoundary */}
           <Route
