@@ -7,6 +7,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import AdminPanel from "./pages/AdminPanel";
+import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
+import AdminActivityPage from "./pages/AdminActivityPage";
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
