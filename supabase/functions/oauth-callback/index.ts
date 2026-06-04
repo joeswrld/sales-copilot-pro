@@ -91,24 +91,11 @@ Deno.serve(async (req) => {
   const state = await verifyState(stateParam, hmacSecret);
 
   if (!state) {
-    // Fallback: try legacy unsigned state (for in-flight OAuth flows during migration)
-    try {
-      const legacy = JSON.parse(atob(stateParam));
-      if (legacy?.provider && legacy?.userId && tokenConfigs[legacy.provider]) {
-        // Accept legacy but log warning
-        console.warn("OAuth callback: accepting legacy unsigned state — will be rejected after migration");
-        Object.assign(state || {}, legacy);
-      }
-    } catch {
-      // ignore
-    }
-    if (!state) {
-      recordFailure(ip, "oauth-callback", RATE_CONFIG);
-      await logSecurityEvent({ event_type: "oauth_callback_invalid_state", severity: "warn", source_ip: ip, user_agent: req.headers.get("user-agent") || undefined });
-      return new Response(`<html><body><p>Invalid or tampered state parameter.</p></body></html>`, {
-        headers: { "Content-Type": "text/html" },
-      });
-    }
+    recordFailure(ip, "oauth-callback", RATE_CONFIG);
+    await logSecurityEvent({ event_type: "oauth_callback_invalid_state", severity: "warn", source_ip: ip, user_agent: req.headers.get("user-agent") || undefined });
+    return new Response(`<html><body><p>Invalid or tampered state parameter. Please restart the connection from Settings.</p></body></html>`, {
+      headers: { "Content-Type": "text/html" },
+    });
   }
 
   const config = tokenConfigs[state.provider];

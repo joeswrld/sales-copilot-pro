@@ -2,16 +2,8 @@
  * create-google-meet/index.ts
  * Supabase Edge Function
  *
- * Creates a Google Calendar event with a Meet conference link,
- * sends invites to participants, and returns the Meet URL.
- *
- * Deploy: supabase functions deploy create-google-meet
- *
- * Required env vars:
- *   GOOGLE_CLIENT_ID
- *   GOOGLE_CLIENT_SECRET
- *   SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY
+ * Creates a Google Calendar event with a Meet conference link for the
+ * authenticated user, using encrypted OAuth tokens.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -23,19 +15,53 @@ const corsHeaders = {
 };
 
 interface CreateMeetRequest {
-  user_id: string;
   title: string;
-  participants: string[];        // array of email strings
-  scheduled_time: string;        // ISO string
-  duration_minutes?: number;     // default 60
+  participants?: string[];
+  scheduled_time: string;
+  duration_minutes?: number;
   meeting_type?: string;
+}
+
+// ── AES-GCM helpers (must match oauth-callback / oauth-refresh) ──────────────
+async function encrypt(text: string, keyStr: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(keyStr.padEnd(32, "0").slice(0, 32)),
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keyMaterial, encoder.encode(text));
+  const combined = new Uint8Array(iv.length + new Uint8Array(encrypted).length);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decrypt(encryptedStr: string, keyStr: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(keyStr.padEnd(32, "0").slice(0, 32)),
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+  const combined = Uint8Array.from(atob(encryptedStr), (c) => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, keyMaterial, ciphertext);
+  return new TextDecoder().decode(decrypted);
 }
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
 async function refreshGoogleToken(
   supabase: any,
   userId: string,
-  refreshToken: string
+  refreshToken: string,
+  encryptionKey: string,
 ): Promise<string> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -54,12 +80,12 @@ async function refreshGoogleToken(
 
   const tokens = await res.json();
   const newExpiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+  const encryptedAccess = await encrypt(tokens.access_token, encryptionKey);
 
-  // Persist refreshed token
   await supabase
     .from("integrations")
     .update({
-      access_token: tokens.access_token,
+      access_token_encrypted: encryptedAccess,
       expires_at: newExpiry,
     })
     .eq("user_id", userId)
@@ -75,9 +101,31 @@ serve(async (req: Request) => {
   }
 
   try {
+    // Auth: verify JWT and derive user_id from the token, never from the body.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: { user }, error: authErr } = await anonClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const user_id = user.id;
+
     const body: CreateMeetRequest = await req.json();
     const {
-      user_id,
       title,
       participants = [],
       scheduled_time,
@@ -85,9 +133,9 @@ serve(async (req: Request) => {
       meeting_type,
     } = body;
 
-    if (!user_id || !title || !scheduled_time) {
+    if (!title || !scheduled_time) {
       return new Response(
-        JSON.stringify({ error: "user_id, title, and scheduled_time are required" }),
+        JSON.stringify({ error: "title and scheduled_time are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -97,10 +145,12 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Get Google OAuth tokens ────────────────────────────────────────────
+    const encryptionKey = Deno.env.get("INTEGRATION_ENCRYPTION_KEY")!;
+
+    // ── Get Google OAuth tokens (encrypted columns) ──────────────────────
     const { data: integration, error: intErr } = await supabase
       .from("integrations")
-      .select("access_token, refresh_token, expires_at, status")
+      .select("access_token_encrypted, refresh_token_encrypted, expires_at, status")
       .eq("user_id", user_id)
       .eq("provider", "google_meet")
       .maybeSingle();
@@ -112,18 +162,21 @@ serve(async (req: Request) => {
       );
     }
 
-    if (!integration.refresh_token) {
+    if (!integration.refresh_token_encrypted) {
       return new Response(
         JSON.stringify({ error: "Missing OAuth refresh token. Please reconnect Google Meet in Settings." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Refresh access token if expired (or within 60 seconds of expiry)
-    let accessToken = integration.access_token;
+    // Decrypt and refresh if needed
+    let accessToken = integration.access_token_encrypted
+      ? await decrypt(integration.access_token_encrypted, encryptionKey)
+      : "";
+    const refreshToken = await decrypt(integration.refresh_token_encrypted, encryptionKey);
     const expiresAt = integration.expires_at ? new Date(integration.expires_at) : new Date(0);
-    if (expiresAt.getTime() - Date.now() < 60_000) {
-      accessToken = await refreshGoogleToken(supabase, user_id, integration.refresh_token);
+    if (!accessToken || expiresAt.getTime() - Date.now() < 60_000) {
+      accessToken = await refreshGoogleToken(supabase, user_id, refreshToken, encryptionKey);
     }
 
     // ── Build calendar event ──────────────────────────────────────────────
@@ -162,7 +215,6 @@ serve(async (req: Request) => {
       },
     };
 
-    // ── Create Google Calendar event ──────────────────────────────────────
     const calRes = await fetch(
       "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
       "?conferenceDataVersion=1&sendUpdates=all",
@@ -187,7 +239,6 @@ serve(async (req: Request) => {
 
     const eventData = await calRes.json();
 
-    // Extract Meet link from conference data
     const meetLink =
       eventData.conferenceData?.entryPoints?.find(
         (e: any) => e.entryPointType === "video"
