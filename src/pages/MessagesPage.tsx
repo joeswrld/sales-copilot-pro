@@ -824,6 +824,7 @@ export default function MessagesPage() {
   const [showNewDM, setShowNewDM] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Map<string, OnlineUser>>(new Map());
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
