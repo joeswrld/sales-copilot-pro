@@ -1049,10 +1049,14 @@ export default function MessagesPage() {
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <NotificationBell notifications={notifications} onMarkAll={markAllRead} onMarkOne={markOneRead} isMobile={isMobile} />
+            <button onClick={() => setShowNotifSettings(true)} title="Notification settings" style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,.5)" }}>
+              <Settings size={13} />
+            </button>
             <button onClick={() => setShowSearch(v => !v)} style={{ width: 34, height: 34, borderRadius: 9, background: showSearch ? "rgba(14,245,212,.12)" : "rgba(255,255,255,.07)", border: `1px solid ${showSearch ? "rgba(14,245,212,.3)" : "rgba(255,255,255,.1)"}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: showSearch ? "#0ef5d4" : "rgba(255,255,255,.5)" }}>
               <Search size={13} />
             </button>
           </div>
+          <NotificationSettingsPanel open={showNotifSettings} onOpenChange={setShowNotifSettings} />
         </div>
         {showSearch && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "7px 11px" }}>
