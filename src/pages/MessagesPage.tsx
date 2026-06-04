@@ -20,6 +20,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { useTeamMessaging, getConversationName } from "@/hooks/useTeamMessaging";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
+import { playNotificationSound } from "@/lib/notificationSound";
 import { toast } from "sonner";
 import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
@@ -956,6 +957,7 @@ export default function MessagesPage() {
       loadNotifs();
       const n = payload.new as any;
       if (n?.message) toast(n.title || "New notification", { description: n.message });
+      playNotificationSound();
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
