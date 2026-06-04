@@ -19,6 +19,18 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Require a shared CRON_SECRET to prevent unauthenticated abuse of this endpoint.
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const provided = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "")
+    || req.headers.get("x-cron-secret")
+    || "";
+  if (!cronSecret || provided !== cronSecret) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,

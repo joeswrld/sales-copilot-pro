@@ -57,6 +57,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Ownership check: ensure the authenticated user owns this call
+    const { data: callRow, error: callErr } = await supabase
+      .from("calls")
+      .select("id, user_id")
+      .eq("id", call_id)
+      .maybeSingle();
+
+    if (callErr || !callRow) {
+      return new Response(JSON.stringify({ error: "Call not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (callRow.user_id !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Create Daily.co room with cloud recording enabled
     const expiresAt = Math.floor(Date.now() / 1000) + exp_minutes * 60;
 
