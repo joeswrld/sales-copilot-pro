@@ -21,11 +21,13 @@ import { useTeamMessaging, getConversationName } from "@/hooks/useTeamMessaging"
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
 import { playNotificationSound } from "@/lib/notificationSound";
+import { isSilenced } from "@/lib/notificationSettings";
+import { NotificationSettingsPanel } from "@/components/NotificationSettingsPanel";
 import { toast } from "sonner";
 import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
-  MoreHorizontal, X, CornerUpLeft,
+  MoreHorizontal, X, CornerUpLeft, Settings,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -822,6 +824,7 @@ export default function MessagesPage() {
   const [showNewDM, setShowNewDM] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Map<string, OnlineUser>>(new Map());
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
@@ -956,11 +959,53 @@ export default function MessagesPage() {
     const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
       loadNotifs();
       const n = payload.new as any;
-      if (n?.message) toast(n.title || "New notification", { description: n.message });
+      // Unobtrusive toast — bottom-right, short, never steals focus from typing
+      if (n?.message) {
+        toast(n.title || "New notification", {
+          description: n.message,
+          position: "bottom-right",
+          duration: 4000,
+          dismissible: true,
+        });
+      }
       playNotificationSound();
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
+
+  // Replay the urgent sound when the user returns to the tab/site and
+  // there are unread notifications they received while away (e.g. via web push).
+  useEffect(() => {
+    if (!user) return;
+    const KEY = `notif.lastSeen.${user.id}`;
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible") return;
+      const lastSeen = localStorage.getItem(KEY);
+      const since = lastSeen ?? new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
+      const { data } = await supabase
+        .from("notifications")
+        .select("id,title,message,created_at,is_read")
+        .eq("user_id", user.id)
+        .eq("is_read", false)
+        .gt("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data && data.length > 0 && !isSilenced()) {
+        playNotificationSound();
+        toast(`${data.length} new notification${data.length > 1 ? "s" : ""}`, {
+          description: data[0].title || data[0].message || "Tap the bell to view",
+          position: "bottom-right",
+          duration: 5000,
+        });
+      }
+      localStorage.setItem(KEY, new Date().toISOString());
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    // Also run on mount (handles arriving from a push notification click)
+    onVisible();
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [user]);
+
 
   const markAllRead = async () => {
     if (!user) return;
@@ -1004,10 +1049,14 @@ export default function MessagesPage() {
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <NotificationBell notifications={notifications} onMarkAll={markAllRead} onMarkOne={markOneRead} isMobile={isMobile} />
+            <button onClick={() => setShowNotifSettings(true)} title="Notification settings" style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,.5)" }}>
+              <Settings size={13} />
+            </button>
             <button onClick={() => setShowSearch(v => !v)} style={{ width: 34, height: 34, borderRadius: 9, background: showSearch ? "rgba(14,245,212,.12)" : "rgba(255,255,255,.07)", border: `1px solid ${showSearch ? "rgba(14,245,212,.3)" : "rgba(255,255,255,.1)"}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: showSearch ? "#0ef5d4" : "rgba(255,255,255,.5)" }}>
               <Search size={13} />
             </button>
           </div>
+          <NotificationSettingsPanel open={showNotifSettings} onOpenChange={setShowNotifSettings} />
         </div>
         {showSearch && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "7px 11px" }}>
