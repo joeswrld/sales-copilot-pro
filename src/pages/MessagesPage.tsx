@@ -21,11 +21,13 @@ import { useTeamMessaging, getConversationName } from "@/hooks/useTeamMessaging"
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
 import { playNotificationSound } from "@/lib/notificationSound";
+import { isSilenced } from "@/lib/notificationSettings";
+import { NotificationSettingsPanel } from "@/components/NotificationSettingsPanel";
 import { toast } from "sonner";
 import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
-  MoreHorizontal, X, CornerUpLeft,
+  MoreHorizontal, X, CornerUpLeft, Settings,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
