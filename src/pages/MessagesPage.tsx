@@ -959,11 +959,53 @@ export default function MessagesPage() {
     const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
       loadNotifs();
       const n = payload.new as any;
-      if (n?.message) toast(n.title || "New notification", { description: n.message });
+      // Unobtrusive toast — bottom-right, short, never steals focus from typing
+      if (n?.message) {
+        toast(n.title || "New notification", {
+          description: n.message,
+          position: "bottom-right",
+          duration: 4000,
+          dismissible: true,
+        });
+      }
       playNotificationSound();
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
+
+  // Replay the urgent sound when the user returns to the tab/site and
+  // there are unread notifications they received while away (e.g. via web push).
+  useEffect(() => {
+    if (!user) return;
+    const KEY = `notif.lastSeen.${user.id}`;
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible") return;
+      const lastSeen = localStorage.getItem(KEY);
+      const since = lastSeen ?? new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
+      const { data } = await supabase
+        .from("notifications")
+        .select("id,title,message,created_at,is_read")
+        .eq("user_id", user.id)
+        .eq("is_read", false)
+        .gt("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data && data.length > 0 && !isSilenced()) {
+        playNotificationSound();
+        toast(`${data.length} new notification${data.length > 1 ? "s" : ""}`, {
+          description: data[0].title || data[0].message || "Tap the bell to view",
+          position: "bottom-right",
+          duration: 5000,
+        });
+      }
+      localStorage.setItem(KEY, new Date().toISOString());
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    // Also run on mount (handles arriving from a push notification click)
+    onVisible();
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [user]);
+
 
   const markAllRead = async () => {
     if (!user) return;
