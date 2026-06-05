@@ -1,0 +1,1 @@
+ALTER TABLE public.notifications REPLICA IDENTITY FULL;
