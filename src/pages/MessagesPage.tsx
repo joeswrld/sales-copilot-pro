@@ -953,23 +953,50 @@ export default function MessagesPage() {
     setNotifications((data ?? []) as NotificationItem[]);
   }, [user]);
 
-  useEffect(() => { loadNotifs(); }, [user]);
+  useEffect(() => { loadNotifs(); }, [user, loadNotifs]);
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel(`notif-${user.id}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
-      loadNotifs();
-      const n = payload.new as any;
-      // Unobtrusive toast — bottom-right, short, never steals focus from typing
-      if (n?.message) {
-        toast(n.title || "New notification", {
-          description: n.message,
-          position: "bottom-right",
-          duration: 4000,
-          dismissible: true,
-        });
-      }
-      playNotificationSound();
-    }).subscribe();
+    const ch = supabase
+      .channel(`notif-${user.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const n = payload.new as NotificationItem;
+          setNotifications(prev => {
+            if (prev.some(p => p.id === n.id)) return prev;
+            return [n, ...prev].slice(0, 30);
+          });
+          if (n?.message) {
+            toast(n.title || "New notification", {
+              description: n.message,
+              position: "bottom-right",
+              duration: 4000,
+              dismissible: true,
+            });
+          }
+          playNotificationSound();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const n = payload.new as NotificationItem;
+          setNotifications(prev => prev.map(p => p.id === n.id ? { ...p, ...n } : p));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const oldRow = payload.old as { id?: string };
+          if (oldRow?.id) setNotifications(prev => prev.filter(p => p.id !== oldRow.id));
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") loadNotifs();
+      });
     return () => { supabase.removeChannel(ch); };
   }, [user, loadNotifs]);
 
