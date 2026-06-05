@@ -628,7 +628,39 @@ export default function LiveCall() {
 
   const { roomInfo, isCreating, createRoom, setRoomInfo } = useHMSRoom();
   const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
-  const { create: createMeeting } = useScheduledMeetings();
+  const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
+
+  // ── Due-time notifier: alert when a scheduled meeting hits its start time ──
+  const notifiedDueRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const { playNotificationSound } = await import("@/lib/notificationSound");
+      const now = Date.now();
+      for (const m of upcomingMeetings) {
+        if (cancelled) return;
+        if (notifiedDueRef.current.has(m.id)) continue;
+        const start = new Date(m.scheduled_time).getTime();
+        const diffSec = (start - now) / 1000;
+        // Fire once when within +/- 45s of start time
+        if (diffSec <= 45 && diffSec >= -45) {
+          notifiedDueRef.current.add(m.id);
+          playNotificationSound();
+          toast.success(`Meeting starting now: ${m.title}`, {
+            description: m.meeting_link ? "Click to join" : "Your scheduled meeting is due",
+            position: "bottom-right",
+            duration: 10000,
+            action: m.meeting_link
+              ? { label: "Join", onClick: () => window.open(m.meeting_link!, "_blank") }
+              : undefined,
+          });
+        }
+      }
+    };
+    check();
+    const id = setInterval(check, 20_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [upcomingMeetings]);
 
   // UI state
   const [showPopup, setShowPopup] = useState(false);
