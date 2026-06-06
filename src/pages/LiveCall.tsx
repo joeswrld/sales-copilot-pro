@@ -320,13 +320,15 @@ function MeetingCreatedPopup({
 function ScheduleModal({
   prefillLink,
   prefillTitle,
+  timezone,
   onSave,
   onClose,
 }: {
   prefillLink?: string;
   prefillTitle?: string;
+  timezone: string;
   onSave: (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string;
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -342,8 +344,15 @@ function ScheduleModal({
     if (!date || !time) { toast.error("Date and time are required"); return; }
     setIsSaving(true);
     try {
-      const scheduled_time = new Date(`${date}T${time}`).toISOString();
-      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time, meeting_type: meetingType });
+      const { zonedDateTimeToUtcIso } = await import("@/lib/timezone");
+      const scheduled_time = zonedDateTimeToUtcIso(date, time, timezone);
+      await onSave({
+        title: title.trim(),
+        meeting_link: link.trim(),
+        scheduled_time,
+        meeting_type: meetingType,
+        scheduled_timezone: timezone,
+      });
       toast.success("Meeting scheduled!");
       onClose();
     } catch (e: any) {
