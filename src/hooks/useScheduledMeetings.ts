@@ -53,6 +53,8 @@ export interface CreateMeetingParams {
   meeting_type?: string;
   notes?: string;
   participants?: string[];
+  /** IANA timezone the user used when scheduling, e.g. "America/New_York". */
+  scheduled_timezone?: string;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -123,6 +125,11 @@ export function useScheduledMeetings() {
           title: params.title,
           meeting_link: params.meeting_link || null,
           scheduled_time: params.scheduled_time,
+          scheduled_timezone:
+            params.scheduled_timezone ||
+            (typeof Intl !== "undefined"
+              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+              : null),
           meeting_type: params.meeting_type || "other",
           notes: params.notes || null,
           participants: params.participants || [],

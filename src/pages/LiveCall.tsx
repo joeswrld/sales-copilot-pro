@@ -320,13 +320,15 @@ function MeetingCreatedPopup({
 function ScheduleModal({
   prefillLink,
   prefillTitle,
+  timezone,
   onSave,
   onClose,
 }: {
   prefillLink?: string;
   prefillTitle?: string;
+  timezone: string;
   onSave: (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string;
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -342,8 +344,15 @@ function ScheduleModal({
     if (!date || !time) { toast.error("Date and time are required"); return; }
     setIsSaving(true);
     try {
-      const scheduled_time = new Date(`${date}T${time}`).toISOString();
-      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time, meeting_type: meetingType });
+      const { zonedDateTimeToUtcIso } = await import("@/lib/timezone");
+      const scheduled_time = zonedDateTimeToUtcIso(date, time, timezone);
+      await onSave({
+        title: title.trim(),
+        meeting_link: link.trim(),
+        scheduled_time,
+        meeting_type: meetingType,
+        scheduled_timezone: timezone,
+      });
       toast.success("Meeting scheduled!");
       onClose();
     } catch (e: any) {
@@ -482,7 +491,8 @@ function ScheduleModal({
             <span className="text-base">🔔</span>
             <span className="text-white/50">
               You'll be reminded <strong className="text-white/70">60 min</strong> and{" "}
-              <strong className="text-white/70">10 min</strong> before this meeting if notifications are enabled.
+              <strong className="text-white/70">10 min</strong> before this meeting in your timezone (
+              <strong className="text-white/70">{timezone}</strong>).
             </span>
           </div>
 
@@ -630,24 +640,52 @@ export default function LiveCall() {
   const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
 
+  // ── User's preferred IANA timezone (loaded once, falls back to browser tz) ──
+  const [userTz, setUserTz] = useState<string>(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
+    catch { return "UTC"; }
+  });
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { getUserTimezone, subscribeUserTimezone } = await import("@/lib/timezone");
+      const tz = await getUserTimezone(user.id);
+      if (!cancelled) setUserTz(tz);
+      unsub = subscribeUserTimezone((next) => { if (!cancelled) setUserTz(next); });
+    })();
+    return () => { cancelled = true; unsub?.(); };
+  }, []);
+
   // ── Due-time notifier: alert when a scheduled meeting hits its start time ──
+  // The comparison uses absolute UTC instants (timezone-agnostic). The
+  // human-readable label in the toast is rendered in the user's preferred tz.
   const notifiedDueRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
       const { playNotificationSound } = await import("@/lib/notificationSound");
+      const { formatInTimezone } = await import("@/lib/timezone");
       const now = Date.now();
       for (const m of upcomingMeetings) {
         if (cancelled) return;
         if (notifiedDueRef.current.has(m.id)) continue;
         const start = new Date(m.scheduled_time).getTime();
+        if (Number.isNaN(start)) continue;
         const diffSec = (start - now) / 1000;
-        // Fire once when within +/- 45s of start time
+        // Fire once when within +/- 45s of start time (UTC, so DST-safe)
         if (diffSec <= 45 && diffSec >= -45) {
           notifiedDueRef.current.add(m.id);
           playNotificationSound();
+          const localTime = formatInTimezone(m.scheduled_time, userTz, {
+            hour: "numeric", minute: "2-digit", timeZoneName: "short",
+          });
           toast.success(`Meeting starting now: ${m.title}`, {
-            description: m.meeting_link ? "Click to join" : "Your scheduled meeting is due",
+            description: m.meeting_link
+              ? `Scheduled for ${localTime} — click to join`
+              : `Scheduled for ${localTime}`,
             position: "bottom-right",
             duration: 10000,
             action: m.meeting_link
@@ -660,7 +698,7 @@ export default function LiveCall() {
     check();
     const id = setInterval(check, 20_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [upcomingMeetings]);
+  }, [upcomingMeetings, userTz]);
 
   // UI state
   const [showPopup, setShowPopup] = useState(false);
@@ -865,13 +903,14 @@ export default function LiveCall() {
   }, []);
 
   const handleScheduleSave = useCallback(async (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string;
   }) => {
     await createMeeting.mutateAsync({
       title: params.title,
       meeting_link: params.meeting_link || undefined,
       scheduled_time: params.scheduled_time,
       meeting_type: params.meeting_type,
+      scheduled_timezone: params.scheduled_timezone,
     });
   }, [createMeeting]);
 
@@ -903,9 +942,11 @@ export default function LiveCall() {
         />
       )}
       {showScheduleModal && (
+
         <ScheduleModal
           prefillLink={schedulePrefilledLink}
           prefillTitle={schedulePrefilledTitle}
+          timezone={userTz}
           onSave={handleScheduleSave}
           onClose={() => setShowScheduleModal(false)}
         />
