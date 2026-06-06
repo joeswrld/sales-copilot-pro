@@ -491,7 +491,8 @@ function ScheduleModal({
             <span className="text-base">🔔</span>
             <span className="text-white/50">
               You'll be reminded <strong className="text-white/70">60 min</strong> and{" "}
-              <strong className="text-white/70">10 min</strong> before this meeting if notifications are enabled.
+              <strong className="text-white/70">10 min</strong> before this meeting in your timezone (
+              <strong className="text-white/70">{timezone}</strong>).
             </span>
           </div>
 
