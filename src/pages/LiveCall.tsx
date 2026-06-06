@@ -647,17 +647,16 @@ export default function LiveCall() {
   });
   useEffect(() => {
     let cancelled = false;
+    let unsub: (() => void) | null = null;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
       const { getUserTimezone, subscribeUserTimezone } = await import("@/lib/timezone");
       const tz = await getUserTimezone(user.id);
       if (!cancelled) setUserTz(tz);
-      const unsub = subscribeUserTimezone((next) => { if (!cancelled) setUserTz(next); });
-      // Cleanup attaches via cancelled flag; unsub via captured ref
-      (cancelled as any) || unsub;
+      unsub = subscribeUserTimezone((next) => { if (!cancelled) setUserTz(next); });
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; unsub?.(); };
   }, []);
 
   // ── Due-time notifier: alert when a scheduled meeting hits its start time ──
