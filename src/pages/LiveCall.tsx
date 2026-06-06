@@ -904,13 +904,14 @@ export default function LiveCall() {
   }, []);
 
   const handleScheduleSave = useCallback(async (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string;
   }) => {
     await createMeeting.mutateAsync({
       title: params.title,
       meeting_link: params.meeting_link || undefined,
       scheduled_time: params.scheduled_time,
       meeting_type: params.meeting_type,
+      scheduled_timezone: params.scheduled_timezone,
     });
   }, [createMeeting]);
 
