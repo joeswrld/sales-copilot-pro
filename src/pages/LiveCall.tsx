@@ -943,9 +943,11 @@ export default function LiveCall() {
         />
       )}
       {showScheduleModal && (
+why
         <ScheduleModal
           prefillLink={schedulePrefilledLink}
           prefillTitle={schedulePrefilledTitle}
+          timezone={userTz}
           onSave={handleScheduleSave}
           onClose={() => setShowScheduleModal(false)}
         />
