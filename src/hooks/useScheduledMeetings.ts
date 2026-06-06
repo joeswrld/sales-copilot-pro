@@ -53,6 +53,8 @@ export interface CreateMeetingParams {
   meeting_type?: string;
   notes?: string;
   participants?: string[];
+  /** IANA timezone the user used when scheduling, e.g. "America/New_York". */
+  scheduled_timezone?: string;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
