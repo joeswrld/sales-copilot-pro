@@ -4054,6 +4054,7 @@ export type Database = {
           reschedule_count: number
           rescheduled_from: string | null
           scheduled_time: string
+          scheduled_timezone: string | null
           status: string
           title: string
           updated_at: string
@@ -4075,6 +4076,7 @@ export type Database = {
           reschedule_count?: number
           rescheduled_from?: string | null
           scheduled_time: string
+          scheduled_timezone?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -4096,6 +4098,7 @@ export type Database = {
           reschedule_count?: number
           rescheduled_from?: string | null
           scheduled_time?: string
+          scheduled_timezone?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -4921,6 +4924,7 @@ export type Database = {
           id: string
           post_call_email_summary: boolean
           real_time_objection_alerts: boolean
+          timezone: string | null
           transcript_visible_to_team: boolean
           updated_at: string
           user_id: string
@@ -4934,6 +4938,7 @@ export type Database = {
           id?: string
           post_call_email_summary?: boolean
           real_time_objection_alerts?: boolean
+          timezone?: string | null
           transcript_visible_to_team?: boolean
           updated_at?: string
           user_id: string
@@ -4947,6 +4952,7 @@ export type Database = {
           id?: string
           post_call_email_summary?: boolean
           real_time_objection_alerts?: boolean
+          timezone?: string | null
           transcript_visible_to_team?: boolean
           updated_at?: string
           user_id?: string
@@ -6315,6 +6321,7 @@ export type Database = {
           reschedule_count: number
           rescheduled_from: string | null
           scheduled_time: string
+          scheduled_timezone: string | null
           status: string
           title: string
           updated_at: string
