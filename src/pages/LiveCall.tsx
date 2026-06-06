@@ -640,24 +640,53 @@ export default function LiveCall() {
   const { chunksSent, isStreaming, startPeerAudio, stopAll } = useHMSAudioStreaming(callId ?? null);
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
 
+  // ── User's preferred IANA timezone (loaded once, falls back to browser tz) ──
+  const [userTz, setUserTz] = useState<string>(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
+    catch { return "UTC"; }
+  });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { getUserTimezone, subscribeUserTimezone } = await import("@/lib/timezone");
+      const tz = await getUserTimezone(user.id);
+      if (!cancelled) setUserTz(tz);
+      const unsub = subscribeUserTimezone((next) => { if (!cancelled) setUserTz(next); });
+      // Cleanup attaches via cancelled flag; unsub via captured ref
+      (cancelled as any) || unsub;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Due-time notifier: alert when a scheduled meeting hits its start time ──
+  // The comparison uses absolute UTC instants (timezone-agnostic). The
+  // human-readable label in the toast is rendered in the user's preferred tz.
   const notifiedDueRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
       const { playNotificationSound } = await import("@/lib/notificationSound");
+      const { formatInTimezone } = await import("@/lib/timezone");
       const now = Date.now();
       for (const m of upcomingMeetings) {
         if (cancelled) return;
         if (notifiedDueRef.current.has(m.id)) continue;
         const start = new Date(m.scheduled_time).getTime();
+        if (Number.isNaN(start)) continue;
         const diffSec = (start - now) / 1000;
-        // Fire once when within +/- 45s of start time
+        // Fire once when within +/- 45s of start time (UTC, so DST-safe)
         if (diffSec <= 45 && diffSec >= -45) {
           notifiedDueRef.current.add(m.id);
           playNotificationSound();
+          const localTime = formatInTimezone(m.scheduled_time, userTz, {
+            hour: "numeric", minute: "2-digit", timeZoneName: "short",
+          });
           toast.success(`Meeting starting now: ${m.title}`, {
-            description: m.meeting_link ? "Click to join" : "Your scheduled meeting is due",
+            description: m.meeting_link
+              ? `Scheduled for ${localTime} — click to join`
+              : `Scheduled for ${localTime}`,
             position: "bottom-right",
             duration: 10000,
             action: m.meeting_link
@@ -670,7 +699,7 @@ export default function LiveCall() {
     check();
     const id = setInterval(check, 20_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [upcomingMeetings]);
+  }, [upcomingMeetings, userTz]);
 
   // UI state
   const [showPopup, setShowPopup] = useState(false);
