@@ -564,11 +564,11 @@ function NewChannelModal({ teamId, onClose, onCreated }: { teamId: string; onClo
 
 // ─── Chat Area ────────────────────────────────────────────────────────────────
 
-function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers, onMarkRead }: {
+function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers, onMarkRead, members }: {
   activeChannel: Channel; currentUserId: string; isMobile: boolean;
   onBack: () => void; onlineUsers: Map<string, OnlineUser>;
-  /** Called after messages load so the parent can mark channel as read */
   onMarkRead: () => void;
+  members: MentionMember[];
 }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -579,11 +579,18 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showPinned, setShowPinned] = useState(false);
+  const [threadRoot, setThreadRoot] = useState<Msg | null>(null);
+  const [msgSearch, setMsgSearch] = useState("");
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const mentionRef = useRef<{ focus: () => void }>(null);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // keep a stable ref so the realtime callback always calls latest onMarkRead
   const onMarkReadRef = useRef(onMarkRead);
   useEffect(() => { onMarkReadRef.current = onMarkRead; }, [onMarkRead]);
 
@@ -616,21 +623,15 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
       }
     }
     setLoading(false);
-    // ── Mark channel as read every time messages load ──────────────────────
     onMarkReadRef.current();
   }, [isDM, activeChannel.id, activeChannel.conversationId]);
 
-  // Reset + load when channel changes
   useEffect(() => {
-    setLoading(true);
-    setMessages([]);
-    setReplyTo(null);
-    setEditingId(null);
-    setText("");
+    setLoading(true); setMessages([]); setReplyTo(null); setEditingId(null);
+    setText(""); setThreadRoot(null); setMsgSearch(""); setShowMsgSearch(false);
     load();
   }, [activeChannel.id]);
 
-  // Realtime: new messages in this channel
   useEffect(() => {
     const table = isDM ? "team_messages" : "deal_channel_messages";
     const filter = isDM ? `conversation_id=eq.${activeChannel.conversationId}` : `channel_id=eq.${activeChannel.id}`;
@@ -640,17 +641,16 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.id, activeChannel.conversationId, isDM, load]);
 
-  // Realtime: reactions / read receipts (DM only)
   useEffect(() => {
     if (!isDM) return;
     const ch = supabase.channel(`extras-rt-${activeChannel.conversationId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "message_read_receipts" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "team_message_reactions" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pinned_messages" }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [activeChannel.conversationId, isDM, load]);
 
-  // Typing indicator channel
   useEffect(() => {
     const ch = supabase.channel(`typing-${activeChannel.id}`);
     typingChannelRef.current = ch;
@@ -672,19 +672,73 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
     typingTimerRef.current = setTimeout(() => { typingChannelRef.current?.send({ type: "broadcast", event: "stop_typing", payload: { userId: currentUserId } }); }, 2500);
   };
 
+  // Insert mention rows for a newly inserted channel message
+  const writeMentions = async (messageId: string, ids: string[]) => {
+    if (!ids.length || isDM) return;
+    try {
+      await (supabase as any).from("deal_message_mentions").insert(
+        ids.map(uid => ({ message_id: messageId, mentioned_user: uid }))
+      );
+    } catch (e) { console.warn("mention insert failed", e); }
+  };
+
   const send = async () => {
     const t = text.trim();
     if (!t || !user || sending) return;
     setSending(true); setText("");
     typingChannelRef.current?.send({ type: "broadcast", event: "stop_typing", payload: { userId: currentUserId } });
     try {
+      const newId = crypto.randomUUID();
       if (isDM) {
-        await supabase.from("team_messages").insert({ conversation_id: activeChannel.conversationId, sender_id: user.id, message_text: t, parent_id: replyTo?.id ?? null } as any);
+        await supabase.from("team_messages").insert({ id: newId, conversation_id: activeChannel.conversationId, sender_id: user.id, message_text: t, parent_id: replyTo?.id ?? null } as any);
       } else {
-        await (supabase as any).from("deal_channel_messages").insert({ channel_id: activeChannel.id, user_id: user.id, content: t, type: "text", parent_id: replyTo?.id ?? null });
+        await (supabase as any).from("deal_channel_messages").insert({ id: newId, channel_id: activeChannel.id, user_id: user.id, content: t, type: "text", parent_id: replyTo?.id ?? null });
+        await writeMentions(newId, mentionedIds);
+      }
+      setReplyTo(null); setMentionedIds([]);
+    } catch { toast.error("Failed to send"); setText(t); } finally { setSending(false); }
+  };
+
+  // Upload + send a file or voice attachment
+  const sendAttachment = async (file: File | Blob, opts?: { folder?: "files" | "voice" | "images"; fileName?: string; mimeOverride?: string }) => {
+    if (!user) return;
+    setUploading(true);
+    try {
+      const uploaded = await uploadMessageFile(file, user.id, opts);
+      const name = opts?.fileName || uploaded.name;
+      const type = opts?.mimeOverride || uploaded.type;
+      const newId = crypto.randomUUID();
+      if (isDM) {
+        await supabase.from("team_messages").insert({
+          id: newId, conversation_id: activeChannel.conversationId, sender_id: user.id,
+          message_text: name, file_url: uploaded.url, file_name: name, file_type: type,
+          parent_id: replyTo?.id ?? null,
+        } as any);
+      } else {
+        await (supabase as any).from("deal_channel_messages").insert({
+          id: newId, channel_id: activeChannel.id, user_id: user.id,
+          content: name, type: type.startsWith("image/") ? "image" : type.startsWith("audio/") ? "voice" : "file",
+          parent_id: replyTo?.id ?? null,
+          metadata: { file_url: uploaded.url, file_name: name, file_type: type, file_size: uploaded.size },
+        });
       }
       setReplyTo(null);
-    } catch { toast.error("Failed to send"); setText(t); } finally { setSending(false); }
+    } catch (e: any) { console.error(e); toast.error(e.message || "Upload failed"); }
+    finally { setUploading(false); }
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) { toast.error("Max 20 MB"); return; }
+    const folder = f.type.startsWith("image/") ? "images" : "files";
+    await sendAttachment(f, { folder, fileName: f.name });
+  };
+
+  const onVoiceSend = async (blob: Blob, duration: number) => {
+    setRecording(false);
+    const name = `voice-${Math.round(duration)}s.webm`;
+    await sendAttachment(blob, { folder: "voice", fileName: name, mimeOverride: "audio/webm" });
   };
 
   const handleReact = async (msgId: string, emoji: string) => {
@@ -694,6 +748,28 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
     if (ex) { await (supabase as any).from(table).delete().eq("id", ex.id); }
     else { await (supabase as any).from(table).insert({ message_id: msgId, user_id: user.id, emoji }); }
     load();
+  };
+
+  const handlePin = async (m: Msg) => {
+    if (!user) return;
+    try {
+      if (isDM) {
+        if (m.is_pinned) {
+          await supabase.from("pinned_messages").delete().eq("message_id", m.id).eq("conversation_id", activeChannel.conversationId!);
+          toast.success("Unpinned");
+        } else {
+          await supabase.from("pinned_messages").insert({
+            conversation_id: activeChannel.conversationId!, message_id: m.id,
+            pinned_by: user.id, message_preview: msgText(m).slice(0, 200),
+          } as any);
+          toast.success("Pinned");
+        }
+      } else {
+        await (supabase as any).from("deal_channel_messages").update({ is_pinned: !m.is_pinned }).eq("id", m.id);
+        toast.success(m.is_pinned ? "Unpinned" : "Pinned");
+      }
+      load();
+    } catch (e: any) { toast.error(e.message || "Failed"); }
   };
 
   const saveEdit = async () => {
@@ -714,124 +790,192 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   };
 
   const copyMsg = (m: Msg) => navigator.clipboard.writeText(msgText(m)).then(() => toast.success("Copied!")).catch(() => toast.error("Copy failed"));
-  const startReply = (m: Msg) => { setReplyTo(m); inputRef.current?.focus(); };
+  const startReply = (m: Msg) => { setReplyTo(m); mentionRef.current?.focus(); };
 
   const displayMessages = messages.filter(m => {
     if (m.is_deleted) return false;
+    if (m.parent_id) return false; // hide thread replies from main list
     const t = msgText(m);
-    return t.length > 0 || !!m.file_url;
+    if (msgSearch && !t.toLowerCase().includes(msgSearch.toLowerCase())) return false;
+    return t.length > 0 || !!m.file_url || (m.metadata as any)?.file_url;
+  }).map(m => {
+    // Normalize channel messages with metadata.file_url into the standard shape
+    const meta = (m.metadata as any) || {};
+    if (!m.file_url && meta.file_url) {
+      return { ...m, file_url: meta.file_url, file_name: meta.file_name, file_type: meta.file_type };
+    }
+    return m;
   });
 
+  const allowMentions = !isDM;
+  const placeholder = `Message ${activeChannel.type === "dm" ? activeChannel.name : "#" + activeChannel.name}…`;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      {/* Header */}
-      <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
-        {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
-        {activeChannel.type === "dm" ? (
-          <MsgAvatar name={activeChannel.name} avatarUrl={activeChannel.avatar_url} size={34} color="#a78bfa" />
-        ) : (
-          <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#0ef5d4" }}>
-            {activeChannel.type === "deal" ? "◈" : "#"}
-          </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
-          {activeChannel.deal_stage && <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 4px", minHeight: 0 }}>
-        {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
-        ) : displayMessages.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>{activeChannel.type === "dm" ? "👋" : "#"}</div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.4)", margin: "0 0 6px", fontFamily: "'Geist',system-ui,sans-serif" }}>{activeChannel.type === "dm" ? `Start a conversation with ${activeChannel.name}` : `#${activeChannel.name}`}</p>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,.22)", margin: 0 }}>Send a message to get started.</p>
-          </div>
-        ) : (
-          <>
-            {displayMessages.map((msg, i) => {
-              const prev = i > 0 ? displayMessages[i - 1] : null;
-              const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString();
-              const uid = msgSenderId(msg);
-              const isOwn = uid === currentUserId;
-              const senderOnline = uid ? (onlineUsers.has(uid) && Date.now() - onlineUsers.get(uid)!.lastSeen.getTime() < 120_000) : false;
-
-              return (
-                <div key={msg.id}>
-                  {showDate && (
-                    <div style={{ display: "flex", alignItems: "center", margin: "14px 0 10px", gap: 10 }}>
-                      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
-                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)", whiteSpace: "nowrap" }}>
-                        {isToday(new Date(msg.created_at)) ? "Today" : isYesterday(new Date(msg.created_at)) ? "Yesterday" : format(new Date(msg.created_at), "MMMM d")}
-                      </span>
-                      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
-                    </div>
-                  )}
-                  {editingId === msg.id ? (
-                    <div style={{ margin: "4px 0 8px", padding: "8px 12px", background: "rgba(14,245,212,.06)", borderRadius: 10, border: "1px solid rgba(14,245,212,.2)" }}>
-                      <textarea value={editText} onChange={e => setEditText(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === "Escape") setEditingId(null); }}
-                        autoFocus style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#f0f6fc", fontSize: 13.5, resize: "none", minHeight: 36, fontFamily: "'Geist',system-ui,sans-serif" }} />
-                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                        <button onClick={saveEdit} style={{ padding: "4px 12px", borderRadius: 7, border: "none", background: "#0ef5d4", color: "#060912", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
-                        <button onClick={() => setEditingId(null)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12, cursor: "pointer" }}>Cancel</button>
-                        <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", alignSelf: "center" }}>Enter · Esc</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ marginBottom: 6 }}>
-                      <MsgBubble msg={msg} isOwn={isOwn} isMobile={isMobile} isOnline={!isOwn && senderOnline}
-                        onReact={e => handleReact(msg.id, e)} onReply={() => startReply(msg)}
-                        onEdit={() => { setEditingId(msg.id); setEditText(msgText(msg)); }}
-                        onDelete={() => deleteMsg(msg.id)} onCopy={() => copyMsg(msg)} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            <div ref={endRef} style={{ height: 4 }} />
-          </>
-        )}
-      </div>
-
-      {/* Typing indicator */}
-      {typingUsers.length > 0 && (
-        <div style={{ padding: "3px 16px", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="pdot" /><span className="pdot" /><span className="pdot" />
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,.4)", fontFamily: "'Geist',system-ui,sans-serif" }}>
-            {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
-          </span>
-        </div>
+    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      <input ref={fileRef} type="file" hidden onChange={onPickFile} />
+      {showPinned && (
+        <PinnedDrawer isDM={isDM} channelId={activeChannel.id} conversationId={activeChannel.conversationId}
+          onClose={() => setShowPinned(false)} />
       )}
 
-      {/* Reply preview */}
-      {replyTo && (
-        <div style={{ margin: "0 14px 4px", padding: "6px 10px", background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <CornerUpLeft size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, height: "100%" }}>
+        {/* Header */}
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
+          {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
+          {activeChannel.type === "dm" ? (
+            <MsgAvatar name={activeChannel.name} avatarUrl={activeChannel.avatar_url} size={34} color="#a78bfa" />
+          ) : (
+            <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#0ef5d4" }}>
+              {activeChannel.type === "deal" ? "◈" : "#"}
+            </div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Geist',system-ui,sans-serif" }}>Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}</span>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msgText(replyTo)}</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
+            {activeChannel.deal_stage && <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>}
           </div>
-          <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", flexShrink: 0 }}><X size={14} /></button>
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "8px 10px 8px 14px", transition: "border-color .15s" }}>
-          <textarea ref={inputRef} value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={`Message ${activeChannel.type === "dm" ? activeChannel.name : "#" + activeChannel.name}…`}
-            rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
-          <button onClick={send} disabled={!text.trim() || sending} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed", transition: "all .15s" }}>
-            <Send size={14} />
+          <button onClick={() => setShowMsgSearch(v => !v)} title="Search messages" style={{ width: 32, height: 32, borderRadius: 8, background: showMsgSearch ? "rgba(14,245,212,.1)" : "rgba(255,255,255,.05)", border: `1px solid ${showMsgSearch ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.08)"}`, color: showMsgSearch ? "#0ef5d4" : "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Search size={13} />
+          </button>
+          <button onClick={() => setShowPinned(true)} title="Pinned messages" style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Pin size={13} />
           </button>
         </div>
-        {!isMobile && <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.2)", margin: "4px 0 0 2px", fontFamily: "'Geist',system-ui,sans-serif" }}>Enter to send · Shift+Enter newline · Hover a message to reply / react / edit</p>}
+
+        {showMsgSearch && (
+          <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", background: "rgba(255,255,255,.02)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "6px 10px" }}>
+              <Search size={12} color="rgba(255,255,255,.3)" />
+              <input autoFocus value={msgSearch} onChange={e => setMsgSearch(e.target.value)} placeholder="Search in this conversation…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }} />
+              {msgSearch && <button onClick={() => setMsgSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>×</button>}
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 4px", minHeight: 0 }}>
+          {loading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
+          ) : displayMessages.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 20px" }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>{activeChannel.type === "dm" ? "👋" : "#"}</div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.4)", margin: "0 0 6px", fontFamily: "'Geist',system-ui,sans-serif" }}>{msgSearch ? "No matches" : activeChannel.type === "dm" ? `Start a conversation with ${activeChannel.name}` : `#${activeChannel.name}`}</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,.22)", margin: 0 }}>{msgSearch ? "Try a different search term." : "Send a message to get started."}</p>
+            </div>
+          ) : (
+            <>
+              {displayMessages.map((msg, i) => {
+                const prev = i > 0 ? displayMessages[i - 1] : null;
+                const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString();
+                const uid = msgSenderId(msg);
+                const isOwn = uid === currentUserId;
+                const senderOnline = uid ? (onlineUsers.has(uid) && Date.now() - onlineUsers.get(uid)!.lastSeen.getTime() < 120_000) : false;
+                return (
+                  <div key={msg.id}>
+                    {showDate && (
+                      <div style={{ display: "flex", alignItems: "center", margin: "14px 0 10px", gap: 10 }}>
+                        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)", whiteSpace: "nowrap" }}>
+                          {isToday(new Date(msg.created_at)) ? "Today" : isYesterday(new Date(msg.created_at)) ? "Yesterday" : format(new Date(msg.created_at), "MMMM d")}
+                        </span>
+                        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
+                      </div>
+                    )}
+                    {editingId === msg.id ? (
+                      <div style={{ margin: "4px 0 8px", padding: "8px 12px", background: "rgba(14,245,212,.06)", borderRadius: 10, border: "1px solid rgba(14,245,212,.2)" }}>
+                        <textarea value={editText} onChange={e => setEditText(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === "Escape") setEditingId(null); }}
+                          autoFocus style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#f0f6fc", fontSize: 13.5, resize: "none", minHeight: 36, fontFamily: "'Geist',system-ui,sans-serif" }} />
+                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                          <button onClick={saveEdit} style={{ padding: "4px 12px", borderRadius: 7, border: "none", background: "#0ef5d4", color: "#060912", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                          <button onClick={() => setEditingId(null)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", alignSelf: "center" }}>Enter · Esc</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: 6 }}>
+                        <MsgBubble msg={msg} isOwn={isOwn} isMobile={isMobile} isOnline={!isOwn && senderOnline}
+                          onReact={e => handleReact(msg.id, e)} onReply={() => startReply(msg)}
+                          onThread={() => setThreadRoot(msg)}
+                          onPin={() => handlePin(msg)}
+                          onEdit={() => { setEditingId(msg.id); setEditText(msgText(msg)); }}
+                          onDelete={() => deleteMsg(msg.id)} onCopy={() => copyMsg(msg)} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={endRef} style={{ height: 4 }} />
+            </>
+          )}
+        </div>
+
+        {typingUsers.length > 0 && (
+          <div style={{ padding: "3px 16px", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="pdot" /><span className="pdot" /><span className="pdot" />
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,.4)", fontFamily: "'Geist',system-ui,sans-serif" }}>
+              {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
+            </span>
+          </div>
+        )}
+
+        {replyTo && (
+          <div style={{ margin: "0 14px 4px", padding: "6px 10px", background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <CornerUpLeft size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Geist',system-ui,sans-serif" }}>Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}</span>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msgText(replyTo)}</p>
+            </div>
+            <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", flexShrink: 0 }}><X size={14} /></button>
+          </div>
+        )}
+
+        {/* Input */}
+        <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
+          {recording ? (
+            <VoiceRecorder onCancel={() => setRecording(false)} onSend={onVoiceSend} />
+          ) : (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "6px 8px 6px 10px" }}>
+              <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Attach file" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Paperclip size={15} />
+              </button>
+              {allowMentions ? (
+                <MentionTextarea
+                  ref={mentionRef as any}
+                  value={text} onChange={v => { setText(v); sendTyping(); }}
+                  onMentionsChange={setMentionedIds}
+                  onSubmit={send}
+                  members={members}
+                  placeholder={placeholder}
+                />
+              ) : (
+                <textarea value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                  placeholder={placeholder}
+                  rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
+              )}
+              <button onClick={() => setRecording(true)} disabled={uploading} title="Voice note" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Mic size={15} />
+              </button>
+              <button onClick={send} disabled={!text.trim() || sending || uploading} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
+                <Send size={14} />
+              </button>
+            </div>
+          )}
+          {!isMobile && !recording && <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.2)", margin: "4px 0 0 2px", fontFamily: "'Geist',system-ui,sans-serif" }}>
+            {allowMentions ? "Enter to send · @ to mention · Attach files or record voice · Right-click for more" : "Enter to send · Shift+Enter newline · Attach files or record voice"}
+          </p>}
+        </div>
       </div>
+
+      {threadRoot && (
+        <ThreadPanel
+          root={threadRoot as any}
+          isDM={isDM}
+          channelId={!isDM ? activeChannel.id : undefined}
+          conversationId={isDM ? activeChannel.conversationId : undefined}
+          onClose={() => setThreadRoot(null)}
+        />
+      )}
     </div>
   );
 }
