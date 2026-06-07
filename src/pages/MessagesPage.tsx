@@ -52,6 +52,7 @@ interface Channel {
   msg_count: number;
   is_muted: boolean;
   conversationId?: string;
+  avatar_url?: string | null;
 }
 
 interface Reaction { emoji: string; count: number; by_me: boolean; }
@@ -256,7 +257,11 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
   const iconColor = ch.type === "deal" ? getStage(ch.deal_stage).color : ch.type === "dm" ? "#a78bfa" : "#60a5fa";
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", textAlign: "left", background: isActive ? "rgba(14,245,212,.09)" : hovered ? "rgba(255,255,255,.04)" : "transparent", borderLeft: `2px solid ${isActive ? "#0ef5d4" : "transparent"}`, cursor: "pointer", transition: "all .1s" }}>
-      <span style={{ fontSize: 12, color: iconColor, flexShrink: 0 }}>{icon}</span>
+      {ch.type === "dm" ? (
+        <MsgAvatar name={ch.name} avatarUrl={ch.avatar_url} size={26} color="#a78bfa" />
+      ) : (
+        <span style={{ fontSize: 12, color: iconColor, flexShrink: 0 }}>{icon}</span>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#f0f6fc" : "rgba(255,255,255,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Geist',system-ui,sans-serif" }}>{ch.name}</span>
@@ -703,9 +708,13 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
       {/* Header */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
         {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
-        <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: activeChannel.type === "dm" ? "rgba(167,139,250,.1)" : "rgba(14,245,212,.08)", border: `1px solid ${activeChannel.type === "dm" ? "rgba(167,139,250,.2)" : "rgba(14,245,212,.15)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: activeChannel.type === "dm" ? "#a78bfa" : "#0ef5d4" }}>
-          {activeChannel.type === "deal" ? "◈" : activeChannel.type === "dm" ? "●" : "#"}
-        </div>
+        {activeChannel.type === "dm" ? (
+          <MsgAvatar name={activeChannel.name} avatarUrl={activeChannel.avatar_url} size={34} color="#a78bfa" />
+        ) : (
+          <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#0ef5d4" }}>
+            {activeChannel.type === "deal" ? "◈" : "#"}
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
           {activeChannel.deal_stage && <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>}
@@ -933,8 +942,9 @@ export default function MessagesPage() {
 
   const dmChannels = useMemo((): Channel[] => conversations.map(c => {
     const other = c.participants[0];
+    const isGroup = c.participants.length > 1;
     const name = other ? (other.full_name || other.email?.split("@")[0] || "Unknown") : c.participants.length > 0 ? `Group (${c.participants.length + 1})` : "Chat";
-    return { id: `dm-${c.id}`, name, type: "dm" as const, conversationId: c.id, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: c.last_message?.message_text || null, last_msg_at: c.last_message?.created_at || null, unread_count: c.unread_count, msg_count: 0, is_muted: false };
+    return { id: `dm-${c.id}`, name, type: "dm" as const, conversationId: c.id, avatar_url: !isGroup ? (other?.avatar_url ?? null) : null, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: c.last_message?.message_text || null, last_msg_at: c.last_message?.created_at || null, unread_count: c.unread_count, msg_count: 0, is_muted: false };
   }), [conversations]);
 
   const allChannels = useMemo(() => {
