@@ -262,6 +262,7 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
       ) : (
         <span style={{ fontSize: 12, color: iconColor, flexShrink: 0 }}>{icon}</span>
       )}
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#f0f6fc" : "rgba(255,255,255,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Geist',system-ui,sans-serif" }}>{ch.name}</span>
           {ch.last_msg_at && <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)", flexShrink: 0 }}>{fmtTime(ch.last_msg_at)}</span>}
