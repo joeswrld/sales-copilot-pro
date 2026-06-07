@@ -704,9 +704,13 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
       {/* Header */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
         {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
-        <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: activeChannel.type === "dm" ? "rgba(167,139,250,.1)" : "rgba(14,245,212,.08)", border: `1px solid ${activeChannel.type === "dm" ? "rgba(167,139,250,.2)" : "rgba(14,245,212,.15)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: activeChannel.type === "dm" ? "#a78bfa" : "#0ef5d4" }}>
-          {activeChannel.type === "deal" ? "◈" : activeChannel.type === "dm" ? "●" : "#"}
-        </div>
+        {activeChannel.type === "dm" ? (
+          <MsgAvatar name={activeChannel.name} avatarUrl={activeChannel.avatar_url} size={34} color="#a78bfa" />
+        ) : (
+          <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#0ef5d4" }}>
+            {activeChannel.type === "deal" ? "◈" : "#"}
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
           {activeChannel.deal_stage && <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>}
