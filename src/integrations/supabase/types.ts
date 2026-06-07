@@ -5747,9 +5747,11 @@ export type Database = {
           id: string
           is_deleted: boolean
           is_pinned: boolean
+          mentions: string[]
           metadata: Json
           parent_id: string
           reactions: Json
+          reply_count: number
           reply_to_sender_name: string
           reply_to_text: string
           sender_avatar_url: string
@@ -5931,10 +5933,12 @@ export type Database = {
           file_url: string
           id: string
           is_deleted: boolean
+          is_pinned: boolean
           message_text: string
           parent_id: string
           reactions: Json
           read_by: string[]
+          reply_count: number
           reply_to_sender_name: string
           reply_to_text: string
           sender_avatar_url: string
