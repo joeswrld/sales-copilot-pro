@@ -307,10 +307,10 @@ function EmojiPicker({ onSelect, onClose, isOwn }: { onSelect: (e: string) => vo
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 
-function CtxMenu({ isOwn, x, y, isMobile, onReact, onReply, onEdit, onDelete, onCopy, onClose }: {
-  isOwn: boolean; x: number; y: number; isMobile: boolean;
-  onReact: (e: string) => void; onReply: () => void; onEdit: () => void;
-  onDelete: () => void; onCopy: () => void; onClose: () => void;
+function CtxMenu({ isOwn, isPinned, x, y, isMobile, onReact, onReply, onThread, onPin, onEdit, onDelete, onCopy, onClose }: {
+  isOwn: boolean; isPinned: boolean; x: number; y: number; isMobile: boolean;
+  onReact: (e: string) => void; onReply: () => void; onThread: () => void; onPin: () => void;
+  onEdit: () => void; onDelete: () => void; onCopy: () => void; onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -321,7 +321,7 @@ function CtxMenu({ isOwn, x, y, isMobile, onReact, onReply, onEdit, onDelete, on
 
   const menuSt: React.CSSProperties = isMobile
     ? { position: "fixed", bottom: 0, left: 0, right: 0, background: "#1a1f2e", borderRadius: "16px 16px 0 0", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", padding: "8px 0 24px", zIndex: 500 }
-    : { position: "fixed", left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 260), background: "#1a1f2e", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "6px 0", zIndex: 500, minWidth: 190, boxShadow: "0 8px 32px rgba(0,0,0,.7)" };
+    : { position: "fixed", left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 320), background: "#1a1f2e", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "6px 0", zIndex: 500, minWidth: 190, boxShadow: "0 8px 32px rgba(0,0,0,.7)" };
 
   const Row = ({ icon, label, color, cb }: { icon: React.ReactNode; label: string; color?: string; cb: () => void }) => (
     <button onClick={() => { cb(); onClose(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 16px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: 14, color: color || "rgba(255,255,255,.82)", fontFamily: "'Geist',system-ui,sans-serif" }}
@@ -346,6 +346,8 @@ function CtxMenu({ isOwn, x, y, isMobile, onReact, onReply, onEdit, onDelete, on
           ))}
         </div>
         <Row icon={<CornerUpLeft size={14} />} label="Reply" cb={onReply} />
+        <Row icon={<MessageCircle size={14} />} label="Reply in thread" cb={onThread} />
+        <Row icon={isPinned ? <PinOff size={14} /> : <Pin size={14} />} label={isPinned ? "Unpin" : "Pin message"} cb={onPin} />
         <Row icon={<Copy size={14} />} label="Copy text" cb={onCopy} />
         {isOwn && <Row icon={<Edit2 size={14} />} label="Edit message" cb={onEdit} />}
         {isOwn && <Row icon={<Trash2 size={14} />} label="Delete" color="#ef4444" cb={onDelete} />}
