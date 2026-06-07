@@ -934,8 +934,9 @@ export default function MessagesPage() {
 
   const dmChannels = useMemo((): Channel[] => conversations.map(c => {
     const other = c.participants[0];
+    const isGroup = c.participants.length > 1;
     const name = other ? (other.full_name || other.email?.split("@")[0] || "Unknown") : c.participants.length > 0 ? `Group (${c.participants.length + 1})` : "Chat";
-    return { id: `dm-${c.id}`, name, type: "dm" as const, conversationId: c.id, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: c.last_message?.message_text || null, last_msg_at: c.last_message?.created_at || null, unread_count: c.unread_count, msg_count: 0, is_muted: false };
+    return { id: `dm-${c.id}`, name, type: "dm" as const, conversationId: c.id, avatar_url: !isGroup ? (other?.avatar_url ?? null) : null, deal_id: null, call_id: null, deal_name: null, deal_stage: null, deal_value: null, deal_health: null, deal_next_step: null, call_name: null, call_summary: null, call_sentiment: null, last_msg: c.last_message?.message_text || null, last_msg_at: c.last_message?.created_at || null, unread_count: c.unread_count, msg_count: 0, is_muted: false };
   }), [conversations]);
 
   const allChannels = useMemo(() => {
