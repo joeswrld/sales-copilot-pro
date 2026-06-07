@@ -373,9 +373,9 @@ function ReactionRow({ reactions, onToggle }: { reactions: Reaction[]; onToggle:
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, onDelete, onCopy }: {
+function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onThread, onPin, onEdit, onDelete, onCopy }: {
   msg: Msg; isOwn: boolean; isMobile: boolean; isOnline: boolean;
-  onReact: (e: string) => void; onReply: () => void;
+  onReact: (e: string) => void; onReply: () => void; onThread: () => void; onPin: () => void;
   onEdit: () => void; onDelete: () => void; onCopy: () => void;
 }) {
   const [showCtx, setShowCtx] = useState(false);
@@ -422,12 +422,20 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, o
             onContextMenu={e => { if (!isMobile) { e.preventDefault(); openCtx(e.clientX, e.clientY); } }}
             onTouchStart={() => { if (isMobile) longRef.current = setTimeout(() => openCtx(0, 0), 500); }}
             onTouchEnd={() => { if (longRef.current) clearTimeout(longRef.current); }}
-            style={{ padding: "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : "rgba(255,255,255,.08)", border: isOwn ? "none" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: "default" }}>
-            {msg.file_url
-              ? <a href={msg.file_url} target="_blank" rel="noopener noreferrer" style={{ color: isOwn ? "#060912" : "#0ef5d4", textDecoration: "underline" }}>📎 {text || msg.file_name}</a>
-              : text}
+            style={{ padding: msg.file_url && (isImageType(msg.file_type) || isAudioType(msg.file_type)) ? 6 : "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : "rgba(255,255,255,.08)", border: isOwn ? "none" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: "default" }}>
+            {msg.is_pinned && <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#fbbf24", marginRight: 6, opacity: .85 }}><Pin size={10} /> Pinned</div>}
+            {msg.file_url ? (
+              <AttachmentRender url={msg.file_url} name={msg.file_name} type={msg.file_type} isOwn={isOwn} />
+            ) : (
+              <span>{renderWithMentions(text, isOwn ? "#003a3a" : "#0ef5d4")}</span>
+            )}
             {msg.edited_at && <span style={{ fontSize: 10, color: isOwn ? "rgba(0,0,0,.4)" : "rgba(255,255,255,.3)", marginLeft: 6 }}>(edited)</span>}
           </div>
+          {(msg.reply_count ?? 0) > 0 && (
+            <button onClick={onThread} style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 8, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.18)", color: "#0ef5d4", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+              <MessageCircle size={11} /> {msg.reply_count} {msg.reply_count === 1 ? "reply" : "replies"}
+            </button>
+          )}
           {!isMobile && hovered && (
             <div style={{ position: "absolute", top: -34, [isOwn ? "left" : "right"]: 0, display: "flex", gap: 3, zIndex: 10 }}>
               <div style={{ position: "relative" }}>
@@ -450,7 +458,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onEdit, o
           </div>
         )}
       </div>
-      {showCtx && <CtxMenu isOwn={isOwn} x={ctxPos.x} y={ctxPos.y} isMobile={isMobile} onReact={onReact} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onCopy={onCopy} onClose={() => setShowCtx(false)} />}
+      {showCtx && <CtxMenu isOwn={isOwn} isPinned={!!msg.is_pinned} x={ctxPos.x} y={ctxPos.y} isMobile={isMobile} onReact={onReact} onReply={onReply} onThread={onThread} onPin={onPin} onEdit={onEdit} onDelete={onDelete} onCopy={onCopy} onClose={() => setShowCtx(false)} />}
     </div>
   );
 }
