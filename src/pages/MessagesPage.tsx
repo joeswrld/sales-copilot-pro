@@ -27,8 +27,15 @@ import { toast } from "sonner";
 import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
-  MoreHorizontal, X, CornerUpLeft, Settings,
+  MoreHorizontal, X, CornerUpLeft, Settings, Pin, PinOff,
+  Paperclip, Mic, MessageCircle, AtSign,
 } from "lucide-react";
+import { uploadMessageFile, isImageType, isAudioType } from "@/lib/messageAttachments";
+import VoiceRecorder from "@/components/messages/VoiceRecorder";
+import AttachmentRender from "@/components/messages/AttachmentRender";
+import MentionTextarea, { renderWithMentions, type MentionMember } from "@/components/messages/MentionTextarea";
+import ThreadPanel from "@/components/messages/ThreadPanel";
+import PinnedDrawer from "@/components/messages/PinnedDrawer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +89,8 @@ interface Msg {
   type?: string;
   metadata?: Record<string, any>;
   is_pinned?: boolean;
+  mentions?: string[];
+  reply_count?: number;
 }
 
 interface NotificationItem {
