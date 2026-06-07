@@ -257,8 +257,11 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
   const iconColor = ch.type === "deal" ? getStage(ch.deal_stage).color : ch.type === "dm" ? "#a78bfa" : "#60a5fa";
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", textAlign: "left", background: isActive ? "rgba(14,245,212,.09)" : hovered ? "rgba(255,255,255,.04)" : "transparent", borderLeft: `2px solid ${isActive ? "#0ef5d4" : "transparent"}`, cursor: "pointer", transition: "all .1s" }}>
-      <span style={{ fontSize: 12, color: iconColor, flexShrink: 0 }}>{icon}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {ch.type === "dm" ? (
+        <MsgAvatar name={ch.name} avatarUrl={ch.avatar_url} size={26} color="#a78bfa" />
+      ) : (
+        <span style={{ fontSize: 12, color: iconColor, flexShrink: 0 }}>{icon}</span>
+      )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#f0f6fc" : "rgba(255,255,255,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Geist',system-ui,sans-serif" }}>{ch.name}</span>
           {ch.last_msg_at && <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)", flexShrink: 0 }}>{fmtTime(ch.last_msg_at)}</span>}
