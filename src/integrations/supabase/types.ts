@@ -5752,6 +5752,7 @@ export type Database = {
           reactions: Json
           reply_to_sender_name: string
           reply_to_text: string
+          sender_avatar_url: string
           sender_email: string
           sender_full_name: string
           type: string
@@ -5936,6 +5937,7 @@ export type Database = {
           read_by: string[]
           reply_to_sender_name: string
           reply_to_text: string
+          sender_avatar_url: string
           sender_email: string
           sender_full_name: string
           sender_id: string
