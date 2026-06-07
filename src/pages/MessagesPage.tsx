@@ -52,6 +52,7 @@ interface Channel {
   msg_count: number;
   is_muted: boolean;
   conversationId?: string;
+  avatar_url?: string | null;
 }
 
 interface Reaction { emoji: string; count: number; by_me: boolean; }
