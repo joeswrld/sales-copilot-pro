@@ -944,7 +944,12 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
                   value={text} onChange={v => { setText(v); sendTyping(); }}
                   onMentionsChange={setMentionedIds}
                   onSubmit={send}
-                  members={members}
+                  members={(members || []).map((m: any) => ({
+                    user_id: m.user_id,
+                    full_name: m.profile?.full_name ?? m.full_name ?? null,
+                    email: m.profile?.email ?? m.email ?? null,
+                    avatar_url: m.profile?.avatar_url ?? m.avatar_url ?? null,
+                  }))}
                   placeholder={placeholder}
                 />
               ) : (
