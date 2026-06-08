@@ -28,8 +28,9 @@ export interface MentionTextareaHandle {
 }
 
 const MentionTextarea = forwardRef<MentionTextareaHandle, Props>(function MentionTextarea(
-  { value, onChange, onMentionsChange, onSubmit, onTyping, members, placeholder, disabled, style }, ref
+  { value, onChange, onMentionsChange, onSubmit, onTyping, members: membersProp, placeholder, disabled, style }, ref
 ) {
+  const members = membersProp ?? [];
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
