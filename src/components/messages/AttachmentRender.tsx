@@ -57,28 +57,53 @@ function VoicePlayer({ url, isOwn }: { url: string; isOwn: boolean }) {
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
     const onTime = () => setCurrentTime(a.currentTime);
-    const onLoaded = () => setDuration(a.duration || 0);
+    const onLoaded = () => {
+      // MediaRecorder webm often reports Infinity duration; force-resolve by seeking.
+      if (a.duration === Infinity || isNaN(a.duration)) {
+        const onSeek = () => {
+          a.currentTime = 0;
+          setDuration(a.duration && a.duration !== Infinity ? a.duration : 0);
+          a.removeEventListener("timeupdate", onSeek);
+        };
+        a.addEventListener("timeupdate", onSeek);
+        try { a.currentTime = 1e8; } catch {}
+      } else {
+        setDuration(a.duration || 0);
+      }
+    };
     const onEnd = () => { setPlaying(false); setCurrentTime(0); };
+    const onErr = () => setError("Cannot play this audio");
     a.addEventListener("timeupdate", onTime);
     a.addEventListener("loadedmetadata", onLoaded);
     a.addEventListener("ended", onEnd);
+    a.addEventListener("error", onErr);
     return () => {
       a.removeEventListener("timeupdate", onTime);
       a.removeEventListener("loadedmetadata", onLoaded);
       a.removeEventListener("ended", onEnd);
+      a.removeEventListener("error", onErr);
     };
   }, []);
 
-  const toggle = () => {
+  const toggle = async () => {
     const a = audioRef.current;
     if (!a) return;
-    if (playing) { a.pause(); setPlaying(false); }
-    else { a.play(); setPlaying(true); }
+    if (playing) { a.pause(); setPlaying(false); return; }
+    try {
+      setError(null);
+      await a.play();
+      setPlaying(true);
+    } catch (e: any) {
+      console.error("Voice playback failed", e);
+      setError(e?.message || "Playback blocked");
+      setPlaying(false);
+    }
   };
 
   const pct = duration ? (currentTime / duration) * 100 : 0;
@@ -94,7 +119,8 @@ function VoicePlayer({ url, isOwn }: { url: string; isOwn: boolean }) {
       display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
       background: bg, borderRadius: 10, minWidth: 220, maxWidth: 280,
     }}>
-      <audio ref={audioRef} src={url} preload="metadata" />
+      <audio ref={audioRef} src={url} preload="metadata" crossOrigin="anonymous" playsInline />
+      {error ? <span style={{ fontSize: 11, color: "#ef4444" }}>{error}</span> : null}
       <button onClick={toggle} style={{
         width: 32, height: 32, borderRadius: "50%", border: "none",
         background: fg, color: isOwn ? "#0ef5d4" : "#060912",
