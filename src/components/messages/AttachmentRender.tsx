@@ -119,7 +119,8 @@ function VoicePlayer({ url, isOwn }: { url: string; isOwn: boolean }) {
       display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
       background: bg, borderRadius: 10, minWidth: 220, maxWidth: 280,
     }}>
-      <audio ref={audioRef} src={url} preload="metadata" />
+      <audio ref={audioRef} src={url} preload="metadata" crossOrigin="anonymous" playsInline />
+      {error ? <span style={{ fontSize: 11, color: "#ef4444" }}>{error}</span> : null}
       <button onClick={toggle} style={{
         width: 32, height: 32, borderRadius: "50%", border: "none",
         background: fg, color: isOwn ? "#0ef5d4" : "#060912",
