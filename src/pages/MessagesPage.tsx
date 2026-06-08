@@ -1364,6 +1364,7 @@ export default function MessagesPage() {
                 onBack={() => setMobileView("list")}
                 onlineUsers={onlineUsers}
                 onMarkRead={() => activeChannelRef.current && markAsRead(activeChannelRef.current)}
+                members={members}
               />
             ) : (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
