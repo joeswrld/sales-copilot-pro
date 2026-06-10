@@ -1,6 +1,20 @@
 /**
  * VoiceRecorder — MediaRecorder UI with live waveform and timer.
  * Returns the recorded webm/opus Blob on stop.
+ *
+ * Fix (v2):
+ *   rec.start(100) was called with a 100ms timeslice, which makes MediaRecorder
+ *   emit data every 100ms and produce a "fragmented" WebM container. Fragmented
+ *   WebM files lack a proper SeekHead / Cues element, so when they are served
+ *   over HTTP the browser cannot seek into them — it reports "no supported source"
+ *   or plays silence even though the bytes are there.
+ *
+ *   The fix is rec.start() with NO timeslice. ondataavailable fires exactly once
+ *   when stop() is called, producing a single well-formed WebM blob that browsers
+ *   can seek and play from storage without issues.
+ *
+ *   The live waveform is unaffected — it reads from an AudioContext analyser that
+ *   is completely separate from the MediaRecorder chunk pipeline.
  */
 import { useEffect, useRef, useState } from "react";
 import { Mic, Square, X, Send } from "lucide-react";
@@ -18,20 +32,23 @@ export default function VoiceRecorder({ onCancel, onSend }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mediaRecRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const mediaRecRef  = useRef<MediaRecorder | null>(null);
+  const streamRef    = useRef<MediaStream | null>(null);
+  const audioCtxRef  = useRef<AudioContext | null>(null);
+  const analyserRef  = useRef<AnalyserNode | null>(null);
+  const rafRef       = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
-  const chunksRef = useRef<Blob[]>([]);
+  const rafTimerRef  = useRef<number | null>(null); // elapsed ticker
 
   const stopAll = () => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (rafRef.current)       cancelAnimationFrame(rafRef.current);
+    if (rafTimerRef.current)  cancelAnimationFrame(rafTimerRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") audioCtxRef.current.close().catch(() => {});
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      audioCtxRef.current.close().catch(() => {});
+    }
     mediaRecRef.current = null;
-    streamRef.current = null;
+    streamRef.current   = null;
     audioCtxRef.current = null;
     analyserRef.current = null;
   };
@@ -41,28 +58,46 @@ export default function VoiceRecorder({ onCancel, onSend }: Props) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const rec = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+
+      // Pick the best supported MIME type
+      const mimeType = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/ogg",
+      ].find(t => MediaRecorder.isTypeSupported(t)) ?? "";
+
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecRef.current = rec;
-      chunksRef.current = [];
-      rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+
+      const chunks: Blob[] = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = () => {
-        const b = new Blob(chunksRef.current, { type: "audio/webm" });
+        const finalType = mimeType || "audio/webm";
+        const b = new Blob(chunks, { type: finalType });
         setBlob(b);
         stopAll();
       };
-      rec.start(100);
+
+      // *** KEY FIX: no timeslice argument ***
+      // rec.start(100) produced a fragmented WebM (no SeekHead/Cues) that
+      // browsers can't seek when served over HTTP. rec.start() with no argument
+      // fires ondataavailable exactly once on stop(), giving a complete WebM.
+      rec.start();
+
       setRecording(true);
       startTimeRef.current = Date.now();
 
-      // Waveform
-      const ctx = new AudioContext();
+      // Waveform via AudioContext (independent of MediaRecorder chunks)
+      const ctx       = new AudioContext();
       audioCtxRef.current = ctx;
-      const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
+      const src       = ctx.createMediaStreamSource(stream);
+      const analyser  = ctx.createAnalyser();
       analyser.fftSize = 256;
       src.connect(analyser);
       analyserRef.current = analyser;
       const data = new Uint8Array(analyser.frequencyBinCount);
+
       const tick = () => {
         if (!analyserRef.current) return;
         analyser.getByteFrequencyData(data);
@@ -96,7 +131,11 @@ export default function VoiceRecorder({ onCancel, onSend }: Props) {
     try { await onSend(blob, elapsed); } finally { setSending(false); }
   };
 
-  useEffect(() => { start(); return () => stopAll(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    start();
+    return () => stopAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mm = Math.floor(elapsed / 60).toString().padStart(2, "0");
   const ss = Math.floor(elapsed % 60).toString().padStart(2, "0");
