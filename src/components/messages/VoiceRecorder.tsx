@@ -1,24 +1,25 @@
 /**
- * VoiceRecorder.tsx — Fixsense Voice Notes v2
+ * VoiceRecorder.tsx — Fixsense Voice Notes v3
  *
- * Features:
- *  - Live waveform + timer
- *  - Pause / Resume / Restart / Cancel / Send
- *  - Preview playback before sending
- *  - Optional text caption
- *  - Mobile: slide-left-to-cancel, slide-up-to-lock
- *  - Upload progress indicator
- *  - Retry on failure
+ * Key fixes over v2:
+ *  1. rec.start(100) — 100ms timeslice ensures ondataavailable fires regularly,
+ *     preventing empty blobs when the user stops quickly.
+ *  2. WebM duration fix — Chrome records WebM with duration=Infinity.
+ *     After stop we seek the hidden audio element to a huge timestamp, wait for
+ *     the seeked event, then seek back to 0. This forces the browser to walk the
+ *     container and resolve the real duration. Only then do we call setState("stopped").
+ *  3. Blob URL pre-loaded immediately on stop — preview play works first-tap.
+ *  4. Removed the onstop → setState("stopped") race; all state is set after
+ *     duration is resolved.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Square, X, Send, Pause, Play, RotateCcw, Lock, Mic,
-  ChevronRight, MessageSquare, Trash2, CheckCircle2,
+  MessageSquare, CheckCircle2,
 } from "lucide-react";
 
 export interface VoiceRecorderProps {
   onCancel: () => void;
-  /** blob, durationSec, waveform (0-1 values) */
   onSend: (blob: Blob, durationSec: number, waveform: number[], caption: string) => Promise<void>;
   isMobile?: boolean;
 }
@@ -39,37 +40,84 @@ function fmtTime(s: number) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 }
 
+/**
+ * Fix WebM duration metadata.
+ * Creates a temporary <audio>, loads the blob, seeks to a huge time so the
+ * browser has to parse the full container to find the end, then reads
+ * the corrected duration and revokes the object URL.
+ */
+async function resolveWebmDuration(blob: Blob): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = document.createElement("audio");
+    audio.preload = "metadata";
+
+    const cleanup = (dur: number) => {
+      audio.src = "";
+      URL.revokeObjectURL(url);
+      resolve(dur > 0 && isFinite(dur) ? dur : 0);
+    };
+
+    audio.addEventListener("loadedmetadata", () => {
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        cleanup(audio.duration);
+        return;
+      }
+      // Duration is Infinity or NaN — do the seek trick
+      audio.addEventListener("seeked", () => {
+        const dur = audio.duration;
+        cleanup(isFinite(dur) && dur > 0 ? dur : 0);
+      }, { once: true });
+      try { audio.currentTime = 1e8; } catch {
+        cleanup(0);
+      }
+    });
+
+    audio.addEventListener("error", () => cleanup(0));
+
+    // Timeout safety net — resolve after 3s regardless
+    const timer = setTimeout(() => cleanup(0), 3000);
+    audio.addEventListener("seeked", () => clearTimeout(timer), { once: true });
+    audio.addEventListener("loadedmetadata", () => clearTimeout(timer), { once: true });
+
+    audio.src = url;
+  });
+}
+
 export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: VoiceRecorderProps) {
-  const [state, setState]         = useState<RecState>("starting");
-  const [elapsed, setElapsed]     = useState(0);
-  const [levels, setLevels]       = useState<number[]>(Array(48).fill(0.05));
-  const [fullWave, setFullWave]   = useState<number[]>([]);
-  const [blob, setBlob]           = useState<Blob | null>(null);
-  const [locked, setLocked]       = useState(false);
-  const [errMsg, setErrMsg]       = useState<string | null>(null);
-  const [slideX, setSlideX]       = useState(0);
-  const [txStart, setTxStart]     = useState(0);
-  const [tyStart, setTyStart]     = useState(0);
-  const [caption, setCaption]     = useState("");
+  const [state, setState]             = useState<RecState>("starting");
+  const [elapsed, setElapsed]         = useState(0);
+  const [levels, setLevels]           = useState<number[]>(Array(48).fill(0.05));
+  const [fullWave, setFullWave]       = useState<number[]>([]);
+  const [blob, setBlob]               = useState<Blob | null>(null);
+  const [resolvedDuration, setResolvedDuration] = useState(0);
+  const [locked, setLocked]           = useState(false);
+  const [errMsg, setErrMsg]           = useState<string | null>(null);
+  const [slideX, setSlideX]           = useState(0);
+  const [txStart, setTxStart]         = useState(0);
+  const [tyStart, setTyStart]         = useState(0);
+  const [caption, setCaption]         = useState("");
   const [showCaption, setShowCaption] = useState(false);
   const [previewPlaying, setPreviewPlaying] = useState(false);
-  const [previewPos, setPreviewPos] = useState(0);
-  const [previewDur, setPreviewDur] = useState(0);
-  const [uploadPct, setUploadPct] = useState(0);
+  const [previewPos, setPreviewPos]   = useState(0);
+  const [previewDur, setPreviewDur]   = useState(0);
+  const [uploadPct, setUploadPct]     = useState(0);
 
-  const recRef       = useRef<MediaRecorder | null>(null);
-  const streamRef    = useRef<MediaStream | null>(null);
-  const audioCtxRef  = useRef<AudioContext | null>(null);
-  const analyserRef  = useRef<AnalyserNode | null>(null);
-  const rafRef       = useRef<number>(0);
-  const timerRef     = useRef<number>(0);
-  const startMs      = useRef<number>(0);
-  const pausedMs     = useRef<number>(0);
-  const pauseStartMs = useRef<number>(0);
-  const chunksRef    = useRef<Blob[]>([]);
-  const mimeRef      = useRef<string>("");
-  const previewRef   = useRef<HTMLAudioElement | null>(null);
+  const recRef        = useRef<MediaRecorder | null>(null);
+  const streamRef     = useRef<MediaStream | null>(null);
+  const audioCtxRef   = useRef<AudioContext | null>(null);
+  const analyserRef   = useRef<AnalyserNode | null>(null);
+  const rafRef        = useRef<number>(0);
+  const timerRef      = useRef<number>(0);
+  const startMs       = useRef<number>(0);
+  const pausedMs      = useRef<number>(0);
+  const pauseStartMs  = useRef<number>(0);
+  const chunksRef     = useRef<Blob[]>([]);
+  const mimeRef       = useRef<string>("");
+  const previewRef    = useRef<HTMLAudioElement | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  // Track elapsed at time of stop for use in send()
+  const elapsedAtStop = useRef<number>(0);
 
   const stopAll = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -100,7 +148,8 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
   const startTimer = useCallback(() => {
     clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startMs.current - pausedMs.current) / 1000));
+      const secs = Math.floor((Date.now() - startMs.current - pausedMs.current) / 1000);
+      setElapsed(secs);
     }, 200);
   }, []);
 
@@ -112,17 +161,62 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
       });
       streamRef.current = stream;
       mimeRef.current = pickMime();
-      const rec = new MediaRecorder(stream, mimeRef.current ? { mimeType: mimeRef.current } : undefined);
+
+      const rec = new MediaRecorder(
+        stream,
+        mimeRef.current ? { mimeType: mimeRef.current } : undefined
+      );
       recRef.current = rec;
       chunksRef.current = [];
-      rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      rec.onstop = () => {
-        const recorded = new Blob(chunksRef.current, { type: mimeRef.current || "audio/webm" });
-        setBlob(recorded);
-        setState("stopped");
-        stopAll();
+
+      rec.ondataavailable = e => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
-      rec.start(); // No timeslice → single seekable chunk
+
+      rec.onstop = async () => {
+        // Capture elapsed before any async work
+        elapsedAtStop.current = Math.floor(
+          (Date.now() - startMs.current - pausedMs.current) / 1000
+        );
+        stopAll();
+
+        if (chunksRef.current.length === 0) {
+          setErrMsg("No audio captured. Please try again.");
+          setState("error");
+          return;
+        }
+
+        const recorded = new Blob(chunksRef.current, {
+          type: mimeRef.current || "audio/webm",
+        });
+
+        // Revoke any old preview URL
+        if (previewUrlRef.current) {
+          URL.revokeObjectURL(previewUrlRef.current);
+          previewUrlRef.current = null;
+        }
+
+        // Pre-create the object URL now so preview is instant on first tap
+        const objUrl = URL.createObjectURL(recorded);
+        previewUrlRef.current = objUrl;
+
+        // Resolve real duration (fixes WebM Infinity duration bug)
+        const dur = await resolveWebmDuration(recorded);
+
+        // Wire up the preview audio element
+        if (previewRef.current) {
+          previewRef.current.src = objUrl;
+          previewRef.current.load();
+        }
+
+        setBlob(recorded);
+        setResolvedDuration(dur > 0 ? dur : elapsedAtStop.current);
+        setPreviewDur(dur > 0 ? dur : elapsedAtStop.current);
+        setState("stopped");
+      };
+
+      // *** KEY FIX: 100ms timeslice ensures chunks arrive even for short recordings ***
+      rec.start(100);
       startMs.current = Date.now();
       pausedMs.current = 0;
       setState("recording");
@@ -166,7 +260,9 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
   }, [startAnalyserTick, startTimer]);
 
   const stop = useCallback(() => {
-    if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
+    if (recRef.current && recRef.current.state !== "inactive") {
+      recRef.current.stop(); // triggers onstop after flushing last chunk
+    }
     cancelAnimationFrame(rafRef.current);
     clearInterval(timerRef.current);
   }, []);
@@ -177,14 +273,29 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
-    setBlob(null); setElapsed(0); setLevels(Array(48).fill(0.05)); setFullWave([]);
-    setLocked(false); setErrMsg(null); setPreviewPlaying(false); setPreviewPos(0);
-    setCaption(""); setShowCaption(false); setUploadPct(0);
+    if (previewRef.current) {
+      previewRef.current.src = "";
+      previewRef.current.load();
+    }
+    setBlob(null);
+    setElapsed(0);
+    setLevels(Array(48).fill(0.05));
+    setFullWave([]);
+    setLocked(false);
+    setErrMsg(null);
+    setPreviewPlaying(false);
+    setPreviewPos(0);
+    setPreviewDur(0);
+    setResolvedDuration(0);
+    setCaption("");
+    setShowCaption(false);
+    setUploadPct(0);
     startRecording();
   }, [stopAll, startRecording]);
 
   const cancel = useCallback(() => {
     stopAll();
+    if (previewRef.current) previewRef.current.src = "";
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     onCancel();
   }, [stopAll, onCancel]);
@@ -193,13 +304,14 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
     if (!blob) return;
     setState("sending");
     setUploadPct(0);
-    // Simulate progress ticks while actual upload runs
     const progTimer = setInterval(() => setUploadPct(p => Math.min(p + 8, 92)), 180);
     try {
       const wave = fullWave.length > 60
         ? fullWave.filter((_, i) => i % Math.ceil(fullWave.length / 60) === 0).slice(0, 60)
         : fullWave;
-      await onSend(blob, elapsed, wave, caption);
+      // Use resolved duration; fall back to elapsed-at-stop
+      const dur = resolvedDuration > 0 ? resolvedDuration : elapsedAtStop.current;
+      await onSend(blob, dur, wave, caption);
       setUploadPct(100);
       setState("sent");
     } catch {
@@ -208,38 +320,66 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
     } finally {
       clearInterval(progTimer);
     }
-  }, [blob, elapsed, fullWave, caption, onSend]);
+  }, [blob, resolvedDuration, fullWave, caption, onSend]);
 
   // Preview playback
   const togglePreview = useCallback(() => {
-    if (!blob) return;
-    if (!previewRef.current) return;
+    const a = previewRef.current;
+    if (!a || !blob) return;
+
     if (previewPlaying) {
-      previewRef.current.pause();
+      a.pause();
       setPreviewPlaying(false);
-    } else {
+      return;
+    }
+
+    // Ensure src is set (may already be set from onstop)
+    if (!a.src || a.src === window.location.href) {
       if (!previewUrlRef.current) {
         previewUrlRef.current = URL.createObjectURL(blob);
       }
-      previewRef.current.src = previewUrlRef.current;
-      previewRef.current.play().then(() => setPreviewPlaying(true)).catch(() => {});
+      a.src = previewUrlRef.current;
+      a.load();
     }
+
+    a.play()
+      .then(() => setPreviewPlaying(true))
+      .catch(err => {
+        console.warn("Preview play failed:", err);
+        setErrMsg("Preview playback failed. Try a different browser.");
+      });
   }, [blob, previewPlaying]);
 
+  // Wire audio events on mount
   useEffect(() => {
     const a = previewRef.current;
     if (!a) return;
-    const onTime = () => setPreviewPos(a.currentTime);
-    const onLoad = () => setPreviewDur(isFinite(a.duration) ? a.duration : 0);
-    const onEnd  = () => { setPreviewPlaying(false); setPreviewPos(0); };
-    a.addEventListener("timeupdate", onTime);
+    const onTime  = () => setPreviewPos(a.currentTime);
+    const onLoad  = () => {
+      const d = isFinite(a.duration) && a.duration > 0 ? a.duration : 0;
+      if (d > 0) setPreviewDur(d);
+    };
+    const onEnd   = () => { setPreviewPlaying(false); setPreviewPos(0); };
+    a.addEventListener("timeupdate",    onTime);
     a.addEventListener("loadedmetadata", onLoad);
-    a.addEventListener("ended", onEnd);
-    return () => { a.removeEventListener("timeupdate", onTime); a.removeEventListener("loadedmetadata", onLoad); a.removeEventListener("ended", onEnd); };
+    a.addEventListener("durationchange", onLoad);
+    a.addEventListener("ended",         onEnd);
+    return () => {
+      a.removeEventListener("timeupdate",    onTime);
+      a.removeEventListener("loadedmetadata", onLoad);
+      a.removeEventListener("durationchange", onLoad);
+      a.removeEventListener("ended",         onEnd);
+    };
   }, []);
 
-  // Clean up on unmount
-  useEffect(() => { startRecording(); return () => stopAll(); }, []); // eslint-disable-line
+  // Start recording on mount
+  useEffect(() => {
+    startRecording();
+    return () => {
+      stopAll();
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []); // eslint-disable-line
 
   // Mobile gesture handlers
   const onTouchStart = (e: React.TouchEvent) => {
@@ -257,21 +397,27 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
     setSlideX(0);
   };
 
-  const isRec      = state === "recording";
-  const isPaused   = state === "paused";
-  const isStopped  = state === "stopped";
-  const isSending  = state === "sending";
-  const isSent     = state === "sent";
-  const isError    = state === "error";
-  const isActive   = isRec || isPaused;
+  const isRec     = state === "recording";
+  const isPaused  = state === "paused";
+  const isStopped = state === "stopped";
+  const isSending = state === "sending";
+  const isSent    = state === "sent";
+  const isError   = state === "error";
+  const isActive  = isRec || isPaused;
+
+  // Display waveform
   const displayWave = isActive
     ? levels
-    : [...(fullWave.slice(-48)), ...Array(Math.max(0, 48 - Math.min(48, fullWave.length))).fill(0.05)];
+    : [...fullWave.slice(-48), ...Array(Math.max(0, 48 - Math.min(48, fullWave.length))).fill(0.05)];
 
-  const fg = "#0ef5d4";
+  const fg  = "#0ef5d4";
   const pct = (previewDur > 0 && isStopped) ? (previewPos / previewDur) * 100 : 0;
 
-  // Sent state — brief success flash
+  // Display timer — use resolved duration when stopped
+  const displaySecs = isStopped
+    ? (resolvedDuration > 0 ? resolvedDuration : elapsedAtStop.current)
+    : elapsed;
+
   if (isSent) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", borderRadius: 13, minHeight: 48 }}>
@@ -283,14 +429,12 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {/* Main recorder row */}
       <div
         onTouchStart={isMobile && isActive ? onTouchStart : undefined}
         onTouchMove={isMobile && isActive ? onTouchMove : undefined}
         onTouchEnd={isMobile && isActive ? onTouchEnd : undefined}
         style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "7px 10px",
+          display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
           background: isStopped ? "rgba(14,245,212,.06)" : isError ? "rgba(239,68,68,.08)" : "rgba(239,68,68,.07)",
           border: `1px solid ${isStopped ? "rgba(14,245,212,.2)" : isError ? "rgba(239,68,68,.3)" : "rgba(239,68,68,.22)"}`,
           borderRadius: 13, minHeight: 50, position: "relative",
@@ -299,10 +443,9 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
           userSelect: "none",
         }}
       >
-        {/* Hidden preview audio element */}
-        <audio ref={previewRef} preload="auto" style={{ display: "none" }} />
+        {/* Hidden preview audio — src is set in onstop */}
+        <audio ref={previewRef} preload="auto" style={{ display: "none" }} playsInline />
 
-        {/* Lock icon (when locked for hands-free) */}
         {locked
           ? <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Lock size={13} color="#0ef5d4" />
@@ -312,7 +455,6 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
             </button>
         }
 
-        {/* Waveform / content area */}
         {isError ? (
           <span style={{ fontSize: 12, color: "#ef4444", flex: 1, fontFamily: "'Geist',system-ui,sans-serif" }}>{errMsg}</span>
         ) : (
@@ -320,14 +462,11 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
             {isActive && (
               <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: isPaused ? "#f59e0b" : "#ef4444", animation: isRec ? "pdot 1s ease infinite" : "none" }} />
             )}
-            {/* Timer */}
             <span style={{ fontSize: 13, fontWeight: 700, color: "#f0f6fc", fontVariantNumeric: "tabular-nums", minWidth: 38, flexShrink: 0, fontFamily: "'Geist',system-ui,sans-serif" }}>
-              {isStopped ? fmtTime(elapsed) : fmtTime(elapsed)}
+              {fmtTime(Math.round(displaySecs))}
             </span>
-            {/* Waveform bars */}
             <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 1.5, height: 32 }}>
               {isSending ? (
-                // Upload progress
                 <div style={{ flex: 1, height: 4, borderRadius: 2, background: "rgba(255,255,255,.1)", overflow: "hidden" }}>
                   <div style={{ width: `${uploadPct}%`, height: "100%", background: "linear-gradient(90deg,#0ef5d4,#0891b2)", transition: "width .15s" }} />
                 </div>
@@ -336,7 +475,6 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
                 const h = Math.max(14, (v || 0.05) * 90);
                 return (
                   <div key={i} onClick={() => {
-                    // Seekable waveform when stopped
                     if (isStopped && previewRef.current && previewDur > 0) {
                       previewRef.current.currentTime = (i / 48) * previewDur;
                     }
@@ -352,52 +490,43 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
                 );
               })}
             </div>
-            {/* Upload pct label while sending */}
             {isSending && (
               <span style={{ fontSize: 11, color: "#0ef5d4", fontFamily: "'Geist',system-ui,sans-serif", minWidth: 32 }}>{uploadPct}%</span>
             )}
           </div>
         )}
 
-        {/* Controls */}
         <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
-          {/* Preview play/pause button (stopped state only) */}
           {isStopped && !isSending && !isError && (
             <button onClick={togglePreview} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${previewPlaying ? "rgba(14,245,212,.4)" : "rgba(255,255,255,.15)"}`, background: previewPlaying ? "rgba(14,245,212,.15)" : "rgba(255,255,255,.06)", color: previewPlaying ? "#0ef5d4" : "rgba(255,255,255,.7)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Preview recording">
               {previewPlaying ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
             </button>
           )}
-          {/* Restart */}
           {(isStopped || isError) && !isSending && (
             <button onClick={restart} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.65)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Re-record">
               <RotateCcw size={13} />
             </button>
           )}
-          {/* Pause while recording */}
           {isRec && (
             <button onClick={pause} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(245,158,11,.3)", background: "rgba(245,158,11,.1)", color: "#f59e0b", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Pause size={13} fill="#f59e0b" />
             </button>
           )}
-          {/* Resume when paused */}
           {isPaused && (
             <button onClick={resume} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.1)", color: "#22c55e", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Play size={13} fill="#22c55e" />
             </button>
           )}
-          {/* Stop recording */}
           {isActive && (
             <button onClick={stop} style={{ width: 34, height: 34, borderRadius: 9, border: "none", background: "#ef4444", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Square size={13} fill="#fff" />
             </button>
           )}
-          {/* Caption toggle (stopped) */}
           {isStopped && !isSending && !isError && (
             <button onClick={() => setShowCaption(v => !v)} title="Add caption" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${showCaption ? "rgba(167,139,250,.4)" : "rgba(255,255,255,.12)"}`, background: showCaption ? "rgba(167,139,250,.12)" : "rgba(255,255,255,.06)", color: showCaption ? "#a78bfa" : "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <MessageSquare size={12} />
             </button>
           )}
-          {/* Send */}
           {(isStopped || isSending) && !isError && (
             <button onClick={send} disabled={isSending || !blob} style={{ width: 36, height: 36, borderRadius: 10, border: "none", background: isSending ? "rgba(255,255,255,.08)" : "linear-gradient(135deg,#0ef5d4,#0891b2)", color: "#060912", cursor: isSending ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {isSending
@@ -408,7 +537,6 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
           )}
         </div>
 
-        {/* Mobile slide hint */}
         {isMobile && isActive && !locked && (
           <div style={{ position: "absolute", bottom: -18, left: "50%", transform: "translateX(-50%)", fontSize: 9.5, color: "rgba(255,255,255,.22)", whiteSpace: "nowrap", pointerEvents: "none" }}>
             ← slide to cancel · ↑ slide to lock
@@ -416,7 +544,6 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
         )}
       </div>
 
-      {/* Caption input */}
       {showCaption && isStopped && !isSending && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.04)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, padding: "6px 10px" }}>
           <MessageSquare size={12} color="#a78bfa" style={{ flexShrink: 0 }} />
