@@ -41,6 +41,14 @@ declare global { interface Window { HMS: any; } }
 
 type ClearState = "idle" | "clearing" | "done" | "failed";
 
+interface HMSRoomInfo {
+  room_id: string;
+  room_name: string;
+  share_link: string;
+  mgmt_token: string;
+  auth_token?: string;
+}
+
 const MEETING_TYPES = [
   { value: "discovery",   label: "Discovery",   emoji: "🔍" },
   { value: "demo",        label: "Demo",        emoji: "🎯" },
@@ -93,9 +101,7 @@ class AudioChunkProcessor {
 
 // ─── Hook: HMS room ─────────────────────────────────────────────────────────────
 function useHMSRoom() {
-  const [roomInfo, setRoomInfo] = useState<{
-    room_id: string; room_name: string; share_link: string; mgmt_token: string;
-  } | null>(null);
+  const [roomInfo, setRoomInfo] = useState<HMSRoomInfo | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const createRoom = useCallback(async (callId: string, title: string, description?: string) => {
@@ -115,7 +121,7 @@ function useHMSRoom() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setRoomInfo(data);
-      return data;
+      return data as HMSRoomInfo;
     } finally {
       setIsCreating(false);
     }
@@ -748,22 +754,53 @@ export default function LiveCall() {
     return true;
   }, [teamUsage]);
 
+  // ── Robust 100ms SDK loader ──────────────────────────────────────────────
   const loadHMSSDK = useCallback(async () => {
     if (window.HMS) return window.HMS;
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = "https://cdn.100ms.live/sdk/v2.9.15/hms.min.js";
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("Failed to load 100ms SDK"));
-      document.head.appendChild(s);
-    });
-    return window.HMS;
+
+    // Remove any stale/failed script tag from a previous attempt
+    const existing = document.querySelector('script[data-hms-sdk]');
+    if (existing && !window.HMS) {
+      existing.remove();
+    }
+
+    const SDK_URLS = [
+      "https://cdn.jsdelivr.net/npm/@100mslive/hms-video@latest/dist/hms.min.js",
+      "https://cdn.100ms.live/sdk/v2.9.15/hms.min.js",
+    ];
+
+    let lastError: Error | null = null;
+
+    for (const url of SDK_URLS) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = url;
+          s.async = true;
+          s.setAttribute("data-hms-sdk", "true");
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+          document.head.appendChild(s);
+        });
+
+        if (window.HMS) return window.HMS;
+        lastError = new Error("Script loaded but window.HMS is undefined");
+      } catch (err: any) {
+        lastError = err;
+        document.querySelector('script[data-hms-sdk]')?.remove();
+      }
+    }
+
+    throw new Error(
+      lastError?.message
+        ? `Failed to load meeting SDK (${lastError.message}). Check your network connection or ad-blocker.`
+        : "Failed to load meeting SDK."
+    );
   }, []);
 
   // Join as host into HMS room
   const handleJoinAsHost = useCallback(async (
-    info?: { room_id: string; room_name: string; share_link: string; mgmt_token: string },
+    info?: HMSRoomInfo,
   ) => {
     const target = info || roomInfo;
     if (!target || !callId) return;
@@ -791,7 +828,9 @@ export default function LiveCall() {
 
       await hmsActions.join({
         userName: "Host",
-        authToken: target.mgmt_token,
+        // auth_token is the correct app/room token for joining;
+        // mgmt_token is kept only as a legacy fallback.
+        authToken: target.auth_token || target.mgmt_token,
         settings: { isAudioMuted: false, isVideoMuted: false },
         rememberDeviceSelection: true,
         captureNetworkQualityInPreview: false,
