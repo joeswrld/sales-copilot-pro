@@ -1,16 +1,19 @@
 /**
- * VoiceRecorder.tsx — Fixsense Voice Notes v3
+ * VoiceRecorder.tsx — Fixsense Voice Notes v4
  *
- * Key fixes over v2:
- *  1. rec.start(100) — 100ms timeslice ensures ondataavailable fires regularly,
+ * Key fixes over v3:
+ *  1. Preview playback fixed — togglePreview now always (re)binds the
+ *     object URL to the <audio> element right before calling play(),
+ *     instead of relying on a src assignment made inside onstop (which
+ *     could race with the previewRef not being attached yet, leaving
+ *     a.src empty and play() doing nothing).
+ *  2. onstop no longer tries to set previewRef.current.src directly —
+ *     it just creates the object URL; togglePreview binds it lazily.
+ *  3. rec.start(100) — 100ms timeslice ensures ondataavailable fires regularly,
  *     preventing empty blobs when the user stops quickly.
- *  2. WebM duration fix — Chrome records WebM with duration=Infinity.
- *     After stop we seek the hidden audio element to a huge timestamp, wait for
- *     the seeked event, then seek back to 0. This forces the browser to walk the
- *     container and resolve the real duration. Only then do we call setState("stopped").
- *  3. Blob URL pre-loaded immediately on stop — preview play works first-tap.
- *  4. Removed the onstop → setState("stopped") race; all state is set after
- *     duration is resolved.
+ *  4. WebM duration fix — Chrome records WebM with duration=Infinity.
+ *     After stop we seek a temporary hidden audio element to a huge timestamp,
+ *     wait for the seeked event, then read back the real duration.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -196,18 +199,15 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
           previewUrlRef.current = null;
         }
 
-        // Pre-create the object URL now so preview is instant on first tap
+        // Pre-create the object URL now so preview is instant on first tap.
+        // NOTE: we deliberately do NOT touch previewRef.current.src here —
+        // the <audio> element may not be mounted/attached yet for this
+        // render pass. togglePreview() binds the src lazily and reliably.
         const objUrl = URL.createObjectURL(recorded);
         previewUrlRef.current = objUrl;
 
         // Resolve real duration (fixes WebM Infinity duration bug)
         const dur = await resolveWebmDuration(recorded);
-
-        // Wire up the preview audio element
-        if (previewRef.current) {
-          previewRef.current.src = objUrl;
-          previewRef.current.load();
-        }
 
         setBlob(recorded);
         setResolvedDuration(dur > 0 ? dur : elapsedAtStop.current);
@@ -274,7 +274,8 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
       previewUrlRef.current = null;
     }
     if (previewRef.current) {
-      previewRef.current.src = "";
+      previewRef.current.pause();
+      previewRef.current.removeAttribute("src");
       previewRef.current.load();
     }
     setBlob(null);
@@ -295,7 +296,11 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
 
   const cancel = useCallback(() => {
     stopAll();
-    if (previewRef.current) previewRef.current.src = "";
+    if (previewRef.current) {
+      previewRef.current.pause();
+      previewRef.current.removeAttribute("src");
+      previewRef.current.load();
+    }
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     onCancel();
   }, [stopAll, onCancel]);
@@ -322,7 +327,10 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
     }
   }, [blob, resolvedDuration, fullWave, caption, onSend]);
 
-  // Preview playback
+  // ── Preview playback ────────────────────────────────────────────────────
+  // Always (re)bind the object URL to the <audio> element right before
+  // playing. This avoids depending on a src assignment made during onstop,
+  // which can silently fail if the <audio> ref wasn't attached at that time.
   const togglePreview = useCallback(() => {
     const a = previewRef.current;
     if (!a || !blob) return;
@@ -333,21 +341,39 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
       return;
     }
 
-    // Ensure src is set (may already be set from onstop)
-    if (!a.src || a.src === window.location.href) {
-      if (!previewUrlRef.current) {
-        previewUrlRef.current = URL.createObjectURL(blob);
-      }
+    if (!previewUrlRef.current) {
+      previewUrlRef.current = URL.createObjectURL(blob);
+    }
+
+    // Re-bind if the element doesn't currently point at our blob URL
+    if (a.src !== previewUrlRef.current) {
       a.src = previewUrlRef.current;
       a.load();
     }
 
-    a.play()
-      .then(() => setPreviewPlaying(true))
-      .catch(err => {
-        console.warn("Preview play failed:", err);
-        setErrMsg("Preview playback failed. Try a different browser.");
-      });
+    setErrMsg(null);
+
+    const playIt = () => {
+      a.play()
+        .then(() => setPreviewPlaying(true))
+        .catch(err => {
+          console.warn("Preview play failed:", err);
+          setErrMsg(
+            err?.name === "NotSupportedError"
+              ? "This browser can't play the recorded audio format."
+              : "Preview playback failed. Tap play again."
+          );
+        });
+    };
+
+    // If metadata isn't ready yet (readyState 0), wait for it before playing —
+    // calling play() too early on a freshly (re)loaded element can no-op.
+    if (a.readyState === 0) {
+      const onReady = () => { a.removeEventListener("loadedmetadata", onReady); playIt(); };
+      a.addEventListener("loadedmetadata", onReady, { once: true });
+    } else {
+      playIt();
+    }
   }, [blob, previewPlaying]);
 
   // Wire audio events on mount
@@ -360,15 +386,26 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
       if (d > 0) setPreviewDur(d);
     };
     const onEnd   = () => { setPreviewPlaying(false); setPreviewPos(0); };
+    const onErr   = () => {
+      setPreviewPlaying(false);
+      const code = a.error?.code;
+      if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        setErrMsg("This browser can't play the recorded audio format.");
+      } else if (code === MediaError.MEDIA_ERR_NETWORK) {
+        setErrMsg("Network error loading preview — try again.");
+      }
+    };
     a.addEventListener("timeupdate",    onTime);
     a.addEventListener("loadedmetadata", onLoad);
     a.addEventListener("durationchange", onLoad);
     a.addEventListener("ended",         onEnd);
+    a.addEventListener("error",         onErr);
     return () => {
       a.removeEventListener("timeupdate",    onTime);
       a.removeEventListener("loadedmetadata", onLoad);
       a.removeEventListener("durationchange", onLoad);
       a.removeEventListener("ended",         onEnd);
+      a.removeEventListener("error",         onErr);
     };
   }, []);
 
@@ -443,7 +480,7 @@ export default function VoiceRecorder({ onCancel, onSend, isMobile = false }: Vo
           userSelect: "none",
         }}
       >
-        {/* Hidden preview audio — src is set in onstop */}
+        {/* Hidden preview audio — src is bound lazily by togglePreview() */}
         <audio ref={previewRef} preload="auto" style={{ display: "none" }} playsInline />
 
         {locked
