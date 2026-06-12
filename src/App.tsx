@@ -15,6 +15,7 @@ import UpgradeModal from "@/components/plan/UpgradeModal";
 // 🔒 Error Boundary + global handlers
 import { ErrorBoundary, useGlobalErrorHandlers } from "@/components/ErrorBoundary";
 
+import debuginspector from "./pages/debuginspector";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardHome from "./pages/DashboardHome";
