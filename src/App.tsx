@@ -3,19 +3,26 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 import { AuthProvider } from "@/contexts/AuthContext";
+import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
+
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
+import UpgradeModal from "@/components/plan/UpgradeModal";
+import PWABanner from "@/components/PWABanner";
+
+import {
+  ErrorBoundary,
+  useGlobalErrorHandlers,
+} from "@/components/ErrorBoundary";
+
 import AdminPanel from "./pages/AdminPanel";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
-import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
-import UpgradeModal from "@/components/plan/UpgradeModal";
 
-// 🔒 Error Boundary + global handlers
-import { ErrorBoundary, useGlobalErrorHandlers } from "@/components/ErrorBoundary";
+import DebugInspector from "./pages/debugInspector";
 
-import DebugInspector from "./pages/debuginspector";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardHome from "./pages/DashboardHome";
@@ -36,10 +43,9 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
-import { DebugInspector } from "./pages/debugInspector";
+
 import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
-import PWABanner from "@/components/PWABanner";
 import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
@@ -53,14 +59,6 @@ import {
   SecurityPage,
   ContactPage,
 } from "./pages/LegalPages";
-
-import {
-  IntegrationsPage,
-  AboutPage,
-  BlogPage,
-  CareersPage,
-  PressPage,
-} from "./pages/MarketingPages";
 
 const queryClient = new QueryClient({
   defaultOptions: {
