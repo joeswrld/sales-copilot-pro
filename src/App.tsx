@@ -21,7 +21,7 @@ import AdminPanel from "./pages/AdminPanel";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
 
-import DebugInspector from "./pages/debugInspector";
+import DebugInspector from "./pages/debuginspector";
 
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
