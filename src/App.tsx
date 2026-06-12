@@ -83,7 +83,9 @@ function AppRoutes() {
     <BrowserRouter>
       <PlanEnforcementProvider>
         <UpgradeModal />
-        {import.meta.env.DEV && <DebugInspector />}
+        {(import.meta.env.DEV || localStorage.getItem("show_debug") === "true") && (
+  <DebugInspector />
+)}
         <PWABanner />
 
         <Routes>
