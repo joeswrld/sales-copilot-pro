@@ -35,10 +35,9 @@ import { MeetingNotificationBanner, NotificationStatusPill } from "@/components/
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format, parseISO, isAfter } from "date-fns";
+import { HMSReactiveStore } from "@100mslive/hms-video-store";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-declare global { interface Window { HMS: any; } }
-
 type ClearState = "idle" | "clearing" | "done" | "failed";
 
 interface HMSRoomInfo {
@@ -666,8 +665,6 @@ export default function LiveCall() {
   }, []);
 
   // ── Due-time notifier: alert when a scheduled meeting hits its start time ──
-  // The comparison uses absolute UTC instants (timezone-agnostic). The
-  // human-readable label in the toast is rendered in the user's preferred tz.
   const notifiedDueRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
@@ -681,7 +678,6 @@ export default function LiveCall() {
         const start = new Date(m.scheduled_time).getTime();
         if (Number.isNaN(start)) continue;
         const diffSec = (start - now) / 1000;
-        // Fire once when within +/- 45s of start time (UTC, so DST-safe)
         if (diffSec <= 45 && diffSec >= -45) {
           notifiedDueRef.current.add(m.id);
           playNotificationSound();
@@ -725,6 +721,7 @@ export default function LiveCall() {
 
   const hmsActionsRef = useRef<any>(null);
   const hmsStoreRef = useRef<any>(null);
+  const hmsManagerRef = useRef<HMSReactiveStore | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   // Zombie detection
@@ -754,48 +751,29 @@ export default function LiveCall() {
     return true;
   }, [teamUsage]);
 
-  // ── Robust 100ms SDK loader ──────────────────────────────────────────────
-  const loadHMSSDK = useCallback(async () => {
-    if (window.HMS) return window.HMS;
+  // ── HMS join / leave (npm SDK — no CDN script needed) ───────────────────
+  const joinHMS = useCallback(async (authToken: string, userName: string) => {
+    const hms = new HMSReactiveStore();
+    hmsManagerRef.current = hms;
+    const actions = hms.getHMSActions();
+    const store = hms.getStore();
 
-    // Remove any stale/failed script tag from a previous attempt
-    const existing = document.querySelector('script[data-hms-sdk]');
-    if (existing && !window.HMS) {
-      existing.remove();
-    }
+    await actions.join({
+      userName,
+      authToken,
+      settings: { isAudioMuted: false, isVideoMuted: false },
+      rememberDeviceSelection: true,
+      captureNetworkQualityInPreview: false,
+    });
 
-    const SDK_URLS = [
-      "https://cdn.jsdelivr.net/npm/@100mslive/hms-video@latest/dist/hms.min.js",
-      "https://cdn.100ms.live/sdk/v2.9.15/hms.min.js",
-    ];
+    return { actions, store };
+  }, []);
 
-    let lastError: Error | null = null;
-
-    for (const url of SDK_URLS) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = url;
-          s.async = true;
-          s.setAttribute("data-hms-sdk", "true");
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error(`Failed to load script: ${url}`));
-          document.head.appendChild(s);
-        });
-
-        if (window.HMS) return window.HMS;
-        lastError = new Error("Script loaded but window.HMS is undefined");
-      } catch (err: any) {
-        lastError = err;
-        document.querySelector('script[data-hms-sdk]')?.remove();
-      }
-    }
-
-    throw new Error(
-      lastError?.message
-        ? `Failed to load meeting SDK (${lastError.message}). Check your network connection or ad-blocker.`
-        : "Failed to load meeting SDK."
-    );
+  const leaveHMS = useCallback(async () => {
+    try {
+      await hmsManagerRef.current?.getHMSActions().leave();
+    } catch {}
+    hmsManagerRef.current = null;
   }, []);
 
   // Join as host into HMS room
@@ -806,17 +784,19 @@ export default function LiveCall() {
     if (!target || !callId) return;
     setShowPopup(false);
     try {
-      const HMS = await loadHMSSDK();
-      hmsActionsRef.current = new HMS.HMSActions();
-      hmsStoreRef.current = new HMS.HMSStore();
-      const hmsActions = hmsActionsRef.current;
+      const { actions, store } = await joinHMS(
+        target.auth_token || target.mgmt_token,
+        "Host",
+      );
+      hmsActionsRef.current = actions;
+      hmsStoreRef.current = store;
 
-      const unsub = hmsStoreRef.current.subscribe((store: any) => {
-        const allPeers = Object.values(store.peers || {}) as any[];
+      const unsub = store.subscribe((s: any) => {
+        const allPeers = Object.values(s.peers || {}) as any[];
         allPeers.forEach((peer: any) => {
           const audioTrackId = peer.audioTrack;
           if (audioTrackId) {
-            const trackInfo = store.tracks?.[audioTrackId];
+            const trackInfo = s.tracks?.[audioTrackId];
             if (trackInfo?.nativeTrack && !trackInfo._streaming) {
               trackInfo._streaming = true;
               startPeerAudio(peer.id, trackInfo.nativeTrack, peer.isLocal);
@@ -826,22 +806,12 @@ export default function LiveCall() {
       });
       unsubRef.current = unsub;
 
-      await hmsActions.join({
-        userName: "Host",
-        // auth_token is the correct app/room token for joining;
-        // mgmt_token is kept only as a legacy fallback.
-        authToken: target.auth_token || target.mgmt_token,
-        settings: { isAudioMuted: false, isVideoMuted: false },
-        rememberDeviceSelection: true,
-        captureNetworkQualityInPreview: false,
-      });
-
       setHostJoined(true);
       navigate(`/live/${callId}`);
     } catch (err: any) {
-      toast.error("Failed to join meeting: " + err.message);
+      toast.error("Failed to join meeting: " + (err?.message || "Unknown error"));
     }
-  }, [roomInfo, callId, loadHMSSDK, startPeerAudio, navigate]);
+  }, [roomInfo, callId, joinHMS, startPeerAudio, navigate]);
 
   // Create meeting
   const handleCreateMeeting = useCallback(async () => {
@@ -913,9 +883,7 @@ export default function LiveCall() {
     stopAll();
     if (unsubRef.current) unsubRef.current();
     try {
-      if (hmsActionsRef.current) {
-        try { await hmsActionsRef.current.leave(); } catch {}
-      }
+      await leaveHMS();
       await endCall.mutateAsync();
       toast.success("Call ended — generating AI summary…");
       setHostJoined(false);
@@ -924,7 +892,7 @@ export default function LiveCall() {
     } catch {
       toast.error("Failed to end call.");
     }
-  }, [endCall, callId, navigate, stopAll]);
+  }, [endCall, callId, navigate, stopAll, leaveHMS]);
 
   const openScheduleFromPopup = useCallback(() => {
     if (roomInfo) {
