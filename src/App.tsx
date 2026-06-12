@@ -17,11 +17,11 @@ import {
   useGlobalErrorHandlers,
 } from "@/components/ErrorBoundary";
 
+import DebugInspector from "./pages/debuginspector";
+
 import AdminPanel from "./pages/AdminPanel";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
-
-import DebugInspector from "./pages/debuginspector";
 
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
@@ -77,16 +77,13 @@ function AppWithGlobalHandlers({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const showDebug =
-    import.meta.env.DEV ||
-    localStorage.getItem("show_debug") === "true";
-
   return (
     <BrowserRouter>
       <PlanEnforcementProvider>
         <UpgradeModal />
 
-        {showDebug && <DebugInspector />}
+        {/* ✅ DEBUG INSPECTOR ALWAYS ON */}
+        <DebugInspector />
 
         <PWABanner />
 
@@ -149,17 +146,6 @@ function AppRoutes() {
           />
 
           {/* Protected */}
-          <Route
-            path="/onboarding"
-            element={
-              <ProtectedRoute>
-                <ErrorBoundary>
-                  <OnboardingPage />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-
           <Route
             path="/dashboard"
             element={
@@ -355,11 +341,13 @@ export default function App() {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+
           <ErrorBoundary>
             <AppWithGlobalHandlers>
               <AppRoutes />
             </AppWithGlobalHandlers>
           </ErrorBoundary>
+
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
