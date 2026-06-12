@@ -1,4 +1,4 @@
-**
+/**
  * MessagesPage.tsx — v6 (Real-time Read Receipts)
  *
  * Changes from v5:
