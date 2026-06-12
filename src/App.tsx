@@ -64,7 +64,6 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error: any) => {
-        // Don't retry on 401/403/404
         if ([401, 403, 404].includes(error?.status)) return false;
         return failureCount < 2;
       },
@@ -72,19 +71,22 @@ const queryClient = new QueryClient({
   },
 });
 
-// Inner component so we can use hooks inside providers
 function AppWithGlobalHandlers({ children }: { children: React.ReactNode }) {
   useGlobalErrorHandlers();
   return <>{children}</>;
 }
 
 function AppRoutes() {
+  const showDebug =
+    import.meta.env.DEV ||
+    localStorage.getItem("show_debug") === "true";
+
   return (
     <BrowserRouter>
       <PlanEnforcementProvider>
         <UpgradeModal />
-        
-  <DebugInspector />
+
+        {showDebug && <DebugInspector />}
 
         <PWABanner />
 
@@ -123,6 +125,7 @@ function AppRoutes() {
               </AdminRoute>
             }
           />
+
           <Route
             path="/admin/analytics"
             element={
@@ -133,6 +136,7 @@ function AppRoutes() {
               </AdminRoute>
             }
           />
+
           <Route
             path="/admin/activity"
             element={
@@ -144,7 +148,7 @@ function AppRoutes() {
             }
           />
 
-          {/* Protected — each wrapped in its own ErrorBoundary */}
+          {/* Protected */}
           <Route
             path="/onboarding"
             element={
@@ -221,6 +225,7 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/deals/:id"
             element={
@@ -265,7 +270,6 @@ function AppRoutes() {
             }
           />
 
-          {/* 🔒 SettingsPage now protected */}
           <Route
             path="/settings"
             element={
@@ -277,7 +281,6 @@ function AppRoutes() {
             }
           />
 
-          {/* 🔒 IntegrationsDashboardPage now protected */}
           <Route
             path="/dashboard/integrations"
             element={
@@ -345,14 +348,13 @@ function AppRoutes() {
   );
 }
 
-const App = () => {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          {/* Global error boundary wraps everything */}
           <ErrorBoundary>
             <AppWithGlobalHandlers>
               <AppRoutes />
@@ -362,6 +364,4 @@ const App = () => {
       </AuthProvider>
     </QueryClientProvider>
   );
-};
-
-export default App;
+}
