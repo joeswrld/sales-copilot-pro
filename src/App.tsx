@@ -17,7 +17,7 @@ import {
   useGlobalErrorHandlers,
 } from "@/components/ErrorBoundary";
 
-import DebugInspector from "./pages/debuginspector";
+import DebugInspector from "./pages/debugInspector";
 
 import AdminPanel from "./pages/AdminPanel";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
