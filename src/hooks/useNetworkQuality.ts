@@ -5,10 +5,16 @@
  * Uses the Network Information API where available (Android Chrome)
  * plus a lightweight latency probe to detect flaky / slow connections.
  *
- * Thresholds (tuned for 100ms SDK requirements):
+ * Thresholds:
  *   good   — ≥2 Mbps downlink, RTT <300ms, effectiveType 4g
  *   fair   — ≥0.5 Mbps, RTT <600ms, effectiveType 3g  (warn but allow)
- *   poor   — anything worse                             (block + advise)
+ *   poor   — anything worse, including 2G               (warn but allow)
+ *
+ * NOTE: Network quality is informational only. We never block the user
+ * from hosting or joining a meeting based on connection speed — Daily.co's
+ * adaptive bitrate (see useDailyCall.ts) automatically degrades video
+ * quality on poor connections, and audio-only fallback keeps calls usable
+ * even on 2G/3G.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -23,8 +29,8 @@ export interface NetworkInfo {
   type: string | null;           // "cellular" | "wifi" | "ethernet" etc.
   saveData: boolean;
   message: string;
-  canProceed: boolean;           // false = block, true = allow (possibly with warning)
-  isWarning: boolean;            // true = fair quality, show warning but allow
+  canProceed: boolean;           // always true — kept for backwards compatibility
+  isWarning: boolean;            // true = fair/poor quality, show a heads-up but allow
 }
 
 const DEFAULT_INFO: NetworkInfo = {
@@ -64,7 +70,7 @@ function evaluate(conn: any): NetworkInfo {
   const type: string = conn.type ?? "";
   const saveData: boolean = conn.saveData ?? false;
 
-  // Poor: 2G, very low downlink, or extreme RTT
+  // Poor: 2G, very low downlink, or extreme RTT — warn, but never block
   if (
     effectiveType === "2g" ||
     effectiveType === "slow-2g" ||
@@ -79,14 +85,13 @@ function evaluate(conn: any): NetworkInfo {
       type,
       saveData,
       message:
-        "Your connection is too slow for a live video call. " +
-        "Try switching to Wi-Fi or moving to an area with better signal.",
-      canProceed: false,
-      isWarning: false,
+        "Your connection is slow (2G / very low bandwidth). Video may be choppy or fail to load, but audio and transcription will keep working — you can still join.",
+      canProceed: true,
+      isWarning: true,
     };
   }
 
-  // Fair: 3G or borderline values
+  // Fair: 3G or borderline values — warn, but allow
   if (
     effectiveType === "3g" ||
     downlink < 1.0 ||
@@ -139,14 +144,16 @@ export function useNetworkQuality() {
     return () => conn.removeEventListener("change", refresh);
   }, [refresh]);
 
-  // Also react to browser online/offline events
+  // Also react to browser online/offline events — warn, but never block.
+  // Daily.co will automatically reconnect once connectivity returns.
   useEffect(() => {
     const handleOffline = () =>
       setInfo((prev) => ({
         ...prev,
         quality: "poor",
-        canProceed: false,
-        message: "You are offline. Please check your internet connection.",
+        canProceed: true,
+        isWarning: true,
+        message: "You appear to be offline. You can still try to join — Fixsense will reconnect automatically once your connection returns.",
       }));
     const handleOnline = () => refresh();
     window.addEventListener("offline", handleOffline);
