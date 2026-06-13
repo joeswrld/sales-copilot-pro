@@ -3,18 +3,20 @@
  *
  * Core Daily.co hook for Fixsense live meetings.
  *
- * v2 fixes (connection hang):
- *  - Script loading now has a hard timeout + multi-CDN fallback that ALWAYS
- *    resolves or rejects (previously could hang forever on slow networks)
- *  - Script is preloaded on hook mount, before the user clicks join
- *  - joinCall() now has a 15s overall timeout — if Daily doesn't fire
+ * v3 fix:
+ *  - The Daily SDK is now imported directly as an npm package
+ *    (@daily-co/daily-js) instead of being loaded via CDN <script> tags.
+ *    CDN script loading was being blocked instantly (likely CSP / service
+ *    worker), causing every join attempt to fail with no real error.
+ *  - joinCall() still has a 15s overall timeout — if Daily doesn't fire
  *    "joined-meeting" in time, we abort, clean up, and surface a retryable
- *    error instead of an infinite spinner
+ *    error instead of an infinite spinner.
  *  - Optional startWithVideoOff to reduce initial bandwidth/negotiation load
- *    on weak connections, getting you into the meeting faster
+ *    on weak connections, getting you into the meeting faster.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import DailyIframe from "@daily-co/daily-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -51,85 +53,7 @@ export interface UseDailyCallOptions {
   onNetworkQualityChange?: (quality: CallQuality) => void;
 }
 
-// ─── Daily script loader (with timeout + fallback) ────────────────────────────
-
-const SCRIPT_SOURCES = [
-  "https://unpkg.com/@daily-co/daily-js",
-  "https://cdn.jsdelivr.net/npm/@daily-co/daily-js@latest/dist/daily-iframe.js",
-  "https://cdn.jsdelivr.net/npm/@daily-co/daily-js@latest/src/module.min.js",
-];
-
-const SCRIPT_LOAD_TIMEOUT_MS = 8_000;
 const JOIN_TIMEOUT_MS = 15_000;
-
-let dailyScriptLoaded = false;
-let dailyScriptPromise: Promise<void> | null = null;
-
-function loadScriptFromSrc(src: string, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).DailyIframe) {
-      resolve();
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = src;
-    script.crossOrigin = "anonymous";
-
-    const timer = window.setTimeout(() => {
-      script.remove();
-      reject(new Error(`Timed out loading Daily SDK from ${src}`));
-    }, timeoutMs);
-
-    script.onload = () => {
-      clearTimeout(timer);
-      if ((window as any).DailyIframe) {
-        resolve();
-      } else {
-        // Script loaded but didn't expose DailyIframe — treat as failure
-        reject(new Error(`Daily SDK loaded from ${src} but DailyIframe is undefined`));
-      }
-    };
-
-    script.onerror = () => {
-      clearTimeout(timer);
-      script.remove();
-      reject(new Error(`Failed to load Daily SDK from ${src}`));
-    };
-
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * Loads the Daily.co SDK, trying each source in order with a per-source
- * timeout. Always resolves or rejects — never hangs indefinitely.
- */
-function loadDailyScript(): Promise<void> {
-  if (dailyScriptLoaded && (window as any).DailyIframe) {
-    return Promise.resolve();
-  }
-  if (dailyScriptPromise) return dailyScriptPromise;
-
-  dailyScriptPromise = (async () => {
-    let lastErr: Error | null = null;
-    for (const src of SCRIPT_SOURCES) {
-      try {
-        await loadScriptFromSrc(src, SCRIPT_LOAD_TIMEOUT_MS);
-        dailyScriptLoaded = true;
-        return;
-      } catch (err: any) {
-        lastErr = err;
-        console.warn("[Daily] script load attempt failed:", err?.message);
-      }
-    }
-    // All sources failed — reset so a future call can retry from scratch
-    dailyScriptPromise = null;
-    throw lastErr ?? new Error("Failed to load Daily.co SDK from all sources");
-  })();
-
-  return dailyScriptPromise;
-}
 
 /** Race any promise against a timeout, throwing a labeled error if it fires first */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -188,15 +112,6 @@ export function useDailyCall({
   const joinTimeRef = useRef<number>(0);
   const timerRef = useRef<number>();
   const joinedRef = useRef(false);
-
-  // ── Preload the Daily SDK as soon as this hook mounts ─────────────────────
-  // This means by the time the user clicks "Join", the script is already
-  // cached and the connection step is much faster.
-  useEffect(() => {
-    loadDailyScript().catch((err) => {
-      console.warn("[Daily] preload failed (will retry on join):", err?.message);
-    });
-  }, []);
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -396,23 +311,15 @@ export function useDailyCall({
     joinedRef.current = false;
 
     try {
-      // 1. Load SDK — bounded by SCRIPT_LOAD_TIMEOUT_MS per source, with fallback
-      try {
-        await loadDailyScript();
-      } catch (err: any) {
-        throw new Error("Could not load the video SDK. Check your connection and try again.");
-      }
-
-      const DailyIframe = (window as any).DailyIframe;
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
-      // 2. Get meeting token (bounded by its own internal timeout)
+      // 1. Get meeting token (bounded by its own internal timeout)
       let token = opts?.token ?? meetingToken;
       if (!token) {
         token = await fetchMeetingToken(targetRoom, true);
       }
 
-      // 3. Destroy any existing call object
+      // 2. Destroy any existing call object
       await forceCleanup();
 
       const callObj = DailyIframe.createCallObject({
@@ -436,7 +343,7 @@ export function useDailyCall({
       callObjectRef.current = callObj;
       registerHandlers(callObj);
 
-      // 4. Join — bounded by JOIN_TIMEOUT_MS. If Daily doesn't resolve in
+      // 3. Join — bounded by JOIN_TIMEOUT_MS. If Daily doesn't resolve in
       // time, we abort, clean up, and surface a retryable error instead of
       // hanging on "Connecting…" forever.
       await withTimeout(
