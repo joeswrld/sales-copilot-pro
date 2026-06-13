@@ -5,10 +5,10 @@
  * Uses the Network Information API where available (Android Chrome)
  * plus a lightweight latency probe to detect flaky / slow connections.
  *
- * Thresholds:
- *   good   — ≥2 Mbps downlink, RTT <300ms, effectiveType 4g
- *   fair   — ≥0.5 Mbps, RTT <600ms, effectiveType 3g  (warn but allow)
- *   poor   — anything worse, including 2G               (warn but allow)
+ * Thresholds (relaxed for real-world mobile networks):
+ *   good   — normal 2G/3G/4G ranges (downlink ≥0.4 Mbps, RTT <1000ms)
+ *   fair   — borderline (downlink <0.4 Mbps or RTT ≥1000ms) — warn but allow
+ *   poor   — very low bandwidth / extreme latency / slow-2g — warn but allow
  *
  * NOTE: Network quality is informational only. We never block the user
  * from hosting or joining a meeting based on connection speed — Daily.co's
@@ -70,12 +70,12 @@ function evaluate(conn: any): NetworkInfo {
   const type: string = conn.type ?? "";
   const saveData: boolean = conn.saveData ?? false;
 
-  // Poor: 2G, very low downlink, or extreme RTT — warn, but never block
+  // Poor: only truly unusable connections — extremely low bandwidth or
+  // extreme latency. Normal 3G no longer triggers this.
   if (
-    effectiveType === "2g" ||
     effectiveType === "slow-2g" ||
-    downlink < 0.3 ||
-    rtt > 900
+    downlink < 0.15 ||
+    rtt > 1500
   ) {
     return {
       quality: "poor",
@@ -85,17 +85,16 @@ function evaluate(conn: any): NetworkInfo {
       type,
       saveData,
       message:
-        "Your connection is slow (2G / very low bandwidth). Video may be choppy or fail to load, but audio and transcription will keep working — you can still join.",
+        "Your connection is very slow right now. Video may be choppy, but audio and transcription will keep working — you can still join.",
       canProceed: true,
       isWarning: true,
     };
   }
 
-  // Fair: 3G or borderline values — warn, but allow
+  // Fair: only flag genuinely borderline connections, not standard 3G.
   if (
-    effectiveType === "3g" ||
-    downlink < 1.0 ||
-    rtt > 500
+    downlink < 0.4 ||
+    rtt > 1000
   ) {
     return {
       quality: "fair",
@@ -105,14 +104,13 @@ function evaluate(conn: any): NetworkInfo {
       type,
       saveData,
       message:
-        "Your connection is weak (3G / low bandwidth). " +
-        "Audio and video may be unstable. Consider switching to Wi-Fi.",
+        "Your connection is a bit slow. Audio and video should still work fine, but quality may dip occasionally.",
       canProceed: true,
       isWarning: true,
     };
   }
 
-  // Good
+  // Good (includes normal 2G/3G/4G ranges)
   return {
     quality: "good",
     downlink,
