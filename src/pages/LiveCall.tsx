@@ -4,6 +4,11 @@
  * Fully migrated from 100ms to Daily.co.
  * Uses useDailyRoom + useDailyCall hooks.
  * No 100ms SDK imports remain.
+ *
+ * Network quality is informational only — users on 2G/3G or poor
+ * connections are never blocked from creating, hosting, or joining
+ * a meeting. Daily.co's adaptive bitrate degrades video automatically
+ * and audio/transcription keep working even on weak connections.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -45,8 +50,7 @@ type JoinState =
   | "creating_room"
   | "connecting"
   | "connected"
-  | "failed"
-  | "blocked_network";
+  | "failed";
 
 const MEETING_TYPES = [
   { value: "discovery",   label: "Discovery",   emoji: "🔍" },
@@ -456,15 +460,13 @@ export default function LiveCall() {
   }, [teamUsage]);
 
   // ── Join as host via Daily call object ────────────────────────────────────
+  // NOTE: We never block on network quality — only show a heads-up toast
+  // for fair/poor connections, then proceed to join regardless.
   const handleJoinAsHost = useCallback(async (info?: typeof roomInfo) => {
     const target = info || roomInfo;
     if (!target || !callId) return;
     setShowPopup(false);
 
-    if (!networkInfo.canProceed) {
-      setJoinState("blocked_network");
-      return;
-    }
     if (networkInfo.isWarning && !networkWarningDismissed) {
       toast.warning(networkInfo.message, { duration: 6000 });
     }
@@ -627,8 +629,8 @@ export default function LiveCall() {
           </div>
         </div>
 
-        {/* Network warning */}
-        {networkInfo.quality === "fair" && !networkWarningDismissed && (
+        {/* Network warning — informational only, never blocks hosting/joining */}
+        {(networkInfo.quality === "fair" || networkInfo.quality === "poor") && !networkWarningDismissed && (
           <NetworkQualityBanner
             info={networkInfo}
             onDismiss={() => setNetworkWarningDismissed(true)}
@@ -640,13 +642,6 @@ export default function LiveCall() {
         <TeamUsageBanner onUpgrade={() => navigate("/billing")} />
 
         {/* Join state banners */}
-        {joinState === "blocked_network" && (
-          <NetworkQualityBanner
-            info={networkInfo}
-            onRetry={() => { setJoinState("idle"); networkInfo.refresh(); }}
-          />
-        )}
-
         {joinState === "failed" && (
           <NetworkBlockedCard
             shareLink={roomInfo?.share_link ?? null}
@@ -748,7 +743,7 @@ export default function LiveCall() {
         )}
 
         {/* Room created but not joined */}
-        {roomInfo && !hostJoined && joinState !== "failed" && joinState !== "blocked_network" && (
+        {roomInfo && !hostJoined && joinState !== "failed" && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-4 h-4 text-primary" />
