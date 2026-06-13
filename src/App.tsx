@@ -36,7 +36,6 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
-import { DebugInspector } from "./pages/debugInspector";
 import MeetingJoin from "@/pages/MeetingJoin";
 import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from "@/components/PWABanner";
