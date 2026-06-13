@@ -1,13 +1,8 @@
 /**
- * useDailyRoom.ts
+ * useDailyRoom.ts  (v2 — fully Daily.co)
  *
- * Manages Daily.co native meeting room creation.
- * Calls the create-daily-room edge function and returns
- * room info (room_name, room_url, share_link).
- *
- * Usage:
- *   const { createRoom, isCreating, roomInfo, copyShareLink } = useDailyRoom();
- *   await createRoom({ callId: "...", title: "Demo Call" });
+ * Manages Daily.co meeting room creation via the create-daily-room edge function.
+ * Drop-in replacement for the old useHMSRoom.
  */
 
 import { useState, useCallback } from "react";
@@ -18,10 +13,14 @@ import { toast } from "sonner";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DailyRoomInfo {
-  room_name:  string;
-  room_url:   string;
-  share_link: string;
-  expires_at: string;
+  room_name:     string;
+  room_url:      string;
+  share_link:    string;
+  meeting_token: string | null;
+  expires_at:    string;
+  // Legacy aliases
+  mgmt_token:    string | null;
+  auth_token:    string | null;
 }
 
 export interface CreateRoomOptions {
@@ -29,6 +28,7 @@ export interface CreateRoomOptions {
   title?:       string;
   meetingType?: string;
   expMinutes?:  number;
+  privacy?:     "public" | "private";
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export function useDailyRoom() {
           title:        opts.title       ?? "Fixsense Meeting",
           meeting_type: opts.meetingType ?? null,
           exp_minutes:  opts.expMinutes  ?? 180,
-          // Detect app origin dynamically
+          privacy:      opts.privacy     ?? "public",
           app_origin:   typeof window !== "undefined" ? window.location.origin : "https://fixsense.com.ng",
         },
       });
@@ -68,7 +68,6 @@ export function useDailyRoom() {
     },
   });
 
-  /** Copy the share link to clipboard and show a toast */
   const copyShareLink = useCallback(async (link?: string) => {
     const target = link ?? roomInfo?.share_link;
     if (!target) { toast.error("No share link available"); return; }
@@ -76,9 +75,15 @@ export function useDailyRoom() {
       await navigator.clipboard.writeText(target);
       toast.success("Meeting link copied to clipboard!");
     } catch {
-      // Fallback: show the link so user can copy manually
       toast.info(`Share link: ${target}`, { duration: 8000 });
     }
+  }, [roomInfo]);
+
+  /** Open the Daily prebuilt UI in a new tab (guest join experience) */
+  const openInBrowser = useCallback((rName?: string) => {
+    const name = rName ?? roomInfo?.room_name;
+    if (!name) return;
+    window.open(`https://fixsense.daily.co/${name}`, "_blank", "noopener");
   }, [roomInfo]);
 
   return {
@@ -87,6 +92,11 @@ export function useDailyRoom() {
     roomInfo,
     setRoomInfo,
     copyShareLink,
+    openInBrowser,
     error:       createRoomMutation.error,
   };
 }
+
+// ── Backwards compatibility alias ─────────────────────────────────────────────
+export { useDailyRoom as useHMSRoom };
+export type { DailyRoomInfo as HMSRoomInfo };
