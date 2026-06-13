@@ -2,19 +2,16 @@
  * useDailyCall.ts
  *
  * Core Daily.co hook for Fixsense live meetings.
- * Replaces all 100ms/HMS SDK usage.
  *
- * Features:
- *  - Daily prebuilt iframe embed (simplest, most reliable on weak networks)
- *  - Adaptive bitrate + simulcast enabled by default
- *  - Weak network detection + auto quality reduction
- *  - Participant events forwarded to Supabase
- *  - Recording controls
- *  - Active speaker detection
- *  - Reconnection handling
- *
- * Usage:
- *   const { joinCall, leaveCall, isConnected, ... } = useDailyCall({ callId, roomName });
+ * v2 fixes (connection hang):
+ *  - Script loading now has a hard timeout + multi-CDN fallback that ALWAYS
+ *    resolves or rejects (previously could hang forever on slow networks)
+ *  - Script is preloaded on hook mount, before the user clicks join
+ *  - joinCall() now has a 15s overall timeout — if Daily doesn't fire
+ *    "joined-meeting" in time, we abort, clean up, and surface a retryable
+ *    error instead of an infinite spinner
+ *  - Optional startWithVideoOff to reduce initial bandwidth/negotiation load
+ *    on weak connections, getting you into the meeting faster
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -43,6 +40,8 @@ export interface UseDailyCallOptions {
   roomName: string | null;
   meetingToken?: string | null;
   userName?: string;
+  /** Start with camera off to speed up initial connection on weak networks */
+  startWithVideoOff?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   onParticipantJoined?: (p: DailyParticipant) => void;
@@ -52,41 +51,101 @@ export interface UseDailyCallOptions {
   onNetworkQualityChange?: (quality: CallQuality) => void;
 }
 
-// ─── Daily script loader ──────────────────────────────────────────────────────
+// ─── Daily script loader (with timeout + fallback) ────────────────────────────
+
+const SCRIPT_SOURCES = [
+  "https://unpkg.com/@daily-co/daily-js",
+  "https://cdn.jsdelivr.net/npm/@daily-co/daily-js@latest/dist/daily-iframe.js",
+  "https://cdn.jsdelivr.net/npm/@daily-co/daily-js@latest/src/module.min.js",
+];
+
+const SCRIPT_LOAD_TIMEOUT_MS = 8_000;
+const JOIN_TIMEOUT_MS = 15_000;
 
 let dailyScriptLoaded = false;
-let dailyScriptLoading = false;
-let dailyScriptCallbacks: Array<() => void> = [];
+let dailyScriptPromise: Promise<void> | null = null;
 
-function loadDailyScript(): Promise<void> {
-  return new Promise((resolve) => {
-    if (dailyScriptLoaded) { resolve(); return; }
-    dailyScriptCallbacks.push(resolve);
-    if (dailyScriptLoading) return;
-    dailyScriptLoading = true;
+function loadScriptFromSrc(src: string, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).DailyIframe) {
+      resolve();
+      return;
+    }
 
     const script = document.createElement("script");
-    script.src = "https://unpkg.com/@daily-co/daily-js";
+    script.src = src;
     script.crossOrigin = "anonymous";
+
+    const timer = window.setTimeout(() => {
+      script.remove();
+      reject(new Error(`Timed out loading Daily SDK from ${src}`));
+    }, timeoutMs);
+
     script.onload = () => {
-      dailyScriptLoaded = true;
-      dailyScriptLoading = false;
-      dailyScriptCallbacks.forEach((cb) => cb());
-      dailyScriptCallbacks = [];
+      clearTimeout(timer);
+      if ((window as any).DailyIframe) {
+        resolve();
+      } else {
+        // Script loaded but didn't expose DailyIframe — treat as failure
+        reject(new Error(`Daily SDK loaded from ${src} but DailyIframe is undefined`));
+      }
     };
+
     script.onerror = () => {
-      dailyScriptLoading = false;
-      // Fall back to CDN
-      const s2 = document.createElement("script");
-      s2.src = "https://cdn.jsdelivr.net/npm/@daily-co/daily-js@latest/src/module.min.js";
-      s2.onload = () => {
-        dailyScriptLoaded = true;
-        dailyScriptCallbacks.forEach((cb) => cb());
-        dailyScriptCallbacks = [];
-      };
-      document.head.appendChild(s2);
+      clearTimeout(timer);
+      script.remove();
+      reject(new Error(`Failed to load Daily SDK from ${src}`));
     };
+
     document.head.appendChild(script);
+  });
+}
+
+/**
+ * Loads the Daily.co SDK, trying each source in order with a per-source
+ * timeout. Always resolves or rejects — never hangs indefinitely.
+ */
+function loadDailyScript(): Promise<void> {
+  if (dailyScriptLoaded && (window as any).DailyIframe) {
+    return Promise.resolve();
+  }
+  if (dailyScriptPromise) return dailyScriptPromise;
+
+  dailyScriptPromise = (async () => {
+    let lastErr: Error | null = null;
+    for (const src of SCRIPT_SOURCES) {
+      try {
+        await loadScriptFromSrc(src, SCRIPT_LOAD_TIMEOUT_MS);
+        dailyScriptLoaded = true;
+        return;
+      } catch (err: any) {
+        lastErr = err;
+        console.warn("[Daily] script load attempt failed:", err?.message);
+      }
+    }
+    // All sources failed — reset so a future call can retry from scratch
+    dailyScriptPromise = null;
+    throw lastErr ?? new Error("Failed to load Daily.co SDK from all sources");
+  })();
+
+  return dailyScriptPromise;
+}
+
+/** Race any promise against a timeout, throwing a labeled error if it fires first */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(label));
+    }, ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 }
 
@@ -107,6 +166,7 @@ export function useDailyCall({
   roomName,
   meetingToken,
   userName = "Host",
+  startWithVideoOff = false,
   onJoined,
   onLeft,
   onParticipantJoined,
@@ -127,6 +187,16 @@ export function useDailyCall({
   const callObjectRef = useRef<any>(null);
   const joinTimeRef = useRef<number>(0);
   const timerRef = useRef<number>();
+  const joinedRef = useRef(false);
+
+  // ── Preload the Daily SDK as soon as this hook mounts ─────────────────────
+  // This means by the time the user clicks "Join", the script is already
+  // cached and the connection step is much faster.
+  useEffect(() => {
+    loadDailyScript().catch((err) => {
+      console.warn("[Daily] preload failed (will retry on join):", err?.message);
+    });
+  }, []);
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -147,10 +217,14 @@ export function useDailyCall({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return null;
-      const { data, error } = await supabase.functions.invoke("get-daily-token", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: { room_name: rName, is_owner: isOwner },
-      });
+      const { data, error } = await withTimeout(
+        supabase.functions.invoke("get-daily-token", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: { room_name: rName, is_owner: isOwner },
+        }),
+        8_000,
+        "Timed out fetching meeting token",
+      );
       if (error || !data?.token) return null;
       return data.token;
     } catch {
@@ -161,7 +235,9 @@ export function useDailyCall({
   // ── Register Daily event handlers ─────────────────────────────────────────
   const registerHandlers = useCallback((callObj: any) => {
     callObj.on("joined-meeting", (event: any) => {
+      joinedRef.current = true;
       setCallState("joined");
+      setError(null);
       const localP = event?.participants?.local;
       if (localP) {
         setParticipants((prev) => {
@@ -184,6 +260,7 @@ export function useDailyCall({
     });
 
     callObj.on("left-meeting", () => {
+      joinedRef.current = false;
       setCallState("idle");
       setParticipants(new Map());
       setIsRecording(false);
@@ -273,10 +350,9 @@ export function useDailyCall({
 
       if (quality === "poor") {
         toast.warning("Weak connection detected — reducing video quality", { id: "network-warning" });
-        // Auto-reduce bitrate on poor network
-        callObj.setBandwidth({ kbs: 200, trackConstraints: { width: 640, height: 360 } }).catch(() => {});
+        callObj.setBandwidth({ kbs: 150, trackConstraints: { width: 480, height: 270 } }).catch(() => {});
       } else if (quality === "fair") {
-        callObj.setBandwidth({ kbs: 600, trackConstraints: { width: 1280, height: 720 } }).catch(() => {});
+        callObj.setBandwidth({ kbs: 400, trackConstraints: { width: 854, height: 480 } }).catch(() => {});
       } else if (quality === "excellent" || quality === "good") {
         toast.dismiss("network-warning");
         callObj.setBandwidth({ kbs: 0, trackConstraints: { width: 1280, height: 720 } }).catch(() => {});
@@ -297,6 +373,15 @@ export function useDailyCall({
     });
   }, [userName, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onRecordingStarted, onRecordingStopped, onNetworkQualityChange]);
 
+  // ── Internal: hard cleanup when join fails/times out ──────────────────────
+  const forceCleanup = useCallback(async () => {
+    if (callObjectRef.current) {
+      try { await callObjectRef.current.leave(); } catch {}
+      try { callObjectRef.current.destroy(); } catch {}
+      callObjectRef.current = null;
+    }
+  }, []);
+
   // ── Join call ──────────────────────────────────────────────────────────────
   const joinCall = useCallback(async (opts?: {
     rName?: string;
@@ -308,37 +393,42 @@ export function useDailyCall({
 
     setCallState("joining");
     setError(null);
+    joinedRef.current = false;
 
     try {
-      await loadDailyScript();
+      // 1. Load SDK — bounded by SCRIPT_LOAD_TIMEOUT_MS per source, with fallback
+      try {
+        await loadDailyScript();
+      } catch (err: any) {
+        throw new Error("Could not load the video SDK. Check your connection and try again.");
+      }
+
       const DailyIframe = (window as any).DailyIframe;
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
-      // Get meeting token
+      // 2. Get meeting token (bounded by its own internal timeout)
       let token = opts?.token ?? meetingToken;
       if (!token) {
         token = await fetchMeetingToken(targetRoom, true);
       }
 
-      // Destroy existing call object
-      if (callObjectRef.current) {
-        try { await callObjectRef.current.leave(); } catch {}
-        try { callObjectRef.current.destroy(); } catch {}
-        callObjectRef.current = null;
-      }
+      // 3. Destroy any existing call object
+      await forceCleanup();
 
       const callObj = DailyIframe.createCallObject({
         url: `https://fixsense.daily.co/${targetRoom}`,
         token: token ?? undefined,
         audioSource: true,
-        videoSource: true,
+        videoSource: !startWithVideoOff,
         subscribeToTracksAutomatically: true,
-        // Simulcast + adaptive bitrate for weak networks
+        // Lower default bitrate + simulcast for faster initial negotiation
+        // on weaker networks. setBandwidth will adjust further once
+        // network-quality-change fires.
         dailyConfig: {
           experimentalChromeVideoMuteLightOff: true,
           camSimulcastEncodings: [
-            { maxBitrate: 300000, maxFramerate: 30, scaleResolutionDownBy: 2 },
-            { maxBitrate: 700000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+            { maxBitrate: 150000, maxFramerate: 24, scaleResolutionDownBy: 4 },
+            { maxBitrate: 500000, maxFramerate: 30, scaleResolutionDownBy: 1 },
           ],
         },
       });
@@ -346,37 +436,47 @@ export function useDailyCall({
       callObjectRef.current = callObj;
       registerHandlers(callObj);
 
-      await callObj.join({
-        userName: opts?.displayName ?? userName,
-        url: `https://fixsense.daily.co/${targetRoom}`,
-        token: token ?? undefined,
-      });
+      // 4. Join — bounded by JOIN_TIMEOUT_MS. If Daily doesn't resolve in
+      // time, we abort, clean up, and surface a retryable error instead of
+      // hanging on "Connecting…" forever.
+      await withTimeout(
+        callObj.join({
+          userName: opts?.displayName ?? userName,
+          url: `https://fixsense.daily.co/${targetRoom}`,
+          token: token ?? undefined,
+        }),
+        JOIN_TIMEOUT_MS,
+        "Connection timed out",
+      );
 
       return true;
     } catch (err: any) {
       const msg = err?.message ?? "Failed to join meeting";
       console.error("[Daily] Join failed:", err);
+
+      // Clean up any half-open call object so retry starts fresh
+      await forceCleanup();
+
       setError(msg);
       setCallState("error");
-      toast.error(`Could not join meeting: ${msg}`);
+
+      if (msg === "Connection timed out") {
+        toast.error("Connection is taking too long. Tap Retry to try again.", {
+          duration: 8000,
+        });
+      } else {
+        toast.error(`Could not join meeting: ${msg}`);
+      }
       return false;
     }
-  }, [roomName, meetingToken, userName, fetchMeetingToken, registerHandlers]);
+  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers, forceCleanup]);
 
   // ── Leave call ─────────────────────────────────────────────────────────────
   const leaveCall = useCallback(async () => {
     setCallState("leaving");
-    try {
-      if (callObjectRef.current) {
-        await callObjectRef.current.leave();
-        callObjectRef.current.destroy();
-        callObjectRef.current = null;
-      }
-    } catch (e) {
-      console.warn("[Daily] Leave error:", e);
-    }
+    await forceCleanup();
     setCallState("idle");
-  }, []);
+  }, [forceCleanup]);
 
   // ── Mute/unmute ───────────────────────────────────────────────────────────
   const setAudioEnabled = useCallback(async (enabled: boolean) => {
