@@ -1,15 +1,10 @@
 /**
- * LiveMeeting.tsx — AI-Powered Meeting Workspace (v2 — Daily.co)
+ * LiveMeeting.tsx — AI-Powered Meeting Workspace (v3 — Daily.co)
  *
- * Fully migrated from 100ms to Daily.co.
- * Uses useDailyCall for real participant data, video tracks, audio streaming.
- * No 100ms SDK imports remain.
- *
- * Layout:
- *  Left   — Participants, Team Chat, Notes, Files, Deals
- *  Center — Live video grid (Daily.co tracks)
- *  Right  — AI Intelligence: transcript, objections, insights, coaching
- *  Bottom — Floating control bar
+ * Fix: Auto-join was firing before useDailyCall stabilized, or firing multiple
+ * times due to unstable deps, causing Daily to receive a malformed join call
+ * and throw an empty {} error. Fixed with a joinAttemptedRef guard so join
+ * is attempted exactly once when roomName becomes available.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -27,7 +22,7 @@ import {
   Eye, Volume2, VolumeX, Signal, Wifi,
   ArrowRight, Calendar, Link2, Tag, TrendingDown,
   Brain, FlaskConical, MessageCircle, BookOpen,
-  Trophy, Flame, Gauge, CircleDot, WifiOff,
+  Trophy, Flame, Gauge, CircleDot, WifiOff, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -135,12 +130,10 @@ function VideoTile({ participant, isMain = false, activeSpeakerId }: {
         </div>
       )}
 
-      {/* Speaking animation */}
       {isSpeaking && (
         <div className="absolute inset-0 rounded-2xl border-2 border-emerald-400/50 pointer-events-none animate-pulse" />
       )}
 
-      {/* Bottom info bar */}
       <div
         className="absolute bottom-0 left-0 right-0 p-2.5 flex items-center justify-between"
         style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)" }}
@@ -246,30 +239,26 @@ export default function LiveMeeting() {
   const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } =
     useLiveCall({ onCallEnded: () => setStatus("available") });
 
-  // Get room info from the calls table
-  const [roomName, setRoomName] = useState<string | null>(null);
-  const [meetingToken, setMeetingToken] = useState<string | null>(null);
+  // Read room details from the live call row
+  const roomName = (liveCall as any)?.daily_room_name ?? null;
+  const meetingToken = (liveCall as any)?.daily_meeting_token ?? null;
 
-  useEffect(() => {
-    if (liveCall) {
-      setRoomName((liveCall as any).daily_room_name ?? null);
-      setMeetingToken((liveCall as any).daily_meeting_token ?? null);
-    }
-  }, [liveCall]);
-
-  // Daily call hook
+  // Daily call hook — roomName/meetingToken passed directly, no intermediate state
   const daily = useDailyCall({
     callId: callId ?? null,
     roomName,
     meetingToken,
     userName: "Host",
+    onJoined: () => {
+      setStatus("on_call");
+    },
     onLeft: () => {
-      // Call left — handled by endCall
+      // handled by endCall
     },
     onParticipantJoined: (p) => {
       toast.success(`${p.user_name || "Someone"} joined the meeting`);
     },
-    onParticipantLeft: (sid) => {
+    onParticipantLeft: () => {
       toast.info("A participant left the meeting");
     },
     onRecordingStarted: () => toast.success("Recording started"),
@@ -283,10 +272,40 @@ export default function LiveMeeting() {
   // Audio streaming from Daily tracks
   const audioStreaming = useAudioStreaming({ callId: callId ?? null });
 
-  // Hook Daily participant tracks into audio streaming
+  // Guard: attempt auto-join exactly once when roomName is available
+  const joinAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !roomName ||
+      joinAttemptedRef.current ||
+      daily.isConnected ||
+      daily.isConnecting ||
+      daily.callState === "error"
+    ) return;
+
+    joinAttemptedRef.current = true;
+
+    daily.joinCall({
+      rName: roomName,
+      token: meetingToken ?? undefined,
+      displayName: "Host",
+    }).then((success) => {
+      if (!success) {
+        // Allow retry
+        joinAttemptedRef.current = false;
+      }
+    });
+  // Only re-run when roomName appears for the first time
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomName]);
+
+  // Hook Daily participant audio tracks into the transcription streamer
+  const tracksStartedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const p of daily.participants) {
-      if (p.audioTrack) {
+      if (p.audioTrack && !tracksStartedRef.current.has(p.session_id)) {
+        tracksStartedRef.current.add(p.session_id);
         audioStreaming.startTrackRecording(p.audioTrack, p.session_id, p.local);
       }
     }
@@ -301,13 +320,6 @@ export default function LiveMeeting() {
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(true);
   const [chatInput, setChatInput] = useState("");
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-join if we have a roomName but Daily isn't connected yet
-  useEffect(() => {
-    if (roomName && !daily.isConnected && !daily.isConnecting) {
-      daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: "Host" });
-    }
-  }, [roomName]);
 
   const meetingType = (liveCall as any)?.meeting_type as string | undefined;
 
@@ -359,9 +371,22 @@ export default function LiveMeeting() {
     }
   };
 
+  // Manual retry for join failures
+  const handleRetryJoin = useCallback(() => {
+    if (!roomName) return;
+    joinAttemptedRef.current = false;
+    daily.joinCall({
+      rName: roomName,
+      token: meetingToken ?? undefined,
+      displayName: "Host",
+    }).then((success) => {
+      if (!success) joinAttemptedRef.current = false;
+      else joinAttemptedRef.current = true;
+    });
+  }, [roomName, meetingToken, daily]);
+
   const sentimentScore = liveCall?.sentiment_score ?? 74;
 
-  // Use real participants from Daily, fall back to just local
   const displayParticipants = daily.participants;
   const mainSpeaker = daily.activeSpeaker || daily.remoteParticipants[0] || daily.localParticipant;
 
@@ -417,16 +442,13 @@ export default function LiveMeeting() {
               </span>
             </div>
 
-            {/* Daily network quality */}
             <NetworkDot quality={daily.networkQuality} />
 
-            {/* Participants count */}
             <div className="flex items-center gap-1.5 text-xs text-white/50">
               <Users className="w-3.5 h-3.5" />
               <span>{daily.participantCount} participant{daily.participantCount !== 1 ? "s" : ""}</span>
             </div>
 
-            {/* Recording */}
             {daily.isRecording && (
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
                 style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)" }}>
@@ -435,7 +457,6 @@ export default function LiveMeeting() {
               </div>
             )}
 
-            {/* Audio streaming status */}
             {audioStreaming.state.isStreaming && (
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
                 style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)" }}>
@@ -480,7 +501,6 @@ export default function LiveMeeting() {
             className={cn("flex flex-col shrink-0 transition-all duration-300 border-r", isSidebarOpen ? "w-60" : "w-0 overflow-hidden")}
             style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(9,11,18,0.8)" }}
           >
-            {/* Tabs */}
             <div className="flex gap-1 p-2 shrink-0 border-b overflow-x-auto scrollbar-none"
               style={{ borderColor: "rgba(255,255,255,0.06)" }}>
               {([
@@ -505,7 +525,6 @@ export default function LiveMeeting() {
               })}
             </div>
 
-            {/* Content */}
             <div className="flex-1 overflow-y-auto">
               {sidebarTab === "participants" && (
                 <div className="p-2 space-y-0.5">
@@ -600,16 +619,42 @@ export default function LiveMeeting() {
           {/* ── CENTER: VIDEO GRID ───────────────────────────────────────── */}
           <div className="flex-1 flex flex-col min-w-0 relative">
             <div className="flex-1 p-3 min-h-0">
+
+              {/* Error state with retry */}
+              {daily.callState === "error" && (
+                <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <WifiOff className="w-7 h-7 text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-red-400 mb-1">Connection failed</p>
+                    <p className="text-xs text-white/30 max-w-xs">
+                      {daily.error || "Could not connect to the meeting room. Please try again."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleRetryJoin}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+                    style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)" }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Retry Connection
+                  </button>
+                </div>
+              )}
+
               {/* Connecting state */}
-              {(daily.isConnecting || (!daily.isConnected && roomName)) && (
+              {daily.isConnecting && daily.callState !== "error" && (
                 <div className="h-full flex flex-col items-center justify-center gap-3">
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
                   <p className="text-sm text-white/50">Connecting to Daily.co…</p>
+                  <p className="text-xs text-white/25">This may take up to 30 seconds</p>
                 </div>
               )}
 
               {/* No room yet */}
-              {!roomName && !daily.isConnecting && (
+              {!roomName && !daily.isConnecting && daily.callState !== "error" && (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
                   <Video className="w-10 h-10 text-white/20" />
                   <p className="text-sm text-white/40">No Daily.co room attached to this call</p>
@@ -650,7 +695,7 @@ export default function LiveMeeting() {
                 </>
               )}
 
-              {/* Connected but alone */}
+              {/* Connected but waiting */}
               {daily.isConnected && displayParticipants.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(99,102,241,0.15)" }}>
@@ -694,7 +739,6 @@ export default function LiveMeeting() {
                   boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
                 }}
               >
-                {/* Left */}
                 <div className="flex items-center gap-1">
                   <ControlBtn
                     icon={isAudioOn ? Mic : MicOff}
@@ -725,11 +769,10 @@ export default function LiveMeeting() {
                   />
                 </div>
 
-                {/* Center */}
                 <div className="flex items-center gap-1">
                   <ControlBtn icon={Sparkles} label="AI Panel" onClick={() => setIsAIPanelOpen((v) => !v)} />
                   <ControlBtn
-                    icon={daily.isRecording ? CircleDot : CircleDot}
+                    icon={CircleDot}
                     label={daily.isRecording ? "Stop Rec" : "Record"}
                     active={!daily.isRecording}
                     onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
@@ -738,7 +781,6 @@ export default function LiveMeeting() {
                   <ControlBtn icon={Users} label="People" onClick={() => setIsSidebarOpen((v) => !v)} />
                 </div>
 
-                {/* Right: end call */}
                 <div className="flex items-center gap-1.5">
                   <ControlBtn icon={MoreHorizontal} label="More" />
                   <button
@@ -760,7 +802,6 @@ export default function LiveMeeting() {
             className={cn("flex flex-col shrink-0 transition-all duration-300 border-l", isAIPanelOpen ? "w-80" : "w-0 overflow-hidden")}
             style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(9,11,18,0.8)" }}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b shrink-0"
               style={{ borderColor: "rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-2.5">
@@ -776,7 +817,6 @@ export default function LiveMeeting() {
               </div>
             </div>
 
-            {/* Tabs */}
             <div className="flex border-b shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
               {([
                 { id: "transcript", label: "Transcript", icon: MessageSquare },
@@ -800,9 +840,7 @@ export default function LiveMeeting() {
               })}
             </div>
 
-            {/* Panel content */}
             <div className="flex-1 overflow-y-auto">
-
               {aiTab === "transcript" && (
                 <div className="p-3 space-y-3">
                   <div className="flex items-center gap-2 py-1.5 px-2.5 rounded-xl"
@@ -816,7 +854,7 @@ export default function LiveMeeting() {
                       <Mic className="w-6 h-6 mx-auto mb-2 text-white/20" />
                       <p>Transcript will appear here as you speak</p>
                       {!audioStreaming.state.isStreaming && (
-                        <p className="mt-1 text-white/20">Audio streaming will start automatically</p>
+                        <p className="mt-1 text-white/20">Audio streaming starts once connected</p>
                       )}
                     </div>
                   ) : (
@@ -851,7 +889,6 @@ export default function LiveMeeting() {
 
               {aiTab === "insights" && (
                 <div className="p-3 space-y-3">
-                  {/* Sentiment */}
                   <div className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] text-white/40 font-medium">Overall Sentiment</span>
@@ -868,7 +905,6 @@ export default function LiveMeeting() {
                     </div>
                   </div>
 
-                  {/* Talk ratio */}
                   <div className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] text-white/40 font-medium">Talk Ratio</span>
@@ -886,7 +922,6 @@ export default function LiveMeeting() {
                     </div>
                   </div>
 
-                  {/* Stats */}
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: "Questions", value: questionsCount || 0, icon: MessageCircle },
@@ -903,7 +938,6 @@ export default function LiveMeeting() {
                     ))}
                   </div>
 
-                  {/* AI Insight cards */}
                   {allInsights.length > 0 ? (
                     <div className="space-y-2">
                       <p className="text-[11px] text-white/30 font-medium uppercase tracking-wider px-0.5">AI Insights</p>
