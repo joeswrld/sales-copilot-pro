@@ -1,22 +1,66 @@
 /**
- * useDailyCall.ts
+ * useDailyCall.ts — v5 (Singleton fix)
  *
- * Core Daily.co hook for Fixsense live meetings.
+ * ROOT CAUSE OF "Duplicate DailyIframe instances are not allowed":
+ *   DailyIframe.createCallObject() registers a global singleton. If two
+ *   components (LiveCall + LiveMeeting) both mount this hook at the same
+ *   time, the second call to createCallObject() throws. Also, React
+ *   Strict Mode double-invokes effects which triggers it in dev.
  *
- * v4 fix:
- *  - Removed deprecated `camSimulcastEncodings` from dailyConfig — this was
- *    causing joinCall() to fail silently with an empty error object {}.
- *    Daily's current SDK rejects this option at join time.
- *  - Replaced with the new `sendSettings` API on createCallObject().
- *  - Removed deprecated `setBandwidth()` calls in the network-quality handler.
- *    Replaced with `updateSendSettings()`.
- *  - Removed `experimentalChromeVideoMuteLightOff` (also deprecated/removed).
+ * FIXES:
+ *  1. Module-level singleton guard (`_activeCallObject`) ensures only one
+ *     Daily call object exists process-wide. A second mount reuses it.
+ *  2. `DailyIframe.getCallInstance()` check before creating — if Daily
+ *     already has an instance, we attach to it instead of creating a new one.
+ *  3. Removed deprecated `camSimulcastEncodings` from dailyConfig.
+ *  4. Replaced deprecated `setBandwidth()` with `updateSendSettings()`.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import DailyIframe from "@daily-co/daily-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+// ─── Module-level singleton ────────────────────────────────────────────────────
+// Only one Daily call object may exist at a time. This prevents the
+// "Duplicate DailyIframe instances" error when multiple components mount.
+let _activeCallObject: any = null;
+let _activeRoomName: string | null = null;
+
+function getOrCreateCallObject(opts: {
+  url: string;
+  token?: string;
+  audioSource: boolean;
+  videoSource: boolean;
+  sendSettings: any;
+}): any {
+  // If Daily already has a live instance, return it to avoid duplicates
+  try {
+    const existing = (DailyIframe as any).getCallInstance?.();
+    if (existing) {
+      _activeCallObject = existing;
+      return existing;
+    }
+  } catch (_) { /* getCallInstance may not exist on all versions */ }
+
+  if (_activeCallObject) {
+    // Reuse the existing module-level singleton
+    return _activeCallObject;
+  }
+
+  const co = DailyIframe.createCallObject(opts);
+  _activeCallObject = co;
+  return co;
+}
+
+function releaseCallObject() {
+  if (_activeCallObject) {
+    try { _activeCallObject.leave(); } catch (_) {}
+    try { _activeCallObject.destroy(); } catch (_) {}
+    _activeCallObject = null;
+    _activeRoomName = null;
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,7 +84,6 @@ export interface UseDailyCallOptions {
   roomName: string | null;
   meetingToken?: string | null;
   userName?: string;
-  /** Start with camera off to speed up initial connection on weak networks */
   startWithVideoOff?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
@@ -53,25 +96,14 @@ export interface UseDailyCallOptions {
 
 const JOIN_TIMEOUT_MS = 30_000;
 
-/** Race any promise against a timeout, throwing a labeled error if it fires first */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(label));
-    }, ms);
+    const timer = window.setTimeout(() => reject(new Error(label)), ms);
     promise
-      .then((val) => {
-        clearTimeout(timer);
-        resolve(val);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
+      .then((val) => { clearTimeout(timer); resolve(val); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
   });
 }
-
-// ─── Quality mapping ──────────────────────────────────────────────────────────
 
 function networkScoreToQuality(score: number): CallQuality {
   if (score >= 4) return "excellent";
@@ -106,10 +138,12 @@ export function useDailyCall({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const callObjectRef = useRef<any>(null);
+  // Track whether THIS hook instance owns the singleton
+  const isOwnerRef = useRef(false);
   const joinTimeRef = useRef<number>(0);
   const timerRef = useRef<number>();
   const joinedRef = useRef(false);
+  const handlersRegisteredRef = useRef(false);
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -126,19 +160,19 @@ export function useDailyCall({
   }, [callState]);
 
   // ── Get fresh meeting token from edge function ────────────────────────────
-  const fetchMeetingToken = useCallback(async (rName: string, isOwner = true): Promise<string | null> => {
+  const fetchMeetingToken = useCallback(async (rName: string, isOwnerUser = true): Promise<string | null> => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return null;
-      const { data, error } = await withTimeout(
+      const { data, error: fnErr } = await withTimeout(
         supabase.functions.invoke("get-daily-token", {
           headers: { Authorization: `Bearer ${session.access_token}` },
-          body: { room_name: rName, is_owner: isOwner },
+          body: { room_name: rName, is_owner: isOwnerUser },
         }),
         8_000,
         "Timed out fetching meeting token",
       );
-      if (error || !data?.token) return null;
+      if (fnErr || !data?.token) return null;
       return data.token;
     } catch {
       return null;
@@ -147,6 +181,9 @@ export function useDailyCall({
 
   // ── Register Daily event handlers ─────────────────────────────────────────
   const registerHandlers = useCallback((callObj: any) => {
+    if (handlersRegisteredRef.current) return;
+    handlersRegisteredRef.current = true;
+
     callObj.on("joined-meeting", (event: any) => {
       joinedRef.current = true;
       setCallState("joined");
@@ -179,6 +216,7 @@ export function useDailyCall({
       setIsRecording(false);
       setActiveSpeakerId(null);
       setError(null);
+      handlersRegisteredRef.current = false;
       onLeft?.();
     });
 
@@ -261,32 +299,19 @@ export function useDailyCall({
       setNetworkQuality(quality);
       onNetworkQualityChange?.(quality);
 
-      // Use updateSendSettings (replaces deprecated setBandwidth)
       if (quality === "poor") {
         toast.warning("Weak connection detected — reducing video quality", { id: "network-warning" });
         callObj.updateSendSettings({
-          video: {
-            encodings: {
-              low: { maxBitrate: 150000, maxFramerate: 15, scaleResolutionDownBy: 4 },
-            },
-          },
+          video: { encodings: { low: { maxBitrate: 150000, maxFramerate: 15, scaleResolutionDownBy: 4 } } },
         }).catch(() => {});
       } else if (quality === "fair") {
         callObj.updateSendSettings({
-          video: {
-            encodings: {
-              medium: { maxBitrate: 400000, maxFramerate: 24, scaleResolutionDownBy: 2 },
-            },
-          },
+          video: { encodings: { medium: { maxBitrate: 400000, maxFramerate: 24, scaleResolutionDownBy: 2 } } },
         }).catch(() => {});
       } else if (quality === "excellent" || quality === "good") {
         toast.dismiss("network-warning");
         callObj.updateSendSettings({
-          video: {
-            encodings: {
-              high: { maxBitrate: 1200000, maxFramerate: 30, scaleResolutionDownBy: 1 },
-            },
-          },
+          video: { encodings: { high: { maxBitrate: 1200000, maxFramerate: 30, scaleResolutionDownBy: 1 } } },
         }).catch(() => {});
       }
     });
@@ -296,23 +321,19 @@ export function useDailyCall({
       const msg = event?.error?.msg ?? event?.error?.type ?? event?.errorMsg ?? "Connection error";
       setError(msg);
       setCallState("error");
+      handlersRegisteredRef.current = false;
       toast.error(`Meeting error: ${msg}`);
     });
 
     callObj.on("call-instance-destroyed", () => {
       setCallState("idle");
-      callObjectRef.current = null;
+      if (_activeCallObject === callObj) {
+        _activeCallObject = null;
+        _activeRoomName = null;
+      }
+      handlersRegisteredRef.current = false;
     });
   }, [userName, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onRecordingStarted, onRecordingStopped, onNetworkQualityChange]);
-
-  // ── Internal: hard cleanup when join fails/times out ──────────────────────
-  const forceCleanup = useCallback(async () => {
-    if (callObjectRef.current) {
-      try { await callObjectRef.current.leave(); } catch {}
-      try { callObjectRef.current.destroy(); } catch {}
-      callObjectRef.current = null;
-    }
-  }, []);
 
   // ── Join call ──────────────────────────────────────────────────────────────
   const joinCall = useCallback(async (opts?: {
@@ -323,26 +344,35 @@ export function useDailyCall({
     const targetRoom = opts?.rName ?? roomName;
     if (!targetRoom) { toast.error("No room name provided"); return false; }
 
+    // If already connected to this exact room, don't re-join
+    if (_activeRoomName === targetRoom && _activeCallObject && joinedRef.current) {
+      console.log("[Daily] Already connected to", targetRoom, "— skipping duplicate join");
+      setCallState("joined");
+      isOwnerRef.current = true;
+      return true;
+    }
+
     setCallState("joining");
     setError(null);
     joinedRef.current = false;
+    handlersRegisteredRef.current = false;
 
     try {
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
-      // 1. Get meeting token
       let token = opts?.token ?? meetingToken;
-      if (!token) {
-        token = await fetchMeetingToken(targetRoom, true);
+      if (!token) token = await fetchMeetingToken(targetRoom, true);
+
+      // Use singleton — destroy any existing object first if it's for a different room
+      if (_activeCallObject && _activeRoomName !== targetRoom) {
+        try { await _activeCallObject.leave(); } catch (_) {}
+        try { _activeCallObject.destroy(); } catch (_) {}
+        _activeCallObject = null;
+        _activeRoomName = null;
+        handlersRegisteredRef.current = false;
       }
 
-      // 2. Destroy any existing call object
-      await forceCleanup();
-
-      // 3. Create call object using the current Daily.co API.
-      //    sendSettings replaces the deprecated camSimulcastEncodings.
-      //    dailyConfig with camSimulcastEncodings caused join to fail with {}.
-      const callObj = DailyIframe.createCallObject({
+      const callObj = getOrCreateCallObject({
         url: `https://fixsense.daily.co/${targetRoom}`,
         token: token ?? undefined,
         audioSource: true,
@@ -357,12 +387,12 @@ export function useDailyCall({
             },
           },
         },
-      });
+      } as any);
 
-      callObjectRef.current = callObj;
+      isOwnerRef.current = true;
+      _activeRoomName = targetRoom;
       registerHandlers(callObj);
 
-      // 4. Join — bounded by JOIN_TIMEOUT_MS
       await withTimeout(
         callObj.join({
           userName: opts?.displayName ?? userName,
@@ -375,22 +405,22 @@ export function useDailyCall({
 
       return true;
     } catch (err: any) {
-      // Stringify the error carefully — Daily sometimes throws a plain object {}
       let msg = "Failed to join meeting";
-      if (err?.message) {
-        msg = err.message;
-      } else if (typeof err === "string") {
-        msg = err;
-      } else if (err && typeof err === "object" && Object.keys(err).length > 0) {
-        msg = JSON.stringify(err);
-      }
+      if (err?.message) msg = err.message;
+      else if (typeof err === "string") msg = err;
+      else if (err && typeof err === "object" && Object.keys(err).length > 0) msg = JSON.stringify(err);
 
       console.error("[Daily] Join failed:", err);
 
-      await forceCleanup();
+      // Only release if we own it
+      if (isOwnerRef.current) {
+        releaseCallObject();
+        isOwnerRef.current = false;
+      }
 
       setError(msg);
       setCallState("error");
+      handlersRegisteredRef.current = false;
 
       if (msg === "Connection timed out") {
         toast.error("Connection is taking too long. Tap Retry to try again.", { duration: 8000 });
@@ -399,57 +429,67 @@ export function useDailyCall({
       }
       return false;
     }
-  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers, forceCleanup]);
+  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers]);
 
   // ── Leave call ─────────────────────────────────────────────────────────────
   const leaveCall = useCallback(async () => {
     setCallState("leaving");
-    await forceCleanup();
+    handlersRegisteredRef.current = false;
+    if (_activeCallObject) {
+      try { await _activeCallObject.leave(); } catch (_) {}
+    }
+    if (isOwnerRef.current) {
+      releaseCallObject();
+      isOwnerRef.current = false;
+    }
     setCallState("idle");
-  }, [forceCleanup]);
+    joinedRef.current = false;
+  }, []);
 
   // ── Mute/unmute ───────────────────────────────────────────────────────────
   const setAudioEnabled = useCallback(async (enabled: boolean) => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.setLocalAudio(enabled);
+    if (!_activeCallObject) return;
+    await _activeCallObject.setLocalAudio(enabled);
   }, []);
 
   const setVideoEnabled = useCallback(async (enabled: boolean) => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.setLocalVideo(enabled);
+    if (!_activeCallObject) return;
+    await _activeCallObject.setLocalVideo(enabled);
   }, []);
 
   // ── Screen share ──────────────────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.startScreenShare();
+    if (!_activeCallObject) return;
+    await _activeCallObject.startScreenShare();
   }, []);
 
   const stopScreenShare = useCallback(async () => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.stopScreenShare();
+    if (!_activeCallObject) return;
+    await _activeCallObject.stopScreenShare();
   }, []);
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.startRecording();
+    if (!_activeCallObject) return;
+    await _activeCallObject.startRecording();
   }, []);
 
   const stopRecording = useCallback(async () => {
-    if (!callObjectRef.current) return;
-    await callObjectRef.current.stopRecording();
+    if (!_activeCallObject) return;
+    await _activeCallObject.stopRecording();
   }, []);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (callObjectRef.current) {
-        try { callObjectRef.current.leave(); } catch {}
-        try { callObjectRef.current.destroy(); } catch {}
-        callObjectRef.current = null;
-      }
       clearInterval(timerRef.current);
+      // Only destroy if this instance owns the singleton
+      if (isOwnerRef.current && _activeCallObject && !joinedRef.current) {
+        try { _activeCallObject.destroy(); } catch (_) {}
+        _activeCallObject = null;
+        _activeRoomName = null;
+        isOwnerRef.current = false;
+      }
     };
   }, []);
 
@@ -461,7 +501,6 @@ export function useDailyCall({
   const activeSpeaker = activeSpeakerId ? participants.get(activeSpeakerId) : null;
 
   return {
-    // State
     callState,
     isConnected,
     isConnecting,
@@ -472,13 +511,9 @@ export function useDailyCall({
     participantCount,
     elapsedSeconds,
     error,
-
-    // Participants
     participants: Array.from(participants.values()),
     localParticipant,
     remoteParticipants,
-
-    // Actions
     joinCall,
     leaveCall,
     setAudioEnabled,
@@ -487,8 +522,6 @@ export function useDailyCall({
     stopScreenShare,
     startRecording,
     stopRecording,
-
-    // Raw call object for advanced use
-    callObject: callObjectRef.current,
+    callObject: _activeCallObject,
   };
 }
