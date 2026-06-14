@@ -11,6 +11,7 @@
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
+import { VideoTile } from "@/components/VideoTile";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
