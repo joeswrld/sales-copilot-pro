@@ -13,6 +13,7 @@
 
 import DashboardLayout from "@/components/DashboardLayout";
 import EnablePushPrompt from "@/components/EnablePushPrompt";
+import { VideoTile } from "@/components/VideoTile";
 import { NetworkQualityBanner } from "@/components/NetworkQualityBanner";
 import { useNetworkQuality } from "@/hooks/useNetworkQuality";
 import { useState, useEffect, useRef, useCallback } from "react";
