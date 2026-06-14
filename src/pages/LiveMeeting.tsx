@@ -11,7 +11,6 @@
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
-import { VideoTile } from "@/components/VideoTile";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -25,6 +24,7 @@ import {
   Brain, FlaskConical, MessageCircle, BookOpen,
   Trophy, Flame, Gauge, CircleDot, WifiOff, RefreshCw,
   ChevronDown, ChevronUp, MoreHorizontal, Tag,
+  UserCheck, UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePendingGuestRequests } from "@/hooks/useGuestApproval";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,6 +61,51 @@ function NetworkDot({ quality }: { quality: CallQuality }) {
     <div className="flex items-center gap-1.5">
       <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color, boxShadow: `0 0 4px ${color}` }} />
       <span className="text-[10px] capitalize hidden sm:inline" style={{ color }}>{quality}</span>
+    </div>
+  );
+}
+
+// ─── Pending Guest Requests Banner ─────────────────────────────────────────────
+
+interface GuestRequestsBannerProps {
+  requests: { id: string; guest_name: string }[];
+  admit: (requestId: string) => void;
+  deny: (requestId: string) => void;
+  isResponding: boolean;
+}
+
+function GuestRequestsBanner({ requests, admit, deny, isResponding }: GuestRequestsBannerProps) {
+  if (!requests.length) return null;
+
+  return (
+    <div className="mx-3 mt-2 space-y-2 shrink-0">
+      {requests.map((req) => (
+        <div key={req.id}
+          className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl"
+          style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)" }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+              style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+              {(req.guest_name || "?")[0]?.toUpperCase()}
+            </div>
+            <p className="text-xs text-white/80 truncate">
+              <span className="font-semibold text-white">{req.guest_name}</span> wants to join
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button onClick={() => deny(req.id)} disabled={isResponding}
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg text-red-400"
+              style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <UserX className="w-3.5 h-3.5" /> Deny
+            </button>
+            <button onClick={() => admit(req.id)} disabled={isResponding}
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg text-white font-medium"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              <UserCheck className="w-3.5 h-3.5" /> Admit
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -127,6 +173,12 @@ function VideoTile({ participant, isMain = false, activeSpeakerId, className }: 
           <span className="text-[11px] font-medium text-white/90 truncate">
             {participant.user_name || "Participant"}{participant.local && " (You)"}
           </span>
+          {!participant.local && (
+            <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md text-violet-300 shrink-0"
+              style={{ background: "rgba(139,92,246,0.18)", border: "1px solid rgba(139,92,246,0.25)" }}>
+              Guest
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {!participant.audio && <MicOff className="w-3 h-3 text-red-400" />}
@@ -202,6 +254,10 @@ export default function LiveMeeting() {
       else toast.dismiss("daily-net");
     },
   });
+
+  // Pending guest join requests (host-side approvals)
+  const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding: isRespondingToGuest } =
+    usePendingGuestRequests(callId);
 
   // Audio streaming
   const audioStreaming = useAudioStreaming({ callId: callId ?? null });
@@ -334,6 +390,9 @@ export default function LiveMeeting() {
               )}
             </div>
           </div>
+
+          {/* Pending guest requests */}
+          <GuestRequestsBanner requests={guestRequests} admit={admitGuest} deny={denyGuest} isResponding={isRespondingToGuest} />
 
           {/* Mobile panel tabs */}
           <div className="flex border-b shrink-0" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
@@ -665,6 +724,9 @@ export default function LiveMeeting() {
           </div>
         </div>
 
+        {/* Pending guest requests */}
+        <GuestRequestsBanner requests={guestRequests} admit={admitGuest} deny={denyGuest} isResponding={isRespondingToGuest} />
+
         {/* ── MAIN 3-COLUMN LAYOUT ─────────────────────────────────────────── */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
@@ -768,7 +830,7 @@ export default function LiveMeeting() {
                   <ControlBtn icon={CircleDot} label={daily.isRecording ? "Stop Rec" : "Record"} active={!daily.isRecording}
                     onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
                     badge={daily.isRecording ? 1 : undefined} />
-                  <ControlBtn icon={Users} label="People" />
+                  <ControlBtn icon={Users} label="People" badge={guestRequests.length || undefined} />
                 </div>
                 <button onClick={handleEnd} disabled={endCall.isPending}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
