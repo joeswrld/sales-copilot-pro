@@ -1,10 +1,20 @@
 /**
- * useDailyCall.ts — v6 (Audio/Video Fix)
+ * useDailyCall.ts — v7 (Adopt-existing-connection fix)
  *
- * KEY FIXES:
- *  1. Remote audio is now played automatically via Daily's built-in audio.
- *     Daily.co handles remote audio playback natively when subscribeToTracksAutomatically=true.
- *     We no longer need to manually attach audio tracks to <audio> elements.
+ * KEY FIXES (v7):
+ *  - FIXED: "Connecting…" forever when navigating from LiveCall.tsx → LiveMeeting.tsx.
+ *    Each useDailyCall() instance has its own joinedRef/handlersRegisteredRef, but
+ *    the underlying DailyIframe call object is a shared module-level singleton.
+ *    A second instance calling joinCall() on an already-joined call object would
+ *    re-invoke .join() — but the "joined-meeting" event had already fired once for
+ *    the *first* instance and never fires again, so the second instance's
+ *    isConnecting stayed true forever even though the connection was live.
+ *    Now joinCall() checks callObj.meetingState() and, if already joined or
+ *    mid-join, adopts the existing state instead of re-joining.
+ *
+ * v6 fixes (retained):
+ *  1. Remote audio is played automatically via Daily's built-in audio
+ *     (subscribeToTracksAutomatically=true) — no manual <audio> elements needed.
  *  2. Video tracks are exposed via participant objects so VideoTile can attach them.
  *  3. Singleton guard prevents duplicate DailyIframe instances.
  *  4. Removed deprecated camSimulcastEncodings; uses updateSendSettings instead.
@@ -190,6 +200,20 @@ export function useDailyCall({
     };
   }, []);
 
+  // ── Snapshot current participants from a live call object ─────────────────
+  const snapshotParticipants = useCallback((callObj: any) => {
+    try {
+      const allParts = callObj.participants?.() ?? {};
+      const newMap = new Map<string, DailyParticipant>();
+      Object.values(allParts).forEach((p: any) => {
+        if (!p?.session_id) return;
+        newMap.set(p.session_id, buildParticipant(p, p.local ? userName : undefined));
+      });
+      setParticipants(newMap);
+      setParticipantCount(newMap.size);
+    } catch (_) {}
+  }, [buildParticipant, userName]);
+
   // ── Register Daily event handlers ──────────────────────────────────────────
   const registerHandlers = useCallback((callObj: any) => {
     if (handlersRegisteredRef.current) return;
@@ -334,11 +358,35 @@ export function useDailyCall({
     const targetRoom = opts?.rName ?? roomName;
     if (!targetRoom) { toast.error("No room name provided"); return false; }
 
-    if (_activeRoomName === targetRoom && _activeCallObject && joinedRef.current) {
-      console.log("[Daily] Already connected to", targetRoom);
-      setCallState("joined");
-      isOwnerRef.current = true;
-      return true;
+    // ── Adopt an already-active/joining call object for this room ──────────
+    // Fixes "Connecting…" forever: a previous hook instance (e.g. LiveCall.tsx)
+    // may have already joined this room. The "joined-meeting" event already
+    // fired once and won't fire again, so a fresh hook instance must read the
+    // current state directly instead of waiting for an event or re-joining.
+    if (_activeCallObject && _activeRoomName === targetRoom) {
+      let meetingState: string | undefined;
+      try { meetingState = _activeCallObject.meetingState?.(); } catch (_) {}
+
+      if (meetingState === "joined-meeting" || joinedRef.current) {
+        console.log("[Daily] Adopting already-joined call object for", targetRoom);
+        isOwnerRef.current = true;
+        joinedRef.current = true;
+        registerHandlers(_activeCallObject);
+        snapshotParticipants(_activeCallObject);
+        setError(null);
+        setCallState("joined");
+        onJoined?.();
+        return true;
+      }
+
+      if (meetingState === "joining-meeting") {
+        console.log("[Daily] Join already in progress for", targetRoom, "— attaching to it");
+        isOwnerRef.current = true;
+        registerHandlers(_activeCallObject);
+        setError(null);
+        setCallState("joining");
+        return true; // this instance's "joined-meeting" handler will fire when it lands
+      }
     }
 
     setCallState("joining");
@@ -420,7 +468,7 @@ export function useDailyCall({
       }
       return false;
     }
-  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers]);
+  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers, snapshotParticipants, onJoined]);
 
   // ── Leave call ─────────────────────────────────────────────────────────────
   const leaveCall = useCallback(async () => {
