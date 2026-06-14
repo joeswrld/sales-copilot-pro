@@ -3,10 +3,33 @@
  *
  * Global + page-level error boundaries.
  * Catches render errors AND unhandled promise rejections.
+ *
+ * FIX: /api/log-error returned 405 (no such route in Vite/production).
+ *      Now uses the existing Supabase `log-activity` edge function instead,
+ *      with a fire-and-forget pattern so logging failures never affect UX.
  */
 
 import React, { Component, ErrorInfo, ReactNode, useEffect } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
+// ─── Logging helper ────────────────────────────────────────────────────────────
+
+async function logErrorToSupabase(payload: Record<string, unknown>) {
+  try {
+    // Use the existing log-activity edge function — fire and forget
+    await supabase.functions.invoke("log-activity", {
+      body: {
+        action:   "client_error",
+        category: "error",
+        severity: "error",
+        details:  payload,
+      },
+    });
+  } catch {
+    // Logging failures must never crash the app
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,8 +44,8 @@ interface Props {
 }
 
 interface State {
-  hasError: boolean;
-  error: Error | null;
+  hasError:  boolean;
+  error:     Error | null;
   errorInfo: ErrorInfo | null;
 }
 
@@ -33,22 +56,22 @@ function DefaultFallback({
   compact,
   onReset,
 }: {
-  error: Error | null;
+  error:    Error | null;
   compact?: boolean;
-  onReset: () => void;
+  onReset:  () => void;
 }) {
   if (compact) {
     return (
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "12px 16px",
-          background: "rgba(239,68,68,.08)",
-          border: "1px solid rgba(239,68,68,.2)",
-          borderRadius: 10,
-          fontFamily: "system-ui, sans-serif",
+          display:      "flex",
+          alignItems:   "center",
+          gap:           10,
+          padding:      "12px 16px",
+          background:   "rgba(239,68,68,.08)",
+          border:       "1px solid rgba(239,68,68,.2)",
+          borderRadius:  10,
+          fontFamily:   "system-ui, sans-serif",
         }}
       >
         <AlertTriangle style={{ width: 16, height: 16, color: "#ef4444", flexShrink: 0 }} />
@@ -58,18 +81,18 @@ function DefaultFallback({
         <button
           onClick={onReset}
           style={{
-            marginLeft: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            background: "rgba(239,68,68,.1)",
-            border: "1px solid rgba(239,68,68,.25)",
-            borderRadius: 7,
-            color: "#f87171",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
+            marginLeft:   "auto",
+            display:      "flex",
+            alignItems:   "center",
+            gap:           5,
+            padding:      "5px 10px",
+            background:   "rgba(239,68,68,.1)",
+            border:       "1px solid rgba(239,68,68,.25)",
+            borderRadius:  7,
+            color:        "#f87171",
+            fontSize:      12,
+            fontWeight:    600,
+            cursor:       "pointer",
           }}
         >
           <RefreshCw style={{ width: 12, height: 12 }} /> Retry
@@ -81,27 +104,27 @@ function DefaultFallback({
   return (
     <div
       style={{
-        minHeight: "60vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
+        minHeight:      "60vh",
+        display:        "flex",
+        flexDirection:  "column",
+        alignItems:     "center",
         justifyContent: "center",
-        padding: "40px 20px",
-        textAlign: "center",
-        fontFamily: "system-ui, sans-serif",
+        padding:        "40px 20px",
+        textAlign:      "center",
+        fontFamily:     "system-ui, sans-serif",
       }}
     >
       <div
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: 16,
-          background: "rgba(239,68,68,.08)",
-          border: "1px solid rgba(239,68,68,.2)",
-          display: "flex",
-          alignItems: "center",
+          width:          64,
+          height:         64,
+          borderRadius:   16,
+          background:     "rgba(239,68,68,.08)",
+          border:         "1px solid rgba(239,68,68,.2)",
+          display:        "flex",
+          alignItems:     "center",
           justifyContent: "center",
-          marginBottom: 20,
+          marginBottom:   20,
         }}
       >
         <AlertTriangle style={{ width: 28, height: 28, color: "#ef4444" }} />
@@ -109,10 +132,10 @@ function DefaultFallback({
 
       <h2
         style={{
-          fontSize: 20,
-          fontWeight: 700,
-          color: "rgba(255,255,255,.85)",
-          marginBottom: 8,
+          fontSize:      20,
+          fontWeight:    700,
+          color:         "rgba(255,255,255,.85)",
+          marginBottom:  8,
           letterSpacing: "-0.03em",
         }}
       >
@@ -121,10 +144,10 @@ function DefaultFallback({
 
       <p
         style={{
-          fontSize: 13,
-          color: "rgba(255,255,255,.4)",
-          maxWidth: 380,
-          lineHeight: 1.6,
+          fontSize:     13,
+          color:        "rgba(255,255,255,.4)",
+          maxWidth:     380,
+          lineHeight:   1.6,
           marginBottom: 28,
         }}
       >
@@ -136,8 +159,8 @@ function DefaultFallback({
             <span
               style={{
                 fontFamily: "monospace",
-                fontSize: 11,
-                color: "rgba(239,68,68,.7)",
+                fontSize:   11,
+                color:      "rgba(239,68,68,.7)",
               }}
             >
               {error.message.length > 100
@@ -152,17 +175,17 @@ function DefaultFallback({
         <button
           onClick={onReset}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "10px 18px",
-            background: "rgba(255,255,255,.06)",
-            border: "1px solid rgba(255,255,255,.1)",
-            borderRadius: 10,
-            color: "rgba(255,255,255,.7)",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
+            display:      "flex",
+            alignItems:   "center",
+            gap:           7,
+            padding:      "10px 18px",
+            background:   "rgba(255,255,255,.06)",
+            border:       "1px solid rgba(255,255,255,.1)",
+            borderRadius:  10,
+            color:        "rgba(255,255,255,.7)",
+            fontSize:      13,
+            fontWeight:    600,
+            cursor:       "pointer",
           }}
         >
           <RefreshCw style={{ width: 14, height: 14 }} /> Try again
@@ -170,17 +193,17 @@ function DefaultFallback({
         <button
           onClick={() => (window.location.href = "/dashboard")}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "10px 18px",
-            background: "linear-gradient(135deg, #3b82f6, #6366f1)",
-            border: "none",
-            borderRadius: 10,
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
+            display:      "flex",
+            alignItems:   "center",
+            gap:           7,
+            padding:      "10px 18px",
+            background:   "linear-gradient(135deg, #3b82f6, #6366f1)",
+            border:       "none",
+            borderRadius:  10,
+            color:        "#fff",
+            fontSize:      13,
+            fontWeight:    600,
+            cursor:       "pointer",
           }}
         >
           <Home style={{ width: 14, height: 14 }} /> Go to Dashboard
@@ -205,30 +228,19 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     this.setState({ errorInfo: info });
 
-    // Log to console in dev, call onError prop if provided
     console.error("[ErrorBoundary] Caught error:", error, info);
 
     this.props.onError?.(error, info);
 
-    // Log to analytics / monitoring
-    try {
-      const payload = {
-        message: error.message,
-        stack: error.stack?.slice(0, 500),
-        componentStack: info.componentStack?.slice(0, 500),
-        url: window.location.href,
-        timestamp: new Date().toISOString(),
-      };
-      // Fire and forget — don't await, don't crash if this fails
-      void fetch("/api/log-error", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        keepalive: true,
-      }).catch(() => {});
-    } catch {
-      // ignore logging errors
-    }
+    // Log to Supabase (replaces the broken /api/log-error endpoint)
+    void logErrorToSupabase({
+      type:            "render_error",
+      message:          error.message,
+      stack:            error.stack?.slice(0, 500),
+      componentStack:   info.componentStack?.slice(0, 500),
+      url:              window.location.href,
+      timestamp:        new Date().toISOString(),
+    });
   }
 
   handleReset = () => {
@@ -255,60 +267,33 @@ export class ErrorBoundary extends Component<Props, State> {
 // ─── Global unhandled rejection hook ─────────────────────────────────────────
 
 /**
- * Place this once at the app root to capture unhandled promise rejections
- * and show a non-crashing toast-style notification.
+ * Place this once at the app root to capture unhandled promise rejections.
  */
 export function useGlobalErrorHandlers() {
   useEffect(() => {
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       console.error("[Global] Unhandled promise rejection:", event.reason);
-      event.preventDefault(); // suppress default browser console error
+      event.preventDefault();
 
-      // Log to monitoring
-      try {
-        void fetch("/api/log-error", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "unhandledRejection",
-            message:
-              event.reason instanceof Error
-                ? event.reason.message
-                : String(event.reason),
-            stack:
-              event.reason instanceof Error
-                ? event.reason.stack?.slice(0, 500)
-                : undefined,
-            url: window.location.href,
-            timestamp: new Date().toISOString(),
-          }),
-          keepalive: true,
-        }).catch(() => {});
-      } catch {
-        // ignore
-      }
+      void logErrorToSupabase({
+        type:      "unhandledRejection",
+        message:   event.reason instanceof Error ? event.reason.message : String(event.reason),
+        stack:     event.reason instanceof Error ? event.reason.stack?.slice(0, 500) : undefined,
+        url:       window.location.href,
+        timestamp: new Date().toISOString(),
+      });
     };
 
     const onError = (event: ErrorEvent) => {
-      // Only log, don't prevent default (browser handles display)
       console.error("[Global] Uncaught error:", event.error);
-      try {
-        void fetch("/api/log-error", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "uncaughtError",
-            message: event.message,
-            filename: event.filename,
-            lineno: event.lineno,
-            url: window.location.href,
-            timestamp: new Date().toISOString(),
-          }),
-          keepalive: true,
-        }).catch(() => {});
-      } catch {
-        // ignore
-      }
+      void logErrorToSupabase({
+        type:      "uncaughtError",
+        message:   event.message,
+        filename:  event.filename,
+        lineno:    event.lineno,
+        url:       window.location.href,
+        timestamp: new Date().toISOString(),
+      });
     };
 
     window.addEventListener("unhandledrejection", onUnhandledRejection);
@@ -323,13 +308,9 @@ export function useGlobalErrorHandlers() {
 
 // ─── HOC helper ──────────────────────────────────────────────────────────────
 
-/**
- * Wrap a page component with an ErrorBoundary automatically.
- * Usage: export default withErrorBoundary(MyPage);
- */
 export function withErrorBoundary<P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  options?: { compact?: boolean; onError?: (e: Error, info: ErrorInfo) => void }
+  options?: { compact?: boolean; onError?: (e: Error, info: ErrorInfo) => void },
 ) {
   const displayName =
     WrappedComponent.displayName || WrappedComponent.name || "Component";
