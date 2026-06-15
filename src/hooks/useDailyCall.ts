@@ -1,23 +1,31 @@
 /**
- * useDailyCall.ts — v9 (Zombie-call-object fix for guest "Join failed: {}")
+ * useDailyCall.ts — v10 (Foreign/zombie call-object fix for guest "Join failed: {}")
  *
- * KEY FIXES (v9):
- *  - releaseCallObject() is now ASYNC and properly AWAITS leave()/destroy()
- *    before clearing the singleton refs. v8 fired these calls without
- *    awaiting, so a brand-new DailyIframe.createCallObject() could be
- *    constructed while the previous instance was still mid-teardown.
- *    Daily's underlying iframe/WebRTC layer would then reject join() with
- *    a bare `{}` — no `errorMsg`, no `type`, nothing — which is exactly
- *    the "Join failed: {}" seen on the guest /join/:roomName page.
- *  - getOrCreateCallObject() now accepts a `forceNew` flag that skips
- *    DailyIframe.getCallInstance() entirely, guaranteeing a fresh
- *    call object (used by the automatic retry below).
- *  - joinCall() now AWAITS the cleanup of any stale call object for a
- *    different room before creating the new one.
+ * KEY FIXES (v10):
+ *  - joinCall() now inspects whatever call object Daily's OWN singleton
+ *    (`DailyIframe.getCallInstance()`) currently holds — independent of our
+ *    `_activeCallObject` ref. If Daily reports that object is already
+ *    "joined-meeting" or "joining-meeting" for a DIFFERENT room (or even
+ *    when our own ref thinks nothing is active), we now force a real
+ *    leave()+destroy() on THAT object before creating a fresh one.
+ *  - This is the root cause of:
+ *      "already joined meeting, call leave() before joining again"
+ *      "[Daily] Join failed: {}"
+ *    which happened when our singleton ref was cleared/lost (e.g. across
+ *    unmounts, navigation, or StrictMode double-invocation) but Daily's
+ *    internal singleton was still busy with a stale session.
+ *  - getOrCreateCallObject() is now called with forceNew = isRetry ||
+ *    staleForeignSession, guaranteeing a brand-new call object whenever a
+ *    foreign/stale session is detected — not just on the generic-error retry.
+ *
+ * v9 fixes (retained):
+ *  - releaseCallObject() is async and AWAITS leave()/destroy() before
+ *    clearing the singleton refs.
+ *  - getOrCreateCallObject() accepts a `forceNew` flag that skips
+ *    DailyIframe.getCallInstance() entirely.
  *  - joinCall() automatically retries ONCE, with a fully fresh call
  *    object, if the first attempt fails with a content-free / generic
- *    Daily error (the `{}` case). This self-heals the most common
- *    cause without requiring the user to manually hit "Retry".
+ *    Daily error (the `{}` case).
  *
  * v8 fixes (retained):
  *  - extractDailyError() safely converts any thrown value to a string.
@@ -45,8 +53,9 @@ let _activeRoomName: string | null = null;
 
 /**
  * Returns the singleton call object, optionally forcing the creation of a
- * brand-new one (used when retrying after a failed join, so we never
- * resurrect a half-destroyed instance via DailyIframe.getCallInstance()).
+ * brand-new one (used when retrying after a failed join, or when a foreign/
+ * stale session was detected, so we never resurrect a half-destroyed or
+ * busy instance via DailyIframe.getCallInstance()).
  */
 function getOrCreateCallObject(opts: object, forceNew = false): any {
   if (!forceNew) {
@@ -78,6 +87,30 @@ async function releaseCallObject(): Promise<void> {
 
   try { await co.leave(); } catch (_) {}
   try { await co.destroy(); } catch (_) {}
+}
+
+/**
+ * Forces a leave()+destroy() on whatever call object Daily's OWN internal
+ * singleton currently holds, REGARDLESS of our `_activeCallObject` ref.
+ * Used when `_activeCallObject` is null/stale but DailyIframe.getCallInstance()
+ * still returns a busy ("joining-meeting" / "joined-meeting") object — the
+ * exact precondition that causes daily-js's
+ * "already joined meeting, call leave() before joining again" warning and
+ * the resulting content-free "Join failed: {}" error.
+ */
+async function destroyForeignCallInstance(): Promise<void> {
+  let existing: any = null;
+  try { existing = (DailyIframe as any).getCallInstance?.(); } catch (_) {}
+  if (!existing) return;
+
+  try { await existing.leave(); } catch (_) {}
+  try { await existing.destroy(); } catch (_) {}
+
+  // If that foreign object happened to BE our tracked singleton, clear refs too.
+  if (_activeCallObject === existing) {
+    _activeCallObject = null;
+    _activeRoomName = null;
+  }
 }
 
 // ─── Safe error extraction ─────────────────────────────────────────────────────
@@ -460,12 +493,42 @@ export function useDailyCall({
       let token = opts?.token ?? meetingToken;
       if (!token) token = await fetchMeetingToken(targetRoom, true);
 
+      // ── Detect a FOREIGN/STALE busy call object ────────────────────────────
+      // Daily's own internal singleton (DailyIframe.getCallInstance()) may
+      // still be "joined-meeting" / "joining-meeting" for a different room —
+      // or even for THIS room — even though our `_activeCallObject` ref has
+      // been cleared (e.g. across unmounts/navigation/StrictMode). Calling
+      // `.join()` on such an object makes daily-js log
+      // "already joined meeting, call leave() before joining again" and
+      // reject with a content-free `{}` error.
+      let foreignState: string | undefined;
+      try {
+        const foreign = (DailyIframe as any).getCallInstance?.();
+        if (foreign) foreignState = foreign.meetingState?.();
+      } catch (_) {}
+
+      const staleForeignSession =
+        foreignState === "joined-meeting" || foreignState === "joining-meeting";
+
       // Tear down any existing call object before creating a new one.
-      // On retry, ALWAYS tear down — even if it's "the same room" — since a
-      // fresh call object is the whole point of the retry.
+      //  - On retry: ALWAYS tear down our tracked object, even for "the same
+      //    room" — a fresh call object is the whole point of the retry.
+      //  - Different room: tear down our tracked object.
+      //  - Same room but Daily reports it's busy in a way we didn't expect:
+      //    fall through to the foreign-instance teardown below.
       if (_activeCallObject && (isRetry || _activeRoomName !== targetRoom)) {
         await releaseCallObject();
         handlersRegisteredRef.current = false;
+      }
+
+      // Separately, if Daily's OWN singleton is busy (regardless of whether
+      // it matches `_activeCallObject` — it may not, if our ref was lost),
+      // force a real leave()+destroy() on it before creating a fresh object.
+      if (staleForeignSession) {
+        console.warn("[Daily] Foreign/stale call instance detected (state:", foreignState, ") — forcing teardown before join");
+        await destroyForeignCallInstance();
+        handlersRegisteredRef.current = false;
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
 
       const callObj = getOrCreateCallObject({
@@ -484,7 +547,7 @@ export function useDailyCall({
             },
           },
         },
-      } as any, isRetry);
+      } as any, isRetry || staleForeignSession);
 
       isOwnerRef.current = true;
       _activeRoomName    = targetRoom;
@@ -513,13 +576,15 @@ export function useDailyCall({
       console.error("[Daily] Join failed:", err);
 
       // ── Self-heal: if Daily gave us a content-free error and this is the
-      //    first attempt, tear everything down and retry ONCE with a
-      //    guaranteed-fresh call object. This is the fix for the recurring
-      //    "Join failed: {}" case on the guest /join page, which is almost
-      //    always caused by joining against a half-destroyed call object.
+      //    first attempt, tear everything down — including any foreign Daily
+      //    singleton — and retry ONCE with a guaranteed-fresh call object.
+      //    This is the fix for the recurring "Join failed: {}" case, which is
+      //    almost always caused by joining against a half-destroyed or
+      //    foreign-busy call object.
       if (!isRetry && isGenericDailyError(msg)) {
         console.warn("[Daily] Generic join error — retrying once with a fresh call object");
         await releaseCallObject();
+        await destroyForeignCallInstance();
         isOwnerRef.current = false;
         handlersRegisteredRef.current = false;
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
