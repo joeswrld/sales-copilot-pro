@@ -1,9 +1,17 @@
 /**
- * LiveCall.tsx — Meeting Control OS  (v3 — Daily.co)
+ * LiveCall.tsx — Meeting Control OS  (v4 — Daily.co, room persistence fix)
  *
  * Fully migrated from 100ms to Daily.co.
  * Uses useDailyRoom + useDailyCall hooks.
  * No 100ms SDK imports remain.
+ *
+ * v4 fixes:
+ *  - Meeting link no longer regenerates on page refresh. roomInfo is now
+ *    rehydrated from the live `calls` row (daily_room_name / daily_room_url /
+ *    meeting_url) on load, so the same share link + "Join as Host" continue
+ *    to work after a reload.
+ *  - "Create Meeting" is now blocked while a call is already live, preventing
+ *    a second `calls` row (and second Daily room) from being created.
  *
  * Network quality is informational only — users on 2G/3G or poor
  * connections are never blocked from creating, hosting, or joining
@@ -375,6 +383,29 @@ export default function LiveCall() {
 
   const { createRoom, isCreating, roomInfo, setRoomInfo, copyShareLink } = useDailyRoom();
 
+  // ── Rehydrate roomInfo from the live `calls` row on load / refresh ────────
+  // Without this, a page refresh leaves roomInfo (local React state) empty,
+  // so the UI falls back to the "Create Meeting" form — and clicking it would
+  // insert a brand-new `calls` row (new call_id), causing create-daily-room's
+  // idempotency check to never find a prior room and mint a fresh link.
+  // Restoring from the already-live row keeps the same share link / room
+  // across refreshes; meeting_token is left null so useDailyCall mints a
+  // fresh join token via get-daily-token when the user joins.
+  useEffect(() => {
+    if (!roomInfo && liveCall && (liveCall as any).daily_room_name) {
+      setRoomInfo({
+        room_name:  (liveCall as any).daily_room_name,
+        room_url:   (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
+        share_link: (liveCall as any).meeting_url ?? `${window.location.origin}/join/${(liveCall as any).daily_room_name}`,
+        // null forces useDailyCall to mint a fresh token via get-daily-token
+        meeting_token: null,
+        expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+        mgmt_token: null,
+        auth_token: null,
+      });
+    }
+  }, [liveCall, roomInfo, setRoomInfo]);
+
   // Daily call hook — only active when we have a room
   const daily = useDailyCall({
     callId: callId ?? null,
@@ -490,6 +521,19 @@ export default function LiveCall() {
   const handleCreateMeeting = useCallback(async () => {
     const title = meetingTitleInput.trim() || "Fixsense Meeting";
     if (!checkLimit()) return;
+
+    // Guard: don't create a second `calls` row (and second Daily room) while
+    // one is already live. This is the root cause of links regenerating —
+    // without this guard, a stray "Create Meeting" click while a meeting is
+    // already live would insert a new calls row with a fresh call_id, and
+    // create-daily-room's per-call_id idempotency check would never find the
+    // existing room, minting a brand-new link.
+    if (isLive) {
+      toast.info("You already have an active meeting link. End the current call to create a new one.");
+      setShowPopup(true);
+      return;
+    }
+
     setIsStarting(true);
     setActiveMeetingTitle(title);
     let callRow: any = null;
@@ -527,7 +571,7 @@ export default function LiveCall() {
       setIsStarting(false);
       setJoinState("idle");
     }
-  }, [meetingTitleInput, meetingNotes, meetingType, checkLimit, startCall, createRoom]);
+  }, [meetingTitleInput, meetingNotes, meetingType, checkLimit, isLive, startCall, createRoom]);
 
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
