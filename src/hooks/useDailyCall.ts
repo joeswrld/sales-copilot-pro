@@ -1,12 +1,27 @@
 /**
- * useDailyCall.ts — v8 (Empty-error fix)
+ * useDailyCall.ts — v9 (Zombie-call-object fix for guest "Join failed: {}")
  *
- * KEY FIXES (v8):
- *  - FIXED: "Join failed: {}" — Daily.co sometimes throws plain objects (not
- *    Error instances) when a room doesn't exist or the token is bad.
- *    extractDailyError() safely converts any thrown value to a string.
- *  - FIXED: withTimeout properly propagates non-Error rejections.
- *  - FIXED: joinCall error branch now always produces a human-readable message.
+ * KEY FIXES (v9):
+ *  - releaseCallObject() is now ASYNC and properly AWAITS leave()/destroy()
+ *    before clearing the singleton refs. v8 fired these calls without
+ *    awaiting, so a brand-new DailyIframe.createCallObject() could be
+ *    constructed while the previous instance was still mid-teardown.
+ *    Daily's underlying iframe/WebRTC layer would then reject join() with
+ *    a bare `{}` — no `errorMsg`, no `type`, nothing — which is exactly
+ *    the "Join failed: {}" seen on the guest /join/:roomName page.
+ *  - getOrCreateCallObject() now accepts a `forceNew` flag that skips
+ *    DailyIframe.getCallInstance() entirely, guaranteeing a fresh
+ *    call object (used by the automatic retry below).
+ *  - joinCall() now AWAITS the cleanup of any stale call object for a
+ *    different room before creating the new one.
+ *  - joinCall() automatically retries ONCE, with a fully fresh call
+ *    object, if the first attempt fails with a content-free / generic
+ *    Daily error (the `{}` case). This self-heals the most common
+ *    cause without requiring the user to manually hit "Retry".
+ *
+ * v8 fixes (retained):
+ *  - extractDailyError() safely converts any thrown value to a string.
+ *  - withTimeout properly propagates non-Error rejections.
  *
  * v7 fixes (retained):
  *  - Adopt-existing-connection: if another hook instance already joined this
@@ -28,26 +43,41 @@ import { toast } from "sonner";
 let _activeCallObject: any = null;
 let _activeRoomName: string | null = null;
 
-function getOrCreateCallObject(opts: object): any {
-  try {
-    const existing = (DailyIframe as any).getCallInstance?.();
-    if (existing) { _activeCallObject = existing; return existing; }
-  } catch (_) {}
+/**
+ * Returns the singleton call object, optionally forcing the creation of a
+ * brand-new one (used when retrying after a failed join, so we never
+ * resurrect a half-destroyed instance via DailyIframe.getCallInstance()).
+ */
+function getOrCreateCallObject(opts: object, forceNew = false): any {
+  if (!forceNew) {
+    try {
+      const existing = (DailyIframe as any).getCallInstance?.();
+      if (existing) { _activeCallObject = existing; return existing; }
+    } catch (_) {}
 
-  if (_activeCallObject) return _activeCallObject;
+    if (_activeCallObject) return _activeCallObject;
+  }
 
   const co = DailyIframe.createCallObject(opts as any);
   _activeCallObject = co;
   return co;
 }
 
-function releaseCallObject() {
-  if (_activeCallObject) {
-    try { _activeCallObject.leave(); }   catch (_) {}
-    try { _activeCallObject.destroy(); } catch (_) {}
-    _activeCallObject = null;
-    _activeRoomName   = null;
-  }
+/**
+ * Fully tears down the active call object and clears the singleton refs.
+ * IMPORTANT: this is async and AWAITS leave()/destroy() — callers that need
+ * a guaranteed-clean slate (e.g. before creating a replacement call object)
+ * must `await` this. Fire-and-forget calls (e.g. on unmount) are still safe.
+ */
+async function releaseCallObject(): Promise<void> {
+  const co = _activeCallObject;
+  if (!co) return;
+
+  _activeCallObject = null;
+  _activeRoomName = null;
+
+  try { await co.leave(); } catch (_) {}
+  try { await co.destroy(); } catch (_) {}
 }
 
 // ─── Safe error extraction ─────────────────────────────────────────────────────
@@ -85,6 +115,18 @@ function extractDailyError(err: unknown): string {
   return "Connection error (no details provided by Daily.co)";
 }
 
+/**
+ * True when extractDailyError() returned one of its content-free fallback
+ * strings — i.e. Daily gave us essentially nothing to work with. These are
+ * the cases worth a single automatic retry with a fresh call object.
+ */
+function isGenericDailyError(msg: string): boolean {
+  return (
+    msg === "Unknown Daily.co error" ||
+    msg.includes("no details provided by Daily.co")
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CallQuality   = "excellent" | "good" | "fair" | "poor" | "disconnected";
@@ -117,7 +159,16 @@ export interface UseDailyCallOptions {
   onNetworkQualityChange?: (quality: CallQuality) => void;
 }
 
+interface JoinCallOpts {
+  rName?:       string;
+  token?:       string;
+  displayName?: string;
+  /** Internal — set automatically when retrying after a generic failure. */
+  _isRetry?:    boolean;
+}
+
 const JOIN_TIMEOUT_MS = 30_000;
+const RETRY_DELAY_MS = 500;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -364,16 +415,15 @@ export function useDailyCall({
   }, [userName, buildParticipant, onJoined, onLeft, onParticipantJoined, onParticipantLeft, onRecordingStarted, onRecordingStopped, onNetworkQualityChange]);
 
   // ── Join call ──────────────────────────────────────────────────────────────
-  const joinCall = useCallback(async (opts?: {
-    rName?:       string;
-    token?:       string;
-    displayName?: string;
-  }) => {
+  const joinCall = useCallback(async (opts?: JoinCallOpts): Promise<boolean> => {
     const targetRoom = opts?.rName ?? roomName;
     if (!targetRoom) { toast.error("No room name provided"); return false; }
 
-    // Adopt already-active/joining singleton for this room
-    if (_activeCallObject && _activeRoomName === targetRoom) {
+    const isRetry = !!opts?._isRetry;
+
+    // Adopt already-active/joining singleton for this room (skip on retry —
+    // a retry means we deliberately want a fresh call object).
+    if (!isRetry && _activeCallObject && _activeRoomName === targetRoom) {
       let meetingState: string | undefined;
       try { meetingState = _activeCallObject.meetingState?.(); } catch (_) {}
 
@@ -410,11 +460,11 @@ export function useDailyCall({
       let token = opts?.token ?? meetingToken;
       if (!token) token = await fetchMeetingToken(targetRoom, true);
 
-      if (_activeCallObject && _activeRoomName !== targetRoom) {
-        try { await _activeCallObject.leave(); }   catch (_) {}
-        try { _activeCallObject.destroy(); }       catch (_) {}
-        _activeCallObject             = null;
-        _activeRoomName               = null;
+      // Tear down any existing call object before creating a new one.
+      // On retry, ALWAYS tear down — even if it's "the same room" — since a
+      // fresh call object is the whole point of the retry.
+      if (_activeCallObject && (isRetry || _activeRoomName !== targetRoom)) {
+        await releaseCallObject();
         handlersRegisteredRef.current = false;
       }
 
@@ -434,7 +484,7 @@ export function useDailyCall({
             },
           },
         },
-      } as any);
+      } as any, isRetry);
 
       isOwnerRef.current = true;
       _activeRoomName    = targetRoom;
@@ -462,8 +512,22 @@ export function useDailyCall({
 
       console.error("[Daily] Join failed:", err);
 
+      // ── Self-heal: if Daily gave us a content-free error and this is the
+      //    first attempt, tear everything down and retry ONCE with a
+      //    guaranteed-fresh call object. This is the fix for the recurring
+      //    "Join failed: {}" case on the guest /join page, which is almost
+      //    always caused by joining against a half-destroyed call object.
+      if (!isRetry && isGenericDailyError(msg)) {
+        console.warn("[Daily] Generic join error — retrying once with a fresh call object");
+        await releaseCallObject();
+        isOwnerRef.current = false;
+        handlersRegisteredRef.current = false;
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        return joinCall({ ...opts, rName: targetRoom, _isRetry: true });
+      }
+
       if (isOwnerRef.current) {
-        releaseCallObject();
+        await releaseCallObject();
         isOwnerRef.current = false;
       }
 
@@ -487,12 +551,11 @@ export function useDailyCall({
   const leaveCall = useCallback(async () => {
     setCallState("leaving");
     handlersRegisteredRef.current = false;
-    if (_activeCallObject) {
-      try { await _activeCallObject.leave(); } catch (_) {}
-    }
     if (isOwnerRef.current) {
-      releaseCallObject();
+      await releaseCallObject();
       isOwnerRef.current = false;
+    } else if (_activeCallObject) {
+      try { await _activeCallObject.leave(); } catch (_) {}
     }
     setCallState("idle");
     joinedRef.current = false;
@@ -510,9 +573,8 @@ export function useDailyCall({
     return () => {
       clearInterval(timerRef.current);
       if (isOwnerRef.current && _activeCallObject && !joinedRef.current) {
-        try { _activeCallObject.destroy(); } catch (_) {}
-        _activeCallObject = null;
-        _activeRoomName   = null;
+        // Fire-and-forget on unmount — nothing left to await for.
+        void releaseCallObject();
         isOwnerRef.current = false;
       }
     };
