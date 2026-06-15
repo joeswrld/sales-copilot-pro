@@ -1,45 +1,27 @@
+
 /**
- * useDailyCall.ts — v10 (Foreign/zombie call-object fix for guest "Join failed: {}")
+ * useDailyCall.ts — v11 (exp-room handler + manage-daily-room integration)
  *
- * KEY FIXES (v10):
- *  - joinCall() now inspects whatever call object Daily's OWN singleton
- *    (`DailyIframe.getCallInstance()`) currently holds — independent of our
- *    `_activeCallObject` ref. If Daily reports that object is already
- *    "joined-meeting" or "joining-meeting" for a DIFFERENT room (or even
- *    when our own ref thinks nothing is active), we now force a real
- *    leave()+destroy() on THAT object before creating a fresh one.
- *  - This is the root cause of:
- *      "already joined meeting, call leave() before joining again"
- *      "[Daily] Join failed: {}"
- *    which happened when our singleton ref was cleared/lost (e.g. across
- *    unmounts, navigation, or StrictMode double-invocation) but Daily's
- *    internal singleton was still busy with a stale session.
- *  - getOrCreateCallObject() is now called with forceNew = isRetry ||
- *    staleForeignSession, guaranteeing a brand-new call object whenever a
- *    foreign/stale session is detected — not just on the generic-error retry.
+ * New in v11:
+ *  - Error handler now catches `exp-room` error type from Daily and:
+ *    1. Calls manage-daily-room edge function to clean up the DB call row
+ *    2. Resets state to "idle" (not "error") so UI shows clean state
+ *    3. Shows a clear "room expired" toast instead of a generic error
+ *  - callId is now threaded into registerHandlers so the error handler
+ *    can invoke the edge function without a stale closure.
+ *
+ * v10 fixes (retained):
+ *  - Foreign/zombie call-object fix for guest "Join failed: {}"
+ *  - joinCall() inspects DailyIframe.getCallInstance() independently
+ *  - getOrCreateCallObject() forceNew flag
+ *  - releaseCallObject() is async and awaited
  *
  * v9 fixes (retained):
- *  - releaseCallObject() is async and AWAITS leave()/destroy() before
- *    clearing the singleton refs.
- *  - getOrCreateCallObject() accepts a `forceNew` flag that skips
- *    DailyIframe.getCallInstance() entirely.
- *  - joinCall() automatically retries ONCE, with a fully fresh call
- *    object, if the first attempt fails with a content-free / generic
- *    Daily error (the `{}` case).
+ *  - Single automatic retry on generic {} errors
  *
  * v8 fixes (retained):
- *  - extractDailyError() safely converts any thrown value to a string.
- *  - withTimeout properly propagates non-Error rejections.
- *
- * v7 fixes (retained):
- *  - Adopt-existing-connection: if another hook instance already joined this
- *    room, the second instance adopts the live state instead of re-joining.
- *
- * v6 fixes (retained):
- *  1. subscribeToTracksAutomatically=true — Daily handles remote audio.
- *  2. Video tracks exposed via participant objects for VideoTile.
- *  3. Singleton guard prevents duplicate DailyIframe instances.
- *  4. Uses updateSendSettings (not deprecated camSimulcastEncodings).
+ *  - extractDailyError() safe conversion
+ *  - withTimeout propagates non-Error rejections
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -51,12 +33,6 @@ import { toast } from "sonner";
 let _activeCallObject: any = null;
 let _activeRoomName: string | null = null;
 
-/**
- * Returns the singleton call object, optionally forcing the creation of a
- * brand-new one (used when retrying after a failed join, or when a foreign/
- * stale session was detected, so we never resurrect a half-destroyed or
- * busy instance via DailyIframe.getCallInstance()).
- */
 function getOrCreateCallObject(opts: object, forceNew = false): any {
   if (!forceNew) {
     try {
@@ -72,12 +48,6 @@ function getOrCreateCallObject(opts: object, forceNew = false): any {
   return co;
 }
 
-/**
- * Fully tears down the active call object and clears the singleton refs.
- * IMPORTANT: this is async and AWAITS leave()/destroy() — callers that need
- * a guaranteed-clean slate (e.g. before creating a replacement call object)
- * must `await` this. Fire-and-forget calls (e.g. on unmount) are still safe.
- */
 async function releaseCallObject(): Promise<void> {
   const co = _activeCallObject;
   if (!co) return;
@@ -89,15 +59,6 @@ async function releaseCallObject(): Promise<void> {
   try { await co.destroy(); } catch (_) {}
 }
 
-/**
- * Forces a leave()+destroy() on whatever call object Daily's OWN internal
- * singleton currently holds, REGARDLESS of our `_activeCallObject` ref.
- * Used when `_activeCallObject` is null/stale but DailyIframe.getCallInstance()
- * still returns a busy ("joining-meeting" / "joined-meeting") object — the
- * exact precondition that causes daily-js's
- * "already joined meeting, call leave() before joining again" warning and
- * the resulting content-free "Join failed: {}" error.
- */
 async function destroyForeignCallInstance(): Promise<void> {
   let existing: any = null;
   try { existing = (DailyIframe as any).getCallInstance?.(); } catch (_) {}
@@ -106,7 +67,6 @@ async function destroyForeignCallInstance(): Promise<void> {
   try { await existing.leave(); } catch (_) {}
   try { await existing.destroy(); } catch (_) {}
 
-  // If that foreign object happened to BE our tracked singleton, clear refs too.
   if (_activeCallObject === existing) {
     _activeCallObject = null;
     _activeRoomName = null;
@@ -114,11 +74,6 @@ async function destroyForeignCallInstance(): Promise<void> {
 }
 
 // ─── Safe error extraction ─────────────────────────────────────────────────────
-/**
- * Daily.co sometimes throws plain objects like {} or { errorMsg: "..." }
- * rather than Error instances.  This helper extracts a human-readable string
- * from anything that might be thrown.
- */
 function extractDailyError(err: unknown): string {
   if (!err) return "Unknown Daily.co error";
   if (typeof err === "string" && err.trim()) return err;
@@ -126,7 +81,6 @@ function extractDailyError(err: unknown): string {
 
   if (typeof err === "object") {
     const e = err as any;
-    // Daily uses these fields in its error objects
     const msg =
       e.errorMsg   ??
       e.msg        ??
@@ -138,7 +92,6 @@ function extractDailyError(err: unknown): string {
 
     if (msg && typeof msg === "string") return msg;
 
-    // Last resort: try JSON (but avoid "{}" which is useless)
     try {
       const json = JSON.stringify(e);
       if (json && json !== "{}") return `Daily error: ${json}`;
@@ -148,11 +101,6 @@ function extractDailyError(err: unknown): string {
   return "Connection error (no details provided by Daily.co)";
 }
 
-/**
- * True when extractDailyError() returned one of its content-free fallback
- * strings — i.e. Daily gave us essentially nothing to work with. These are
- * the cases worth a single automatic retry with a fresh call object.
- */
 function isGenericDailyError(msg: string): boolean {
   return (
     msg === "Unknown Daily.co error" ||
@@ -162,7 +110,7 @@ function isGenericDailyError(msg: string): boolean {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CallQuality   = "excellent" | "good" | "fair" | "poor" | "disconnected";
+export type CallQuality    = "excellent" | "good" | "fair" | "poor" | "disconnected";
 export type DailyCallState = "idle" | "joining" | "joined" | "leaving" | "error";
 
 export interface DailyParticipant {
@@ -196,12 +144,11 @@ interface JoinCallOpts {
   rName?:       string;
   token?:       string;
   displayName?: string;
-  /** Internal — set automatically when retrying after a generic failure. */
   _isRetry?:    boolean;
 }
 
 const JOIN_TIMEOUT_MS = 30_000;
-const RETRY_DELAY_MS = 500;
+const RETRY_DELAY_MS  = 500;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -252,11 +199,15 @@ export function useDailyCall({
   const [elapsedSeconds,   setElapsedSeconds]   = useState(0);
   const [error,            setError]            = useState<string | null>(null);
 
-  const isOwnerRef             = useRef(false);
-  const joinTimeRef            = useRef<number>(0);
-  const timerRef               = useRef<number>();
-  const joinedRef              = useRef(false);
-  const handlersRegisteredRef  = useRef(false);
+  const isOwnerRef            = useRef(false);
+  const joinTimeRef           = useRef<number>(0);
+  const timerRef              = useRef<number>();
+  const joinedRef             = useRef(false);
+  const handlersRegisteredRef = useRef(false);
+  // Keep a ref to callId so the error handler always has the current value
+  // even though registerHandlers is memoised and called infrequently.
+  const callIdRef             = useRef<string | null>(callId);
+  useEffect(() => { callIdRef.current = callId; }, [callId]);
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -308,7 +259,7 @@ export function useDailyCall({
     };
   }, []);
 
-  // ── Snapshot participants from live call object ────────────────────────────
+  // ── Snapshot participants ──────────────────────────────────────────────────
   const snapshotParticipants = useCallback((callObj: any) => {
     try {
       const allParts = callObj.participants?.() ?? {};
@@ -428,8 +379,44 @@ export function useDailyCall({
       }
     });
 
+    // ── Error handler — v11: handles exp-room explicitly ───────────────────
     callObj.on("error", (event: any) => {
       console.error("[Daily] Error event:", event);
+
+      // Extract the error type — Daily puts it in different places
+      const errType: string | null =
+        event?.error?.type ??
+        event?.type        ??
+        null;
+
+      // ── exp-room: room has passed its expiry time ──────────────────────
+      // Daily fires this when the room's `exp` property has been exceeded.
+      // We auto-end the DB call row and show a clean message so the user
+      // can create a new meeting rather than seeing a confusing error state.
+      if (errType === "exp-room") {
+        const currentCallId = callIdRef.current;
+        if (currentCallId) {
+          supabase.functions.invoke("manage-daily-room", {
+            body: { action: "handle_expired", call_id: currentCallId },
+          }).catch(() => {});
+        }
+        // Reset to idle (not "error") — the room is gone but there's no bug;
+        // the user just needs to create a new one.
+        setCallState("idle");
+        setError("Room expired");
+        setParticipants(new Map());
+        setIsRecording(false);
+        setActiveSpeakerId(null);
+        handlersRegisteredRef.current = false;
+        joinedRef.current = false;
+        toast.error(
+          "Meeting room expired. Create a new meeting to continue.",
+          { duration: 8000 },
+        );
+        return;
+      }
+
+      // ── All other errors ───────────────────────────────────────────────
       const msg = extractDailyError(event?.error ?? event);
       setError(msg);
       setCallState("error");
@@ -454,8 +441,6 @@ export function useDailyCall({
 
     const isRetry = !!opts?._isRetry;
 
-    // Adopt already-active/joining singleton for this room (skip on retry —
-    // a retry means we deliberately want a fresh call object).
     if (!isRetry && _activeCallObject && _activeRoomName === targetRoom) {
       let meetingState: string | undefined;
       try { meetingState = _activeCallObject.meetingState?.(); } catch (_) {}
@@ -493,14 +478,6 @@ export function useDailyCall({
       let token = opts?.token ?? meetingToken;
       if (!token) token = await fetchMeetingToken(targetRoom, true);
 
-      // ── Detect a FOREIGN/STALE busy call object ────────────────────────────
-      // Daily's own internal singleton (DailyIframe.getCallInstance()) may
-      // still be "joined-meeting" / "joining-meeting" for a different room —
-      // or even for THIS room — even though our `_activeCallObject` ref has
-      // been cleared (e.g. across unmounts/navigation/StrictMode). Calling
-      // `.join()` on such an object makes daily-js log
-      // "already joined meeting, call leave() before joining again" and
-      // reject with a content-free `{}` error.
       let foreignState: string | undefined;
       try {
         const foreign = (DailyIframe as any).getCallInstance?.();
@@ -510,20 +487,11 @@ export function useDailyCall({
       const staleForeignSession =
         foreignState === "joined-meeting" || foreignState === "joining-meeting";
 
-      // Tear down any existing call object before creating a new one.
-      //  - On retry: ALWAYS tear down our tracked object, even for "the same
-      //    room" — a fresh call object is the whole point of the retry.
-      //  - Different room: tear down our tracked object.
-      //  - Same room but Daily reports it's busy in a way we didn't expect:
-      //    fall through to the foreign-instance teardown below.
       if (_activeCallObject && (isRetry || _activeRoomName !== targetRoom)) {
         await releaseCallObject();
         handlersRegisteredRef.current = false;
       }
 
-      // Separately, if Daily's OWN singleton is busy (regardless of whether
-      // it matches `_activeCallObject` — it may not, if our ref was lost),
-      // force a real leave()+destroy() on it before creating a fresh object.
       if (staleForeignSession) {
         console.warn("[Daily] Foreign/stale call instance detected (state:", foreignState, ") — forcing teardown before join");
         await destroyForeignCallInstance();
@@ -565,7 +533,6 @@ export function useDailyCall({
 
       return true;
     } catch (err: unknown) {
-      // ── Safe error extraction — handles {} and non-Error throws ──────────
       let msg: string;
       if (err instanceof Error && err.message) {
         msg = err.message;
@@ -575,12 +542,6 @@ export function useDailyCall({
 
       console.error("[Daily] Join failed:", err);
 
-      // ── Self-heal: if Daily gave us a content-free error and this is the
-      //    first attempt, tear everything down — including any foreign Daily
-      //    singleton — and retry ONCE with a guaranteed-fresh call object.
-      //    This is the fix for the recurring "Join failed: {}" case, which is
-      //    almost always caused by joining against a half-destroyed or
-      //    foreign-busy call object.
       if (!isRetry && isGenericDailyError(msg)) {
         console.warn("[Daily] Generic join error — retrying once with a fresh call object");
         await releaseCallObject();
@@ -603,7 +564,6 @@ export function useDailyCall({
       if (msg.includes("timed out") || msg.includes("Connection timed out")) {
         toast.error("Connection is taking too long. Tap Retry to try again.", { duration: 8000 });
       } else if (msg.includes("no details")) {
-        // Daily threw an empty object — likely a room config or token issue
         toast.error("Could not connect to the meeting room. Please check the room exists and try again.", { duration: 8000 });
       } else {
         toast.error(`Could not join meeting: ${msg}`);
@@ -626,30 +586,29 @@ export function useDailyCall({
     joinedRef.current = false;
   }, []);
 
-  const setAudioEnabled    = useCallback(async (enabled: boolean) => { if (_activeCallObject) await _activeCallObject.setLocalAudio(enabled); }, []);
-  const setVideoEnabled    = useCallback(async (enabled: boolean) => { if (_activeCallObject) await _activeCallObject.setLocalVideo(enabled); }, []);
-  const startScreenShare   = useCallback(async () => { if (_activeCallObject) await _activeCallObject.startScreenShare(); }, []);
-  const stopScreenShare    = useCallback(async () => { if (_activeCallObject) await _activeCallObject.stopScreenShare(); }, []);
-  const startRecording     = useCallback(async () => { if (_activeCallObject) await _activeCallObject.startRecording(); }, []);
-  const stopRecording      = useCallback(async () => { if (_activeCallObject) await _activeCallObject.stopRecording(); }, []);
+  const setAudioEnabled  = useCallback(async (enabled: boolean) => { if (_activeCallObject) await _activeCallObject.setLocalAudio(enabled); }, []);
+  const setVideoEnabled  = useCallback(async (enabled: boolean) => { if (_activeCallObject) await _activeCallObject.setLocalVideo(enabled); }, []);
+  const startScreenShare = useCallback(async () => { if (_activeCallObject) await _activeCallObject.startScreenShare(); }, []);
+  const stopScreenShare  = useCallback(async () => { if (_activeCallObject) await _activeCallObject.stopScreenShare(); }, []);
+  const startRecording   = useCallback(async () => { if (_activeCallObject) await _activeCallObject.startRecording(); }, []);
+  const stopRecording    = useCallback(async () => { if (_activeCallObject) await _activeCallObject.stopRecording(); }, []);
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
       if (isOwnerRef.current && _activeCallObject && !joinedRef.current) {
-        // Fire-and-forget on unmount — nothing left to await for.
         void releaseCallObject();
         isOwnerRef.current = false;
       }
     };
   }, []);
 
-  const isConnected         = callState === "joined";
-  const isConnecting        = callState === "joining";
-  const localParticipant    = Array.from(participants.values()).find(p => p.local);
-  const remoteParticipants  = Array.from(participants.values()).filter(p => !p.local);
-  const activeSpeaker       = activeSpeakerId ? participants.get(activeSpeakerId) : null;
+  const isConnected        = callState === "joined";
+  const isConnecting       = callState === "joining";
+  const localParticipant   = Array.from(participants.values()).find(p => p.local);
+  const remoteParticipants = Array.from(participants.values()).filter(p => !p.local);
+  const activeSpeaker      = activeSpeakerId ? participants.get(activeSpeakerId) : null;
 
   return {
     callState,
@@ -676,3 +635,8 @@ export function useDailyCall({
     callObject: _activeCallObject,
   };
 }
+
+
+
+
+
