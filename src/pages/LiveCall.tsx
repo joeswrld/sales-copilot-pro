@@ -1,22 +1,17 @@
 /**
- * LiveCall.tsx — Meeting Control OS  (v4 — Daily.co, room persistence fix)
+ * LiveCall.tsx — Meeting Control OS  (v5 — Delete Room button + exp-room cleanup)
  *
- * Fully migrated from 100ms to Daily.co.
- * Uses useDailyRoom + useDailyCall hooks.
- * No 100ms SDK imports remain.
+ * New in v5:
+ *  - "Delete Room" button appears in the "Room ready" banner when a room exists
+ *    but the host hasn't joined yet. Calls manage-daily-room to delete the
+ *    Daily.co room and end the DB call row, freeing the user to create a new one.
+ *  - expMinutes raised to 1440 (24h) in createRoom call — matches the edge
+ *    function default and prevents exp-room errors during normal sessions.
+ *  - RoomInfo rehydration: expires_at now set to 24h from now (was 3h).
  *
- * v4 fixes:
- *  - Meeting link no longer regenerates on page refresh. roomInfo is now
- *    rehydrated from the live `calls` row (daily_room_name / daily_room_url /
- *    meeting_url) on load, so the same share link + "Join as Host" continue
- *    to work after a reload.
- *  - "Create Meeting" is now blocked while a call is already live, preventing
- *    a second `calls` row (and second Daily room) from being created.
- *
- * Network quality is informational only — users on 2G/3G or poor
- * connections are never blocked from creating, hosting, or joining
- * a meeting. Daily.co's adaptive bitrate degrades video automatically
- * and audio/transcription keep working even on weak connections.
+ * v4 fixes (retained):
+ *  - Meeting link no longer regenerates on page refresh (rehydration from calls row).
+ *  - "Create Meeting" blocked while a call is already live.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -33,6 +28,7 @@ import {
   RefreshCw, WifiOff, CheckCircle2,
   X, CalendarPlus, Sparkles, Shield,
   ArrowRight, Tag, FileText, Zap, Wifi,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -97,7 +93,6 @@ function MeetingCreatedPopup({
     }
   };
 
-  // Daily prebuilt URL (direct Daily room URL for guest join)
   const dailyDirectUrl = `https://fixsense.daily.co/${roomName}`;
 
   return (
@@ -383,30 +378,26 @@ export default function LiveCall() {
 
   const { createRoom, isCreating, roomInfo, setRoomInfo, copyShareLink } = useDailyRoom();
 
-  // ── Rehydrate roomInfo from the live `calls` row on load / refresh ────────
-  // Without this, a page refresh leaves roomInfo (local React state) empty,
-  // so the UI falls back to the "Create Meeting" form — and clicking it would
-  // insert a brand-new `calls` row (new call_id), causing create-daily-room's
-  // idempotency check to never find a prior room and mint a fresh link.
-  // Restoring from the already-live row keeps the same share link / room
-  // across refreshes; meeting_token is left null so useDailyCall mints a
-  // fresh join token via get-daily-token when the user joins.
+  // Track whether a room deletion is in progress
+  const [isDeletingRoom, setIsDeletingRoom] = useState(false);
+
+  // ── Rehydrate roomInfo from the live `calls` row on load / refresh ─────────
   useEffect(() => {
     if (!roomInfo && liveCall && (liveCall as any).daily_room_name) {
       setRoomInfo({
-        room_name:  (liveCall as any).daily_room_name,
-        room_url:   (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
-        share_link: (liveCall as any).meeting_url ?? `${window.location.origin}/join/${(liveCall as any).daily_room_name}`,
-        // null forces useDailyCall to mint a fresh token via get-daily-token
+        room_name:     (liveCall as any).daily_room_name,
+        room_url:      (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
+        share_link:    (liveCall as any).meeting_url ?? `${window.location.origin}/join/${(liveCall as any).daily_room_name}`,
         meeting_token: null,
-        expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-        mgmt_token: null,
-        auth_token: null,
+        // 24h from now — matches the edge function default
+        expires_at:    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        mgmt_token:    null,
+        auth_token:    null,
       });
     }
   }, [liveCall, roomInfo, setRoomInfo]);
 
-  // Daily call hook — only active when we have a room
+  // Daily call hook
   const daily = useDailyCall({
     callId: callId ?? null,
     roomName: roomInfo?.room_name ?? null,
@@ -428,9 +419,7 @@ export default function LiveCall() {
   });
 
   // Audio streaming from Daily tracks
-  const audioStreaming = useAudioStreaming({
-    callId: callId ?? null,
-  });
+  const audioStreaming = useAudioStreaming({ callId: callId ?? null });
 
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
 
@@ -438,21 +427,21 @@ export default function LiveCall() {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
   });
 
-  const [showPopup, setShowPopup] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [schedulePrefilledLink, setSchedulePrefilledLink] = useState("");
+  const [showPopup,              setShowPopup]              = useState(false);
+  const [showScheduleModal,      setShowScheduleModal]      = useState(false);
+  const [schedulePrefilledLink,  setSchedulePrefilledLink]  = useState("");
   const [schedulePrefilledTitle, setSchedulePrefilledTitle] = useState("");
-  const [isStarting, setIsStarting] = useState(false);
-  const [hostJoined, setHostJoined] = useState(false);
-  const [activeMeetingTitle, setActiveMeetingTitle] = useState("");
-  const [joinLink, setJoinLink] = useState("");
-  const [meetingType, setMeetingType] = useState("discovery");
-  const [meetingTitleInput, setMeetingTitleInput] = useState("");
-  const [meetingNotes, setMeetingNotes] = useState("");
-  const [joinState, setJoinState] = useState<JoinState>("idle");
+  const [isStarting,             setIsStarting]             = useState(false);
+  const [hostJoined,             setHostJoined]             = useState(false);
+  const [activeMeetingTitle,     setActiveMeetingTitle]     = useState("");
+  const [joinLink,               setJoinLink]               = useState("");
+  const [meetingType,            setMeetingType]            = useState("discovery");
+  const [meetingTitleInput,      setMeetingTitleInput]      = useState("");
+  const [meetingNotes,           setMeetingNotes]           = useState("");
+  const [joinState,              setJoinState]              = useState<JoinState>("idle");
   const [networkWarningDismissed, setNetworkWarningDismissed] = useState(false);
-  const [isAudioOn, setIsAudioOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isAudioOn,              setIsAudioOn]              = useState(true);
+  const [isVideoOn,              setIsVideoOn]              = useState(true);
 
   // Due-time meeting notifier
   const notifiedDueRef = useRef<Set<string>>(new Set());
@@ -491,9 +480,30 @@ export default function LiveCall() {
     return true;
   }, [teamUsage]);
 
-  // ── Join as host via Daily call object ────────────────────────────────────
-  // NOTE: We never block on network quality — only show a heads-up toast
-  // for fair/poor connections, then proceed to join regardless.
+  // ── Delete room — calls manage-daily-room to clean up ──────────────────────
+  const handleDeleteRoom = useCallback(async () => {
+    if (!callId || isDeletingRoom) return;
+    setIsDeletingRoom(true);
+    try {
+      const { error } = await supabase.functions.invoke("manage-daily-room", {
+        body: {
+          action:    "delete",
+          call_id:   callId,
+          room_name: roomInfo?.room_name,
+        },
+      });
+      if (error) throw error;
+      setRoomInfo(null);
+      toast.success("Room deleted — create a new meeting when ready.");
+    } catch (e: any) {
+      console.error("deleteRoom error:", e);
+      toast.error(e?.message ?? "Failed to delete room. Try again.");
+    } finally {
+      setIsDeletingRoom(false);
+    }
+  }, [callId, roomInfo, setRoomInfo, isDeletingRoom]);
+
+  // ── Join as host ───────────────────────────────────────────────────────────
   const handleJoinAsHost = useCallback(async (info?: typeof roomInfo) => {
     const target = info || roomInfo;
     if (!target || !callId) return;
@@ -505,8 +515,8 @@ export default function LiveCall() {
 
     setJoinState("connecting");
     const success = await daily.joinCall({
-      rName: target.room_name,
-      token: target.meeting_token ?? undefined,
+      rName:       target.room_name,
+      token:       target.meeting_token ?? undefined,
       displayName: "Host",
     });
 
@@ -522,12 +532,6 @@ export default function LiveCall() {
     const title = meetingTitleInput.trim() || "Fixsense Meeting";
     if (!checkLimit()) return;
 
-    // Guard: don't create a second `calls` row (and second Daily room) while
-    // one is already live. This is the root cause of links regenerating —
-    // without this guard, a stray "Create Meeting" click while a meeting is
-    // already live would insert a new calls row with a fresh call_id, and
-    // create-daily-room's per-call_id idempotency check would never find the
-    // existing room, minting a brand-new link.
     if (isLive) {
       toast.info("You already have an active meeting link. End the current call to create a new one.");
       setShowPopup(true);
@@ -539,18 +543,18 @@ export default function LiveCall() {
     let callRow: any = null;
     try {
       callRow = await startCall.mutateAsync({
-        platform: "daily",
-        name: title,
+        platform:     "daily",
+        name:         title,
         meeting_type: meetingType,
         participants: [],
-        description: meetingNotes,
+        description:  meetingNotes,
       } as any);
       setJoinState("creating_room");
-      const room = await createRoom({
-        callId: callRow.id,
+      await createRoom({
+        callId:     callRow.id,
         title,
         meetingType,
-        expMinutes: 180,
+        expMinutes: 1440, // 24h — matches edge function default
       });
       setShowPopup(true);
       toast.success("Daily.co room created! Share the link with your prospect.");
@@ -674,7 +678,7 @@ export default function LiveCall() {
           </div>
         </div>
 
-        {/* Network warning — informational only, never blocks hosting/joining */}
+        {/* Network warning */}
         {(networkInfo.quality === "fair" || networkInfo.quality === "poor") && !networkWarningDismissed && (
           <NetworkQualityBanner
             info={networkInfo}
@@ -737,10 +741,7 @@ export default function LiveCall() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={async () => {
-                  await daily.setAudioEnabled(!isAudioOn);
-                  setIsAudioOn((v) => !v);
-                }}
+                onClick={async () => { await daily.setAudioEnabled(!isAudioOn); setIsAudioOn((v) => !v); }}
                 className={cn(
                   "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
                   isAudioOn ? "border-border bg-secondary/60" : "border-red-500/30 bg-red-500/15 text-red-400",
@@ -749,10 +750,7 @@ export default function LiveCall() {
                 <Mic className="w-3.5 h-3.5" />{isAudioOn ? "Mute" : "Unmute"}
               </button>
               <button
-                onClick={async () => {
-                  await daily.setVideoEnabled(!isVideoOn);
-                  setIsVideoOn((v) => !v);
-                }}
+                onClick={async () => { await daily.setVideoEnabled(!isVideoOn); setIsVideoOn((v) => !v); }}
                 className={cn(
                   "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
                   isVideoOn ? "border-border bg-secondary/60" : "border-red-500/30 bg-red-500/15 text-red-400",
@@ -787,7 +785,7 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* Room created but not joined */}
+        {/* Room created but not joined — includes Delete Room button */}
         {roomInfo && !hostJoined && joinState !== "failed" && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
@@ -797,7 +795,7 @@ export default function LiveCall() {
                 <p className="text-xs text-muted-foreground truncate max-w-xs font-mono">{roomInfo.share_link}</p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => setShowPopup(true)}>
                 <Eye className="w-3 h-3" />View Link
               </Button>
@@ -808,6 +806,20 @@ export default function LiveCall() {
               >
                 {daily.isConnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Video className="w-3 h-3" />}
                 {daily.isConnecting ? "Connecting…" : "Join as Host"}
+              </Button>
+              {/* Delete Room — lets user discard an expired/unwanted room and
+                  create a fresh one without needing to end the session manually */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10 hover:border-red-500/50"
+                onClick={handleDeleteRoom}
+                disabled={isDeletingRoom}
+              >
+                {isDeletingRoom
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Trash2 className="w-3 h-3" />}
+                {isDeletingRoom ? "Deleting…" : "Delete Room"}
               </Button>
             </div>
           </div>
@@ -1022,3 +1034,4 @@ export default function LiveCall() {
     </DashboardLayout>
   );
 }
+
