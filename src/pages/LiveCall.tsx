@@ -1,24 +1,26 @@
+
 /**
- * LiveCall.tsx — Meeting Control OS  (v5 — Delete Room button + exp-room cleanup)
+ * LiveCall.tsx — Meeting Control OS  (v6 — Real-time network, smart host/guest, live room status)
  *
- * New in v5:
- *  - "Delete Room" button appears in the "Room ready" banner when a room exists
- *    but the host hasn't joined yet. Calls manage-daily-room to delete the
- *    Daily.co room and end the DB call row, freeing the user to create a new one.
- *  - expMinutes raised to 1440 (24h) in createRoom call — matches the edge
- *    function default and prevents exp-room errors during normal sessions.
- *  - RoomInfo rehydration: expires_at now set to 24h from now (was 3h).
+ * New in v6:
+ *  1. REAL-TIME NETWORK DETECTOR — no refresh required.
+ *     Uses Network Information API change events + periodic polling + online/offline events.
+ *     Updates instantly when the user's network changes.
+ *  2. SMART HOST/GUEST LINK DETECTION — when a meeting link is pasted:
+ *     - Calls get-guest-room-info edge function with the user's auth token.
+ *     - If the room belongs to the user → "Join as Host" button.
+ *     - If it belongs to someone else or is external → "Join as Guest" button.
+ *  3. REAL-TIME ROOM STATUS — room state in the "Room ready" banner updates live
+ *     via Supabase Realtime (no polling needed).
  *
- * v4 fixes (retained):
- *  - Meeting link no longer regenerates on page refresh (rehydration from calls row).
- *  - "Create Meeting" blocked while a call is already live.
+ * v5 fixes (retained):
+ *  - "Delete Room" button + expMinutes 1440 (24h).
+ *  - RoomInfo rehydration from calls row on load.
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
 import EnablePushPrompt from "@/components/EnablePushPrompt";
-import { VideoTile } from "@/components/VideoTile";
 import { NetworkQualityBanner } from "@/components/NetworkQualityBanner";
-import { useNetworkQuality } from "@/hooks/useNetworkQuality";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
@@ -28,7 +30,7 @@ import {
   RefreshCw, WifiOff, CheckCircle2,
   X, CalendarPlus, Sparkles, Shield,
   ArrowRight, Tag, FileText, Zap, Wifi,
-  Trash2,
+  Trash2, UserCheck, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -45,7 +47,7 @@ import MeetingTimeline from "@/components/MeetingTimeline";
 import { MeetingNotificationBanner, NotificationStatusPill } from "@/components/MeetingNotificationBanner";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
+import { useNetworkQuality } from "@/hooks/useNetworkQuality";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,19 @@ type JoinState =
   | "connected"
   | "failed";
 
+interface LinkCheckResult {
+  loading: boolean;
+  isOwner: boolean | null;
+  isExternal: boolean;
+  roomName: string | null;
+  callId: string | null;
+  shareLink: string | null;
+  roomUrl: string | null;
+  callName: string | null;
+  isDeleted: boolean;
+  isExpired: boolean;
+}
+
 const MEETING_TYPES = [
   { value: "discovery",   label: "Discovery",   emoji: "🔍" },
   { value: "demo",        label: "Demo",        emoji: "🎯" },
@@ -65,6 +80,104 @@ const MEETING_TYPES = [
   { value: "onboarding",  label: "Onboarding",  emoji: "🚀" },
   { value: "other",       label: "Other",       emoji: "📋" },
 ];
+
+// ─── Real-Time Network Quality Hook ──────────────────────────────────────────
+// Wraps useNetworkQuality but adds polling + immediate refresh capability
+// so the UI stays live without any page refresh.
+function useRealtimeNetwork() {
+  const base = useNetworkQuality();
+  const [quality, setQuality] = useState(base);
+  const pollRef = useRef<number>();
+
+  const refresh = useCallback(() => {
+    // Force re-evaluate by calling base.refresh and then reading from navigator
+    base.refresh();
+  }, [base]);
+
+  // Poll every 8 seconds so "offline recovery" is detected fast even on browsers
+  // that don't emit the Network Information API change event (e.g. Firefox).
+  useEffect(() => {
+    pollRef.current = window.setInterval(() => {
+      base.refresh();
+    }, 8_000);
+    return () => clearInterval(pollRef.current);
+  }, [base]);
+
+  // Sync base → local state whenever it changes
+  useEffect(() => {
+    setQuality({ ...base });
+  }, [
+    base.quality,
+    base.downlink,
+    base.rtt,
+    base.effectiveType,
+    base.type,
+    base.isWarning,
+    base.canProceed,
+    base.message,
+  ]);
+
+  return { ...quality, refresh };
+}
+
+// ─── Smart Link Checker ───────────────────────────────────────────────────────
+// Extracts room name from a link/room-name string and checks ownership.
+function extractRoomName(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.hostname.endsWith(".daily.co")) {
+      const parts = u.pathname.split("/").filter(Boolean);
+      if (parts.length > 0) return parts[parts.length - 1];
+    }
+    // Also handle /join/<room> links from our app
+    if (u.pathname.startsWith("/join/")) {
+      const room = u.pathname.replace("/join/", "").split("/")[0];
+      if (room) return room;
+    }
+  } catch { /* not a URL */ }
+  if (/^[a-zA-Z0-9_-]{3,80}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+async function checkLinkOwnership(link: string): Promise<Partial<LinkCheckResult>> {
+  const roomName = extractRoomName(link);
+  if (!roomName) return { loading: false, isOwner: null, roomName: null };
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-guest-room-info`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ room_name: roomName }),
+    });
+    const data = await res.json();
+    return {
+      loading: false,
+      isOwner: data.is_owner ?? false,
+      isExternal: data.is_external ?? false,
+      roomName: data.room_name ?? roomName,
+      callId: data.call_id ?? null,
+      shareLink: data.share_link ?? null,
+      roomUrl: data.room_url ?? `https://fixsense.daily.co/${roomName}`,
+      callName: data.call_name ?? null,
+      isDeleted: data.is_deleted ?? false,
+      isExpired: data.is_expired ?? false,
+    };
+  } catch {
+    return { loading: false, isOwner: null, roomName, isExternal: true };
+  }
+}
 
 // ─── Meeting Created Popup ─────────────────────────────────────────────────────
 
@@ -369,7 +482,9 @@ export default function LiveCall() {
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
   const { usage: teamUsage } = useTeamMinuteUsage();
-  const networkInfo = useNetworkQuality();
+
+  // ── Real-time network detector (no refresh needed) ─────────────────────────
+  const networkInfo = useRealtimeNetwork();
 
   const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
@@ -378,8 +493,32 @@ export default function LiveCall() {
 
   const { createRoom, isCreating, roomInfo, setRoomInfo, copyShareLink } = useDailyRoom();
 
-  // Track whether a room deletion is in progress
   const [isDeletingRoom, setIsDeletingRoom] = useState(false);
+
+  // ── Real-time room status via Supabase Realtime ────────────────────────────
+  // Updates the room banner instantly when the DB row changes (no polling).
+  const [realtimeRoomStatus, setRealtimeRoomStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!callId) { setRealtimeRoomStatus(null); return; }
+    const channel = supabase
+      .channel(`live-room-status:${callId}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "calls",
+        filter: `id=eq.${callId}`,
+      }, (payload) => {
+        const updated = payload.new as any;
+        setRealtimeRoomStatus(updated?.status ?? null);
+        // If room was deleted server-side, clear roomInfo
+        if (updated?.room_deleted_at || updated?.daily_room_expired) {
+          setRoomInfo(null);
+          toast.info("Room was closed. Create a new meeting to continue.");
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [callId, setRoomInfo]);
 
   // ── Rehydrate roomInfo from the live `calls` row on load / refresh ─────────
   useEffect(() => {
@@ -389,7 +528,6 @@ export default function LiveCall() {
         room_url:      (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
         share_link:    (liveCall as any).meeting_url ?? `${window.location.origin}/join/${(liveCall as any).daily_room_name}`,
         meeting_token: null,
-        // 24h from now — matches the edge function default
         expires_at:    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         mgmt_token:    null,
         auth_token:    null,
@@ -418,7 +556,7 @@ export default function LiveCall() {
     },
   });
 
-  // Audio streaming from Daily tracks
+  // Audio streaming
   const audioStreaming = useAudioStreaming({ callId: callId ?? null });
 
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
@@ -434,7 +572,6 @@ export default function LiveCall() {
   const [isStarting,             setIsStarting]             = useState(false);
   const [hostJoined,             setHostJoined]             = useState(false);
   const [activeMeetingTitle,     setActiveMeetingTitle]     = useState("");
-  const [joinLink,               setJoinLink]               = useState("");
   const [meetingType,            setMeetingType]            = useState("discovery");
   const [meetingTitleInput,      setMeetingTitleInput]      = useState("");
   const [meetingNotes,           setMeetingNotes]           = useState("");
@@ -442,6 +579,38 @@ export default function LiveCall() {
   const [networkWarningDismissed, setNetworkWarningDismissed] = useState(false);
   const [isAudioOn,              setIsAudioOn]              = useState(true);
   const [isVideoOn,              setIsVideoOn]              = useState(true);
+
+  // ── Smart link state ─────────────────────────────────────────────────────
+  const [joinLink, setJoinLink] = useState("");
+  const [linkCheck, setLinkCheck] = useState<LinkCheckResult>({
+    loading: false,
+    isOwner: null,
+    isExternal: false,
+    roomName: null,
+    callId: null,
+    shareLink: null,
+    roomUrl: null,
+    callName: null,
+    isDeleted: false,
+    isExpired: false,
+  });
+  const linkCheckTimerRef = useRef<number>();
+
+  // Debounce link check — fires 600ms after user stops typing
+  useEffect(() => {
+    clearTimeout(linkCheckTimerRef.current);
+    const roomName = extractRoomName(joinLink);
+    if (!roomName) {
+      setLinkCheck(prev => ({ ...prev, loading: false, isOwner: null, roomName: null }));
+      return;
+    }
+    setLinkCheck(prev => ({ ...prev, loading: true }));
+    linkCheckTimerRef.current = window.setTimeout(async () => {
+      const result = await checkLinkOwnership(joinLink);
+      setLinkCheck(prev => ({ ...prev, ...result, loading: false }));
+    }, 600);
+    return () => clearTimeout(linkCheckTimerRef.current);
+  }, [joinLink]);
 
   // Due-time meeting notifier
   const notifiedDueRef = useRef<Set<string>>(new Set());
@@ -480,7 +649,7 @@ export default function LiveCall() {
     return true;
   }, [teamUsage]);
 
-  // ── Delete room — calls manage-daily-room to clean up ──────────────────────
+  // ── Delete room ────────────────────────────────────────────────────────────
   const handleDeleteRoom = useCallback(async () => {
     if (!callId || isDeletingRoom) return;
     setIsDeletingRoom(true);
@@ -496,7 +665,6 @@ export default function LiveCall() {
       setRoomInfo(null);
       toast.success("Room deleted — create a new meeting when ready.");
     } catch (e: any) {
-      console.error("deleteRoom error:", e);
       toast.error(e?.message ?? "Failed to delete room. Try again.");
     } finally {
       setIsDeletingRoom(false);
@@ -527,6 +695,31 @@ export default function LiveCall() {
     }
   }, [roomInfo, callId, networkInfo, networkWarningDismissed, daily, navigate]);
 
+  // ── Join external / guest link ─────────────────────────────────────────────
+  const handleJoinLinkAsHost = useCallback(async () => {
+    if (!linkCheck.roomName) return;
+    if (linkCheck.isOwner && linkCheck.callId) {
+      // Reconnect to own room via Daily
+      setJoinState("connecting");
+      const success = await daily.joinCall({
+        rName: linkCheck.roomName,
+        displayName: "Host",
+      });
+      if (success) navigate(`/live/${linkCheck.callId}`);
+      else setJoinState("failed");
+    } else {
+      // Open external link in new tab
+      const url = linkCheck.roomUrl ?? `https://fixsense.daily.co/${linkCheck.roomName}`;
+      window.open(url, "_blank", "noopener");
+    }
+  }, [linkCheck, daily, navigate]);
+
+  const handleJoinLinkAsGuest = useCallback(() => {
+    const url = linkCheck.roomUrl ?? (linkCheck.roomName ? `https://fixsense.daily.co/${linkCheck.roomName}` : null);
+    if (url) window.open(url, "_blank", "noopener");
+    else toast.error("No valid room URL found.");
+  }, [linkCheck]);
+
   // ── Create meeting ─────────────────────────────────────────────────────────
   const handleCreateMeeting = useCallback(async () => {
     const title = meetingTitleInput.trim() || "Fixsense Meeting";
@@ -554,7 +747,7 @@ export default function LiveCall() {
         callId:     callRow.id,
         title,
         meetingType,
-        expMinutes: 1440, // 24h — matches edge function default
+        expMinutes: 1440, // 24h
       });
       setShowPopup(true);
       toast.success("Daily.co room created! Share the link with your prospect.");
@@ -567,7 +760,6 @@ export default function LiveCall() {
       if (err?.message === "PLAN_LIMIT_REACHED") {
         toast.error("Meeting limit reached. Upgrade to continue.");
       } else {
-        console.error("createRoom error:", err);
         toast.error(err?.message ?? "Could not create meeting room.");
       }
       setActiveMeetingTitle("");
@@ -620,6 +812,12 @@ export default function LiveCall() {
 
   const hasActiveSession = isLive && !!callId;
 
+  // Network quality color helper
+  const netColor = networkInfo.quality === "good" ? "text-emerald-400"
+    : networkInfo.quality === "fair" ? "text-amber-400"
+    : networkInfo.quality === "poor" ? "text-red-400"
+    : "text-muted-foreground";
+
   if (isLoading) {
     return (
       <DashboardLayout>
@@ -665,26 +863,47 @@ export default function LiveCall() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border border-border bg-secondary/40">
-              <Wifi className={cn("w-3.5 h-3.5",
-                networkInfo.quality === "good" ? "text-emerald-400"
-                : networkInfo.quality === "fair" ? "text-amber-400"
-                : networkInfo.quality === "poor" ? "text-red-400"
-                : "text-muted-foreground")} />
-              <span className="text-muted-foreground capitalize">{networkInfo.effectiveType ?? networkInfo.quality}</span>
-              {networkInfo.downlink !== null && <span className="text-muted-foreground/50">{networkInfo.downlink.toFixed(1)} Mbps</span>}
+            {/* Real-time network pill — updates without refresh */}
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border border-border bg-secondary/40 transition-all duration-300",
+              networkInfo.quality === "poor" && "border-red-500/30 bg-red-500/5",
+              networkInfo.quality === "fair" && "border-amber-500/30 bg-amber-500/5",
+            )}>
+              <Wifi className={cn("w-3.5 h-3.5 transition-colors duration-300", netColor)} />
+              <span className={cn("transition-colors duration-300", netColor)}>
+                {networkInfo.effectiveType ?? networkInfo.quality}
+              </span>
+              {networkInfo.downlink !== null && (
+                <span className="text-muted-foreground/50">{networkInfo.downlink.toFixed(1)} Mbps</span>
+              )}
+              {/* Live indicator dot — pulses when connected */}
+              <div className={cn(
+                "w-1.5 h-1.5 rounded-full shrink-0",
+                networkInfo.quality === "good" ? "bg-emerald-400" : networkInfo.quality === "fair" ? "bg-amber-400" : "bg-red-400",
+              )} style={networkInfo.quality === "good" ? { boxShadow: "0 0 4px rgba(52,211,153,0.8)" } : {}} />
             </div>
             <NotificationStatusPill />
           </div>
         </div>
 
-        {/* Network warning */}
+        {/* Network warning banner — appears/disappears without refresh */}
         {(networkInfo.quality === "fair" || networkInfo.quality === "poor") && !networkWarningDismissed && (
           <NetworkQualityBanner
             info={networkInfo}
             onDismiss={() => setNetworkWarningDismissed(true)}
-            onRetry={() => networkInfo.refresh()}
+            onRetry={() => { setNetworkWarningDismissed(false); networkInfo.refresh(); }}
           />
+        )}
+
+        {/* Network recovery notice */}
+        {networkInfo.quality === "good" && networkWarningDismissed && (
+          <div className="rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-2.5 flex items-center gap-2 text-xs text-green-400">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Connection restored — network is good.
+            <button onClick={() => setNetworkWarningDismissed(false)} className="ml-auto text-green-400/60 hover:text-green-400">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
         )}
 
         <MeetingNotificationBanner onEnabled={() => toast.success("Meeting reminders enabled!")} />
@@ -700,7 +919,7 @@ export default function LiveCall() {
           />
         )}
 
-        {/* Network quality from Daily SDK */}
+        {/* Daily SDK network quality while in call */}
         {hostJoined && daily.networkQuality !== "good" && daily.networkQuality !== "excellent" && (
           <div className={cn(
             "rounded-xl border px-4 py-3 flex items-center gap-3 text-sm",
@@ -785,13 +1004,26 @@ export default function LiveCall() {
           </div>
         )}
 
-        {/* Room created but not joined — includes Delete Room button */}
+        {/* Room ready banner — with real-time status badge */}
         {roomInfo && !hostJoined && joinState !== "failed" && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-4 h-4 text-primary" />
               <div>
-                <p className="text-sm font-semibold text-primary">Room ready — share the link</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-primary">Room ready — share the link</p>
+                  {/* Real-time status badge */}
+                  {realtimeRoomStatus && (
+                    <span className={cn(
+                      "text-[10px] font-semibold px-1.5 py-0.5 rounded-md uppercase tracking-wide",
+                      realtimeRoomStatus === "live"
+                        ? "bg-green-500/15 text-green-400"
+                        : "bg-secondary text-muted-foreground",
+                    )}>
+                      {realtimeRoomStatus}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground truncate max-w-xs font-mono">{roomInfo.share_link}</p>
               </div>
             </div>
@@ -807,8 +1039,6 @@ export default function LiveCall() {
                 {daily.isConnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Video className="w-3 h-3" />}
                 {daily.isConnecting ? "Connecting…" : "Join as Host"}
               </Button>
-              {/* Delete Room — lets user discard an expired/unwanted room and
-                  create a fresh one without needing to end the session manually */}
               <Button
                 size="sm"
                 variant="outline"
@@ -816,9 +1046,7 @@ export default function LiveCall() {
                 onClick={handleDeleteRoom}
                 disabled={isDeletingRoom}
               >
-                {isDeletingRoom
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : <Trash2 className="w-3 h-3" />}
+                {isDeletingRoom ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                 {isDeletingRoom ? "Deleting…" : "Delete Room"}
               </Button>
             </div>
@@ -835,8 +1063,20 @@ export default function LiveCall() {
                 <Zap className="w-3.5 h-3.5" />Create Meeting
               </h2>
 
+              {/* Network quality inline hint (compact, no banner) */}
               {networkInfo.quality !== "good" && networkInfo.quality !== "unknown" && (
-                <NetworkQualityBanner info={networkInfo} compact onRetry={() => networkInfo.refresh()} />
+                <div className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-lg text-xs border",
+                  networkInfo.quality === "poor"
+                    ? "border-red-500/20 bg-red-500/5 text-red-400"
+                    : "border-amber-500/20 bg-amber-500/5 text-amber-400",
+                )}>
+                  <WifiOff className="w-3 h-3 shrink-0" />
+                  <span className="leading-tight">{networkInfo.message}</span>
+                  <button onClick={() => networkInfo.refresh()} className="ml-auto shrink-0 opacity-60 hover:opacity-100">
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                </div>
               )}
 
               <div>
@@ -906,7 +1146,7 @@ export default function LiveCall() {
             </div>
           </div>
 
-          {/* CENTER: Join via Link */}
+          {/* CENTER: Join via Link — SMART HOST/GUEST */}
           <div className="space-y-4">
             <div className="glass rounded-xl border border-border p-4 space-y-4">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -914,14 +1154,14 @@ export default function LiveCall() {
               </h2>
 
               <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">Paste meeting link</label>
+                <label className="text-xs text-muted-foreground">Paste meeting link or room name</label>
                 <div className="relative">
                   <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <input
                     value={joinLink}
                     onChange={(e) => setJoinLink(e.target.value)}
                     placeholder="https://fixsense.daily.co/..."
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors font-mono placeholder:font-sans"
+                    className="w-full pl-9 pr-9 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors font-mono placeholder:font-sans"
                   />
                   {joinLink && (
                     <button onClick={() => setJoinLink("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -931,17 +1171,86 @@ export default function LiveCall() {
                 </div>
               </div>
 
+              {/* Link check result display */}
+              {joinLink && (
+                <div className={cn(
+                  "rounded-xl px-3.5 py-3 text-xs border transition-all",
+                  linkCheck.loading
+                    ? "border-border bg-secondary/30"
+                    : linkCheck.isOwner === true
+                      ? "border-indigo-500/25 bg-indigo-500/5"
+                      : linkCheck.isOwner === false
+                        ? "border-violet-500/25 bg-violet-500/5"
+                        : "border-border bg-secondary/20",
+                )}>
+                  {linkCheck.loading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Checking link…
+                    </div>
+                  ) : !linkCheck.roomName ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Unrecognised link format
+                    </div>
+                  ) : linkCheck.isDeleted ? (
+                    <div className="flex items-center gap-2 text-red-400">
+                      <X className="w-3.5 h-3.5" />
+                      This room has been deleted
+                    </div>
+                  ) : linkCheck.isExpired ? (
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      This room has expired
+                    </div>
+                  ) : linkCheck.isOwner === true ? (
+                    <div className="flex items-center gap-2 text-indigo-400">
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        Your room: <strong>{linkCheck.callName || linkCheck.roomName}</strong> — you'll join as Host
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-violet-400">
+                      <Globe className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {linkCheck.isExternal ? "External room" : "Someone else's room"} — you'll join as Guest
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Smart action buttons */}
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="gap-1.5"
-                  onClick={() => { if (joinLink.trim()) window.open(joinLink.trim(), "_blank"); else toast.error("Paste a meeting link first"); }}
-                  disabled={!joinLink.trim()}>
-                  <ExternalLink className="w-4 h-4" />Join
-                </Button>
-                <Button className="gap-1.5"
-                  onClick={() => { if (joinLink.trim()) window.open(joinLink.trim(), "_blank"); else toast.error("Paste a meeting link first"); }}
-                  disabled={!joinLink.trim()}>
-                  <Video className="w-4 h-4" />Host
-                </Button>
+                {(!joinLink || linkCheck.isOwner !== false) && (
+                  <Button
+                    variant={linkCheck.isOwner ? "default" : "outline"}
+                    className="gap-1.5"
+                    onClick={handleJoinLinkAsHost}
+                    disabled={linkCheck.loading || !linkCheck.roomName || linkCheck.isDeleted || linkCheck.isExpired}
+                  >
+                    {linkCheck.isOwner === true ? (
+                      <><UserCheck className="w-4 h-4" />Host</>
+                    ) : (
+                      <><Video className="w-4 h-4" />Join</>
+                    )}
+                  </Button>
+                )}
+                {joinLink && linkCheck.isOwner !== true && (
+                  <Button
+                    className="gap-1.5 col-span-2"
+                    onClick={handleJoinLinkAsGuest}
+                    disabled={linkCheck.loading || !linkCheck.roomName || linkCheck.isDeleted || linkCheck.isExpired}
+                  >
+                    <Globe className="w-4 h-4" />Join as Guest
+                  </Button>
+                )}
+                {!joinLink && (
+                  <Button variant="outline" className="gap-1.5" disabled>
+                    <Globe className="w-4 h-4" />Join as Guest
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -949,6 +1258,11 @@ export default function LiveCall() {
               <div className="glass rounded-xl border border-border p-4 space-y-3">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                   <Radio className="w-3.5 h-3.5 text-green-400" />Current Room
+                  {/* Live status dot — real-time */}
+                  <span className="ml-auto flex items-center gap-1 text-[10px] text-green-400 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    {realtimeRoomStatus ?? "live"}
+                  </span>
                 </h2>
                 <div
                   className="flex items-center gap-2 p-2.5 rounded-lg"
@@ -1034,4 +1348,5 @@ export default function LiveCall() {
     </DashboardLayout>
   );
 }
+
 
