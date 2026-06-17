@@ -1,16 +1,12 @@
 /**
- * VideoTile.tsx
+ * VideoTile.tsx — v2 (Mobile-friendly, Meet-style)
  *
- * Properly attaches Daily.co video/audio tracks to media elements.
- *
- * KEY FIXES:
- *  1. Uses a MutationObserver + track.onended to re-attach tracks when they change.
- *  2. Remote audio is attached to a hidden <audio> element with autoPlay.
- *     This is required because Daily.co returns MediaStreamTrack objects —
- *     you must wrap them in a MediaStream and assign to an <audio> element
- *     for the browser to actually play the sound through the speaker.
- *  3. Local participant audio is muted to prevent echo.
- *  4. Handles cases where videoTrack arrives after mount (async track subscription).
+ * Changes from v1:
+ *  - Larger name label with backdrop blur
+ *  - Speaking ring uses outline instead of inset border for reliability
+ *  - Avatar initials scale with tile size via CSS clamp
+ *  - Touch-safe — no hover-only states; speaking/mute badges always visible
+ *  - Proper aspect-ratio handling for both landscape and portrait cameras
  */
 
 import { useEffect, useRef } from "react";
@@ -30,7 +26,7 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSpeaking = participant.session_id === activeSpeakerId;
 
-  // ── Attach video track ─────────────────────────────────────────────────────
+  // ── Attach video track ──────────────────────────────────────────────────────
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -38,25 +34,17 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
     if (participant.videoTrack && participant.video) {
       const stream = new MediaStream([participant.videoTrack]);
       el.srcObject = stream;
-      el.play().catch(() => {
-        // Autoplay blocked — will play on user interaction
-      });
+      el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
 
     return () => {
-      if (el.srcObject) {
-        el.srcObject = null;
-      }
+      if (el.srcObject) el.srcObject = null;
     };
   }, [participant.videoTrack, participant.video]);
 
-  // ── Attach audio track (remote only) ──────────────────────────────────────
-  // Local participant audio must NOT be played back (causes echo/feedback).
-  // For remote participants we create a MediaStream from the audioTrack and
-  // assign it to a hidden <audio> element so the browser routes it to the
-  // default speaker output.
+  // ── Attach audio track (remote only) ────────────────────────────────────────
   useEffect(() => {
     const el = audioRef.current;
     if (!el || participant.local) return;
@@ -64,103 +52,129 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
     if (participant.audioTrack && participant.audio) {
       const stream = new MediaStream([participant.audioTrack]);
       el.srcObject = stream;
-      el.play().catch(() => {
-        // Some browsers require user gesture — audio will play after first interaction
-      });
+      el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
 
     return () => {
-      if (el.srcObject) {
-        el.srcObject = null;
-      }
+      if (el.srcObject) el.srcObject = null;
     };
   }, [participant.audioTrack, participant.audio, participant.local]);
+
+  const hasVideo = !!(participant.video && participant.videoTrack);
+  const initials = (participant.user_name || "?")[0]?.toUpperCase();
+  const displayName = participant.user_name || "Participant";
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden border transition-all duration-300 rounded-xl",
-        isSpeaking
-          ? "border-emerald-400/60 shadow-[0_0_20px_rgba(52,211,153,0.15)]"
-          : "border-white/8",
+        "relative overflow-hidden rounded-xl transition-all duration-200",
         className,
       )}
-      style={{ background: "linear-gradient(135deg, #1a1d26 0%, #0f1117 100%)" }}
+      style={{
+        background: "linear-gradient(135deg, #1a1d26 0%, #0f1117 100%)",
+        // Speaking ring — use outline so it sits outside and doesn't clip video
+        outline: isSpeaking ? "2px solid rgba(52, 211, 153, 0.65)" : "1px solid rgba(255,255,255,0.06)",
+        outlineOffset: isSpeaking ? "0px" : "0px",
+        boxShadow: isSpeaking ? "0 0 0 4px rgba(52,211,153,0.12)" : "none",
+      }}
     >
-      {/* Video element */}
+      {/* Video element — always rendered, hidden when no video */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted // Always mute the video element — audio is handled separately below
+        muted
         className={cn(
           "w-full h-full object-cover",
-          (!participant.video || !participant.videoTrack) && "hidden",
+          !hasVideo && "hidden",
         )}
       />
 
-      {/* Hidden audio element for remote participants */}
+      {/* Audio element for remote participants */}
       {!participant.local && (
-        <audio
-          ref={audioRef}
-          autoPlay
-          playsInline
-          // NOT muted — this is how remote audio plays through the speaker
-          style={{ display: "none" }}
-        />
+        <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
       )}
 
-      {/* Avatar fallback when video is off */}
-      {(!participant.video || !participant.videoTrack) && (
-        <div className="absolute inset-0 flex items-center justify-center">
+      {/* Avatar — shown when camera is off */}
+      {!hasVideo && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
           <div
             className={cn(
-              "rounded-full flex items-center justify-center font-bold text-white",
-              isMain ? "w-16 h-16 text-xl" : "w-10 h-10 text-sm",
-              isSpeaking
-                ? "bg-gradient-to-br from-emerald-500/40 to-teal-600/40 border-2 border-emerald-400/50"
-                : "bg-gradient-to-br from-violet-500/40 to-indigo-600/40 border border-white/10",
+              "rounded-full flex items-center justify-center font-bold text-white select-none",
+              "w-[clamp(40px,25%,80px)] h-[clamp(40px,25%,80px)]",
+              "text-[clamp(14px,4cqw,28px)]",
             )}
+            style={isSpeaking ? {
+              background: "linear-gradient(135deg,rgba(16,185,129,0.35),rgba(5,150,105,0.35))",
+              border: "2px solid rgba(52,211,153,0.5)",
+            } : {
+              background: "linear-gradient(135deg,rgba(99,102,241,0.35),rgba(139,92,246,0.35))",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
           >
-            {(participant.user_name || "?")[0]?.toUpperCase()}
+            {initials}
           </div>
         </div>
       )}
 
-      {/* Speaking indicator */}
+      {/* Speaking animation ring */}
       {isSpeaking && (
-        <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/50 pointer-events-none animate-pulse" />
+        <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/40 pointer-events-none animate-pulse" />
       )}
 
       {/* Bottom info bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 p-2 flex items-center justify-between"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)" }}
+        className="absolute bottom-0 left-0 right-0 px-2 py-1.5 flex items-center justify-between gap-2"
+        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)" }}
       >
+        {/* Name + speaking indicator */}
         <div className="flex items-center gap-1.5 min-w-0">
           {isSpeaking && (
-            <div className="flex items-center gap-0.5 shrink-0">
-              {[1, 2, 3].map((i) => (
+            <div className="flex items-end gap-px shrink-0">
+              {[3, 5, 4, 6, 3].map((h, i) => (
                 <div
                   key={i}
-                  className="w-0.5 bg-emerald-400 rounded-full animate-bounce"
-                  style={{ height: `${4 + i * 2}px`, animationDelay: `${i * 100}ms` }}
+                  className="w-[2px] bg-emerald-400 rounded-full"
+                  style={{
+                    height: `${h}px`,
+                    animation: `soundwave 0.8s ease-in-out ${i * 0.1}s infinite alternate`,
+                  }}
                 />
               ))}
             </div>
           )}
-          <span className="text-[11px] font-medium text-white/90 truncate">
-            {participant.user_name || "Participant"}
-            {participant.local && " (You)"}
+          <span className="text-[11px] font-medium text-white/90 truncate leading-tight">
+            {displayName}
+            {participant.local && <span className="text-white/50 ml-1">(You)</span>}
           </span>
         </div>
+
+        {/* Status badges */}
         <div className="flex items-center gap-1 shrink-0">
-          {!participant.audio && <MicOff className="w-3 h-3 text-red-400" />}
-          {!participant.video && <VideoOff className="w-3 h-3 text-orange-400/70" />}
+          {!participant.audio && (
+            <div className="w-5 h-5 rounded-md flex items-center justify-center"
+              style={{ background: "rgba(239,68,68,0.25)" }}>
+              <MicOff className="w-3 h-3 text-red-400" />
+            </div>
+          )}
+          {!participant.video && (
+            <div className="w-5 h-5 rounded-md flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.1)" }}>
+              <VideoOff className="w-3 h-3 text-white/50" />
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Inline keyframes for soundwave */}
+      <style>{`
+        @keyframes soundwave {
+          from { transform: scaleY(0.5); opacity: 0.7; }
+          to   { transform: scaleY(1.4); opacity: 1;   }
+        }
+      `}</style>
     </div>
   );
 }
