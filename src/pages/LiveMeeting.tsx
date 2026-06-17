@@ -1,5 +1,5 @@
 /**
- * LiveMeeting.tsx — Fixsense AI Meeting Workspace (v5 — Complete Rebuild)
+ * LiveMeeting.tsx — Fixsense AI Meeting Workspace (v6 — Host identity fix)
  *
  * Full 3-panel layout:
  *   LEFT   — Participants, Team Chat, Notes, Files, Deals, Notifications
@@ -8,10 +8,24 @@
  *
  * Mobile: tab-based navigation (Meeting / Chat / AI / Deals / People)
  *
+ * v6 changes:
+ *  - Host's real display name (from profiles.full_name, falling back to
+ *    email local-part, then "Host") is now threaded into useDailyCall's
+ *    userName AND useAudioStreaming's speakerLabel. Previously both were
+ *    hardcoded to the literal string "Host"/"You", so the transcript never
+ *    showed the host's actual name — only a generic label. Combined with
+ *    the guest-side fix in GuestJoin.tsx (guests now record their own mic
+ *    and stream to transcribe-guest-stream with their real entered name),
+ *    the live transcript and post-call transcript now show real names for
+ *    both sides of the call.
+ *  - Camera/mic toggle behavior unchanged (it was already wired correctly
+ *    via daily.setAudioEnabled/setVideoEnabled) — kept here verbatim so the
+ *    host's on/off state stays in sync with the actual Daily.co track state.
+ *
  * Connects to existing hooks:
  *   useDailyCall, useAudioStreaming, useLiveCall, useMeetingWorkspace,
  *   useCoaching, useDealRooms, useNotifications, useTeam, useMinuteUsage,
- *   usePendingGuestRequests
+ *   usePendingGuestRequests, useUserProfile
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -41,6 +55,7 @@ import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCal
 import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
+import { useUserProfile } from "@/hooks/useSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingGuestRequests } from "@/hooks/useGuestApproval";
 import { useMeetingWorkspace } from "@/hooks/useMeetingWorkspace";
@@ -100,6 +115,14 @@ function sentimentMeta(score: number) {
   if (score >= 70) return { label: "Positive", color: T.emerald, icon: TrendingUp };
   if (score >= 45) return { label: "Neutral",  color: T.amber,   icon: Minus };
   return                  { label: "At Risk",  color: T.red,     icon: TrendingDown };
+}
+
+/** Derives a sensible display name for the host from their profile/auth record. */
+function deriveHostName(profile: { full_name?: string | null; email?: string | null } | undefined, authEmail?: string | null): string {
+  if (profile?.full_name && profile.full_name.trim()) return profile.full_name.trim();
+  const email = profile?.email || authEmail || "";
+  if (email.includes("@")) return email.split("@")[0];
+  return "Host";
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -794,7 +817,9 @@ const RightPanel = memo(({
                   )}
                 </div>
               ) : transcripts.map((line: any) => {
-                const isHost = line.speaker === "You" || line.speaker === "Rep" || line.speaker === "Host";
+                const isHost = line.speaker_role
+                  ? line.speaker_role !== "guest"
+                  : !line.is_guest;
                 return (
                   <TxLine key={line.id}
                     speaker={line.speaker} speakerName={line.speaker_name}
@@ -1149,6 +1174,15 @@ export default function LiveMeeting() {
   const { user } = useAuth();
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
+  const { profile } = useUserProfile();
+
+  // Real host display name — used for both the Daily.co participant name
+  // AND the transcript speaker label, so the host never shows up as the
+  // generic literal "Host"/"You" in the transcript or participant list.
+  const hostName = useMemo(
+    () => deriveHostName(profile, user?.email),
+    [profile, user?.email],
+  );
 
   const { liveCall, isLive, isLoading, transcripts, objections, topics, endCall, callId } =
     useLiveCall({ onCallEnded: () => setStatus("available") });
@@ -1160,7 +1194,7 @@ export default function LiveMeeting() {
     callId:   callId ?? null,
     roomName,
     meetingToken,
-    userName: "Host",
+    userName: hostName,
     onJoined:          () => setStatus("on_call"),
     onLeft:            () => {},
     onParticipantJoined: (p) => toast.success(`${p.user_name || "Someone"} joined`),
@@ -1173,7 +1207,9 @@ export default function LiveMeeting() {
     },
   });
 
-  const audioStreaming = useAudioStreaming({ callId: callId ?? null });
+  // speakerLabel now carries the host's real name instead of the literal
+  // "You", so transcripts.speaker_name reflects who actually spoke.
+  const audioStreaming = useAudioStreaming({ callId: callId ?? null, speakerLabel: hostName });
 
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding: isRespondingToGuest } =
     usePendingGuestRequests(callId);
@@ -1195,18 +1231,22 @@ export default function LiveMeeting() {
   useEffect(() => {
     if (!roomName || joinAttemptedRef.current || daily.isConnected || daily.isConnecting || daily.callState === "error") return;
     joinAttemptedRef.current = true;
-    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: "Host" })
+    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: hostName })
       .then((ok) => { if (!ok) joinAttemptedRef.current = false; });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomName]);
+  }, [roomName, hostName]);
 
-  // Hook participant audio into transcription
+  // Hook participant audio into transcription. Only the HOST's own local
+  // track is recorded here — remote (guest) tracks are intentionally
+  // skipped because guests now record and transcribe their own mic
+  // directly from GuestJoin.tsx via transcribe-guest-stream, which is the
+  // only path that has access to the guest's real entered name.
   const tracksStartedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const p of daily.participants) {
-      if (p.audioTrack && !tracksStartedRef.current.has(p.session_id)) {
+      if (p.audioTrack && p.local && !tracksStartedRef.current.has(p.session_id)) {
         tracksStartedRef.current.add(p.session_id);
-        audioStreaming.startTrackRecording(p.audioTrack, p.session_id, p.local);
+        audioStreaming.startTrackRecording(p.audioTrack, p.session_id, true);
       }
     }
   }, [daily.participants, audioStreaming]);
@@ -1219,9 +1259,9 @@ export default function LiveMeeting() {
   // Derived data
   const talkRatio = useMemo(() => {
     if (!transcripts.length) return { rep: 50, prospect: 50 };
-    const isHost = (t: any) => t.speaker === "You" || t.speaker === "Rep" || t.speaker === "Host";
-    const rw = transcripts.filter(isHost).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
-    const pw = transcripts.filter((t: any) => !isHost(t)).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const isHostLine = (t: any) => (t.speaker_role ? t.speaker_role !== "guest" : !t.is_guest);
+    const rw = transcripts.filter(isHostLine).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
+    const pw = transcripts.filter((t: any) => !isHostLine(t)).reduce((s, t) => s + t.text.split(/\s+/).length, 0);
     const total = rw + pw;
     if (!total) return { rep: 50, prospect: 50 };
     return { rep: Math.round((rw / total) * 100), prospect: Math.round((pw / total) * 100) };
@@ -1254,9 +1294,9 @@ export default function LiveMeeting() {
   const handleRetryJoin = useCallback(() => {
     if (!roomName) return;
     joinAttemptedRef.current = false;
-    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: "Host" })
+    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: hostName })
       .then((ok) => { joinAttemptedRef.current = ok; });
-  }, [roomName, meetingToken, daily]);
+  }, [roomName, meetingToken, hostName, daily]);
 
   if (isLoading) {
     return (
