@@ -1,617 +1,573 @@
 /**
- * GuestJoin.tsx — v4 (Professional Lobby)
+ * GuestJoin.tsx — v2 (Mobile-first, Meet-style grid)
  *
- * Route: /join/:roomName
- * Public — NO Fixsense auth required.
- *
- * v4 changes over v3:
- *  - Replaced simple name entry with full GuestLobby component
- *    (camera preview, mic meter, network test, speaker test, device picker)
- *  - Tracks and reuses the MediaStream from the lobby so camera turns on
- *    immediately when admitted — no second permission prompt
- *  - Reconnection: auto-retries on connection drop up to 3 times with
- *    exponential backoff; shows reconnection indicator
- *  - In-call: full quality indicators (network badge, speaking indicator)
- *  - Per-guest health event logging via log-meeting-health edge function
- *  - Mobile-optimised viewport and controls
+ * Guest experience for joining a Fixsense meeting via share link.
+ * Features:
+ *  - Pre-join lobby with camera/mic preview
+ *  - Google Meet-style video grid with spotlight + strip
+ *  - Click any tile to pin/focus them
+ *  - Mobile bottom sheet for participants
+ *  - Responsive from 320px up
+ *  - Guest approval request flow
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
-  Loader2, Shield, Users, Video, VideoOff, Mic, MicOff,
-  AlertCircle, RefreshCw, CheckCircle2, PhoneOff, Hourglass, XCircle,
-  Wifi, WifiOff,
+  Mic, MicOff, Video, VideoOff, PhoneOff, Users,
+  Loader2, WifiOff, RefreshCw, Settings, LayoutGrid,
+  Maximize2, PanelRight, X, Pin, PinOff, ChevronRight,
+  AlertCircle, CheckCircle2, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useDailyCall, DailyParticipant } from "@/hooks/useDailyCall";
-import GuestLobby, { type LobbyPassResult } from "@/components/GuestLobby";
+import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
+import { VideoTile } from "@/components/VideoTile";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// ─── Env ────────────────────────────────────────────────────────────────────
-const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+// ─── Types ──────────────────────────────────────────────────────────────────────
+type VideoLayout = "spotlight" | "grid" | "sidebar";
+type JoinStep    = "lobby" | "requesting" | "waiting" | "admitted" | "denied";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-interface RoomInfo {
-  found: boolean;
-  room_url: string;
-  room_name: string;
-  call_name: string;
-  status: string;
-  id?: string;
+// ─── Design tokens ───────────────────────────────────────────────────────────────
+const T = {
+  bg:     "#080a12",
+  panel:  "rgba(12,14,22,0.96)",
+  card:   "rgba(255,255,255,0.04)",
+  border: "rgba(255,255,255,0.07)",
+  accent: "#6366f1",
+  text:   "rgba(255,255,255,0.85)",
+  muted:  "rgba(255,255,255,0.35)",
+  subtle: "rgba(255,255,255,0.12)",
+};
+
+function qualityColor(q: CallQuality) {
+  return q === "excellent" || q === "good" ? "#10b981" : q === "fair" ? "#f59e0b" : "#ef4444";
+}
+function fmt(s: number) {
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-type PageStatus =
-  | "loading"
-  | "name_entry"
-  | "lobby"
-  | "waiting"
-  | "denied"
-  | "connecting"
-  | "reconnecting"
-  | "in_meeting"
-  | "error";
+// ─── Pinnable tile ──────────────────────────────────────────────────────────────
+const PinnableTile = memo(({
+  participant, activeSpeakerId, isPinned, onPin, className, isMain = false,
+}: {
+  participant: DailyParticipant; activeSpeakerId: string | null;
+  isPinned: boolean; onPin: (id: string | null) => void;
+  className?: string; isMain?: boolean;
+}) => (
+  <div className={cn("relative group cursor-pointer select-none rounded-xl overflow-hidden", className)}
+    onClick={() => onPin(isPinned ? null : participant.session_id)}>
+    <VideoTile participant={participant} isMain={isMain} activeSpeakerId={activeSpeakerId} className="w-full h-full" />
+    <div className={cn(
+      "absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all duration-150",
+      "opacity-0 group-hover:opacity-100",
+      isPinned ? "opacity-100" : "",
+    )}
+      style={{ background: isPinned ? "rgba(99,102,241,0.85)" : "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", color: "#fff" }}>
+      {isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+      {isPinned ? "Unpin" : "Pin"}
+    </div>
+  </div>
+));
 
-// ─── API helpers ─────────────────────────────────────────────────────────────
-
-async function fetchRoomInfo(roomName: string): Promise<RoomInfo> {
-  const res = await fetch(
-    `${SUPABASE_URL}/functions/v1/get-guest-room-info?room=${encodeURIComponent(roomName)}`,
-    { headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" } }
+// ─── Video grid (same logic as LiveMeeting) ─────────────────────────────────────
+const VideoGrid = memo(({
+  participants, activeSpeakerId, isConnecting, error, onRetry,
+  pinnedId, onPin, layout, onLayoutChange,
+}: {
+  participants: DailyParticipant[]; activeSpeakerId: string | null;
+  isConnecting: boolean; error: string | null; onRetry: () => void;
+  pinnedId: string | null; onPin: (id: string | null) => void;
+  layout: VideoLayout; onLayoutChange: (l: VideoLayout) => void;
+}) => {
+  if (error) return (
+    <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
+      <WifiOff className="w-10 h-10 text-red-400" />
+      <div>
+        <p className="text-sm font-semibold text-red-400 mb-1">Connection failed</p>
+        <p className="text-xs max-w-xs" style={{ color: T.muted }}>{error}</p>
+      </div>
+      <button onClick={onRetry} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
+        style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)" }}>
+        <RefreshCw className="w-4 h-4" /> Retry
+      </button>
+    </div>
   );
-  if (!res.ok) return { found: false, room_url: `https://fixsense.daily.co/${roomName}`, room_name: roomName, call_name: "Fixsense Meeting", status: "unknown" };
-  return res.json();
-}
 
-async function requestToJoin(roomName: string, guestName: string) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/guest-join-request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
-    body: JSON.stringify({ room_name: roomName, guest_name: guestName }),
-  });
-  if (!res.ok) throw new Error("Could not reach the host. Please try again.");
-  return res.json() as Promise<{ requires_approval: boolean; request_id: string | null; status: string }>;
-}
+  if (isConnecting) return (
+    <div className="h-full flex flex-col items-center justify-center gap-3">
+      <Loader2 className="w-8 h-8 animate-spin" style={{ color: T.accent }} />
+      <p className="text-sm" style={{ color: T.muted }}>Joining meeting…</p>
+    </div>
+  );
 
-async function checkRequestStatus(requestId: string) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/guest-request-status?id=${requestId}`, {
-    headers: { apikey: SUPABASE_ANON_KEY },
-  });
-  if (!res.ok) throw new Error("status check failed");
-  return res.json() as Promise<{ status: string }>;
-}
+  if (participants.length === 0) return (
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-6">
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+        style={{ background: T.card, border: `1px solid ${T.border}` }}>
+        <Users className="w-8 h-8" style={{ color: T.subtle }} />
+      </div>
+      <p className="text-sm" style={{ color: T.muted }}>Waiting for others…</p>
+    </div>
+  );
 
-function logHealthEvent(callId: string | undefined, type: string, severity: "info" | "warn" | "error", meta: Record<string, unknown> = {}) {
-  if (!callId) return;
-  fetch(`${SUPABASE_URL}/functions/v1/log-meeting-health`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
-    body: JSON.stringify({ call_id: callId, event_type: type, severity, metadata: meta }),
-  }).catch(() => {});
-}
+  const LayoutSwitcher = (
+    <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+      {(["spotlight", "grid", "sidebar"] as VideoLayout[]).map((l) => {
+        const icons = { spotlight: Maximize2, grid: LayoutGrid, sidebar: PanelRight };
+        const Icon = icons[l];
+        return (
+          <button key={l} onClick={(e) => { e.stopPropagation(); onLayoutChange(l); }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+            style={{
+              background: layout === l ? "rgba(99,102,241,0.85)" : "rgba(0,0,0,0.45)",
+              backdropFilter: "blur(8px)",
+              border: `1px solid ${layout === l ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)"}`,
+            }}>
+            <Icon className="w-3.5 h-3.5 text-white" />
+          </button>
+        );
+      })}
+    </div>
+  );
 
-// ─── Video tile (lightweight, for in-call) ───────────────────────────────────
+  if (participants.length === 1) return (
+    <div className="relative h-full">
+      {LayoutSwitcher}
+      <PinnableTile participant={participants[0]} activeSpeakerId={activeSpeakerId}
+        isPinned={false} onPin={onPin} isMain className="h-full" />
+    </div>
+  );
 
-function GuestVideoTile({ participant, isMain = false, activeSpeakerId, className }: {
-  participant: DailyParticipant; isMain?: boolean; activeSpeakerId: string | null; className?: string;
-}) {
+  const spotlightId = pinnedId ?? activeSpeakerId ?? participants[0]?.session_id;
+  const spotlight   = participants.find((p) => p.session_id === spotlightId) ?? participants[0];
+  const strip       = participants.filter((p) => p.session_id !== spotlight.session_id);
+
+  if (layout === "spotlight") return (
+    <div className="relative h-full flex flex-col gap-2">
+      {LayoutSwitcher}
+      <div className="flex-1 min-h-0">
+        <PinnableTile participant={spotlight} activeSpeakerId={activeSpeakerId}
+          isPinned={!!pinnedId} onPin={onPin} isMain className="h-full" />
+      </div>
+      {strip.length > 0 && (
+        <div className="flex gap-2 shrink-0 overflow-x-auto pb-1"
+          style={{ height: "clamp(80px, 20%, 130px)" }}>
+          {strip.map((p) => (
+            <div key={p.session_id} className="shrink-0 rounded-xl overflow-hidden"
+              style={{ width: "clamp(120px, 160px, 200px)", height: "100%" }}>
+              <PinnableTile participant={p} activeSpeakerId={activeSpeakerId}
+                isPinned={pinnedId === p.session_id} onPin={onPin} className="h-full w-full" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (layout === "sidebar") return (
+    <div className="relative h-full flex gap-2">
+      {LayoutSwitcher}
+      <div className="flex-1 min-w-0">
+        <PinnableTile participant={spotlight} activeSpeakerId={activeSpeakerId}
+          isPinned={!!pinnedId} onPin={onPin} isMain className="h-full" />
+      </div>
+      {strip.length > 0 && (
+        <div className="flex flex-col gap-2 overflow-y-auto" style={{ width: "clamp(100px, 22%, 180px)" }}>
+          {strip.map((p) => (
+            <div key={p.session_id} className="shrink-0 rounded-xl overflow-hidden aspect-video">
+              <PinnableTile participant={p} activeSpeakerId={activeSpeakerId}
+                isPinned={pinnedId === p.session_id} onPin={onPin} className="h-full w-full" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // Grid
+  const count = participants.length;
+  const cols  = count <= 2 ? 2 : count <= 4 ? 2 : count <= 6 ? 3 : 4;
+  const rows  = Math.ceil(count / cols);
+  return (
+    <div className="relative h-full">
+      {LayoutSwitcher}
+      <div className="h-full gap-2" style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
+        {participants.map((p) => (
+          <PinnableTile key={p.session_id} participant={p} activeSpeakerId={activeSpeakerId}
+            isPinned={pinnedId === p.session_id} onPin={onPin} className="h-full" />
+        ))}
+      </div>
+    </div>
+  );
+});
+
+// ─── Pre-join lobby camera preview ──────────────────────────────────────────────
+const LobbyPreview = memo(({ stream, isAudioOn, isVideoOn }: {
+  stream: MediaStream | null; isAudioOn: boolean; isVideoOn: boolean;
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const isSpeaking = participant.session_id === activeSpeakerId;
-
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (participant.videoTrack && participant.video) {
-      el.srcObject = new MediaStream([participant.videoTrack]);
+    if (stream && isVideoOn) {
+      el.srcObject = stream;
       el.play().catch(() => {});
-    } else { el.srcObject = null; }
-    return () => { if (el.srcObject) el.srcObject = null; };
-  }, [participant.videoTrack, participant.video]);
-
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el || participant.local) return;
-    if (participant.audioTrack && participant.audio) {
-      el.srcObject = new MediaStream([participant.audioTrack]);
-      el.play().catch(() => {});
-    } else { el.srcObject = null; }
-    return () => { if (el.srcObject) el.srcObject = null; };
-  }, [participant.audioTrack, participant.audio, participant.local]);
+    } else {
+      el.srcObject = null;
+    }
+  }, [stream, isVideoOn]);
 
   return (
-    <div className={cn(
-      "relative overflow-hidden border transition-all duration-300 rounded-xl",
-      isSpeaking ? "border-emerald-400/60 shadow-[0_0_20px_rgba(52,211,153,0.15)]" : "border-white/8",
-      className,
-    )} style={{ background: "linear-gradient(135deg, #1a1d26 0%, #0f1117 100%)" }}>
-      <video ref={videoRef} autoPlay playsInline muted
-        className={cn("w-full h-full object-cover scale-x-[-1]", (!participant.video || !participant.videoTrack) && "hidden")} />
-      {!participant.local && <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />}
-      {(!participant.video || !participant.videoTrack) && (
+    <div className="relative w-full aspect-video rounded-2xl overflow-hidden"
+      style={{ background: "linear-gradient(135deg,#1a1d26,#0f1117)" }}>
+      <video ref={videoRef} autoPlay playsInline muted className={cn("w-full h-full object-cover", (!isVideoOn || !stream) && "hidden")} />
+      {(!isVideoOn || !stream) && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className={cn(
-            "rounded-full flex items-center justify-center font-bold text-white",
-            isMain ? "w-16 h-16 text-xl" : "w-10 h-10 text-sm",
-            isSpeaking ? "bg-gradient-to-br from-emerald-500/40 to-teal-600/40 border-2 border-emerald-400/50"
-                       : "bg-gradient-to-br from-violet-500/40 to-indigo-600/40 border border-white/10",
-          )}>{(participant.user_name || "?")[0]?.toUpperCase()}</div>
+          <div className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl text-white"
+            style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.4),rgba(139,92,246,0.4))", border: "2px solid rgba(99,102,241,0.3)" }}>
+            ?
+          </div>
         </div>
       )}
-      {isSpeaking && <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/50 pointer-events-none animate-pulse" />}
-      <div className="absolute bottom-0 left-0 right-0 p-2 flex items-center justify-between"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)" }}>
-        <span className="text-[11px] font-medium text-white/90 truncate">
-          {participant.user_name || "Participant"}{participant.local && " (You)"}
-        </span>
-        <div className="flex gap-1">
-          {!participant.audio && <MicOff className="w-3 h-3 text-red-400" />}
-          {!participant.video && <VideoOff className="w-3 h-3 text-orange-400/70" />}
+      {/* Audio indicator */}
+      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-lg"
+        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
+        {isAudioOn
+          ? <div className="flex items-end gap-px">{[3,5,4,6,3].map((h, i) => (
+              <div key={i} className="w-[2px] bg-emerald-400 rounded-full" style={{ height: `${h}px` }} />
+            ))}</div>
+          : <MicOff className="w-3 h-3 text-red-400" />}
+        <span className="text-[10px]" style={{ color: T.muted }}>{isAudioOn ? "Mic on" : "Mic off"}</span>
+      </div>
+    </div>
+  );
+});
+
+// ─── MAIN ───────────────────────────────────────────────────────────────────────
+export default function GuestJoin() {
+  const { roomName } = useParams<{ roomName: string }>();
+  const navigate     = useNavigate();
+
+  const [step,        setStep]        = useState<JoinStep>("lobby");
+  const [guestName,   setGuestName]   = useState("");
+  const [isAudioOn,   setIsAudioOn]   = useState(true);
+  const [isVideoOn,   setIsVideoOn]   = useState(true);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [requestId,   setRequestId]   = useState<string | null>(null);
+  const [pinnedId,    setPinnedId]    = useState<string | null>(null);
+  const [videoLayout, setVideoLayout] = useState<VideoLayout>("spotlight");
+  const [showPeople,  setShowPeople]  = useState(false);
+
+  // Get local camera/mic for lobby preview
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(setLocalStream)
+      .catch(() => {
+        // Try audio only
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(setLocalStream)
+          .catch(() => {});
+      });
+    return () => { localStream?.getTracks().forEach((t) => t.stop()); };
+  }, []); // eslint-disable-line
+
+  const daily = useDailyCall({
+    callId:   null,
+    roomName: step === "admitted" ? (roomName ?? null) : null,
+    userName: guestName || "Guest",
+    onJoined:  () => setStep("admitted"),
+    onLeft:    () => navigate("/"),
+    onParticipantJoined: (p) => toast.info(`${p.user_name || "Someone"} joined`),
+    onParticipantLeft:   () => {},
+  });
+
+  // Poll for admission status
+  useEffect(() => {
+    if (step !== "waiting" || !requestId) return;
+    const interval = setInterval(async () => {
+      const { data } = await (supabase as any)
+        .from("call_guest_requests")
+        .select("status")
+        .eq("id", requestId)
+        .maybeSingle();
+      if (data?.status === "admitted") {
+        setStep("admitted");
+        daily.joinCall({ rName: roomName!, displayName: guestName || "Guest" });
+      } else if (data?.status === "denied" || data?.status === "expired") {
+        setStep("denied");
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [step, requestId, roomName, guestName, daily]);
+
+  const handleRequestJoin = async () => {
+    if (!guestName.trim() || !roomName) return;
+    setStep("requesting");
+    try {
+      const { data, error } = await supabase.functions.invoke("guest-join-request", {
+        body: { room_name: roomName, guest_name: guestName.trim() },
+      });
+      if (error) throw error;
+      setRequestId(data?.request_id ?? null);
+      setStep("waiting");
+    } catch {
+      toast.error("Couldn't send join request. Check the meeting link.");
+      setStep("lobby");
+    }
+  };
+
+  const handleLeave = useCallback(async () => {
+    localStream?.getTracks().forEach((t) => t.stop());
+    await daily.leaveCall();
+    navigate("/");
+  }, [localStream, daily, navigate]);
+
+  // ── LOBBY ────────────────────────────────────────────────────────────────────
+  if (step !== "admitted") return (
+    <div className="min-h-dvh flex flex-col items-center justify-center p-4 sm:p-6"
+      style={{ background: T.bg }}>
+      <div className="w-full max-w-md">
+        {/* Logo / branding */}
+        <div className="text-center mb-6">
+          <div className="w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+            <Video className="w-5 h-5 text-white" />
+          </div>
+          <h1 className="text-xl font-bold text-white">Join Meeting</h1>
+          {roomName && <p className="text-xs mt-1" style={{ color: T.muted }}>Room: {roomName}</p>}
+        </div>
+
+        <div className="rounded-2xl p-4 sm:p-6 space-y-5"
+          style={{ background: T.panel, border: `1px solid ${T.border}` }}>
+
+          {/* Camera preview */}
+          <LobbyPreview stream={localStream} isAudioOn={isAudioOn} isVideoOn={isVideoOn} />
+
+          {/* Mic / Camera toggles */}
+          <div className="flex gap-3">
+            <button onClick={() => setIsAudioOn((v) => !v)}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all touch-manipulation"
+              style={isAudioOn
+                ? { background: "rgba(255,255,255,0.08)", border: `1px solid ${T.border}`, color: "#fff" }
+                : { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+              {isAudioOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              {isAudioOn ? "Mic on" : "Mic off"}
+            </button>
+            <button onClick={() => setIsVideoOn((v) => !v)}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all touch-manipulation"
+              style={isVideoOn
+                ? { background: "rgba(255,255,255,0.08)", border: `1px solid ${T.border}`, color: "#fff" }
+                : { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+              {isVideoOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+              {isVideoOn ? "Camera on" : "Camera off"}
+            </button>
+          </div>
+
+          {/* Name input */}
+          {step !== "denied" && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: T.muted }}>
+                Your name
+              </label>
+              <input
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && guestName.trim() && handleRequestJoin()}
+                placeholder="Enter your name…"
+                className="w-full px-4 py-3 rounded-xl outline-none text-sm"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.text }}
+                autoFocus
+              />
+            </div>
+          )}
+
+          {/* Status message */}
+          {step === "waiting" && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+              style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-white">Waiting for the host</p>
+                <p className="text-[11px]" style={{ color: T.muted }}>The host will admit you shortly</p>
+              </div>
+            </div>
+          )}
+
+          {step === "denied" && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-red-400">Entry not allowed</p>
+                <p className="text-[11px]" style={{ color: T.muted }}>The host declined your request</p>
+              </div>
+            </div>
+          )}
+
+          {/* CTA */}
+          {step !== "denied" && (
+            <button
+              onClick={handleRequestJoin}
+              disabled={!guestName.trim() || step === "requesting" || step === "waiting"}
+              className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation disabled:opacity-50 disabled:pointer-events-none"
+              style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}>
+              {step === "requesting" ? (
+                <span className="flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Sending request…</span>
+              ) : step === "waiting" ? (
+                <span className="flex items-center justify-center gap-2"><Clock className="w-4 h-4" /> Waiting for host…</span>
+              ) : "Ask to join"}
+            </button>
+          )}
+
+          {step === "denied" && (
+            <button onClick={() => setStep("lobby")}
+              className="w-full py-3.5 rounded-xl text-sm font-semibold text-white touch-manipulation"
+              style={{ background: T.card, border: `1px solid ${T.border}` }}>
+              Try again
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
-}
 
-function CtrlBtn({ icon: Icon, label, onClick, active = true, danger = false }: {
-  icon: React.FC<any>; label: string; onClick?: () => void; active?: boolean; danger?: boolean;
-}) {
+  // ── IN MEETING ───────────────────────────────────────────────────────────────
   return (
-    <button onClick={onClick} className={cn(
-      "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all min-w-[64px]",
-      danger ? "bg-red-500/90 hover:bg-red-500 text-white"
-             : active ? "bg-white/8 hover:bg-white/12 text-white"
-                      : "bg-red-500/15 border border-red-500/25 text-red-400",
-    )}>
-      <Icon className="w-5 h-5" />
-      <span className="text-[10px] font-medium opacity-80">{label}</span>
-    </button>
-  );
-}
+    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", background: T.bg }}>
 
-const Shell = ({ children }: { children: React.ReactNode }) => (
-  <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#0a0c13" }}>{children}</div>
-);
-
-// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-
-export default function GuestJoin() {
-  const { roomName }      = useParams<{ roomName: string }>();
-  const [searchParams]    = useSearchParams();
-
-  const [status,          setStatus]          = useState<PageStatus>("loading");
-  const [roomInfo,        setRoomInfo]         = useState<RoomInfo | null>(null);
-  const [errorMsg,        setErrorMsg]         = useState("");
-  const [nameInput,       setNameInput]        = useState("");
-  const [displayName,     setDisplayName]      = useState("");
-  const [requestId,       setRequestId]        = useState<string | null>(null);
-  const [isSubmitting,    setIsSubmitting]     = useState(false);
-  const [micOn,           setMicOn]            = useState(true);
-  const [camOn,           setCamOn]            = useState(true);
-  const [lobbyResult,     setLobbyResult]      = useState<LobbyPassResult | null>(null);
-  const [reconnectCount,  setReconnectCount]   = useState(0);
-
-  const pollRef         = useRef<ReturnType<typeof setInterval> | null>(null);
-  const callIdRef       = useRef<string | undefined>(undefined);
-  const reconnectTimer  = useRef<ReturnType<typeof setTimeout>>();
-  const maxReconnects   = 3;
-
-  // Pre-fill name from URL param
-  useEffect(() => {
-    const n = searchParams.get("name");
-    if (n) setNameInput(decodeURIComponent(n));
-  }, [searchParams]);
-
-  // Load room info
-  const loadRoom = useCallback(async () => {
-    if (!roomName) { setErrorMsg("No room name. Ask the host for a new link."); setStatus("error"); return; }
-    setStatus("loading");
-    try {
-      const info = await fetchRoomInfo(roomName);
-      setRoomInfo(info);
-      setStatus("name_entry");
-    } catch (e: any) {
-      setErrorMsg(e?.message || "Could not load meeting. Please try again.");
-      setStatus("error");
-    }
-  }, [roomName]);
-
-  useEffect(() => { loadRoom(); }, [loadRoom]);
-
-  // Daily call hook (guest has no auth token)
-  const daily = useDailyCall({
-    callId: null,
-    roomName: roomInfo?.room_name ?? null,
-    meetingToken: null,
-    userName: displayName || "Guest",
-    startWithVideoOff: !camOn,
-    onJoined: () => {
-      setStatus("in_meeting");
-      logHealthEvent(callIdRef.current, "guest_joined", "info", { name: displayName });
-    },
-    onLeft: () => { setStatus("name_entry"); },
-    onNetworkQualityChange: (q) => {
-      if (q === "poor") {
-        logHealthEvent(callIdRef.current, "network_poor", "warn", { quality: q });
-        toast.warning("Poor connection — video quality reduced", { id: "gnet" });
-      } else toast.dismiss("gnet");
-    },
-  });
-
-  // Auto-reconnect on connection drop
-  useEffect(() => {
-    if (daily.callState === "error" && status === "in_meeting" && reconnectCount < maxReconnects && roomInfo) {
-      setReconnectCount((c) => c + 1);
-      setStatus("reconnecting");
-      const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
-      logHealthEvent(callIdRef.current, "reconnect_attempt", "warn", { attempt: reconnectCount + 1 });
-      reconnectTimer.current = setTimeout(async () => {
-        const ok = await daily.joinCall({ rName: roomInfo.room_name, displayName });
-        if (ok) setReconnectCount(0);
-        else if (reconnectCount + 1 >= maxReconnects) {
-          setStatus("error");
-          setErrorMsg("Could not reconnect. Please refresh the page.");
-          logHealthEvent(callIdRef.current, "reconnect_failed", "error", { attempts: reconnectCount + 1 });
-        }
-      }, delay);
-    }
-  }, [daily.callState]); // eslint-disable-line
-
-  useEffect(() => () => { clearTimeout(reconnectTimer.current); }, []);
-
-  // Request to join (after lobby)
-  const handleRequestJoin = useCallback(async (result?: LobbyPassResult) => {
-    if (!roomInfo || !roomName) return;
-    const name = nameInput.trim() || "Guest";
-    setDisplayName(name);
-    setIsSubmitting(true);
-    const lr = result ?? lobbyResult;
-
-    // Apply lobby device preferences to Daily
-    if (lr?.micEnabled !== undefined) setMicOn(lr.micEnabled);
-    if (lr?.cameraEnabled !== undefined) setCamOn(lr.cameraEnabled);
-
-    try {
-      const res = await requestToJoin(roomName, name);
-
-      if (!res.requires_approval || !res.request_id) {
-        setStatus("connecting");
-        const ok = await daily.joinCall({ rName: roomInfo.room_name, displayName: name });
-        if (!ok) { setStatus("error"); setErrorMsg("Could not connect to the meeting."); }
-        return;
-      }
-
-      setRequestId(res.request_id);
-      setStatus("waiting");
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const { status: s } = await checkRequestStatus(res.request_id!);
-          if (s === "admitted") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setStatus("connecting");
-            const ok = await daily.joinCall({ rName: roomInfo.room_name, displayName: name });
-            if (!ok) { setStatus("error"); setErrorMsg("Could not connect to the meeting."); }
-          } else if (s === "denied" || s === "expired" || s === "cancelled") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setStatus("denied");
-            logHealthEvent(callIdRef.current, "guest_denied", "info", { name });
-          }
-        } catch { /* transient */ }
-      }, 2500);
-    } catch (e: any) {
-      toast.error(e?.message || "Could not request to join. Try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [roomInfo, roomName, nameInput, lobbyResult, daily]);
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  const handleLobbyReady = useCallback((result: LobbyPassResult) => {
-    setLobbyResult(result);
-    setMicOn(result.micEnabled);
-    setCamOn(result.cameraEnabled);
-    // If no approval gate exists, proceed directly to join
-    handleRequestJoin(result);
-  }, [handleRequestJoin]);
-
-  const handleLeave = useCallback(async () => {
-    logHealthEvent(callIdRef.current, "guest_left", "info", {});
-    await daily.leaveCall();
-    setRequestId(null);
-    setStatus("name_entry");
-  }, [daily]);
-
-  const handleRetry = useCallback(() => { setRequestId(null); setStatus("name_entry"); setReconnectCount(0); }, []);
-
-  const toggleMic = useCallback(async () => {
-    if (status === "in_meeting") await daily.setAudioEnabled(!micOn);
-    setMicOn((v) => !v);
-  }, [status, micOn, daily]);
-
-  const toggleCam = useCallback(async () => {
-    if (status === "in_meeting") await daily.setVideoEnabled(!camOn);
-    setCamOn((v) => !v);
-  }, [status, camOn, daily]);
-
-  // ── Loading ───────────────────────────────────────────────────────────────
-  if (status === "loading") {
-    return (
-      <Shell>
-        <div className="text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto"
-            style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.25)" }}>
-            <Loader2 className="w-7 h-7 animate-spin text-indigo-400" />
-          </div>
-          <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>Loading meeting…</p>
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── Error ─────────────────────────────────────────────────────────────────
-  if (status === "error") {
-    return (
-      <Shell>
-        <div className="text-center space-y-5 max-w-sm w-full">
-          <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-7 h-7 text-red-400" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white mb-1">Couldn't load meeting</h1>
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>{errorMsg}</p>
-          </div>
-          <button onClick={loadRoom}
-            className="flex items-center gap-2 mx-auto px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 transition-colors"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-            <RefreshCw className="w-4 h-4" /> Try Again
-          </button>
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── Denied ────────────────────────────────────────────────────────────────
-  if (status === "denied") {
-    return (
-      <Shell>
-        <div className="text-center space-y-5 max-w-sm w-full">
-          <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
-            <XCircle className="w-7 h-7 text-red-400" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white mb-1">Not admitted</h1>
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>The host didn't let you in, or the request expired.</p>
-          </div>
-          <button onClick={handleRetry}
-            className="flex items-center gap-2 mx-auto px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
-            <RefreshCw className="w-4 h-4" /> Ask Again
-          </button>
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── Name entry (first step before lobby) ─────────────────────────────────
-  if (status === "name_entry") {
-    return (
-      <Shell>
-        <div className="w-full max-w-sm space-y-5">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto"
-              style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))", border: "1px solid rgba(99,102,241,0.3)" }}>
-              <Users className="w-8 h-8 text-indigo-400" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">Join Meeting</h1>
-            {roomInfo?.call_name && roomInfo.call_name !== "Fixsense Meeting" && (
-              <p className="text-sm font-medium" style={{ color: "rgba(165,180,252,0.8)" }}>{roomInfo.call_name}</p>
-            )}
-            {roomInfo?.status === "live" && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
-                style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", color: "#4ade80" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Meeting is live
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs font-medium block mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>Your name</label>
-            <input
-              type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && nameInput.trim() && setStatus("lobby")}
-              placeholder="e.g. John Smith" maxLength={60} autoFocus
-              className="w-full h-12 rounded-xl px-4 text-sm text-white placeholder:text-white/20 focus:outline-none transition-all"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }}
-              onFocus={(e) => { e.target.style.border = "1px solid rgba(99,102,241,0.5)"; }}
-              onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.1)"; }}
-            />
-          </div>
-
-          <button
-            onClick={() => { setDisplayName(nameInput.trim() || "Guest"); setStatus("lobby"); }}
-            disabled={!nameInput.trim()}
-            className="w-full h-12 rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)", boxShadow: "0 4px 20px rgba(99,102,241,0.35)" }}>
-            Continue →
-          </button>
-
-          <div className="flex items-center justify-center gap-3 text-[11px]" style={{ color: "rgba(255,255,255,0.2)" }}>
-            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> No account needed</span>
-            <span>·</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Free to join</span>
-          </div>
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── Lobby (device checks) ─────────────────────────────────────────────────
-  if (status === "lobby") {
-    return (
-      <Shell>
-        <GuestLobby
-          guestName={displayName || nameInput || "Guest"}
-          meetingTitle={roomInfo?.call_name !== "Fixsense Meeting" ? roomInfo?.call_name : undefined}
-          onReady={handleLobbyReady}
-          onCancel={() => setStatus("name_entry")}
-        />
-      </Shell>
-    );
-  }
-
-  // ── Waiting room ──────────────────────────────────────────────────────────
-  if (status === "waiting") {
-    return (
-      <Shell>
-        <div className="w-full max-w-sm space-y-5">
-          <div className="text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto"
-              style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)" }}>
-              <Hourglass className="w-6 h-6 text-indigo-400 animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">Waiting for the host…</h1>
-              <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
-                You'll join {roomInfo?.call_name && roomInfo.call_name !== "Fixsense Meeting" ? `"${roomInfo.call_name}"` : "the meeting"} as <strong className="text-white">{displayName}</strong> once admitted.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center gap-3">
-            <CtrlBtn icon={micOn ? Mic : MicOff} label={micOn ? "Mic on" : "Mic off"} active={micOn} onClick={toggleMic} />
-            <CtrlBtn icon={camOn ? Video : VideoOff} label={camOn ? "Cam on" : "Cam off"} active={camOn} onClick={toggleCam} />
-          </div>
-
-          <button onClick={handleRetry}
-            className="w-full h-11 rounded-xl text-sm font-medium transition-colors"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
-            Cancel
-          </button>
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── Reconnecting ──────────────────────────────────────────────────────────
-  if (status === "reconnecting") {
-    return (
-      <Shell>
-        <div className="text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto"
-            style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)" }}>
-            <WifiOff className="w-7 h-7 text-amber-400" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-white">Reconnecting…</h1>
-            <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-              Attempt {reconnectCount} of {maxReconnects}
-            </p>
-          </div>
-          <Loader2 className="w-6 h-6 animate-spin text-amber-400 mx-auto" />
-        </div>
-      </Shell>
-    );
-  }
-
-  // ── In meeting ────────────────────────────────────────────────────────────
-  const displayParticipants = daily.participants;
-  const mainSpeaker = daily.activeSpeaker || daily.remoteParticipants[0] || daily.localParticipant;
-
-  return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0a0c13" }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 shrink-0 border-b"
-        style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(13,15,24,0.98)" }}>
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b shrink-0 gap-2"
+        style={{ borderColor: T.border, background: T.panel, backdropFilter: "blur(20px)" }}>
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" style={{ boxShadow: "0 0 6px rgba(52,211,153,0.8)" }} />
-          <span className="text-sm font-semibold text-white truncate max-w-[160px] sm:max-w-xs">
-            {roomInfo?.call_name || "Fixsense Meeting"}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" style={{ boxShadow: "0 0 8px rgba(16,185,129,.8)" }} />
+            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest hidden sm:block">Live</span>
+          </div>
+          <div className="h-4 w-px shrink-0 hidden sm:block" style={{ background: T.border }} />
+          <span className="text-xs sm:text-sm font-semibold text-white truncate">
+            {roomName?.replace(/-/g, " ") || "Meeting"}
           </span>
         </div>
+
         <div className="flex items-center gap-2 shrink-0">
-          {/* Network quality badge */}
-          <div className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium",
-            daily.networkQuality === "poor" || daily.networkQuality === "disconnected"
-              ? "text-red-400 bg-red-500/10" : daily.networkQuality === "fair"
-              ? "text-amber-400 bg-amber-500/10" : "text-emerald-400 bg-emerald-500/10",
-          )}>
-            {daily.networkQuality === "poor" || daily.networkQuality === "disconnected"
-              ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
-            {daily.networkQuality}
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3" style={{ color: T.muted }} />
+            <span className="text-xs font-mono font-semibold text-white tabular-nums">{fmt(daily.elapsedSeconds)}</span>
           </div>
-          <Users className="w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.4)" }} />
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{daily.participantCount}</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full" style={{ background: qualityColor(daily.networkQuality) }} />
+          </div>
+          <button onClick={() => setShowPeople((v) => !v)}
+            className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
+            style={{ background: showPeople ? "rgba(99,102,241,0.2)" : T.card, border: `1px solid ${T.border}` }}>
+            <Users className="w-4 h-4 text-white" />
+            {daily.participantCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {daily.participantCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Connecting overlay */}
-      {(status === "connecting" || daily.isConnecting) && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(8,10,18,0.92)" }}>
-          <div className="text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>Connecting…</p>
-          </div>
-        </div>
-      )}
+      {/* Video */}
+      <div className="flex-1 min-h-0 p-2 sm:p-3">
+        <VideoGrid
+          participants={daily.participants} activeSpeakerId={daily.activeSpeakerId}
+          isConnecting={daily.isConnecting} error={daily.error}
+          onRetry={() => daily.joinCall({ rName: roomName!, displayName: guestName || "Guest" })}
+          pinnedId={pinnedId} onPin={setPinnedId}
+          layout={videoLayout} onLayoutChange={setVideoLayout}
+        />
+      </div>
 
-      {/* Video area */}
-      <div className="flex-1 p-2 sm:p-3 min-h-0">
-        {daily.callState === "error" ? (
-          <div className="h-full flex flex-col items-center justify-center gap-4 text-center p-6">
-            <AlertCircle className="w-12 h-12 text-red-400" />
-            <div>
-              <p className="text-sm font-semibold text-red-400">Connection failed</p>
-              <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>{daily.error || "Could not connect to the meeting room."}</p>
+      {/* Control bar */}
+      <div className="px-2 sm:px-3 pb-2 sm:pb-3 shrink-0">
+        <div className="flex items-center justify-center gap-2 sm:gap-3 px-4 py-2.5 rounded-2xl"
+          style={{ background: "rgba(13,15,24,0.95)", border: `1px solid ${T.border}`, backdropFilter: "blur(24px)" }}>
+
+          <button onClick={async () => { await daily.setAudioEnabled(!isAudioOn); setIsAudioOn((v) => !v); }}
+            className="w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
+            style={{ background: isAudioOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)", border: `1px solid ${isAudioOn ? T.border : "rgba(239,68,68,0.3)"}` }}>
+            {isAudioOn ? <Mic className="w-5 h-5 text-white" /> : <MicOff className="w-5 h-5 text-red-400" />}
+            <span className="text-[9px] font-medium" style={{ color: isAudioOn ? T.muted : "#f87171" }}>
+              {isAudioOn ? "Mic" : "Muted"}
+            </span>
+          </button>
+
+          <button onClick={async () => { await daily.setVideoEnabled(!isVideoOn); setIsVideoOn((v) => !v); }}
+            className="w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
+            style={{ background: isVideoOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)", border: `1px solid ${isVideoOn ? T.border : "rgba(239,68,68,0.3)"}` }}>
+            {isVideoOn ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-red-400" />}
+            <span className="text-[9px] font-medium" style={{ color: isVideoOn ? T.muted : "#f87171" }}>
+              {isVideoOn ? "Cam" : "Off"}
+            </span>
+          </button>
+
+          <button onClick={handleLeave}
+            className="h-12 px-5 sm:px-8 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
+            style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", boxShadow: "0 4px 16px rgba(220,38,38,.35)" }}>
+            <PhoneOff className="w-5 h-5 sm:hidden" />
+            <span className="hidden sm:inline">Leave meeting</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Participants sidebar (mobile bottom sheet / desktop overlay) */}
+      {showPeople && (
+        <>
+          <div className="fixed inset-0 z-40 sm:hidden bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowPeople(false)} />
+          <div className="fixed z-50 bottom-0 left-0 right-0 sm:static rounded-t-2xl sm:rounded-xl sm:absolute sm:top-12 sm:right-3 sm:bottom-auto sm:w-64"
+            style={{ background: T.panel, border: `1px solid ${T.border}`, maxHeight: "70vh" }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
+              <div className="w-8 h-1 rounded-full mx-auto absolute top-2 left-1/2 -translate-x-1/2 sm:hidden"
+                style={{ background: T.subtle }} />
+              <span className="text-sm font-semibold text-white">
+                Participants ({daily.participantCount})
+              </span>
+              <button onClick={() => setShowPeople(false)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center touch-manipulation"
+                style={{ background: T.card }}>
+                <X className="w-4 h-4" style={{ color: T.muted }} />
+              </button>
             </div>
-            <button onClick={() => daily.joinCall({ rName: roomInfo!.room_name, displayName })}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
-              style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)" }}>
-              <RefreshCw className="w-4 h-4" /> Retry
-            </button>
-          </div>
-        ) : displayParticipants.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
-            <Users className="w-10 h-10" style={{ color: "rgba(255,255,255,0.2)" }} />
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>Waiting for the host to join…</p>
-          </div>
-        ) : displayParticipants.length === 1 ? (
-          <GuestVideoTile participant={displayParticipants[0]} isMain activeSpeakerId={daily.activeSpeakerId} className="h-full" />
-        ) : displayParticipants.length === 2 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 h-full">
-            {displayParticipants.map((p) => (
-              <GuestVideoTile key={p.session_id} participant={p} activeSpeakerId={daily.activeSpeakerId} className="h-full min-h-[160px]" />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2 h-full">
-            <div className="flex-1 min-h-0">
-              {mainSpeaker && <GuestVideoTile participant={mainSpeaker} isMain activeSpeakerId={daily.activeSpeakerId} className="h-full" />}
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 shrink-0" style={{ height: "25%" }}>
-              {displayParticipants.filter((p) => p.session_id !== mainSpeaker?.session_id).slice(0, 4).map((p) => (
-                <GuestVideoTile key={p.session_id} participant={p} activeSpeakerId={daily.activeSpeakerId} className="h-full" />
+            <div className="overflow-y-auto p-2" style={{ maxHeight: "calc(70vh - 56px)" }}>
+              {daily.participants.map((p) => (
+                <div key={p.session_id} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] cursor-pointer transition-colors"
+                  onClick={() => { setPinnedId(pinnedId === p.session_id ? null : p.session_id); setShowPeople(false); }}>
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                      style={{ background: p.session_id === daily.activeSpeakerId ? "linear-gradient(135deg,#10b981,#059669)" : "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+                      {(p.user_name || "?")[0]?.toUpperCase()}
+                    </div>
+                    {p.session_id === daily.activeSpeakerId && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-emerald-400"
+                        style={{ borderColor: T.bg }} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: T.text }}>
+                      {p.user_name || "Participant"}
+                      {p.local && <span style={{ color: T.muted }}> (You)</span>}
+                    </p>
+                    <p className="text-[10px]" style={{ color: T.muted }}>
+                      {pinnedId === p.session_id ? "Pinned" : p.local ? "You" : "Guest"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {!p.audio && <MicOff className="w-3 h-3 text-red-400" />}
+                    {!p.video && <VideoOff className="w-3 h-3" style={{ color: T.muted }} />}
+                    {pinnedId === p.session_id && <Pin className="w-3 h-3 text-indigo-400" />}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="shrink-0 px-3 sm:px-4 py-3 border-t flex items-center justify-center gap-3"
-        style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(13,15,24,0.98)" }}>
-        <CtrlBtn icon={micOn ? Mic : MicOff} label={micOn ? "Mute" : "Unmute"} active={micOn} onClick={toggleMic} />
-        <CtrlBtn icon={camOn ? Video : VideoOff} label={camOn ? "Stop Video" : "Start Video"} active={camOn} onClick={toggleCam} />
-        <button onClick={handleLeave}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-xl min-w-[64px] text-white"
-          style={{ background: "linear-gradient(135deg, #dc2626, #b91c1c)" }}>
-          <PhoneOff className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Leave</span>
-        </button>
-      </div>
+        </>
+      )}
     </div>
   );
 }
