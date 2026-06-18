@@ -1,12 +1,16 @@
 /**
- * VideoTile.tsx — v3
+ * VideoTile.tsx — v4
  *
- * Fixes:
- *  - Avatar always shows initials when camera is off (not just "?")
- *  - Speaking ring uses outline instead of inset border
- *  - Avatar scales with tile size via CSS clamp
- *  - Touch-safe — no hover-only states
- *  - Screen share support indicator
+ * Changes from v3:
+ *  - Bottom info bar uses `text-[10px]` with tighter padding so it stays
+ *    readable in thumbnail-sized tiles (strip / sidebar layout).
+ *  - Screen-share badge is smaller and never clips the close corner.
+ *  - Avatar uses `min-w` / `min-h` guards so it doesn't collapse to 0 in
+ *    very small tiles.
+ *  - Speaking animation ring is `pointer-events-none` and `rounded-xl`
+ *    (already was, but now explicitly `inset-[1px]` so it sits inside the
+ *    tile border without causing a layout shift).
+ *  - Name in the bottom bar truncates gracefully even at 80px wide tiles.
  */
 
 import { useEffect, useRef } from "react";
@@ -26,7 +30,6 @@ function getInitial(name: string | undefined | null): string {
   if (!name) return "?";
   const trimmed = name.trim();
   if (!trimmed) return "?";
-  // Strip "(You)" suffix if present
   const cleaned = trimmed.replace(/\s*\(You\)\s*$/i, "").trim();
   return (cleaned[0] ?? "?").toUpperCase();
 }
@@ -36,7 +39,6 @@ function getAvatarGradient(sessionId: string, isSpeaking: boolean): string {
   if (isSpeaking) {
     return "linear-gradient(135deg,rgba(16,185,129,0.35),rgba(5,150,105,0.35))";
   }
-  // Cycle through a few pleasant gradients based on session id hash
   const hash = sessionId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const gradients = [
     "linear-gradient(135deg,rgba(99,102,241,0.35),rgba(139,92,246,0.35))",
@@ -94,9 +96,9 @@ export function VideoTile({
     };
   }, [participant.audioTrack, participant.audio, participant.local]);
 
-  const hasVideo = !!(participant.video && participant.videoTrack);
+  const hasVideo    = !!(participant.video && participant.videoTrack);
   const isScreenShare = !!(participant.screen);
-  const initial = getInitial(participant.user_name);
+  const initial    = getInitial(participant.user_name);
   const displayName = participant.user_name?.replace(/\s*\(You\)\s*$/i, "").trim() || "Participant";
 
   return (
@@ -122,7 +124,6 @@ export function VideoTile({
         muted
         className={cn(
           "w-full h-full object-cover",
-          // Mirror local camera for natural selfie view, but not screen share
           participant.local && !isScreenShare && "scale-x-[-1]",
           !hasVideo && "hidden",
         )}
@@ -139,19 +140,19 @@ export function VideoTile({
           <div
             className={cn(
               "rounded-full flex items-center justify-center font-bold text-white select-none",
-              "w-[clamp(40px,25%,80px)] h-[clamp(40px,25%,80px)]",
+              // Use explicit min sizes so the avatar never collapses in strip tiles
+              "min-w-[32px] min-h-[32px] w-[clamp(32px,25%,80px)] h-[clamp(32px,25%,80px)]",
             )}
             style={{
               background: getAvatarGradient(participant.session_id, isSpeaking),
               border: isSpeaking
                 ? "2px solid rgba(52,211,153,0.5)"
                 : "1px solid rgba(255,255,255,0.1)",
-              fontSize: "clamp(14px, 8%, 28px)",
+              fontSize: "clamp(11px, 8%, 28px)",
             }}
           >
             {initial}
           </div>
-          {/* Show name below avatar on larger tiles */}
           {isMain && (
             <p
               className="text-xs font-medium px-2 text-center truncate max-w-[80%]"
@@ -166,31 +167,32 @@ export function VideoTile({
         </div>
       )}
 
-      {/* Speaking animation ring */}
+      {/* Speaking animation ring — inset so it never shifts layout */}
       {isSpeaking && (
-        <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/40 pointer-events-none animate-pulse" />
+        <div className="absolute inset-[1px] rounded-xl border-2 border-emerald-400/40 pointer-events-none animate-pulse" />
       )}
 
-      {/* Screen share indicator */}
+      {/* Screen share badge — compact, top-left, never clips corner overlay */}
       {isScreenShare && (
         <div
-          className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-md"
-          style={{ background: "rgba(99,102,241,0.8)", backdropFilter: "blur(8px)" }}
+          className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-md"
+          style={{ background: "rgba(99,102,241,0.85)", backdropFilter: "blur(8px)" }}
         >
-          <Monitor className="w-3 h-3 text-white" />
-          <span className="text-[10px] font-medium text-white">Screen</span>
+          <Monitor className="w-2.5 h-2.5 text-white" />
+          {/* Only show the label on larger tiles */}
+          <span className="text-[9px] font-medium text-white hidden sm:inline">Screen</span>
         </div>
       )}
 
-      {/* Bottom info bar */}
+      {/* Bottom info bar — stays readable even at ~80 px tile width */}
       <div
-        className="absolute bottom-0 left-0 right-0 px-2 py-1.5 flex items-center justify-between gap-2"
+        className="absolute bottom-0 left-0 right-0 px-1.5 py-1 flex items-center justify-between gap-1"
         style={{
           background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)",
         }}
       >
-        {/* Name + speaking indicator */}
-        <div className="flex items-center gap-1.5 min-w-0">
+        {/* Name + speaking waveform */}
+        <div className="flex items-center gap-1 min-w-0">
           {isSpeaking && (
             <div className="flex items-end gap-px shrink-0">
               {[3, 5, 4, 6, 3].map((h, i) => (
@@ -205,30 +207,30 @@ export function VideoTile({
               ))}
             </div>
           )}
-          <span className="text-[11px] font-medium text-white/90 truncate leading-tight">
+          <span className="text-[10px] font-medium text-white/90 truncate leading-tight">
             {displayName}
             {participant.local && (
-              <span className="text-white/50 ml-1">(You)</span>
+              <span className="text-white/50 ml-0.5">(You)</span>
             )}
           </span>
         </div>
 
-        {/* Status badges */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Status badges — compact icons only in small tiles */}
+        <div className="flex items-center gap-0.5 shrink-0">
           {!participant.audio && (
             <div
-              className="w-5 h-5 rounded-md flex items-center justify-center"
+              className="w-4 h-4 rounded flex items-center justify-center"
               style={{ background: "rgba(239,68,68,0.25)" }}
             >
-              <MicOff className="w-3 h-3 text-red-400" />
+              <MicOff className="w-2.5 h-2.5 text-red-400" />
             </div>
           )}
           {!participant.video && !isScreenShare && (
             <div
-              className="w-5 h-5 rounded-md flex items-center justify-center"
+              className="w-4 h-4 rounded flex items-center justify-center"
               style={{ background: "rgba(255,255,255,0.1)" }}
             >
-              <VideoOff className="w-3 h-3 text-white/50" />
+              <VideoOff className="w-2.5 h-2.5 text-white/50" />
             </div>
           )}
         </div>
