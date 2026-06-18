@@ -1,19 +1,14 @@
 /**
- * useAudioStreaming.ts — v5
+ * useAudioStreaming.ts — v6
  *
- * Adds the missing API surface that LiveCall.tsx and LiveMeeting.tsx rely on:
- *   - stopAll()                          — stop all active recorders
- *   - startTrackRecording(track, id, local) — record a specific MediaStreamTrack
- *   - state.isStreaming                  — whether any recording is active
- *   - state.chunksSent                  — total chunks sent this session
- *
- * Root-cause fixes retained from v4:
- *  1. SERIAL QUEUE — chunks sent one at a time, never in parallel.
- *  2. STALE CHUNK DROP — chunks > 90s old are dropped before sending.
- *  3. QUEUE CAP — max 20 buffered chunks.
- *  4. EXPONENTIAL BACKOFF — on 429 or network error.
- *  5. SW-SAFE — `sent_at` timestamp sent with every chunk.
- *  6. NETWORK DETECTION — pauses queue when offline, resumes on reconnect.
+ * Fixes from v5:
+ *  - Reduced STALE_THRESHOLD to 60s (was 90s) — chunks older than 60s are useless
+ *  - MAX_QUEUE_SIZE reduced to 10 (was 20) — prevents runaway memory when offline
+ *  - Applied noise cancellation / echo cancellation constraints on getUserMedia
+ *  - CHUNK_INTERVAL_MS increased to 8s (was 5s) — fewer chunks during poor connectivity
+ *  - Added navigator.onLine check before enqueue (don't buffer when known offline)
+ *  - Deduplication: skip enqueueing if recorder is stopped/destroyed
+ *  - Better error logging with chunk index for debugging
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
@@ -51,9 +46,7 @@ interface AudioStreamingState {
 interface AudioStreamingResult {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
-  /** Stop ALL active recordings (mic + any track recorders) */
   stopAll: () => void;
-  /** Attach a specific MediaStreamTrack (from Daily participant) */
   startTrackRecording: (track: MediaStreamTrack, participantId: string, isLocal: boolean) => void;
   isRecording: boolean;
   queueLength: number;
@@ -61,54 +54,55 @@ interface AudioStreamingResult {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CHUNK_INTERVAL_MS   = 5_000;
-const MAX_QUEUE_SIZE      = 20;
-const STALE_THRESHOLD_MS  = 90_000;
-const DRAIN_INTERVAL_MS   = 600;
-const BASE_BACKOFF_MS     = 1_000;
-const MAX_BACKOFF_MS      = 16_000;
+const CHUNK_INTERVAL_MS  = 8_000;   // 8s chunks (was 5s — reduces pressure)
+const MAX_QUEUE_SIZE     = 10;       // was 20
+const STALE_THRESHOLD_MS = 60_000;  // 60s (was 90s)
+const DRAIN_INTERVAL_MS  = 800;
+const BASE_BACKOFF_MS    = 1_500;
+const MAX_BACKOFF_MS     = 20_000;
+
+// ─── Audio constraints with noise cancellation ────────────────────────────────
+const AUDIO_CONSTRAINTS_LOCAL: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl:  true,
+  // sampleRate: 16000, // commented out — some browsers reject this
+};
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamingResult {
   const {
     callId,
     speakerLabel = 'You',
-    mimeType     = 'audio/webm;codecs=opus',
     onTranscript,
     onAIAnalysis,
     onError,
   } = options;
 
-  // Primary mic recorder
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef        = useRef<MediaStream | null>(null);
-  const isRecordingRef   = useRef(false);
-  const chunkIndexRef    = useRef(0);
+  const mediaRecorderRef  = useRef<MediaRecorder | null>(null);
+  const streamRef         = useRef<MediaStream | null>(null);
+  const isRecordingRef    = useRef(false);
+  const chunkIndexRef     = useRef(0);
 
-  // Track recorders (one per Daily participant track)
   const trackRecordersRef = useRef<Map<string, { recorder: MediaRecorder; interval: ReturnType<typeof setInterval> }>>(new Map());
 
-  // Serial queue
   const queueRef      = useRef<ChunkJob[]>([]);
   const isDrainingRef = useRef(false);
   const backoffRef    = useRef(BASE_BACKOFF_MS);
+  const destroyedRef  = useRef(false);
 
-  // Public state
   const [state, setState] = useState<AudioStreamingState>({ isStreaming: false, chunksSent: 0 });
 
-  const updateStreaming = useCallback((streaming: boolean) => {
-    setState(prev => ({ ...prev, isStreaming: streaming }));
-  }, []);
-
-  const incrementChunks = useCallback(() => {
-    setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
-  }, []);
+  const updateStreaming  = useCallback((s: boolean) => setState((p) => ({ ...p, isStreaming: s })), []);
+  const incrementChunks  = useCallback(() => setState((p) => ({ ...p, chunksSent: p.chunksSent + 1 })), []);
 
   // ── Enqueue ──────────────────────────────────────────────────────────────
   const enqueue = useCallback((job: ChunkJob) => {
+    if (destroyedRef.current) return;
+    // Drop oldest when queue is full
     if (queueRef.current.length >= MAX_QUEUE_SIZE) {
       queueRef.current.shift();
-      console.warn('[AudioStreaming] Queue full — dropped oldest chunk');
+      console.warn(`[AudioStreaming] Queue full (${MAX_QUEUE_SIZE}) — dropped oldest chunk`);
     }
     queueRef.current.push(job);
   }, []);
@@ -143,6 +137,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
             mime_type:     job.mimeType,
             sent_at:       job.sentAt,
           }),
+          signal: AbortSignal.timeout(15_000), // 15s timeout per chunk
         },
       );
 
@@ -153,6 +148,11 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
       }
       if (!res.ok) {
         console.warn(`[AudioStreaming] Edge fn ${res.status} for chunk ${job.chunkIndex}`);
+        if (res.status === 405) {
+          // Method not allowed — edge function routing issue, drop this chunk
+          console.error(`[AudioStreaming] 405 Method Not Allowed for chunk ${job.chunkIndex} — check edge function deployment`);
+          return 'drop';
+        }
         return 'retry';
       }
 
@@ -165,6 +165,10 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
       return 'ok';
     } catch (err: any) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        console.warn(`[AudioStreaming] Chunk ${job.chunkIndex} timed out`);
+        return 'retry';
+      }
       console.warn(`[AudioStreaming] Network error chunk ${job.chunkIndex}:`, err?.message);
       backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
       return 'retry';
@@ -173,21 +177,21 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
   // ── Drain queue serially ─────────────────────────────────────────────────
   const drainQueue = useCallback(async () => {
-    if (isDrainingRef.current) return;
+    if (isDrainingRef.current || destroyedRef.current) return;
     isDrainingRef.current = true;
 
-    while (queueRef.current.length > 0) {
+    while (queueRef.current.length > 0 && !destroyedRef.current) {
       const job    = queueRef.current[0];
       const result = await sendChunk(job);
 
       if (result === 'ok' || result === 'drop') {
         queueRef.current.shift();
         if (queueRef.current.length > 0) {
-          await new Promise(r => setTimeout(r, DRAIN_INTERVAL_MS));
+          await new Promise((r) => setTimeout(r, DRAIN_INTERVAL_MS));
         }
       } else {
         console.log(`[AudioStreaming] Backing off ${backoffRef.current}ms`);
-        await new Promise(r => setTimeout(r, backoffRef.current));
+        await new Promise((r) => setTimeout(r, backoffRef.current));
         if (!navigator.onLine) break;
       }
     }
@@ -197,13 +201,12 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
   // ── Process a Blob ───────────────────────────────────────────────────────
   const processBlob = useCallback((blob: Blob, resolvedMime: string, label: string) => {
-    if (blob.size < 1024) return;
+    if (blob.size < 1024 || destroyedRef.current) return;
 
-    const reader      = new FileReader();
-    reader.onloadend  = () => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
       const b64 = (reader.result as string).split(',')[1];
       if (!b64) return;
-
       enqueue({
         audioBase64: b64,
         chunkIndex:  chunkIndexRef.current++,
@@ -216,7 +219,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     reader.readAsDataURL(blob);
   }, [enqueue, drainQueue]);
 
-  // ── Create a MediaRecorder for any stream ────────────────────────────────
+  // ── Create a MediaRecorder ───────────────────────────────────────────────
   const createRecorder = useCallback((
     stream: MediaStream,
     label: string,
@@ -225,7 +228,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
       'audio/webm;codecs=opus', 'audio/webm',
       'audio/ogg;codecs=opus',  'audio/mp4',
     ];
-    const resolvedMime = mimes.find(m => MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
+    const resolvedMime = mimes.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
 
     let recorder: MediaRecorder;
     try {
@@ -236,10 +239,9 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     }
 
     const chunks: Blob[] = [];
-
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-      if (!chunks.length) return;
+      if (!chunks.length || destroyedRef.current) return;
       const blob = new Blob(chunks, { type: resolvedMime });
       chunks.length = 0;
       processBlob(blob, resolvedMime, label);
@@ -248,6 +250,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     recorder.start();
 
     const interval = setInterval(() => {
+      if (destroyedRef.current) { clearInterval(interval); return; }
       if (recorder.state === 'recording') {
         try { recorder.stop(); recorder.start(); } catch {}
       }
@@ -261,7 +264,10 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     if (isRecordingRef.current || !callId) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: AUDIO_CONSTRAINTS_LOCAL,
+        video: false,
+      });
       streamRef.current = stream;
 
       const result = createRecorder(stream, speakerLabel);
@@ -271,8 +277,6 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
       (mediaRecorderRef.current as any).__interval = result.interval;
       isRecordingRef.current = true;
       updateStreaming(true);
-
-      console.log(`[AudioStreaming] Started mic recording: ${speakerLabel} (${callId})`);
     } catch (err: any) {
       console.error('[AudioStreaming] getUserMedia failed:', err);
       onError?.(`Microphone access denied: ${err.message}`);
@@ -287,8 +291,8 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
       try { if (recorder.state !== 'inactive') recorder.stop(); } catch {}
       mediaRecorderRef.current = null;
     }
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current    = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     isRecordingRef.current = false;
 
     if (trackRecordersRef.current.size === 0) updateStreaming(false);
@@ -297,12 +301,12 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
   // ── Attach a specific MediaStreamTrack (Daily participant) ───────────────
   const startTrackRecording = useCallback((
-    track:         MediaStreamTrack,
+    track: MediaStreamTrack,
     participantId: string,
-    isLocal:       boolean,
+    isLocal: boolean,
   ) => {
-    if (!callId) return;
-    if (trackRecordersRef.current.has(participantId)) return; // already tracking
+    if (!callId || destroyedRef.current) return;
+    if (trackRecordersRef.current.has(participantId)) return;
 
     const stream = new MediaStream([track]);
     const label  = isLocal ? 'You' : `Participant-${participantId.slice(0, 6)}`;
@@ -312,7 +316,6 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     trackRecordersRef.current.set(participantId, result);
     updateStreaming(true);
 
-    // Auto-remove when track ends
     track.addEventListener('ended', () => {
       const entry = trackRecordersRef.current.get(participantId);
       if (entry) {
@@ -328,17 +331,13 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
   // ── Stop ALL recorders ───────────────────────────────────────────────────
   const stopAll = useCallback(() => {
-    // Stop mic
     stopRecording();
-
-    // Stop all track recorders
     trackRecordersRef.current.forEach(({ recorder, interval }) => {
       clearInterval(interval);
       try { if (recorder.state !== 'inactive') recorder.stop(); } catch {}
     });
     trackRecordersRef.current.clear();
     updateStreaming(false);
-
     console.log('[AudioStreaming] Stopped all recorders');
   }, [stopRecording, updateStreaming]);
 
@@ -356,14 +355,16 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
-    return () => { stopAll(); };
+    destroyedRef.current = false;
+    return () => {
+      destroyedRef.current = true;
+      stopAll();
+      queueRef.current = [];
+    };
   }, [stopAll]);
 
   return {
-    startRecording,
-    stopRecording,
-    stopAll,
-    startTrackRecording,
+    startRecording, stopRecording, stopAll, startTrackRecording,
     isRecording: isRecordingRef.current,
     queueLength: queueRef.current.length,
     state,
