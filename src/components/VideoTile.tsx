@@ -1,17 +1,17 @@
 /**
- * VideoTile.tsx — v2 (Mobile-friendly, Meet-style)
+ * VideoTile.tsx — v3
  *
- * Changes from v1:
- *  - Larger name label with backdrop blur
- *  - Speaking ring uses outline instead of inset border for reliability
- *  - Avatar initials scale with tile size via CSS clamp
- *  - Touch-safe — no hover-only states; speaking/mute badges always visible
- *  - Proper aspect-ratio handling for both landscape and portrait cameras
+ * Fixes:
+ *  - Avatar always shows initials when camera is off (not just "?")
+ *  - Speaking ring uses outline instead of inset border
+ *  - Avatar scales with tile size via CSS clamp
+ *  - Touch-safe — no hover-only states
+ *  - Screen share support indicator
  */
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { MicOff, VideoOff } from "lucide-react";
+import { MicOff, VideoOff, Monitor } from "lucide-react";
 import type { DailyParticipant } from "@/hooks/useDailyCall";
 
 interface VideoTileProps {
@@ -21,7 +21,39 @@ interface VideoTileProps {
   className?: string;
 }
 
-export function VideoTile({ participant, isMain = false, activeSpeakerId, className }: VideoTileProps) {
+/** Derive a display-friendly initial from any name string */
+function getInitial(name: string | undefined | null): string {
+  if (!name) return "?";
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  // Strip "(You)" suffix if present
+  const cleaned = trimmed.replace(/\s*\(You\)\s*$/i, "").trim();
+  return (cleaned[0] ?? "?").toUpperCase();
+}
+
+/** Pick a deterministic gradient based on the session id */
+function getAvatarGradient(sessionId: string, isSpeaking: boolean): string {
+  if (isSpeaking) {
+    return "linear-gradient(135deg,rgba(16,185,129,0.35),rgba(5,150,105,0.35))";
+  }
+  // Cycle through a few pleasant gradients based on session id hash
+  const hash = sessionId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const gradients = [
+    "linear-gradient(135deg,rgba(99,102,241,0.35),rgba(139,92,246,0.35))",
+    "linear-gradient(135deg,rgba(59,130,246,0.35),rgba(99,102,241,0.35))",
+    "linear-gradient(135deg,rgba(168,85,247,0.35),rgba(236,72,153,0.35))",
+    "linear-gradient(135deg,rgba(14,165,233,0.35),rgba(59,130,246,0.35))",
+    "linear-gradient(135deg,rgba(245,158,11,0.3),rgba(239,68,68,0.3))",
+  ];
+  return gradients[hash % gradients.length];
+}
+
+export function VideoTile({
+  participant,
+  isMain = false,
+  activeSpeakerId,
+  className,
+}: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSpeaking = participant.session_id === activeSpeakerId;
@@ -63,8 +95,9 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
   }, [participant.audioTrack, participant.audio, participant.local]);
 
   const hasVideo = !!(participant.video && participant.videoTrack);
-  const initials = (participant.user_name || "?")[0]?.toUpperCase();
-  const displayName = participant.user_name || "Participant";
+  const isScreenShare = !!(participant.screen);
+  const initial = getInitial(participant.user_name);
+  const displayName = participant.user_name?.replace(/\s*\(You\)\s*$/i, "").trim() || "Participant";
 
   return (
     <div
@@ -74,9 +107,10 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
       )}
       style={{
         background: "linear-gradient(135deg, #1a1d26 0%, #0f1117 100%)",
-        // Speaking ring — use outline so it sits outside and doesn't clip video
-        outline: isSpeaking ? "2px solid rgba(52, 211, 153, 0.65)" : "1px solid rgba(255,255,255,0.06)",
-        outlineOffset: isSpeaking ? "0px" : "0px",
+        outline: isSpeaking
+          ? "2px solid rgba(52, 211, 153, 0.65)"
+          : "1px solid rgba(255,255,255,0.06)",
+        outlineOffset: "0px",
         boxShadow: isSpeaking ? "0 0 0 4px rgba(52,211,153,0.12)" : "none",
       }}
     >
@@ -88,6 +122,8 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
         muted
         className={cn(
           "w-full h-full object-cover",
+          // Mirror local camera for natural selfie view, but not screen share
+          participant.local && !isScreenShare && "scale-x-[-1]",
           !hasVideo && "hidden",
         )}
       />
@@ -104,18 +140,29 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
             className={cn(
               "rounded-full flex items-center justify-center font-bold text-white select-none",
               "w-[clamp(40px,25%,80px)] h-[clamp(40px,25%,80px)]",
-              "text-[clamp(14px,4cqw,28px)]",
             )}
-            style={isSpeaking ? {
-              background: "linear-gradient(135deg,rgba(16,185,129,0.35),rgba(5,150,105,0.35))",
-              border: "2px solid rgba(52,211,153,0.5)",
-            } : {
-              background: "linear-gradient(135deg,rgba(99,102,241,0.35),rgba(139,92,246,0.35))",
-              border: "1px solid rgba(255,255,255,0.1)",
+            style={{
+              background: getAvatarGradient(participant.session_id, isSpeaking),
+              border: isSpeaking
+                ? "2px solid rgba(52,211,153,0.5)"
+                : "1px solid rgba(255,255,255,0.1)",
+              fontSize: "clamp(14px, 8%, 28px)",
             }}
           >
-            {initials}
+            {initial}
           </div>
+          {/* Show name below avatar on larger tiles */}
+          {isMain && (
+            <p
+              className="text-xs font-medium px-2 text-center truncate max-w-[80%]"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              {displayName}
+              {participant.local && (
+                <span style={{ color: "rgba(255,255,255,0.3)" }}> (You)</span>
+              )}
+            </p>
+          )}
         </div>
       )}
 
@@ -124,10 +171,23 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
         <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/40 pointer-events-none animate-pulse" />
       )}
 
+      {/* Screen share indicator */}
+      {isScreenShare && (
+        <div
+          className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-md"
+          style={{ background: "rgba(99,102,241,0.8)", backdropFilter: "blur(8px)" }}
+        >
+          <Monitor className="w-3 h-3 text-white" />
+          <span className="text-[10px] font-medium text-white">Screen</span>
+        </div>
+      )}
+
       {/* Bottom info bar */}
       <div
         className="absolute bottom-0 left-0 right-0 px-2 py-1.5 flex items-center justify-between gap-2"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)" }}
+        style={{
+          background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)",
+        }}
       >
         {/* Name + speaking indicator */}
         <div className="flex items-center gap-1.5 min-w-0">
@@ -147,21 +207,27 @@ export function VideoTile({ participant, isMain = false, activeSpeakerId, classN
           )}
           <span className="text-[11px] font-medium text-white/90 truncate leading-tight">
             {displayName}
-            {participant.local && <span className="text-white/50 ml-1">(You)</span>}
+            {participant.local && (
+              <span className="text-white/50 ml-1">(You)</span>
+            )}
           </span>
         </div>
 
         {/* Status badges */}
         <div className="flex items-center gap-1 shrink-0">
           {!participant.audio && (
-            <div className="w-5 h-5 rounded-md flex items-center justify-center"
-              style={{ background: "rgba(239,68,68,0.25)" }}>
+            <div
+              className="w-5 h-5 rounded-md flex items-center justify-center"
+              style={{ background: "rgba(239,68,68,0.25)" }}
+            >
               <MicOff className="w-3 h-3 text-red-400" />
             </div>
           )}
-          {!participant.video && (
-            <div className="w-5 h-5 rounded-md flex items-center justify-center"
-              style={{ background: "rgba(255,255,255,0.1)" }}>
+          {!participant.video && !isScreenShare && (
+            <div
+              className="w-5 h-5 rounded-md flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.1)" }}
+            >
               <VideoOff className="w-3 h-3 text-white/50" />
             </div>
           )}
