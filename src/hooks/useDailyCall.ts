@@ -1,34 +1,27 @@
 /**
- * useDailyCall.ts — v15
+ * useDailyCall.ts — v16
  *
- * Fixes from v14:
- *  - REMOVED supportsNoiseCancellation() UA-sniffing entirely. Daily.co's
- *    recommended pattern is to just call updateInputSettings() and listen
- *    for the real signals it emits:
- *      - "input-settings-updated" with event.inputSettings.audio.processor.type
- *        confirming what actually got applied (e.g. falls back to "none" if
- *        unsupported) — this is the source of truth, not a UA regex.
- *      - "nonfatal-error" with event.type === "input-settings-error" when the
- *        processor request itself fails (e.g. plan doesn't have Krisp).
- *    No round trip is wasted "checking" first — we ask once, and trust the
- *    SDK's own event to tell us what happened. This also means new
- *    browsers/platforms that gain support work automatically with zero
- *    code changes, instead of needing a UA regex update.
- *  - Reconnect path no longer destroys and recreates the whole call object
- *    on every transient transport blip. Daily's "network-quality-change" and
- *    "nonfatal-error" (send/receive-transport-disconnected) are often
- *    self-healing within Daily's own SFU reconnection; we now only force a
- *    full leave+rejoin after Daily's own internal recovery window elapses
- *    AND the call object reports we're truly not in a meeting anymore. This
- *    avoids the multi-second audio gap that a full teardown caused on a
- *    network blip that Daily itself could have recovered from.
- *  - joinCall now fetches the meeting token AND warms the call object in
- *    parallel instead of sequentially, shaving the serial round-trip off
- *    time-to-audio.
- *  - Local audio track is unmuted as early as Daily reports
- *    "track-started" for the local audio track, rather than waiting for
- *    the full "joined-meeting" participant snapshot to render — participants
- *    already in the room hear you the instant your track is live.
+ * Fixes from v15:
+ *  - CRITICAL: Fixed "Cannot read properties of undefined (reading 'cssFile')"
+ *    crash that prevented joining meetings.
+ *
+ *    Root cause: Daily.co's bundle uses a lazy CSS-injection mechanism. The
+ *    `_cssFile` internal property is undefined until Daily finishes its own
+ *    bootstrap. The v15 singleton called `DailyIframe.getCallInstance()` and
+ *    `DailyIframe.createCallObject()` synchronously at module-load time (or
+ *    immediately on first render), which races with the SDK's bootstrap in
+ *    Vite/React environments — producing the cssFile crash before any join
+ *    attempt even starts.
+ *
+ *    Fix: `ensureDailySDKReady()` — polls until `DailyIframe.supported` is a
+ *    function (Daily sets this synchronously after its CSS map is populated).
+ *    `getOrCreateCallObject` is now `async` and awaits this guard before ANY
+ *    DailyIframe API call. `destroyForeignCallInstance` does the same.
+ *    `scheduleTransportReconnect` also awaits the async version.
+ *
+ *  - All other v15 behaviour preserved: noise-cancellation via Daily events,
+ *    self-heal grace window, parallel token+callObject warmup, early
+ *    local-audio-ready signal, exp-room handling.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -36,11 +29,49 @@ import DailyIframe from "@daily-co/daily-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// ─── SDK readiness guard ───────────────────────────────────────────────────────
+// Daily.co lazily populates its internal CSS injection map (_cssFile) during
+// its own bootstrap. Calling createCallObject() before that completes throws:
+//   TypeError: Cannot read properties of undefined (reading 'cssFile')
+// We poll until DailyIframe.supported is a function, which Daily sets
+// synchronously right after its bootstrap finishes. Fails open after 4s so
+// we don't block forever on unsupported environments.
+let _sdkReady = false;
+let _sdkReadyPromise: Promise<void> | null = null;
+
+function ensureDailySDKReady(timeoutMs = 4000): Promise<void> {
+  if (_sdkReady) return Promise.resolve();
+  if (_sdkReadyPromise) return _sdkReadyPromise;
+
+  _sdkReadyPromise = new Promise<void>((resolve) => {
+    // Fast path — SDK already bootstrapped
+    if (typeof (DailyIframe as any)?.supported === "function") {
+      _sdkReady = true;
+      resolve();
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => {
+      if (
+        typeof (DailyIframe as any)?.supported === "function" ||
+        Date.now() - start > timeoutMs
+      ) {
+        clearInterval(id);
+        _sdkReady = true;
+        resolve(); // fail open after timeout so join() can surface the real error
+      }
+    }, 50);
+  });
+
+  return _sdkReadyPromise;
+}
+
 // ─── Module-level singleton ────────────────────────────────────────────────────
 let _activeCallObject: any = null;
 let _activeRoomName: string | null = null;
 
-function getOrCreateCallObject(opts: object, forceNew = false): any {
+async function getOrCreateCallObject(opts: object, forceNew = false): Promise<any> {
+  await ensureDailySDKReady();
   if (!forceNew) {
     try {
       const existing = (DailyIframe as any).getCallInstance?.();
@@ -63,6 +94,7 @@ async function releaseCallObject(): Promise<void> {
 }
 
 async function destroyForeignCallInstance(): Promise<void> {
+  await ensureDailySDKReady();
   let existing: any = null;
   try { existing = (DailyIframe as any).getCallInstance?.(); } catch (_) {}
   if (!existing) return;
@@ -146,10 +178,6 @@ interface JoinCallOpts {
 
 const JOIN_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 500;
-// Daily's own SFU-side reconnection typically resolves within a few seconds.
-// We give it a real window to self-heal BEFORE we tear down and rebuild the
-// call object — a full rebuild is what causes audible audio gaps, so it's
-// reserved for genuine, prolonged disconnects only.
 const SELF_HEAL_GRACE_MS = 4_000;
 const TRANSPORT_RECONNECT_BASE_MS = 2_000;
 const TRANSPORT_RECONNECT_MAX_MS  = 15_000;
@@ -198,17 +226,17 @@ export function useDailyCall({
   onHandRaiseChange,
   onLocalAudioReady,
 }: UseDailyCallOptions) {
-  const [callState,       setCallState]       = useState<DailyCallState>("idle");
-  const [participants,    setParticipants]    = useState<Map<string, DailyParticipant>>(new Map());
-  const [isRecording,     setIsRecording]     = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [networkQuality,  setNetworkQuality]  = useState<CallQuality>("good");
-  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
-  const [participantCount, setParticipantCount] = useState(0);
-  const [elapsedSeconds,  setElapsedSeconds]  = useState(0);
-  const [error,           setError]           = useState<string | null>(null);
+  const [callState,         setCallState]         = useState<DailyCallState>("idle");
+  const [participants,      setParticipants]      = useState<Map<string, DailyParticipant>>(new Map());
+  const [isRecording,       setIsRecording]       = useState(false);
+  const [isScreenSharing,   setIsScreenSharing]   = useState(false);
+  const [networkQuality,    setNetworkQuality]    = useState<CallQuality>("good");
+  const [activeSpeakerId,   setActiveSpeakerId]   = useState<string | null>(null);
+  const [participantCount,  setParticipantCount]  = useState(0);
+  const [elapsedSeconds,    setElapsedSeconds]    = useState(0);
+  const [error,             setError]             = useState<string | null>(null);
   const [noiseCancellation, setNoiseCancellationState] = useState<NoiseCancellationState>("unknown");
-  const [handRaises, setHandRaises] = useState<Map<string, boolean>>(new Map());
+  const [handRaises,        setHandRaises]        = useState<Map<string, boolean>>(new Map());
 
   const isOwnerRef             = useRef(false);
   const joinTimeRef            = useRef<number>(0);
@@ -225,10 +253,13 @@ export function useDailyCall({
   const transportRetryCountRef = useRef(0);
   const localAudioReadyFiredRef = useRef(false);
 
-  useEffect(() => { callIdRef.current = callId; },        [callId]);
-  useEffect(() => { roomNameRef.current = roomName; },    [roomName]);
+  useEffect(() => { callIdRef.current = callId; },           [callId]);
+  useEffect(() => { roomNameRef.current = roomName; },       [roomName]);
   useEffect(() => { meetingTokenRef.current = meetingToken; }, [meetingToken]);
-  useEffect(() => { userNameRef.current = userName; },    [userName]);
+  useEffect(() => { userNameRef.current = userName; },       [userName]);
+
+  // Kick off SDK readiness check eagerly so it's likely done before joinCall
+  useEffect(() => { ensureDailySDKReady(); }, []);
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -244,7 +275,7 @@ export function useDailyCall({
     return () => clearInterval(timerRef.current);
   }, [callState]);
 
-  // ── Fetch meeting token (debounced auth) ───────────────────────────────────
+  // ── Fetch meeting token ────────────────────────────────────────────────────
   const fetchMeetingToken = useCallback(async (rName: string, isOwnerUser = true): Promise<string | null> => {
     try {
       const token = await getAuthToken();
@@ -309,8 +340,8 @@ export function useDailyCall({
       sendSettings: {
         video: {
           encodings: {
-            low:    { maxBitrate: 150_000, maxFramerate: 15, scaleResolutionDownBy: 4 },
-            medium: { maxBitrate: 500_000, maxFramerate: 24, scaleResolutionDownBy: 2 },
+            low:    { maxBitrate: 150_000,   maxFramerate: 15, scaleResolutionDownBy: 4 },
+            medium: { maxBitrate: 500_000,   maxFramerate: 24, scaleResolutionDownBy: 2 },
             high:   { maxBitrate: 1_200_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
           },
         },
@@ -318,27 +349,12 @@ export function useDailyCall({
     } as any;
   }
 
-  // ── Noise cancellation: request once, trust Daily's own events ─────────────
-  /**
-   * Daily's documented pattern (not UA-sniffing): call updateInputSettings()
-   * once after join. Daily resolves capability server/SDK-side and tells us
-   * the real outcome via:
-   *   - "input-settings-updated" → event.inputSettings.audio.processor.type
-   *     reflects what's ACTUALLY active ("noise-cancellation" or "none" if
-   *     Daily silently fell back due to lack of support).
-   *   - "nonfatal-error" with type "input-settings-error" → the request
-   *     itself failed (e.g. plan doesn't include Krisp).
-   * No pre-flight UA check, no wasted round trip, and it stays correct as
-   * Daily/browsers gain support over time without a code change here.
-   */
+  // ── Noise cancellation ─────────────────────────────────────────────────────
   const requestNoiseCancellation = useCallback(async (callObj: any, enabled: boolean) => {
     try {
       await callObj.updateInputSettings({
         audio: { processor: enabled ? { type: "noise-cancellation" } : { type: "none" } },
       });
-      // Outcome arrives via the "input-settings-updated" event handler below —
-      // we don't optimistically set state here, since Daily may silently
-      // downgrade to "none" if unsupported.
     } catch (err) {
       console.warn("[Daily] updateInputSettings request failed:", extractDailyError(err));
       setNoiseCancellationState("error");
@@ -368,9 +384,6 @@ export function useDailyCall({
       const localP = Object.values(allParts).find((p: any) => p.local) as any;
       if (localP) setIsScreenSharing(!!localP.screen);
 
-      // Fire local-audio-ready immediately if the local track is already
-      // live in this snapshot (common case — getUserMedia resolved before
-      // the join round trip completed).
       if (localP?.tracks?.audio?.state === "playable" && !localAudioReadyFiredRef.current) {
         localAudioReadyFiredRef.current = true;
         onLocalAudioReady?.(Date.now() - joinCallStartedAtRef.current);
@@ -378,25 +391,18 @@ export function useDailyCall({
 
       onJoined?.();
       toast.success("Connected to meeting!");
-
-      // Request noise cancellation once we're actually in the meeting —
-      // Daily's input-settings API requires an active call.
       requestNoiseCancellation(callObj, true);
     });
 
-    // ── Real signal #1: confirms what's actually active ─────────────────────
     callObj.on("input-settings-updated", (event: any) => {
       const processorType = event?.inputSettings?.audio?.processor?.type;
       if (processorType === "noise-cancellation") {
         setNoiseCancellationState("active");
       } else if (processorType === "none" || processorType === undefined) {
-        // Daily silently fell back — this IS the unsupported signal, no UA
-        // guesswork needed.
         setNoiseCancellationState((prev) => (prev === "active" ? "inactive" : "unsupported"));
       }
     });
 
-    // ── Track lifecycle — fire local-audio-ready as early as possible ──────
     callObj.on("track-started", (event: any) => {
       if (event?.participant?.local && event?.track?.kind === "audio" && !localAudioReadyFiredRef.current) {
         localAudioReadyFiredRef.current = true;
@@ -490,16 +496,12 @@ export function useDailyCall({
       onNetworkQualityChange?.(quality);
       if (quality === "poor") {
         toast.warning("Weak connection — reducing video quality", { id: "network-warning" });
-        // Video degrades; audio bitrate is intentionally left untouched here —
-        // see useDailyCallAudio.applyAudioPriorityOnWeakNetwork for the
-        // audio-priority policy applied by the caller.
         callObj.updateSendSettings({ video: { encodings: { low: { maxBitrate: 150000, maxFramerate: 15, scaleResolutionDownBy: 4 } } } }).catch(() => {});
       } else if (quality === "excellent" || quality === "good") {
         toast.dismiss("network-warning");
       }
     });
 
-    // ── App messages (used for hand raise) ────────────────────────────────
     callObj.on("app-message", (event: any) => {
       const { data, fromId } = event ?? {};
       if (!data || !fromId) return;
@@ -518,22 +520,15 @@ export function useDailyCall({
       }
     });
 
-    // ── Transport disconnect — give Daily's own recovery a grace window ────
-    // before forcing a full leave+rejoin. Most transient blips self-heal via
-    // Daily's internal ICE restart within a couple seconds; tearing the call
-    // object down immediately was what caused an audible audio gap on every
-    // minor wifi hiccup.
     const handleTransportDisconnect = (source: string) => {
       if (!joinedRef.current) return;
-      if (selfHealTimerRef.current) return; // already waiting on a grace window
+      if (selfHealTimerRef.current) return;
 
       selfHealTimerRef.current = setTimeout(() => {
         selfHealTimerRef.current = undefined;
-        // Re-check: if Daily already recovered on its own, meetingState will
-        // say so and we skip the rebuild entirely.
         let state: string | undefined;
         try { state = callObj.meetingState?.(); } catch (_) {}
-        if (state === "joined-meeting") return; // self-healed — no action needed
+        if (state === "joined-meeting") return;
         scheduleTransportReconnect(source, callObj);
       }, SELF_HEAL_GRACE_MS);
     };
@@ -542,8 +537,7 @@ export function useDailyCall({
       console.warn("[Daily] Non-fatal error:", event);
       const type: string = event?.type ?? event?.error?.type ?? "";
       if (type === "input-settings-error") {
-        // ── Real signal #2: noise cancellation request itself failed ──────
-        console.warn("[Daily] Noise cancellation unsupported on this plan/browser:", event?.errorMsg ?? event);
+        console.warn("[Daily] Noise cancellation unsupported:", event?.errorMsg ?? event);
         setNoiseCancellationState("unsupported");
         return;
       }
@@ -630,7 +624,8 @@ export function useDailyCall({
       joinedRef.current = false;
       await new Promise((r) => setTimeout(r, 300));
 
-      const newCallObj = getOrCreateCallObject(
+      // async version — awaits SDK readiness before createCallObject
+      const newCallObj = await getOrCreateCallObject(
         buildCallOpts(room, token ?? undefined),
         true,
       );
@@ -645,7 +640,7 @@ export function useDailyCall({
           "Reconnect timed out",
         );
         toast.dismiss("transport-reconnect");
-        transportRetryCountRef.current = 0; // reset on success
+        transportRetryCountRef.current = 0;
       } catch (err) {
         console.error("[Daily] Reconnect failed:", err);
         scheduleTransportReconnect("reconnect-failed", newCallObj);
@@ -662,6 +657,7 @@ export function useDailyCall({
     joinCallStartedAtRef.current = Date.now();
     localAudioReadyFiredRef.current = false;
 
+    // Re-attach to an already-active call object for the same room
     if (!isRetry && _activeCallObject && _activeRoomName === targetRoom) {
       let meetingState: string | undefined;
       try { meetingState = _activeCallObject.meetingState?.(); } catch (_) {}
@@ -691,21 +687,23 @@ export function useDailyCall({
     transportRetryCountRef.current = 0;
 
     try {
+      // Ensure the SDK is fully bootstrapped before touching any DailyIframe API.
+      // This is the primary fix for "Cannot read properties of undefined (reading 'cssFile')".
+      await ensureDailySDKReady();
+
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
-      // ── Parallelize token fetch + call object creation ─────────────────
-      // Previously the call object was only built once a token resolved.
-      // createCallObject() does its own local getUserMedia/device warmup
-      // and does NOT need the token to start — only join() does. Building
-      // both concurrently shaves the full token round-trip off
-      // time-to-media-warm-up.
       const explicitToken = opts?.token ?? meetingToken;
       const tokenPromise = explicitToken
         ? Promise.resolve(explicitToken)
         : fetchMeetingToken(targetRoom, true);
 
       let foreignState: string | undefined;
-      try { const foreign = (DailyIframe as any).getCallInstance?.(); if (foreign) foreignState = foreign.meetingState?.(); } catch (_) {}
+      try {
+        await ensureDailySDKReady();
+        const foreign = (DailyIframe as any).getCallInstance?.();
+        if (foreign) foreignState = foreign.meetingState?.();
+      } catch (_) {}
       const staleForeignSession = foreignState === "joined-meeting" || foreignState === "joining-meeting";
 
       if (_activeCallObject && (isRetry || _activeRoomName !== targetRoom)) {
@@ -719,10 +717,10 @@ export function useDailyCall({
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
 
-      // Create the call object immediately (starts local media acquisition)
-      // while the token request races in parallel.
-      const callObjPromise = Promise.resolve().then(() =>
-        getOrCreateCallObject(buildCallOpts(targetRoom, undefined), isRetry || staleForeignSession)
+      // Parallel: token fetch + call object creation (both now async-safe)
+      const callObjPromise = getOrCreateCallObject(
+        buildCallOpts(targetRoom, undefined),
+        isRetry || staleForeignSession,
       );
 
       const [token, callObj] = await Promise.all([tokenPromise, callObjPromise]);
@@ -733,14 +731,14 @@ export function useDailyCall({
       registerHandlers(callObj);
 
       await withTimeout(
-        callObj.join({ userName: opts?.displayName ?? userName, url: `https://fixsense.daily.co/${targetRoom}`, token: token ?? undefined }),
+        callObj.join({
+          userName: opts?.displayName ?? userName,
+          url: `https://fixsense.daily.co/${targetRoom}`,
+          token: token ?? undefined,
+        }),
         JOIN_TIMEOUT_MS,
         "Connection timed out",
       );
-
-      // Noise cancellation is now requested from the "joined-meeting" handler
-      // (registerHandlers), using Daily's own confirmation events instead of
-      // a UA check performed here.
 
       return true;
     } catch (err: unknown) {
@@ -797,7 +795,7 @@ export function useDailyCall({
     if (_activeCallObject) await _activeCallObject.setLocalVideo(enabled);
   }, []);
 
-  // ── Screen share ─────────────────────────────────────────────────────────
+  // ── Screen share ───────────────────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
     if (!_activeCallObject) {
       toast.error("Not connected to the meeting yet.");
@@ -809,7 +807,7 @@ export function useDailyCall({
         screenVideoSendSettings: {
           maxQuality: "medium",
           encodings: {
-            low: { maxBitrate: 600_000, maxFramerate: 8 },
+            low:    { maxBitrate: 600_000,   maxFramerate: 8 },
             medium: { maxBitrate: 1_200_000, maxFramerate: 15 },
           },
         },
@@ -884,7 +882,6 @@ export function useDailyCall({
   const setNoiseCancellation = useCallback(async (enabled: boolean) => {
     if (!_activeCallObject) return;
     await requestNoiseCancellation(_activeCallObject, enabled);
-    // Resulting state arrives via "input-settings-updated" / "nonfatal-error".
   }, [requestNoiseCancellation]);
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
@@ -900,11 +897,11 @@ export function useDailyCall({
     };
   }, []);
 
-  const isConnected  = callState === "joined";
-  const isConnecting = callState === "joining";
-  const localParticipant  = Array.from(participants.values()).find((p) => p.local);
+  const isConnected        = callState === "joined";
+  const isConnecting       = callState === "joining";
+  const localParticipant   = Array.from(participants.values()).find((p) => p.local);
   const remoteParticipants = Array.from(participants.values()).filter((p) => !p.local);
-  const activeSpeaker = activeSpeakerId ? participants.get(activeSpeakerId) : null;
+  const activeSpeaker      = activeSpeakerId ? participants.get(activeSpeakerId) : null;
 
   return {
     callState, isConnected, isConnecting, isRecording, isScreenSharing,
