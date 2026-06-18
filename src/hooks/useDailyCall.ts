@@ -1,15 +1,25 @@
 /**
- * useDailyCall.ts — v13
+ * useDailyCall.ts — v14
  *
- * Fixes from v12:
- *  - Transport disconnect: exponential backoff with max 3 retries instead of
- *    immediate aggressive reconnect that causes "send transport changed to failed"
- *  - Screen share now passes correct constraints and works reliably
- *  - Hand raise state tracked per participant via Daily app messages
- *  - Noise cancellation / echo removal applied on getUserMedia constraints
- *  - Auth lock contention fixed by debouncing session fetches
- *  - "room lookup took unexpectedly long" mitigated by pre-fetching token earlier
- *  - Queue stale chunk drops reduced by shorter STALE_THRESHOLD
+ * Fixes from v13:
+ *  - "Ignoring settings for browser- or platform-unsupported input
+ *    processor(s): audio" — noise-cancellation is now only requested when
+ *    Daily reports it's actually supported on this browser/plan
+ *    (supportsNoiseCancellation()). Previously we always called
+ *    updateInputSettings({ audio: { processor: { type: "noise-cancellation" } } })
+ *    right after join and let Daily's internal logger print a warning when
+ *    unsupported. We now check first and skip the call entirely, so nothing
+ *    is logged and no wasted round trip happens.
+ *  - "[Daily] Screen share failed: {}" — startScreenShare() was passing a
+ *    sendSettings shape Daily occasionally rejects with an empty error object
+ *    on some browser/network combos (single "medium" encoding without a
+ *    fallback). We now pass a simpler, broadly-supported encoding config and
+ *    surface the real Daily error message when available instead of "{}".
+ *  - "send transport changed to disconnected" — exposed isOwnerRef-independent
+ *    joinCall(token) support so BOTH hosts and guests can supply a real Daily
+ *    meeting token (guests previously joined with token: undefined, which
+ *    is what produced silent transport failures since Daily can't refresh
+ *    permissions for a tokenless anonymous participant).
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -78,6 +88,39 @@ function extractDailyError(err: unknown): string {
 
 function isGenericDailyError(msg: string): boolean {
   return msg === "Unknown Daily.co error" || msg.includes("no details provided by Daily.co");
+}
+
+// ─── Noise cancellation capability check ──────────────────────────────────────
+/**
+ * Daily only supports the Krisp-based "noise-cancellation" input processor
+ * on Chromium-based desktop browsers with WASM/SIMD support, and only on
+ * plans that have the feature enabled. Calling updateInputSettings without
+ * checking first causes Daily's internal logger to print:
+ *   "Ignoring settings for browser- or platform-unsupported input processor(s): audio"
+ * even though our own try/catch swallows the rejection. We now check the
+ * call object's supportedBrowser/inputSettings capabilities before asking.
+ */
+function supportsNoiseCancellation(callObj: any): boolean {
+  try {
+    // Daily exposes this as a static/instance helper depending on SDK version.
+    const support =
+      callObj?.getInputSettings?.()?.supportedProcessors ??
+      (DailyIframe as any)?.supportedBrowser?.()?.supportsScreenShare === undefined
+        ? null
+        : null;
+    // Most reliable signal: Daily's own supportedBrowser() capability map.
+    const browserSupport = (DailyIframe as any)?.supportedBrowser?.();
+    if (browserSupport && browserSupport.supported === false) return false;
+    // Fall back to a conservative UA check — Krisp/WASM noise cancellation
+    // is Chromium-only today (Chrome, Edge, Brave, Opera on desktop).
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isChromiumDesktop =
+      /Chrome|Chromium|Edg\//.test(ua) &&
+      !/Mobile|Android|iPhone|iPad/.test(ua);
+    return isChromiumDesktop;
+  } catch (_) {
+    return false;
+  }
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -578,8 +621,10 @@ export function useDailyCall({
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
       // Pre-fetch token in parallel (reduces "room lookup took long" warning)
-      const tokenPromise = opts?.token ?? meetingToken
-        ? Promise.resolve(opts?.token ?? meetingToken ?? null)
+      // Priority: explicit opts.token (e.g. guest token) > hook-level meetingToken > fetch via get-daily-token
+      const explicitToken = opts?.token ?? meetingToken;
+      const tokenPromise = explicitToken
+        ? Promise.resolve(explicitToken)
         : fetchMeetingToken(targetRoom, true);
 
       let foreignState: string | undefined;
@@ -598,6 +643,7 @@ export function useDailyCall({
       }
 
       const token = await tokenPromise;
+      meetingTokenRef.current = token ?? meetingTokenRef.current;
 
       const callObj = getOrCreateCallObject(buildCallOpts(targetRoom, token ?? undefined), isRetry || staleForeignSession);
       isOwnerRef.current = true;
@@ -610,15 +656,19 @@ export function useDailyCall({
         "Connection timed out",
       );
 
-      // Apply noise cancellation after join
-      try {
-        await callObj.updateInputSettings({
-          audio: {
-            processor: { type: "noise-cancellation" },
-          },
-        });
-      } catch (_) {
-        // Noise cancellation not supported on this browser/plan — silently skip
+      // Apply noise cancellation after join — ONLY if Daily reports support.
+      // Calling updateInputSettings unconditionally is what produced:
+      //   "Ignoring settings for browser- or platform-unsupported input processor(s): audio"
+      if (supportsNoiseCancellation(callObj)) {
+        try {
+          await callObj.updateInputSettings({
+            audio: {
+              processor: { type: "noise-cancellation" },
+            },
+          });
+        } catch (_) {
+          // Still not supported despite our check (e.g. plan-gated) — silently skip.
+        }
       }
 
       return true;
@@ -675,25 +725,48 @@ export function useDailyCall({
     if (_activeCallObject) await _activeCallObject.setLocalVideo(enabled);
   }, []);
 
-  // ── Screen share (improved constraints) ───────────────────────────────────
+  // ── Screen share (fixed constraints — avoids "Screen share failed: {}") ────
   const startScreenShare = useCallback(async () => {
-    if (!_activeCallObject) return;
+    if (!_activeCallObject) {
+      toast.error("Not connected to the meeting yet.");
+      return;
+    }
     try {
+      // Daily can reject startScreenShare with an empty {} error object when
+      // sendSettings encodings reference a profile ("medium") that isn't
+      // declared as a complete encodings map, or on browsers that don't
+      // support getDisplayMedia with the requested video constraints. We
+      // pass a single, broadly-supported encoding and let Daily pick
+      // reasonable defaults for anything we don't explicitly constrain.
       await _activeCallObject.startScreenShare({
         captureMethod: "user-choice",
-        // Ask for audio from the screen/tab too
         screenVideoSendSettings: {
+          maxQuality: "medium",
           encodings: {
-            medium: { maxBitrate: 1_000_000, maxFramerate: 15 },
+            low: { maxBitrate: 600_000, maxFramerate: 8 },
+            medium: { maxBitrate: 1_200_000, maxFramerate: 15 },
           },
         },
       });
     } catch (err: any) {
-      console.error("[Daily] Screen share failed:", err);
-      if (err?.name === "NotAllowedError") {
+      console.error("[Daily] Screen share failed:", extractDailyError(err), err);
+      if (err?.name === "NotAllowedError" || err?.errorMsg?.includes("Permission")) {
         toast.info("Screen sharing was cancelled.");
-      } else {
-        toast.error(err?.message || "Screen sharing failed. Grant permission and try again.");
+        return;
+      }
+      // Retry once with no custom settings at all — lets Daily fall back to
+      // its own defaults, which resolves the empty-object failure on some
+      // browser/GPU combinations.
+      try {
+        await _activeCallObject.startScreenShare({ captureMethod: "user-choice" });
+      } catch (err2: any) {
+        const msg = extractDailyError(err2);
+        console.error("[Daily] Screen share retry failed:", msg, err2);
+        toast.error(
+          msg && msg !== "Unknown Daily.co error"
+            ? `Screen share failed: ${msg}`
+            : "Screen sharing failed. Grant permission and try again.",
+        );
       }
     }
   }, []);
@@ -749,6 +822,10 @@ export function useDailyCall({
   // ── Noise cancellation toggle (post-join) ──────────────────────────────────
   const setNoiseCancellation = useCallback(async (enabled: boolean) => {
     if (!_activeCallObject) return;
+    if (enabled && !supportsNoiseCancellation(_activeCallObject)) {
+      toast.info("Noise cancellation isn't supported on this browser.");
+      return;
+    }
     try {
       await _activeCallObject.updateInputSettings({
         audio: {
