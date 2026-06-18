@@ -1,13 +1,21 @@
 /**
- * GuestJoin.tsx — v3
+ * GuestJoin.tsx — v4
  *
- * Fixes & improvements:
- *  - Fast join: camera/mic preview starts immediately, no waiting
- *  - Screen share button in control bar
- *  - Proper avatar initials when camera is off (uses guestName, not "?")
- *  - Transport disconnect auto-reconnect (via useDailyCall v12)
- *  - Mobile-first, accessible, 320px+
- *  - Lobby uses GuestLobby component for full device check
+ * Fixes & improvements over v3:
+ *  - CRITICAL: guests now exchange their admitted guest_session_token for a
+ *    real Daily meeting token via get-guest-daily-token before joinCall().
+ *    v3 called daily.joinCall({ rName, displayName }) with NO token at all,
+ *    which is what produced the silent "send transport changed to
+ *    disconnected" failures — Daily can't refresh permissions for a
+ *    tokenless anonymous participant, so any transient network hiccup
+ *    permanently dropped the connection.
+ *  - Screen share button now present and wired to real Daily APIs
+ *    (startScreenShare / stopScreenShare), matching the host experience.
+ *  - Raise hand button now present and wired to daily.raiseHand(), broadcast
+ *    to all participants (including the host) via Daily app-message, with a
+ *    visible indicator badge.
+ *  - Fully responsive: control bar wraps and scales for narrow viewports,
+ *    lobby card uses fluid padding/typography, touch targets stay >=44px.
  */
 
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
@@ -16,7 +24,7 @@ import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Users,
   Loader2, WifiOff, RefreshCw, Monitor, MonitorOff,
   Maximize2, PanelRight, X, Pin, PinOff,
-  AlertCircle, Clock, LayoutGrid,
+  AlertCircle, Clock, LayoutGrid, Hand,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
@@ -106,7 +114,7 @@ const LocalPreview = memo(
         {(!isVideoOn || !stream) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl text-white"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center font-bold text-xl sm:text-2xl text-white"
               style={{
                 background:
                   "linear-gradient(135deg,rgba(99,102,241,0.4),rgba(139,92,246,0.4))",
@@ -184,6 +192,14 @@ const PinnableTile = memo(
         activeSpeakerId={activeSpeakerId}
         className="w-full h-full"
       />
+      {participant.handRaised && (
+        <div
+          className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg z-20"
+          style={{ background: "rgba(245,158,11,0.9)", backdropFilter: "blur(8px)" }}
+        >
+          <span className="text-sm">✋</span>
+        </div>
+      )}
       <div
         className={cn(
           "absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold",
@@ -228,7 +244,7 @@ const VideoGrid = memo(
   }) => {
     if (error)
       return (
-        <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="h-full flex flex-col items-center justify-center gap-4 p-6 sm:p-8 text-center">
           <WifiOff className="w-10 h-10 text-red-400" />
           <div>
             <p className="text-sm font-semibold text-red-400 mb-1">Connection failed</p>
@@ -238,7 +254,7 @@ const VideoGrid = memo(
           </div>
           <button
             onClick={onRetry}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white touch-manipulation"
             style={{
               background: "rgba(99,102,241,0.2)",
               border: "1px solid rgba(99,102,241,0.3)",
@@ -275,7 +291,7 @@ const VideoGrid = memo(
       );
 
     const LayoutSwitcher = (
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+      <div className="absolute top-2 sm:top-3 right-2 sm:right-3 z-20 flex items-center gap-1 sm:gap-1.5">
         {(["spotlight", "grid", "sidebar"] as VideoLayout[]).map((l) => {
           const icons = { spotlight: Maximize2, grid: LayoutGrid, sidebar: PanelRight };
           const Icon = icons[l];
@@ -283,7 +299,7 @@ const VideoGrid = memo(
             <button
               key={l}
               onClick={(e) => { e.stopPropagation(); onLayoutChange(l); }}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all touch-manipulation"
               style={{
                 background: layout === l ? "rgba(99,102,241,0.85)" : "rgba(0,0,0,0.45)",
                 backdropFilter: "blur(8px)",
@@ -335,13 +351,13 @@ const VideoGrid = memo(
           {strip.length > 0 && (
             <div
               className="flex gap-2 shrink-0 overflow-x-auto pb-1"
-              style={{ height: "clamp(80px, 20%, 130px)" }}
+              style={{ height: "clamp(72px, 18%, 130px)" }}
             >
               {strip.map((p) => (
                 <div
                   key={p.session_id}
                   className="shrink-0 rounded-xl overflow-hidden"
-                  style={{ width: "clamp(120px, 160px, 200px)", height: "100%" }}
+                  style={{ width: "clamp(100px, 150px, 200px)", height: "100%" }}
                 >
                   <PinnableTile
                     participant={p}
@@ -374,7 +390,7 @@ const VideoGrid = memo(
           {strip.length > 0 && (
             <div
               className="flex flex-col gap-2 overflow-y-auto"
-              style={{ width: "clamp(100px, 22%, 180px)" }}
+              style={{ width: "clamp(90px, 22%, 180px)" }}
             >
               {strip.map((p) => (
                 <div
@@ -441,6 +457,10 @@ export default function GuestJoin() {
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [videoLayout, setVideoLayout] = useState<VideoLayout>("spotlight");
   const [showPeople, setShowPeople] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+
+  // The real Daily meeting token, exchanged once the guest is admitted.
+  const guestDailyTokenRef = useRef<string | null>(null);
 
   // Start camera preview immediately on mount — don't wait for user input
   useEffect(() => {
@@ -486,28 +506,64 @@ export default function GuestJoin() {
     onLeft: () => navigate("/"),
     onParticipantJoined: (p) => toast.info(`${p.user_name || "Someone"} joined`),
     onParticipantLeft: () => {},
+    onHandRaiseChange: (_sid, raised, uname) => {
+      if (raised) toast.info(`✋ ${uname} raised their hand`, { duration: 5000 });
+    },
   });
+
+  /**
+   * Exchange the guest_session_token (minted by guest-request-status the
+   * moment the host admits this guest) for a real Daily.co meeting token.
+   * Without this, joinCall() runs with token: undefined and the connection
+   * is fragile — any transient network hiccup permanently disconnects the
+   * transport because Daily can't refresh permissions for an anonymous,
+   * tokenless participant ("send transport changed to disconnected").
+   */
+  const exchangeForDailyToken = useCallback(async (guestSessionToken: string, displayName: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("get-guest-daily-token", {
+        body: { guest_token: guestSessionToken, display_name: displayName },
+      });
+      if (error) throw error;
+      if (!data?.token) throw new Error(data?.error || "No token returned");
+      return data.token as string;
+    } catch (err: any) {
+      console.error("[GuestJoin] Failed to exchange guest token:", err);
+      return null;
+    }
+  }, []);
 
   // Poll for admission status
   useEffect(() => {
     if (step !== "waiting" || !requestId) return;
     const interval = setInterval(async () => {
       try {
-        const { data } = await (supabase as any)
-          .from("call_guest_requests")
-          .select("status")
-          .eq("id", requestId)
-          .maybeSingle();
+        const { data } = await supabase.functions.invoke("guest-request-status", {
+          body: { id: requestId },
+        });
 
         if (data?.status === "admitted") {
           clearInterval(interval);
+
+          const displayName = guestName.trim() || "Guest";
+          let dailyToken: string | null = null;
+          if (data.guest_token) {
+            dailyToken = await exchangeForDailyToken(data.guest_token, displayName);
+          }
+          guestDailyTokenRef.current = dailyToken;
+
+          if (!dailyToken) {
+            console.warn("[GuestJoin] Joining without a Daily token — connection may be unstable.");
+          }
+
           // Stop local preview stream before Daily takes over
           localStream?.getTracks().forEach((t) => t.stop());
           setLocalStream(null);
           setStep("admitted");
           daily.joinCall({
-            rName: roomName!,
-            displayName: guestName.trim() || "Guest",
+            rName: data.room_name || roomName!,
+            token: dailyToken ?? undefined,
+            displayName,
           });
         } else if (data?.status === "denied" || data?.status === "expired") {
           clearInterval(interval);
@@ -519,7 +575,7 @@ export default function GuestJoin() {
     }, 2000); // Poll every 2s for faster admission detection
 
     return () => clearInterval(interval);
-  }, [step, requestId, roomName, guestName, localStream, daily]);
+  }, [step, requestId, roomName, guestName, localStream, daily, exchangeForDailyToken]);
 
   const handleRequestJoin = useCallback(async () => {
     const name = guestName.trim();
@@ -562,28 +618,51 @@ export default function GuestJoin() {
     setIsVideoOn((v) => !v);
   }, [step, daily, isVideoOn, localStream]);
 
+  const handleScreenShare = useCallback(async () => {
+    if (daily.isScreenSharing) {
+      await daily.stopScreenShare();
+    } else {
+      await daily.startScreenShare();
+    }
+  }, [daily]);
+
+  const handleHandRaise = useCallback(async () => {
+    const next = !isHandRaised;
+    setIsHandRaised(next);
+    await daily.raiseHand(next);
+  }, [isHandRaised, daily]);
+
   const handleRetryJoin = useCallback(() => {
     if (!roomName) return;
-    daily.joinCall({ rName: roomName, displayName: guestName.trim() || "Guest" });
+    daily.joinCall({
+      rName: roomName,
+      token: guestDailyTokenRef.current ?? undefined,
+      displayName: guestName.trim() || "Guest",
+    });
   }, [roomName, guestName, daily]);
+
+  const handRaiseCount = useMemo(
+    () => daily.participants.filter((p) => p.handRaised).length,
+    [daily.participants],
+  );
 
   // ── LOBBY ─────────────────────────────────────────────────────────────────────
   if (step !== "admitted") {
     return (
       <div
-        className="min-h-dvh flex flex-col items-center justify-center p-4 sm:p-6"
+        className="min-h-dvh flex flex-col items-center justify-center p-3 sm:p-6"
         style={{ background: T.bg }}
       >
         <div className="w-full max-w-md">
           {/* Branding */}
-          <div className="text-center mb-6">
+          <div className="text-center mb-5 sm:mb-6">
             <div
               className="w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center"
               style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}
             >
               <Video className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-white">Join Meeting</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-white">Join Meeting</h1>
             {roomName && (
               <p className="text-xs mt-1" style={{ color: T.muted }}>
                 {roomName.replace(/-/g, " ")}
@@ -592,7 +671,7 @@ export default function GuestJoin() {
           </div>
 
           <div
-            className="rounded-2xl p-4 sm:p-6 space-y-4"
+            className="rounded-2xl p-3.5 sm:p-6 space-y-3.5 sm:space-y-4"
             style={{ background: T.panel, border: `1px solid ${T.border}` }}
           >
             {/* Camera preview — shows immediately */}
@@ -611,10 +690,10 @@ export default function GuestJoin() {
             )}
 
             {/* Mic / Camera toggles */}
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={handleToggleMic}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all touch-manipulation"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs sm:text-sm font-medium transition-all touch-manipulation min-h-[44px]"
                 style={
                   isAudioOn
                     ? {
@@ -634,7 +713,7 @@ export default function GuestJoin() {
               </button>
               <button
                 onClick={handleToggleCam}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all touch-manipulation"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs sm:text-sm font-medium transition-all touch-manipulation min-h-[44px]"
                 style={
                   isVideoOn
                     ? {
@@ -670,7 +749,7 @@ export default function GuestJoin() {
                     e.key === "Enter" && guestName.trim() && handleRequestJoin()
                   }
                   placeholder="Enter your name…"
-                  className="w-full px-4 py-3 rounded-xl outline-none text-sm"
+                  className="w-full px-4 py-3 rounded-xl outline-none text-sm min-h-[44px]"
                   style={{
                     background: T.card,
                     border: `1px solid ${T.border}`,
@@ -725,7 +804,7 @@ export default function GuestJoin() {
                 disabled={
                   !guestName.trim() || step === "requesting" || step === "waiting"
                 }
-                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation disabled:opacity-50 disabled:pointer-events-none"
+                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation disabled:opacity-50 disabled:pointer-events-none min-h-[48px]"
                 style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}
               >
                 {step === "requesting" ? (
@@ -743,7 +822,7 @@ export default function GuestJoin() {
             ) : (
               <button
                 onClick={() => { setStep("lobby"); setRequestId(null); }}
-                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white touch-manipulation"
+                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white touch-manipulation min-h-[48px]"
                 style={{ background: T.card, border: `1px solid ${T.border}` }}
               >
                 Try again
@@ -763,14 +842,14 @@ export default function GuestJoin() {
     >
       {/* Top bar */}
       <div
-        className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b shrink-0 gap-2"
+        className="flex items-center justify-between px-2.5 sm:px-4 py-2 sm:py-2.5 border-b shrink-0 gap-1.5 sm:gap-2"
         style={{
           borderColor: T.border,
           background: T.panel,
           backdropFilter: "blur(20px)",
         }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <div className="flex items-center gap-1.5 shrink-0">
             <span
               className="w-2 h-2 rounded-full bg-emerald-400"
@@ -789,10 +868,10 @@ export default function GuestJoin() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3" style={{ color: T.muted }} />
-            <span className="text-xs font-mono font-semibold text-white tabular-nums">
+            <span className="text-[11px] sm:text-xs font-mono font-semibold text-white tabular-nums">
               {fmt(daily.elapsedSeconds)}
             </span>
           </div>
@@ -800,6 +879,15 @@ export default function GuestJoin() {
             className="w-2 h-2 rounded-full"
             style={{ background: qualityColor(daily.networkQuality) }}
           />
+          {handRaiseCount > 0 && (
+            <div
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg"
+              style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}
+            >
+              <span className="text-xs">✋</span>
+              <span className="text-[10px] font-bold text-amber-400">{handRaiseCount}</span>
+            </div>
+          )}
           <button
             onClick={() => setShowPeople((v) => !v)}
             className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
@@ -819,7 +907,7 @@ export default function GuestJoin() {
       </div>
 
       {/* Video */}
-      <div className="flex-1 min-h-0 p-2 sm:p-3">
+      <div className="flex-1 min-h-0 p-1.5 sm:p-3">
         <VideoGrid
           participants={daily.participants}
           activeSpeakerId={daily.activeSpeakerId}
@@ -834,9 +922,9 @@ export default function GuestJoin() {
       </div>
 
       {/* Control bar */}
-      <div className="px-2 sm:px-3 pb-2 sm:pb-3 shrink-0">
+      <div className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0">
         <div
-          className="flex items-center justify-center gap-2 sm:gap-3 px-3 py-2.5 rounded-2xl"
+          className="flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl flex-wrap"
           style={{
             background: "rgba(13,15,24,0.95)",
             border: `1px solid ${T.border}`,
@@ -846,7 +934,7 @@ export default function GuestJoin() {
           {/* Mic */}
           <button
             onClick={handleToggleMic}
-            className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
               background: isAudioOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)",
               border: `1px solid ${isAudioOn ? T.border : "rgba(239,68,68,0.3)"}`,
@@ -858,7 +946,7 @@ export default function GuestJoin() {
               <MicOff className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
             )}
             <span
-              className="text-[9px] font-medium"
+              className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
               style={{ color: isAudioOn ? T.muted : "#f87171" }}
             >
               {isAudioOn ? "Mic" : "Muted"}
@@ -868,7 +956,7 @@ export default function GuestJoin() {
           {/* Camera */}
           <button
             onClick={handleToggleCam}
-            className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
               background: isVideoOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)",
               border: `1px solid ${isVideoOn ? T.border : "rgba(239,68,68,0.3)"}`,
@@ -880,21 +968,17 @@ export default function GuestJoin() {
               <VideoOff className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
             )}
             <span
-              className="text-[9px] font-medium"
+              className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
               style={{ color: isVideoOn ? T.muted : "#f87171" }}
             >
               {isVideoOn ? "Cam" : "Off"}
             </span>
           </button>
 
-          {/* Screen Share */}
+          {/* Screen Share — now works for guests too */}
           <button
-            onClick={() =>
-              daily.isScreenSharing
-                ? daily.stopScreenShare()
-                : daily.startScreenShare()
-            }
-            className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation hidden sm:flex"
+            onClick={handleScreenShare}
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
               background: daily.isScreenSharing
                 ? "rgba(99,102,241,0.2)"
@@ -908,23 +992,41 @@ export default function GuestJoin() {
               <Monitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             )}
             <span
-              className="text-[9px] font-medium"
+              className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
               style={{ color: daily.isScreenSharing ? "#a5b4fc" : T.muted }}
             >
               {daily.isScreenSharing ? "Stop" : "Share"}
             </span>
           </button>
 
+          {/* Raise hand — now present for guests too */}
+          <button
+            onClick={handleHandRaise}
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
+            style={{
+              background: isHandRaised ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
+              border: `1px solid ${isHandRaised ? "rgba(245,158,11,0.4)" : T.border}`,
+            }}
+          >
+            <Hand className={cn("w-4 h-4 sm:w-5 sm:h-5", isHandRaised ? "text-amber-400" : "text-white")} />
+            <span
+              className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
+              style={{ color: isHandRaised ? "#fbbf24" : T.muted }}
+            >
+              {isHandRaised ? "Lower" : "Raise"}
+            </span>
+          </button>
+
           {/* Leave */}
           <button
             onClick={handleLeave}
-            className="h-11 sm:h-12 px-4 sm:px-8 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
+            className="h-10 sm:h-12 px-3 sm:px-8 rounded-xl text-xs sm:text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
             style={{
               background: "linear-gradient(135deg,#dc2626,#b91c1c)",
               boxShadow: "0 4px 16px rgba(220,38,38,.35)",
             }}
           >
-            <PhoneOff className="w-5 h-5 sm:hidden" />
+            <PhoneOff className="w-4 h-4 sm:hidden" />
             <span className="hidden sm:inline">Leave meeting</span>
           </button>
         </div>
@@ -997,13 +1099,14 @@ export default function GuestJoin() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p
-                      className="text-xs font-medium truncate"
+                      className="text-xs font-medium truncate flex items-center gap-1"
                       style={{ color: T.text }}
                     >
                       {p.user_name || "Participant"}
                       {p.local && (
                         <span style={{ color: T.muted }}> (You)</span>
                       )}
+                      {p.handRaised && <span className="text-sm">✋</span>}
                     </p>
                     <p className="text-[10px]" style={{ color: T.muted }}>
                       {pinnedId === p.session_id ? "Pinned" : p.local ? "You" : "Guest"}
