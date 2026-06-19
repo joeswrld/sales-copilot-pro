@@ -1,27 +1,21 @@
-/**
- * useDailyCall.ts — v16
+
+ * useDailyCall.ts — v17
  *
- * Fixes from v15:
- *  - CRITICAL: Fixed "Cannot read properties of undefined (reading 'cssFile')"
- *    crash that prevented joining meetings.
+ * Fixes from v16:
+ *  - CRITICAL: Fixed "property 'token': token should be a string" error from Daily.co SDK.
+ *    Root cause: Daily.co's join() and createCallObject() APIs reject the `token` key
+ *    entirely when its value is null or undefined — the key must be ABSENT, not present
+ *    with a falsy value. Using `token: token ?? undefined` still includes the key in the
+ *    object literal with value `undefined`, which Daily validates as "token was provided
+ *    but is not a string".
+ *    Fix: replaced all `token: token ?? undefined` and `token,` occurrences with
+ *    conditional spread `...(token ? { token } : {})` so the key is entirely omitted
+ *    when no token is available.
  *
- *    Root cause: Daily.co's bundle uses a lazy CSS-injection mechanism. The
- *    `_cssFile` internal property is undefined until Daily finishes its own
- *    bootstrap. The v15 singleton called `DailyIframe.getCallInstance()` and
- *    `DailyIframe.createCallObject()` synchronously at module-load time (or
- *    immediately on first render), which races with the SDK's bootstrap in
- *    Vite/React environments — producing the cssFile crash before any join
- *    attempt even starts.
- *
- *    Fix: `ensureDailySDKReady()` — polls until `DailyIframe.supported` is a
- *    function (Daily sets this synchronously after its CSS map is populated).
- *    `getOrCreateCallObject` is now `async` and awaits this guard before ANY
- *    DailyIframe API call. `destroyForeignCallInstance` does the same.
- *    `scheduleTransportReconnect` also awaits the async version.
- *
- *  - All other v15 behaviour preserved: noise-cancellation via Daily events,
- *    self-heal grace window, parallel token+callObject warmup, early
- *    local-audio-ready signal, exp-room handling.
+ *  - Applied in three places:
+ *      1. buildCallOpts() — createCallObject options
+ *      2. joinCall() — callObj.join() call
+ *      3. scheduleTransportReconnect() — newCallObj.join() call
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -30,12 +24,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 // ─── SDK readiness guard ───────────────────────────────────────────────────────
-// Daily.co lazily populates its internal CSS injection map (_cssFile) during
-// its own bootstrap. Calling createCallObject() before that completes throws:
-//   TypeError: Cannot read properties of undefined (reading 'cssFile')
-// We poll until DailyIframe.supported is a function, which Daily sets
-// synchronously right after its bootstrap finishes. Fails open after 4s so
-// we don't block forever on unsupported environments.
 let _sdkReady = false;
 let _sdkReadyPromise: Promise<void> | null = null;
 
@@ -44,7 +32,6 @@ function ensureDailySDKReady(timeoutMs = 4000): Promise<void> {
   if (_sdkReadyPromise) return _sdkReadyPromise;
 
   _sdkReadyPromise = new Promise<void>((resolve) => {
-    // Fast path — SDK already bootstrapped
     if (typeof (DailyIframe as any)?.supported === "function") {
       _sdkReady = true;
       resolve();
@@ -58,7 +45,7 @@ function ensureDailySDKReady(timeoutMs = 4000): Promise<void> {
       ) {
         clearInterval(id);
         _sdkReady = true;
-        resolve(); // fail open after timeout so join() can surface the real error
+        resolve();
       }
     }, 50);
   });
@@ -165,7 +152,6 @@ export interface UseDailyCallOptions {
   onRecordingStopped?: () => void;
   onNetworkQualityChange?: (quality: CallQuality) => void;
   onHandRaiseChange?: (sessionId: string, raised: boolean, userName: string) => void;
-  /** Fired the instant the local audio track is live and audible to remote participants. */
   onLocalAudioReady?: (elapsedMsSinceJoinCall: number) => void;
 }
 
@@ -258,7 +244,6 @@ export function useDailyCall({
   useEffect(() => { meetingTokenRef.current = meetingToken; }, [meetingToken]);
   useEffect(() => { userNameRef.current = userName; },       [userName]);
 
-  // Kick off SDK readiness check eagerly so it's likely done before joinCall
   useEffect(() => { ensureDailySDKReady(); }, []);
 
   // ── Timer ──────────────────────────────────────────────────────────────────
@@ -326,10 +311,12 @@ export function useDailyCall({
   }, [buildParticipant]);
 
   // ── Build call object options ──────────────────────────────────────────────
-  function buildCallOpts(room: string, token?: string) {
+  // FIX: Use conditional spread so `token` key is entirely absent when falsy.
+  // Daily.co rejects token: undefined/null — the key must not be present at all.
+  function buildCallOpts(room: string, token?: string | null) {
     return {
       url: `https://fixsense.daily.co/${room}`,
-      token,
+      ...(token ? { token } : {}),
       audioSource: true,
       videoSource: !startWithVideoOff,
       subscribeToTracksAutomatically: true,
@@ -624,9 +611,8 @@ export function useDailyCall({
       joinedRef.current = false;
       await new Promise((r) => setTimeout(r, 300));
 
-      // async version — awaits SDK readiness before createCallObject
       const newCallObj = await getOrCreateCallObject(
-        buildCallOpts(room, token ?? undefined),
+        buildCallOpts(room, token),
         true,
       );
       isOwnerRef.current = true;
@@ -634,8 +620,13 @@ export function useDailyCall({
       registerHandlers(newCallObj);
 
       try {
+        // FIX: Conditional spread ensures token key is absent when falsy
         await withTimeout(
-          newCallObj.join({ userName: userNameRef.current, url: `https://fixsense.daily.co/${room}`, token: token ?? undefined }),
+          newCallObj.join({
+            userName: userNameRef.current,
+            url: `https://fixsense.daily.co/${room}`,
+            ...(token ? { token } : {}),
+          }),
           JOIN_TIMEOUT_MS,
           "Reconnect timed out",
         );
@@ -657,7 +648,6 @@ export function useDailyCall({
     joinCallStartedAtRef.current = Date.now();
     localAudioReadyFiredRef.current = false;
 
-    // Re-attach to an already-active call object for the same room
     if (!isRetry && _activeCallObject && _activeRoomName === targetRoom) {
       let meetingState: string | undefined;
       try { meetingState = _activeCallObject.meetingState?.(); } catch (_) {}
@@ -687,13 +677,13 @@ export function useDailyCall({
     transportRetryCountRef.current = 0;
 
     try {
-      // Ensure the SDK is fully bootstrapped before touching any DailyIframe API.
-      // This is the primary fix for "Cannot read properties of undefined (reading 'cssFile')".
       await ensureDailySDKReady();
 
       if (!DailyIframe) throw new Error("Daily.co SDK failed to load");
 
-      const explicitToken = opts?.token ?? meetingToken;
+      // opts.token is always a plain string (from JoinCallOpts) or undefined —
+      // meetingToken from props can be null, so we coerce null → undefined here.
+      const explicitToken = opts?.token ?? (meetingToken || undefined);
       const tokenPromise = explicitToken
         ? Promise.resolve(explicitToken)
         : fetchMeetingToken(targetRoom, true);
@@ -717,24 +707,27 @@ export function useDailyCall({
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
 
-      // Parallel: token fetch + call object creation (both now async-safe)
       const callObjPromise = getOrCreateCallObject(
         buildCallOpts(targetRoom, undefined),
         isRetry || staleForeignSession,
       );
 
       const [token, callObj] = await Promise.all([tokenPromise, callObjPromise]);
-      meetingTokenRef.current = token ?? meetingTokenRef.current;
+      // Persist resolved token — but only if it's a real string
+      if (token) meetingTokenRef.current = token;
 
       isOwnerRef.current = true;
       _activeRoomName = targetRoom;
       registerHandlers(callObj);
 
+      // FIX: Conditional spread ensures token key is absent when falsy.
+      // Daily.co SDK throws "property 'token': token should be a string" when
+      // the key is present with value null or undefined.
       await withTimeout(
         callObj.join({
           userName: opts?.displayName ?? userName,
           url: `https://fixsense.daily.co/${targetRoom}`,
-          token: token ?? undefined,
+          ...(token ? { token } : {}),
         }),
         JOIN_TIMEOUT_MS,
         "Connection timed out",
@@ -878,7 +871,7 @@ export function useDailyCall({
     if (_activeCallObject) await _activeCallObject.stopRecording();
   }, []);
 
-  // ── Noise cancellation toggle (post-join, user-initiated) ──────────────────
+  // ── Noise cancellation toggle ──────────────────────────────────────────────
   const setNoiseCancellation = useCallback(async (enabled: boolean) => {
     if (!_activeCallObject) return;
     await requestNoiseCancellation(_activeCallObject, enabled);
