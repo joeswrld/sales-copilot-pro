@@ -12,6 +12,10 @@
  *  - Noise cancellation toggle (desktop only)
  *  - Screen share now passes better constraints
  *  - Better transport-disconnect handling via useDailyCall v13
+ *
+ * FIX v10.1: Daily.co SDK throws "property 'token': token should be a string"
+ * when token key is present with value null/undefined. All joinCall() calls
+ * now use conditional spread: ...(meetingToken ? { token: meetingToken } : {})
  */
 
 import DashboardLayout from "@/components/DashboardLayout";
@@ -869,11 +873,14 @@ export default function LiveMeeting() {
   const transcripts = useMemo(() => rawTranscripts.slice(-MAX_TRANSCRIPTS), [rawTranscripts]);
 
   // ── Join ────────────────────────────────────────────────────────────────────
+  // FIX: Use conditional spread so `token` key is entirely absent when falsy.
+  // Daily.co SDK throws "property 'token': token should be a string" when the
+  // key is present with value null or undefined.
   const joinAttemptedRef = useRef(false);
   useEffect(() => {
     if (!roomName || joinAttemptedRef.current || daily.isConnected || daily.isConnecting || daily.callState === "error") return;
     joinAttemptedRef.current = true;
-    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: hostName })
+    daily.joinCall({ rName: roomName, ...(meetingToken ? { token: meetingToken } : {}), displayName: hostName })
       .then((ok) => { if (!ok) joinAttemptedRef.current = false; });
   }, [roomName, hostName]); // eslint-disable-line
 
@@ -885,7 +892,8 @@ export default function LiveMeeting() {
       const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
       reconnectTimerRef.current = setTimeout(() => {
         joinAttemptedRef.current = false;
-        daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: hostName });
+        // FIX: Conditional spread — token key omitted when falsy
+        daily.joinCall({ rName: roomName, ...(meetingToken ? { token: meetingToken } : {}), displayName: hostName });
       }, delay);
     }
     return () => clearTimeout(reconnectTimerRef.current);
@@ -960,7 +968,8 @@ export default function LiveMeeting() {
   const handleRetryJoin = useCallback(() => {
     if (!roomName) return;
     joinAttemptedRef.current = false;
-    daily.joinCall({ rName: roomName, token: meetingToken ?? undefined, displayName: hostName });
+    // FIX: Conditional spread — token key omitted when falsy
+    daily.joinCall({ rName: roomName, ...(meetingToken ? { token: meetingToken } : {}), displayName: hostName });
   }, [roomName, meetingToken, hostName, daily]);
 
   const handleEnd = useCallback(async () => {
