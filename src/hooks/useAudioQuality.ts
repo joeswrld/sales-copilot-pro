@@ -113,9 +113,9 @@ export const PREMIUM_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression:   true,
   autoGainControl:    true,
   // Opus 48 kHz is the browser/WebRTC default when these are set
-  // sampleRate: 48000,  // commented — some browsers reject explicit sampleRate
   channelCount:       { ideal: 1 },  // mono for voice; saves bandwidth
-  latency:            { ideal: 0.01, max: 0.1 }, // target <100ms device latency
+  // latency hint (not typed on all TS libs but supported by Chrome/Edge)
+  ...({ latency: { ideal: 0.01, max: 0.1 } } as any),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -143,5 +143,5 @@ export const MEETING_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   noiseSuppression:   true,
   autoGainControl:    true,
   channelCount:       { ideal: 1 },   // mono voice
-  latency:            { ideal: 0.01, max: 0.1 },
+  ...({ latency: { ideal: 0.01, max: 0.1 } } as any),
 };
