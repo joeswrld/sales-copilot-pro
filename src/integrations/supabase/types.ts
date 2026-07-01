@@ -168,6 +168,58 @@ export type Database = {
           },
         ]
       }
+      ai_coaching_suggestions: {
+        Row: {
+          call_id: string
+          category: string
+          created_at: string
+          id: string
+          is_dismissed: boolean
+          priority: string
+          suggestion_text: string
+        }
+        Insert: {
+          call_id: string
+          category?: string
+          created_at?: string
+          id?: string
+          is_dismissed?: boolean
+          priority?: string
+          suggestion_text: string
+        }
+        Update: {
+          call_id?: string
+          category?: string
+          created_at?: string
+          id?: string
+          is_dismissed?: boolean
+          priority?: string
+          suggestion_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_coaching_suggestions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "ai_coaching_suggestions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_coaching_suggestions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_usage_tracking: {
         Row: {
           billing_month: string
@@ -531,6 +583,13 @@ export type Database = {
             foreignKeyName: "bot_sessions_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: true
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "bot_sessions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -627,6 +686,13 @@ export type Database = {
             foreignKeyName: "calendar_events_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "calendar_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -690,11 +756,85 @@ export type Database = {
             foreignKeyName: "call_actions_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "call_actions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "call_actions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_guest_requests: {
+        Row: {
+          call_id: string
+          daily_session_id: string | null
+          guest_name: string
+          guest_session_token: string | null
+          id: string
+          requested_at: string
+          responded_at: string | null
+          responded_by: string | null
+          room_name: string
+          session_id: string | null
+          status: string
+          token_expires_at: string | null
+        }
+        Insert: {
+          call_id: string
+          daily_session_id?: string | null
+          guest_name: string
+          guest_session_token?: string | null
+          id?: string
+          requested_at?: string
+          responded_at?: string | null
+          responded_by?: string | null
+          room_name: string
+          session_id?: string | null
+          status?: string
+          token_expires_at?: string | null
+        }
+        Update: {
+          call_id?: string
+          daily_session_id?: string | null
+          guest_name?: string
+          guest_session_token?: string | null
+          id?: string
+          requested_at?: string
+          responded_at?: string | null
+          responded_by?: string | null
+          room_name?: string
+          session_id?: string | null
+          status?: string
+          token_expires_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_guest_requests_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "call_guest_requests_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_guest_requests_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
             referencedRelation: "calls"
@@ -756,6 +896,13 @@ export type Database = {
             foreignKeyName: "call_summaries_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "call_summaries_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -774,6 +921,11 @@ export type Database = {
           auto_joined: boolean | null
           calendar_event_id: string | null
           created_at: string
+          daily_meeting_token: string | null
+          daily_recording_id: string | null
+          daily_recording_status: string | null
+          daily_recording_url: string | null
+          daily_room_expired: boolean | null
           daily_room_name: string | null
           daily_room_url: string | null
           date: string
@@ -800,6 +952,7 @@ export type Database = {
           recall_bot_id: string | null
           recall_bot_status: string | null
           recording_url: string | null
+          room_deleted_at: string | null
           sentiment_score: number | null
           start_time: string | null
           status: string | null
@@ -810,6 +963,11 @@ export type Database = {
           auto_joined?: boolean | null
           calendar_event_id?: string | null
           created_at?: string
+          daily_meeting_token?: string | null
+          daily_recording_id?: string | null
+          daily_recording_status?: string | null
+          daily_recording_url?: string | null
+          daily_room_expired?: boolean | null
           daily_room_name?: string | null
           daily_room_url?: string | null
           date?: string
@@ -836,6 +994,7 @@ export type Database = {
           recall_bot_id?: string | null
           recall_bot_status?: string | null
           recording_url?: string | null
+          room_deleted_at?: string | null
           sentiment_score?: number | null
           start_time?: string | null
           status?: string | null
@@ -846,6 +1005,11 @@ export type Database = {
           auto_joined?: boolean | null
           calendar_event_id?: string | null
           created_at?: string
+          daily_meeting_token?: string | null
+          daily_recording_id?: string | null
+          daily_recording_status?: string | null
+          daily_recording_url?: string | null
+          daily_room_expired?: boolean | null
           daily_room_name?: string | null
           daily_room_url?: string | null
           date?: string
@@ -872,6 +1036,7 @@ export type Database = {
           recall_bot_id?: string | null
           recall_bot_status?: string | null
           recording_url?: string | null
+          room_deleted_at?: string | null
           sentiment_score?: number | null
           start_time?: string | null
           status?: string | null
@@ -1091,6 +1256,13 @@ export type Database = {
           view_count?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "coaching_clips_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "coaching_clips_call_id_fkey"
             columns: ["call_id"]
@@ -1438,6 +1610,203 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_participant_sessions: {
+        Row: {
+          call_id: string | null
+          duration_seconds: number | null
+          id: string
+          is_owner: boolean | null
+          joined_at: string | null
+          left_at: string | null
+          room_name: string
+          session_id: string
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          call_id?: string | null
+          duration_seconds?: number | null
+          id?: string
+          is_owner?: boolean | null
+          joined_at?: string | null
+          left_at?: string | null
+          room_name: string
+          session_id: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          call_id?: string | null
+          duration_seconds?: number | null
+          id?: string
+          is_owner?: boolean | null
+          joined_at?: string | null
+          left_at?: string | null
+          room_name?: string
+          session_id?: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_participant_sessions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "daily_participant_sessions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_participant_sessions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_rooms: {
+        Row: {
+          call_id: string | null
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          expires_at: string | null
+          id: string
+          meeting_type: string | null
+          privacy: string
+          recording_id: string | null
+          recording_status: string | null
+          recording_url: string | null
+          room_name: string
+          room_url: string
+          share_link: string
+          status: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          expires_at?: string | null
+          id?: string
+          meeting_type?: string | null
+          privacy?: string
+          recording_id?: string | null
+          recording_status?: string | null
+          recording_url?: string | null
+          room_name: string
+          room_url: string
+          share_link: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          expires_at?: string | null
+          id?: string
+          meeting_type?: string | null
+          privacy?: string
+          recording_id?: string | null
+          recording_status?: string | null
+          recording_url?: string | null
+          room_name?: string
+          room_url?: string
+          share_link?: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "daily_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_rooms_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_rooms_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "daily_rooms_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      daily_webhook_events: {
+        Row: {
+          call_id: string | null
+          event_type: string
+          id: string
+          payload: Json | null
+          processed: boolean | null
+          received_at: string | null
+          room_name: string | null
+        }
+        Insert: {
+          call_id?: string | null
+          event_type: string
+          id?: string
+          payload?: Json | null
+          processed?: boolean | null
+          received_at?: string | null
+          room_name?: string | null
+        }
+        Update: {
+          call_id?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          processed?: boolean | null
+          received_at?: string | null
+          room_name?: string | null
+        }
+        Relationships: []
+      }
       dcm_notification_prefs: {
         Row: {
           channel_id: string
@@ -1744,6 +2113,17 @@ export type Database = {
           type: string
           updated_at: string | null
           user_id: string | null
+          voice_action_items: Json | null
+          voice_ai_summary: string | null
+          voice_caption: string | null
+          voice_duration_seconds: number | null
+          voice_follow_up_suggestions: Json | null
+          voice_playback_count: number | null
+          voice_storage_path: string | null
+          voice_transcript: string | null
+          voice_upload_status: string | null
+          voice_urgency: string | null
+          voice_waveform: Json | null
         }
         Insert: {
           channel_id: string
@@ -1759,6 +2139,17 @@ export type Database = {
           type?: string
           updated_at?: string | null
           user_id?: string | null
+          voice_action_items?: Json | null
+          voice_ai_summary?: string | null
+          voice_caption?: string | null
+          voice_duration_seconds?: number | null
+          voice_follow_up_suggestions?: Json | null
+          voice_playback_count?: number | null
+          voice_storage_path?: string | null
+          voice_transcript?: string | null
+          voice_upload_status?: string | null
+          voice_urgency?: string | null
+          voice_waveform?: Json | null
         }
         Update: {
           channel_id?: string
@@ -1774,6 +2165,17 @@ export type Database = {
           type?: string
           updated_at?: string | null
           user_id?: string | null
+          voice_action_items?: Json | null
+          voice_ai_summary?: string | null
+          voice_caption?: string | null
+          voice_duration_seconds?: number | null
+          voice_follow_up_suggestions?: Json | null
+          voice_playback_count?: number | null
+          voice_storage_path?: string | null
+          voice_transcript?: string | null
+          voice_upload_status?: string | null
+          voice_urgency?: string | null
+          voice_waveform?: Json | null
         }
         Relationships: [
           {
@@ -1854,6 +2256,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "deal_channels_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "deal_channels_call_id_fkey"
             columns: ["call_id"]
@@ -2169,6 +2578,13 @@ export type Database = {
             foreignKeyName: "deal_risk_alerts_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "deal_risk_alerts_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -2270,6 +2686,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "deal_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "deal_rooms_call_id_fkey"
             columns: ["call_id"]
@@ -2447,6 +2870,108 @@ export type Database = {
           },
         ]
       }
+      deal_voice_notes: {
+        Row: {
+          action_items: Json | null
+          ai_summary: string | null
+          caption: string | null
+          created_at: string | null
+          deal_id: string | null
+          deal_room_id: string | null
+          duration_seconds: number | null
+          follow_up_suggestions: Json | null
+          id: string
+          saved_to_timeline: boolean | null
+          sender_id: string
+          source_message_id: string | null
+          source_table: string
+          transcript: string | null
+          updated_at: string | null
+          urgency: string | null
+          voice_storage_path: string
+          voice_url: string
+          waveform: Json | null
+        }
+        Insert: {
+          action_items?: Json | null
+          ai_summary?: string | null
+          caption?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          deal_room_id?: string | null
+          duration_seconds?: number | null
+          follow_up_suggestions?: Json | null
+          id?: string
+          saved_to_timeline?: boolean | null
+          sender_id: string
+          source_message_id?: string | null
+          source_table: string
+          transcript?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          voice_storage_path: string
+          voice_url: string
+          waveform?: Json | null
+        }
+        Update: {
+          action_items?: Json | null
+          ai_summary?: string | null
+          caption?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          deal_room_id?: string | null
+          duration_seconds?: number | null
+          follow_up_suggestions?: Json | null
+          id?: string
+          saved_to_timeline?: boolean | null
+          sender_id?: string
+          source_message_id?: string | null
+          source_table?: string
+          transcript?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          voice_storage_path?: string
+          voice_url?: string
+          waveform?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_voice_notes_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_voice_notes_deal_room_id_fkey"
+            columns: ["deal_room_id"]
+            isOneToOne: false
+            referencedRelation: "deal_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "deal_voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       deals: {
         Row: {
           ai_insights: Json | null
@@ -2583,6 +3108,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      device_check_sessions: {
+        Row: {
+          camera_passed: boolean | null
+          created_at: string | null
+          expires_at: string | null
+          guest_name: string | null
+          id: string
+          mic_passed: boolean | null
+          network_mbps: number | null
+          network_passed: boolean | null
+          network_rtt_ms: number | null
+          room_name: string
+        }
+        Insert: {
+          camera_passed?: boolean | null
+          created_at?: string | null
+          expires_at?: string | null
+          guest_name?: string | null
+          id?: string
+          mic_passed?: boolean | null
+          network_mbps?: number | null
+          network_passed?: boolean | null
+          network_rtt_ms?: number | null
+          room_name: string
+        }
+        Update: {
+          camera_passed?: boolean | null
+          created_at?: string | null
+          expires_at?: string | null
+          guest_name?: string | null
+          id?: string
+          mic_passed?: boolean | null
+          network_mbps?: number | null
+          network_passed?: boolean | null
+          network_rtt_ms?: number | null
+          room_name?: string
+        }
+        Relationships: []
       }
       edge_function_errors: {
         Row: {
@@ -2915,6 +3479,13 @@ export type Database = {
             foreignKeyName: "hms_meeting_rooms_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "hms_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -2971,6 +3542,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "integration_tasks_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "integration_tasks_call_id_fkey"
             columns: ["call_id"]
@@ -3108,6 +3686,13 @@ export type Database = {
             foreignKeyName: "key_topics_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "key_topics_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -3150,6 +3735,61 @@ export type Database = {
         }
         Relationships: []
       }
+      meeting_agenda_items: {
+        Row: {
+          call_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_completed: boolean
+          order_index: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_completed?: boolean
+          order_index?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_completed?: boolean
+          order_index?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_agenda_items_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_agenda_items_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_agenda_items_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meeting_comments: {
         Row: {
           comment_text: string
@@ -3181,6 +3821,507 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "meeting_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_connection_quality: {
+        Row: {
+          audio_recv_kbps: number | null
+          audio_send_kbps: number | null
+          call_id: string
+          estimated_audio_latency_ms: number | null
+          id: string
+          jitter_ms: number | null
+          mos_score: number | null
+          packet_loss: number | null
+          quality: string
+          quality_distribution: Json | null
+          reconnect_count: number | null
+          recorded_at: string
+          round_trip_ms: number | null
+          sample_count: number | null
+          session_id: string
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          audio_recv_kbps?: number | null
+          audio_send_kbps?: number | null
+          call_id: string
+          estimated_audio_latency_ms?: number | null
+          id?: string
+          jitter_ms?: number | null
+          mos_score?: number | null
+          packet_loss?: number | null
+          quality: string
+          quality_distribution?: Json | null
+          reconnect_count?: number | null
+          recorded_at?: string
+          round_trip_ms?: number | null
+          sample_count?: number | null
+          session_id: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          audio_recv_kbps?: number | null
+          audio_send_kbps?: number | null
+          call_id?: string
+          estimated_audio_latency_ms?: number | null
+          id?: string
+          jitter_ms?: number | null
+          mos_score?: number | null
+          packet_loss?: number | null
+          quality?: string
+          quality_distribution?: Json | null
+          reconnect_count?: number | null
+          recorded_at?: string
+          round_trip_ms?: number | null
+          sample_count?: number | null
+          session_id?: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_connection_quality_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_connection_quality_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_connection_quality_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_deal_health: {
+        Row: {
+          call_id: string
+          computed_at: string
+          deal_room_id: string | null
+          health_score: number
+          id: string
+          positive_signals: Json
+          risk_flags: Json
+          trend: string
+        }
+        Insert: {
+          call_id: string
+          computed_at?: string
+          deal_room_id?: string | null
+          health_score?: number
+          id?: string
+          positive_signals?: Json
+          risk_flags?: Json
+          trend?: string
+        }
+        Update: {
+          call_id?: string
+          computed_at?: string
+          deal_room_id?: string | null
+          health_score?: number
+          id?: string
+          positive_signals?: Json
+          risk_flags?: Json
+          trend?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_deal_health_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_deal_health_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_deal_health_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_deal_health_deal_room_id_fkey"
+            columns: ["deal_room_id"]
+            isOneToOne: false
+            referencedRelation: "deal_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_engagement: {
+        Row: {
+          call_id: string
+          engagement_score: number
+          id: string
+          is_local: boolean
+          last_active_at: string
+          session_id: string
+          speaking_seconds: number
+          updated_at: string
+          user_name: string | null
+        }
+        Insert: {
+          call_id: string
+          engagement_score?: number
+          id?: string
+          is_local?: boolean
+          last_active_at?: string
+          session_id: string
+          speaking_seconds?: number
+          updated_at?: string
+          user_name?: string | null
+        }
+        Update: {
+          call_id?: string
+          engagement_score?: number
+          id?: string
+          is_local?: boolean
+          last_active_at?: string
+          session_id?: string
+          speaking_seconds?: number
+          updated_at?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_engagement_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_engagement_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_engagement_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_files: {
+        Row: {
+          call_id: string
+          created_at: string
+          file_name: string
+          file_size: number | null
+          file_type: string | null
+          file_url: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          file_type?: string | null
+          file_url: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_files_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_files_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_files_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_followups: {
+        Row: {
+          assigned_to: string | null
+          call_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          deal_room_id: string | null
+          detail: string | null
+          due_date: string | null
+          id: string
+          kind: string
+          source: string
+          status: string
+          title: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          call_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_room_id?: string | null
+          detail?: string | null
+          due_date?: string | null
+          id?: string
+          kind?: string
+          source?: string
+          status?: string
+          title: string
+        }
+        Update: {
+          assigned_to?: string | null
+          call_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_room_id?: string | null
+          detail?: string | null
+          due_date?: string | null
+          id?: string
+          kind?: string
+          source?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_followups_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "meeting_followups_deal_room_id_fkey"
+            columns: ["deal_room_id"]
+            isOneToOne: false
+            referencedRelation: "deal_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_hand_raises: {
+        Row: {
+          call_id: string
+          id: string
+          lowered_at: string | null
+          raised_at: string
+          session_id: string
+          user_name: string | null
+        }
+        Insert: {
+          call_id: string
+          id?: string
+          lowered_at?: string | null
+          raised_at?: string
+          session_id: string
+          user_name?: string | null
+        }
+        Update: {
+          call_id?: string
+          id?: string
+          lowered_at?: string | null
+          raised_at?: string
+          session_id?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_hand_raises_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_hand_raises_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_hand_raises_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_health_events: {
+        Row: {
+          call_id: string
+          created_at: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+          severity: string
+          user_id: string | null
+        }
+        Insert: {
+          call_id: string
+          created_at?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          user_id?: string | null
+        }
+        Update: {
+          call_id?: string
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      meeting_notes: {
+        Row: {
+          call_id: string
+          content: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          content: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_notes_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_notes_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_notes_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
             referencedColumns: ["id"]
           },
         ]
@@ -3224,6 +4365,113 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "upcoming_meeting_reminders"
             referencedColumns: ["meeting_id"]
+          },
+        ]
+      }
+      meeting_signals: {
+        Row: {
+          call_id: string
+          confidence: number
+          detected_at: string
+          id: string
+          metadata: Json
+          signal_type: string
+          text: string
+        }
+        Insert: {
+          call_id: string
+          confidence?: number
+          detected_at?: string
+          id?: string
+          metadata?: Json
+          signal_type: string
+          text: string
+        }
+        Update: {
+          call_id?: string
+          confidence?: number
+          detected_at?: string
+          id?: string
+          metadata?: Json
+          signal_type?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_signals_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_signals_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_signals_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_timeline_events: {
+        Row: {
+          call_id: string
+          detail: string | null
+          event_type: string
+          happened_at: string
+          id: string
+          is_highlight: boolean
+          metadata: Json
+          title: string
+        }
+        Insert: {
+          call_id: string
+          detail?: string | null
+          event_type: string
+          happened_at?: string
+          id?: string
+          is_highlight?: boolean
+          metadata?: Json
+          title: string
+        }
+        Update: {
+          call_id?: string
+          detail?: string | null
+          event_type?: string
+          happened_at?: string
+          id?: string
+          is_highlight?: boolean
+          metadata?: Json
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_timeline_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "meeting_timeline_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_live_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_timeline_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3292,12 +4540,16 @@ export type Database = {
         Row: {
           call_id: string | null
           created_at: string
+          daily_room_name: string | null
           description: string | null
           ended_at: string | null
           expires_at: string | null
           host_id: string
           id: string
+          meeting_token: string | null
           meeting_type: string | null
+          privacy: string | null
+          provider: string | null
           recording_url: string | null
           room_name: string
           room_url: string
@@ -3308,12 +4560,16 @@ export type Database = {
         Insert: {
           call_id?: string | null
           created_at?: string
+          daily_room_name?: string | null
           description?: string | null
           ended_at?: string | null
           expires_at?: string | null
           host_id: string
           id?: string
+          meeting_token?: string | null
           meeting_type?: string | null
+          privacy?: string | null
+          provider?: string | null
           recording_url?: string | null
           room_name: string
           room_url: string
@@ -3324,12 +4580,16 @@ export type Database = {
         Update: {
           call_id?: string | null
           created_at?: string
+          daily_room_name?: string | null
           description?: string | null
           ended_at?: string | null
           expires_at?: string | null
           host_id?: string
           id?: string
+          meeting_token?: string | null
           meeting_type?: string | null
+          privacy?: string | null
+          provider?: string | null
           recording_url?: string | null
           room_name?: string
           room_url?: string
@@ -3338,6 +4598,13 @@ export type Database = {
           title?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "native_meeting_rooms_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "native_meeting_rooms_call_id_fkey"
             columns: ["call_id"]
@@ -3480,6 +4747,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "objections_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "objections_call_id_fkey"
             columns: ["call_id"]
@@ -4025,6 +5299,13 @@ export type Database = {
             foreignKeyName: "scheduled_calls_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "scheduled_calls_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -4105,6 +5386,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "scheduled_meetings_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "scheduled_meetings_call_id_fkey"
             columns: ["call_id"]
@@ -4640,6 +5928,17 @@ export type Database = {
           message_text: string
           parent_id: string | null
           sender_id: string
+          voice_action_items: Json | null
+          voice_ai_summary: string | null
+          voice_caption: string | null
+          voice_duration_seconds: number | null
+          voice_follow_up_suggestions: Json | null
+          voice_playback_count: number | null
+          voice_storage_path: string | null
+          voice_transcript: string | null
+          voice_upload_status: string | null
+          voice_urgency: string | null
+          voice_waveform: Json | null
         }
         Insert: {
           conversation_id: string
@@ -4653,6 +5952,17 @@ export type Database = {
           message_text: string
           parent_id?: string | null
           sender_id: string
+          voice_action_items?: Json | null
+          voice_ai_summary?: string | null
+          voice_caption?: string | null
+          voice_duration_seconds?: number | null
+          voice_follow_up_suggestions?: Json | null
+          voice_playback_count?: number | null
+          voice_storage_path?: string | null
+          voice_transcript?: string | null
+          voice_upload_status?: string | null
+          voice_urgency?: string | null
+          voice_waveform?: Json | null
         }
         Update: {
           conversation_id?: string
@@ -4666,6 +5976,17 @@ export type Database = {
           message_text?: string
           parent_id?: string | null
           sender_id?: string
+          voice_action_items?: Json | null
+          voice_ai_summary?: string | null
+          voice_caption?: string | null
+          voice_duration_seconds?: number | null
+          voice_follow_up_suggestions?: Json | null
+          voice_playback_count?: number | null
+          voice_storage_path?: string | null
+          voice_transcript?: string | null
+          voice_upload_status?: string | null
+          voice_urgency?: string | null
+          voice_waveform?: Json | null
         }
         Relationships: [
           {
@@ -4714,6 +6035,13 @@ export type Database = {
             foreignKeyName: "team_minute_usage_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: true
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "team_minute_usage_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -4754,10 +6082,51 @@ export type Database = {
         }
         Relationships: []
       }
-      transcripts: {
+      transcription_chunk_queue: {
         Row: {
           call_id: string
+          chunk_index: number
+          created_at: string | null
+          error_text: string | null
           id: string
+          processed_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          call_id: string
+          chunk_index: number
+          created_at?: string | null
+          error_text?: string | null
+          id?: string
+          processed_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          call_id?: string
+          chunk_index?: number
+          created_at?: string | null
+          error_text?: string | null
+          id?: string
+          processed_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transcripts: {
+        Row: {
+          ai_analyzed: boolean
+          audio_start_ms: number | null
+          call_id: string
+          client_chunk_id: string | null
+          confidence: number | null
+          duration_ms: number | null
+          guest_request_id: string | null
+          id: string
+          is_guest: boolean
+          is_partial: boolean
           speaker: string
           speaker_name: string | null
           speaker_role: string | null
@@ -4766,8 +6135,16 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_analyzed?: boolean
+          audio_start_ms?: number | null
           call_id: string
+          client_chunk_id?: string | null
+          confidence?: number | null
+          duration_ms?: number | null
+          guest_request_id?: string | null
           id?: string
+          is_guest?: boolean
+          is_partial?: boolean
           speaker: string
           speaker_name?: string | null
           speaker_role?: string | null
@@ -4776,8 +6153,16 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_analyzed?: boolean
+          audio_start_ms?: number | null
           call_id?: string
+          client_chunk_id?: string | null
+          confidence?: number | null
+          duration_ms?: number | null
+          guest_request_id?: string | null
           id?: string
+          is_guest?: boolean
+          is_partial?: boolean
           speaker?: string
           speaker_name?: string | null
           speaker_role?: string | null
@@ -4790,6 +6175,13 @@ export type Database = {
             foreignKeyName: "transcripts_call_id_fkey"
             columns: ["call_id"]
             isOneToOne: false
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
+          {
+            foreignKeyName: "transcripts_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
             referencedRelation: "active_live_calls"
             referencedColumns: ["id"]
           },
@@ -4798,6 +6190,13 @@ export type Database = {
             columns: ["call_id"]
             isOneToOne: false
             referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transcripts_guest_request_id_fkey"
+            columns: ["guest_request_id"]
+            isOneToOne: false
+            referencedRelation: "call_guest_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -4837,6 +6236,13 @@ export type Database = {
           workspace_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "usage_logs_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "active_daily_rooms"
+            referencedColumns: ["call_id"]
+          },
           {
             foreignKeyName: "usage_logs_call_id_fkey"
             columns: ["call_id"]
@@ -5031,6 +6437,232 @@ export type Database = {
           },
         ]
       }
+      voice_note_plays: {
+        Row: {
+          duration_played: number | null
+          id: string
+          message_id: string
+          message_table: string
+          playback_speed: number | null
+          played_at: string | null
+          played_by: string
+          user_id: string | null
+          voice_note_id: string | null
+        }
+        Insert: {
+          duration_played?: number | null
+          id?: string
+          message_id: string
+          message_table: string
+          playback_speed?: number | null
+          played_at?: string | null
+          played_by: string
+          user_id?: string | null
+          voice_note_id?: string | null
+        }
+        Update: {
+          duration_played?: number | null
+          id?: string
+          message_id?: string
+          message_table?: string
+          playback_speed?: number | null
+          played_at?: string | null
+          played_by?: string
+          user_id?: string | null
+          voice_note_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_note_plays_played_by_fkey"
+            columns: ["played_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_played_by_fkey"
+            columns: ["played_by"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_played_by_fkey"
+            columns: ["played_by"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_note_plays_voice_note_id_fkey"
+            columns: ["voice_note_id"]
+            isOneToOne: false
+            referencedRelation: "voice_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_notes: {
+        Row: {
+          action_items: Json | null
+          ai_error: string | null
+          ai_processed: boolean | null
+          ai_processed_at: string | null
+          ai_summary: string | null
+          caption: string | null
+          channel_id: string | null
+          conversation_id: string | null
+          converted_to_note: boolean | null
+          created_at: string | null
+          deal_id: string | null
+          deal_note_id: string | null
+          duration_seconds: number
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          play_count: number | null
+          sender_id: string
+          storage_bucket: string
+          storage_path: string
+          suggested_actions: Json | null
+          team_id: string | null
+          transcript: string | null
+          updated_at: string | null
+          upload_status: string | null
+          urgency_level: string | null
+          waveform_data: Json | null
+        }
+        Insert: {
+          action_items?: Json | null
+          ai_error?: string | null
+          ai_processed?: boolean | null
+          ai_processed_at?: string | null
+          ai_summary?: string | null
+          caption?: string | null
+          channel_id?: string | null
+          conversation_id?: string | null
+          converted_to_note?: boolean | null
+          created_at?: string | null
+          deal_id?: string | null
+          deal_note_id?: string | null
+          duration_seconds?: number
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          play_count?: number | null
+          sender_id: string
+          storage_bucket?: string
+          storage_path: string
+          suggested_actions?: Json | null
+          team_id?: string | null
+          transcript?: string | null
+          updated_at?: string | null
+          upload_status?: string | null
+          urgency_level?: string | null
+          waveform_data?: Json | null
+        }
+        Update: {
+          action_items?: Json | null
+          ai_error?: string | null
+          ai_processed?: boolean | null
+          ai_processed_at?: string | null
+          ai_summary?: string | null
+          caption?: string | null
+          channel_id?: string | null
+          conversation_id?: string | null
+          converted_to_note?: boolean | null
+          created_at?: string | null
+          deal_id?: string | null
+          deal_note_id?: string | null
+          duration_seconds?: number
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          play_count?: number | null
+          sender_id?: string
+          storage_bucket?: string
+          storage_path?: string
+          suggested_actions?: Json | null
+          team_id?: string | null
+          transcript?: string | null
+          updated_at?: string | null
+          upload_status?: string | null
+          urgency_level?: string | null
+          waveform_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_notes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "deal_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_notes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "team_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_notes_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "user_feature_access"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_notes_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "user_plan_features"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voice_notes_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_deliveries: {
         Row: {
           attempt: number | null
@@ -5191,6 +6823,25 @@ export type Database = {
       }
     }
     Views: {
+      active_daily_rooms: {
+        Row: {
+          call_id: string | null
+          call_name: string | null
+          call_status: string | null
+          expires_at: string | null
+          host_email: string | null
+          host_name: string | null
+          id: string | null
+          meeting_type: string | null
+          room_name: string | null
+          room_url: string | null
+          share_link: string | null
+          status: string | null
+          title: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
       active_live_calls: {
         Row: {
           calendar_event_id: string | null
@@ -5205,6 +6856,42 @@ export type Database = {
           user_email: string | null
           user_id: string | null
           user_name: string | null
+        }
+        Relationships: []
+      }
+      client_error_logs: {
+        Row: {
+          actor_email: string | null
+          client_timestamp: string | null
+          created_at: string | null
+          details: Json | null
+          error_message: string | null
+          error_type: string | null
+          id: string | null
+          page_url: string | null
+          user_id: string | null
+        }
+        Insert: {
+          actor_email?: string | null
+          client_timestamp?: never
+          created_at?: string | null
+          details?: Json | null
+          error_message?: never
+          error_type?: never
+          id?: string | null
+          page_url?: never
+          user_id?: string | null
+        }
+        Update: {
+          actor_email?: string | null
+          client_timestamp?: never
+          created_at?: string | null
+          details?: Json | null
+          error_message?: never
+          error_type?: never
+          id?: string | null
+          page_url?: never
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -5279,6 +6966,89 @@ export type Database = {
       accept_team_invitation: {
         Args: { p_team_id: string }
         Returns: undefined
+      }
+      add_agenda_item: {
+        Args: { p_call_id: string; p_title: string }
+        Returns: {
+          call_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_completed: boolean
+          order_index: number
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meeting_agenda_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      add_meeting_file: {
+        Args: {
+          p_call_id: string
+          p_file_name: string
+          p_file_size: number
+          p_file_type: string
+          p_file_url: string
+        }
+        Returns: {
+          call_id: string
+          created_at: string
+          file_name: string
+          file_size: number | null
+          file_type: string | null
+          file_url: string
+          id: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meeting_files"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      add_meeting_followup: {
+        Args: {
+          p_assigned_to?: string
+          p_call_id: string
+          p_detail?: string
+          p_due_date?: string
+          p_kind: string
+          p_source?: string
+          p_title: string
+        }
+        Returns: string
+      }
+      add_meeting_note: {
+        Args: { p_call_id: string; p_content: string }
+        Returns: {
+          call_id: string
+          content: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meeting_notes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      add_meeting_timeline_event: {
+        Args: {
+          p_call_id: string
+          p_detail?: string
+          p_event_type: string
+          p_is_highlight?: boolean
+          p_metadata?: Json
+          p_title: string
+        }
+        Returns: string
       }
       add_team_extra_minutes: {
         Args: { p_expires_at?: string; p_minutes: number; p_user_id: string }
@@ -5503,6 +7273,7 @@ export type Database = {
         Args: { p_page: string; p_team_id?: string }
         Returns: undefined
       }
+      can_access_call: { Args: { p_call_id: string }; Returns: boolean }
       can_add_conversation_participant: {
         Args: { _conversation_id: string; _participant_user_id: string }
         Returns: boolean
@@ -5568,6 +7339,7 @@ export type Database = {
         }
         Returns: Json
       }
+      check_room_ownership: { Args: { p_room_name: string }; Returns: Json }
       check_team_quota: {
         Args: { p_team_id: string; p_user_id: string }
         Returns: Json
@@ -5588,6 +7360,18 @@ export type Database = {
         Args: { p_feature: string; p_user_id: string }
         Returns: boolean
       }
+      claim_unanalyzed_transcripts: {
+        Args: { p_call_id: string; p_max_rows?: number }
+        Returns: {
+          id: string
+          speaker: string
+          speaker_name: string
+          speaker_role: string
+          text: string
+          timestamp: string
+        }[]
+      }
+      cleanup_old_chunk_queue: { Args: never; Returns: undefined }
       cleanup_rate_limit_data: { Args: never; Returns: undefined }
       cleanup_rate_limit_requests: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
@@ -5647,11 +7431,21 @@ export type Database = {
         Args: { p_team_id: string }
         Returns: undefined
       }
+      delete_agenda_item: { Args: { p_item_id: string }; Returns: undefined }
+      delete_daily_room: {
+        Args: { p_call_id: string; p_user_id: string }
+        Returns: Json
+      }
       delete_dcm_message: { Args: { p_message_id: string }; Returns: undefined }
+      dismiss_coaching_suggestion: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
       edit_dcm_message: {
         Args: { p_content: string; p_message_id: string }
         Returns: undefined
       }
+      end_calls_with_expired_rooms: { Args: never; Returns: number }
       enforce_feature_access: {
         Args: { p_feature: string; p_user_id: string }
         Returns: Json
@@ -5670,9 +7464,25 @@ export type Database = {
         Returns: undefined
       }
       expire_grace_periods: { Args: never; Returns: number }
+      expire_guest_requests: { Args: never; Returns: undefined }
+      expire_stale_guest_requests: { Args: never; Returns: number }
       force_clear_user_live_calls: {
         Args: { p_user_id: string }
         Returns: number
+      }
+      get_active_meeting_room: {
+        Args: { p_call_id: string; p_host_id: string }
+        Returns: {
+          created_at: string
+          daily_room_name: string
+          expires_at: string
+          id: string
+          meeting_token: string
+          room_name: string
+          room_url: string
+          share_link: string
+          status: string
+        }[]
       }
       get_active_subscription_for_user: {
         Args: { p_user_id: string }
@@ -5774,6 +7584,10 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: Json
       }
+      get_daily_room_public_info: {
+        Args: { p_room_name: string }
+        Returns: Json
+      }
       get_deal_channels: {
         Args: { p_team_id: string }
         Returns: {
@@ -5842,6 +7656,8 @@ export type Database = {
           team_name: string
         }[]
       }
+      get_live_meeting_feed: { Args: { p_call_id: string }; Returns: Json }
+      get_meeting_workspace: { Args: { p_call_id: string }; Returns: Json }
       get_meetings_needing_reminders: {
         Args: never
         Returns: {
@@ -5896,6 +7712,16 @@ export type Database = {
           title: string
           transcript_excerpt: Json
           view_count: number
+        }[]
+      }
+      get_recent_final_transcripts: {
+        Args: { p_call_id: string; p_limit?: number }
+        Returns: {
+          speaker: string
+          speaker_name: string
+          speaker_role: string
+          text: string
+          timestamp: string
         }[]
       }
       get_team_clips: {
@@ -6086,6 +7912,12 @@ export type Database = {
         Returns: Json
       }
       get_user_plan_features: { Args: { p_user_id: string }; Returns: Json }
+      get_voice_note_signed_url:
+        | {
+            Args: { p_expires_in?: number; p_storage_path: string }
+            Returns: string
+          }
+        | { Args: { p_voice_note_id: string }; Returns: string }
       handle_payment_failure: {
         Args: {
           p_failure_reason?: string
@@ -6110,6 +7942,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_call_sentiment: {
+        Args: { p_call_id: string; p_delta: number }
+        Returns: undefined
       }
       increment_join_attempts: { Args: { p_call_id: string }; Returns: number }
       increment_usage_summary: {
@@ -6223,6 +8059,15 @@ export type Database = {
             }
             Returns: undefined
           }
+      log_daily_event: {
+        Args: {
+          p_call_id?: string
+          p_event_type: string
+          p_payload?: Json
+          p_room_name: string
+        }
+        Returns: string
+      }
       log_feature_access_attempt: {
         Args: {
           p_allowed: boolean
@@ -6252,6 +8097,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      lower_hand: {
+        Args: { p_call_id: string; p_session_id: string }
+        Returns: undefined
+      }
       mark_channel_read: {
         Args: { p_channel_id?: string; p_conversation_id?: string }
         Returns: undefined
@@ -6265,8 +8114,30 @@ export type Database = {
         Args: { p_meeting_id: string; p_reminder_type: string }
         Returns: undefined
       }
+      mint_guest_session_token: {
+        Args: { p_request_id: string }
+        Returns: {
+          call_id: string
+          guest_name: string
+          room_name: string
+          token: string
+        }[]
+      }
       my_plan_has_feature: { Args: { p_feature: string }; Returns: boolean }
       normalize_plan_key: { Args: { plan_name: string }; Returns: string }
+      notify_followup_assigned: {
+        Args: { p_followup_id: string }
+        Returns: undefined
+      }
+      notify_voice_note: {
+        Args: {
+          p_channel_id?: string
+          p_conversation_id?: string
+          p_duration_seconds?: number
+          p_sender_id?: string
+        }
+        Returns: undefined
+      }
       plan_name_to_key: { Args: { plan_name: string }; Returns: string }
       plan_tier_order: { Args: { plan_key: string }; Returns: number }
       post_call_insight_to_channel: {
@@ -6275,7 +8146,32 @@ export type Database = {
       }
       process_due_retries: { Args: never; Returns: number }
       propagate_team_plan: { Args: { p_admin_id: string }; Returns: undefined }
+      raise_hand: {
+        Args: { p_call_id: string; p_session_id: string; p_user_name: string }
+        Returns: undefined
+      }
       read_internal_push_token: { Args: never; Returns: string }
+      record_connection_quality: {
+        Args: {
+          p_call_id: string
+          p_packet_loss?: number
+          p_quality: string
+          p_round_trip_ms?: number
+          p_session_id: string
+          p_user_name: string
+        }
+        Returns: undefined
+      }
+      record_deal_health_snapshot: {
+        Args: {
+          p_call_id: string
+          p_health_score: number
+          p_positive_signals?: Json
+          p_risk_flags?: Json
+          p_trend?: string
+        }
+        Returns: string
+      }
       record_failed_auth: {
         Args: { p_email?: string; p_ip: string }
         Returns: undefined
@@ -6288,12 +8184,38 @@ export type Database = {
         Args: { p_email?: string; p_ip: string }
         Returns: undefined
       }
+      record_speaking_time: {
+        Args: {
+          p_call_id: string
+          p_is_local: boolean
+          p_seconds_delta: number
+          p_session_id: string
+          p_user_name: string
+        }
+        Returns: undefined
+      }
       record_team_minute_usage: {
         Args: {
           p_call_id: string
           p_minutes: number
           p_team_id: string
           p_user_id: string
+        }
+        Returns: undefined
+      }
+      record_voice_note_play: {
+        Args: {
+          p_duration_played?: number
+          p_speed?: number
+          p_voice_note_id: string
+        }
+        Returns: undefined
+      }
+      record_voice_play: {
+        Args: {
+          p_message_id: string
+          p_message_table: string
+          p_speed?: number
         }
         Returns: undefined
       }
@@ -6357,6 +8279,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_voice_note_to_deal: {
+        Args: {
+          p_deal_id?: string
+          p_deal_room_id?: string
+          p_message_id: string
+          p_message_table: string
+        }
+        Returns: string
+      }
       search_deal_messages: {
         Args: { p_query: string; p_team_id: string }
         Returns: {
@@ -6377,9 +8308,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      toggle_agenda_item: {
+        Args: { p_completed: boolean; p_item_id: string }
+        Returns: undefined
+      }
       toggle_dcm_reaction: {
         Args: { p_emoji: string; p_message_id: string }
         Returns: Json
+      }
+      toggle_meeting_followup: {
+        Args: { p_followup_id: string; p_status: string }
+        Returns: undefined
       }
       update_deal_health: {
         Args: {
@@ -6395,6 +8334,82 @@ export type Database = {
       update_meeting_status: {
         Args: { p_meeting_id: string; p_status: string }
         Returns: undefined
+      }
+      upsert_native_meeting_room: {
+        Args: {
+          p_call_id: string
+          p_daily_room_name?: string
+          p_expires_at?: string
+          p_host_id: string
+          p_meeting_token?: string
+          p_meeting_type?: string
+          p_room_name: string
+          p_room_url: string
+          p_share_link: string
+          p_title?: string
+        }
+        Returns: {
+          call_id: string | null
+          created_at: string
+          daily_room_name: string | null
+          description: string | null
+          ended_at: string | null
+          expires_at: string | null
+          host_id: string
+          id: string
+          meeting_token: string | null
+          meeting_type: string | null
+          privacy: string | null
+          provider: string | null
+          recording_url: string | null
+          room_name: string
+          room_url: string
+          share_link: string
+          status: string
+          title: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "native_meeting_rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      upsert_partial_transcript: {
+        Args: {
+          p_call_id: string
+          p_client_chunk_id: string
+          p_is_guest?: boolean
+          p_is_partial: boolean
+          p_speaker: string
+          p_speaker_name: string
+          p_speaker_role: string
+          p_text: string
+        }
+        Returns: {
+          ai_analyzed: boolean
+          audio_start_ms: number | null
+          call_id: string
+          client_chunk_id: string | null
+          confidence: number | null
+          duration_ms: number | null
+          guest_request_id: string | null
+          id: string
+          is_guest: boolean
+          is_partial: boolean
+          speaker: string
+          speaker_name: string | null
+          speaker_role: string | null
+          text: string
+          timestamp: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "transcripts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       upsert_team_member: {
         Args: {
@@ -6425,6 +8440,16 @@ export type Database = {
           p_team_id?: string
         }
         Returns: undefined
+      }
+      validate_guest_session_token: {
+        Args: { p_token: string }
+        Returns: {
+          call_id: string
+          guest_name: string
+          host_user_id: string
+          request_id: string
+          room_name: string
+        }[]
       }
       verify_admin_user: { Args: { p_email: string }; Returns: Json }
     }
