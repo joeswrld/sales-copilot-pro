@@ -48,6 +48,7 @@ import { useUserProfile } from "@/hooks/useSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingGuestRequests } from "@/hooks/useGuestApproval";
 import { useMeetingWorkspace } from "@/hooks/useMeetingWorkspace";
+import { useLiveMeetingAI } from "@/hooks/useLiveMeetingAI";
 import { useCoaching } from "@/hooks/useCoaching";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useMinuteUsage } from "@/hooks/useMeetingUsage";
@@ -852,6 +853,10 @@ export default function LiveMeeting() {
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
   const { workspace } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
+
+  // Async live AI analysis + coaching — runs server-side every 20s.
+  // Never blocks audio/transcription; results stream in via Realtime.
+  useLiveMeetingAI(callId, Boolean(isLive && callId));
 
   const [leftTab,         setLeftTab]         = useState<LeftTab>("people");
   const [rightTab,        setRightTab]        = useState<RightTab>("transcript");
