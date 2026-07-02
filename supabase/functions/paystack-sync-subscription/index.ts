@@ -219,41 +219,62 @@ Deno.serve(async (req) => {
 
     let updated = false;
 
-    if (verifiedTransaction && subscription?.status !== "active") {
-      const nextDate = new Date();
-      nextDate.setMonth(nextDate.getMonth() + 1);
+    // ── Ask Paystack for the authoritative next_payment_date via /subscription
+    let paystackNextPaymentDate: string | null = null;
+    if (subscription?.paystack_customer_code) {
+      try {
+        const subRes = await fetch(
+          `https://api.paystack.co/subscription?customer=${encodeURIComponent(subscription.paystack_customer_code)}&perPage=10`,
+          { headers: { Authorization: `Bearer ${paystackSecret}` } }
+        );
+        const subJson = await subRes.json();
+        const active = (subJson?.data || []).find((s: any) => s?.status === "active")
+          ?? (subJson?.data || [])[0];
+        if (active?.next_payment_date) paystackNextPaymentDate = active.next_payment_date;
+      } catch (e) {
+        console.warn("paystack /subscription lookup failed:", e);
+      }
+    }
+
+    if (verifiedTransaction || paystackNextPaymentDate) {
+      const computedNext =
+        paystackNextPaymentDate
+          ?? (verifiedTransaction?.paid_at
+                ? new Date(new Date(verifiedTransaction.paid_at).setMonth(
+                    new Date(verifiedTransaction.paid_at).getMonth() + 1
+                  )).toISOString()
+                : null);
+
+      const patch: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (computedNext) patch.next_payment_date = computedNext;
+      if (verifiedTransaction?.customer?.customer_code)
+        patch.paystack_customer_code = verifiedTransaction.customer.customer_code;
+      if (verifiedTransaction?.authorization?.last4)
+        patch.card_last4 = verifiedTransaction.authorization.last4;
+      if (verifiedTransaction?.authorization?.brand)
+        patch.card_brand = verifiedTransaction.authorization.brand;
+
+      // Only flip to active from a non-active state; never downgrade an active row here.
+      if (verifiedTransaction && subscription?.status !== "active") {
+        patch.status = "active";
+      }
 
       const { error: updateErr } = await adminClient
         .from("subscriptions")
-        .update({
-          status:                 "active",
-          updated_at:             new Date().toISOString(),
-          next_payment_date:      verifiedTransaction.paid_at
-            ? new Date(
-                new Date(verifiedTransaction.paid_at).setMonth(
-                  new Date(verifiedTransaction.paid_at).getMonth() + 1
-                )
-              ).toISOString()
-            : nextDate.toISOString(),
-          paystack_customer_code:
-            verifiedTransaction.customer?.customer_code ||
-            subscription?.paystack_customer_code ||
-            null,
-          card_last4: verifiedTransaction.authorization?.last4 || null,
-          card_brand: verifiedTransaction.authorization?.brand || null,
-        })
-        .eq("user_id", userId)
-        .eq("status", "pending");
+        .update(patch)
+        .eq("user_id", userId);
 
       if (!updateErr) {
         updated = true;
-        if (reference) {
+        if (reference && verifiedTransaction) {
           await adminClient
             .from("payments")
             .update({ status: "success", updated_at: new Date().toISOString() })
             .eq("paystack_reference", reference)
             .eq("user_id", userId);
         }
+      } else {
+        console.error("subscription update failed:", updateErr);
       }
     }
 
