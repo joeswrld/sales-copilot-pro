@@ -313,7 +313,6 @@ export function useLiveCall(options?: {
           console.warn("Deal room creation non-fatal:", e);
         }
       }
-    },
 
       // Fallback: if a Daily recording was requested, wait briefly for the
       // webhook to store the URL, then copy it onto the call row so Call
@@ -327,14 +326,14 @@ export function useLiveCall(options?: {
         if (cd?.daily_recording_id && !cd?.recording_url) {
           for (let i = 0; i < 6; i++) {
             await new Promise((r) => setTimeout(r, 2000));
-            const { data: dr } = await supabase
+            const { data: dr } = await (supabase as any)
               .from("daily_rooms")
               .select("recording_url")
-              .eq("recording_id", cd.daily_recording_id as any)
+              .eq("recording_id", cd.daily_recording_id)
               .maybeSingle();
-            if ((dr as any)?.recording_url) {
+            if (dr?.recording_url) {
               await supabase.from("calls")
-                .update({ recording_url: (dr as any).recording_url })
+                .update({ recording_url: dr.recording_url })
                 .eq("id", callId);
               break;
             }
