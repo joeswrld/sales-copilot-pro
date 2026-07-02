@@ -260,6 +260,82 @@ Respond in JSON format:
         .eq("id", userId);
     }
 
+    // ── Auto-link deal & post recap (non-fatal) ─────────────────────────
+    try {
+      let dealId: string | null = (call as any)?.deal_id ?? null;
+
+      if (!dealId) {
+        const { data: matched } = await supabase.rpc("find_deal_by_participants", { p_call_id: call_id });
+        if (matched) {
+          dealId = matched as unknown as string;
+          await supabase.from("calls").update({ deal_id: dealId }).eq("id", call_id);
+        }
+      }
+
+      const recapTitle = `Call recap — ${call?.name ?? "Untitled meeting"}`;
+      const recapLines = [
+        summary ? summary : `Meeting completed on ${call?.platform || "your platform"}.`,
+      ];
+      if (meetingScore != null) recapLines.push(`Score: ${meetingScore}/10`);
+      if (nextSteps?.[0]) recapLines.push(`Next step: ${nextSteps[0]}`);
+      recapLines.push(`Call Details: /dashboard/calls/${call_id}`);
+      if (dealId) recapLines.push(`Deal: /dashboard/deals/${dealId}`);
+      const recapBody = recapLines.join("\n");
+
+      if (dealId) {
+        // Update deal fields + timeline
+        await supabase.from("deals")
+          .update({
+            last_call_at: new Date().toISOString(),
+            last_call_id: call_id,
+            updated_at: new Date().toISOString(),
+            ...(nextSteps?.[0] ? { next_step: nextSteps[0] } : {}),
+          })
+          .eq("id", dealId);
+
+        await supabase.from("deal_timeline_events").insert({
+          deal_id: dealId,
+          user_id: userId,
+          event_type: "meeting_completed",
+          title: recapTitle,
+          detail: summary || null,
+          metadata: {
+            call_id,
+            meeting_score: meetingScore,
+            next_step: nextSteps?.[0] ?? null,
+            action_items: actionItems,
+            key_decisions: keyDecisions,
+            buying_signals: buyingSignals,
+          },
+          happened_at: new Date().toISOString(),
+        });
+
+        // Post recap into the deal's channel if one exists
+        const { data: dealChannel } = await supabase
+          .from("deal_channels")
+          .select("id")
+          .eq("deal_id", dealId)
+          .maybeSingle();
+
+        if (dealChannel?.id) {
+          await supabase.from("deal_channel_messages").insert({
+            channel_id: dealChannel.id,
+            user_id: userId,
+            content: recapBody,
+            type: "system",
+            metadata: { call_id, deal_id: dealId, kind: "call_recap" },
+          });
+        }
+
+        // Refresh deal AI insights (non-fatal)
+        supabase.functions.invoke("analyze-deal-changes", {
+          body: { deal_id: dealId, call_id },
+        }).catch((e) => console.warn("analyze-deal-changes non-fatal:", e));
+      }
+    } catch (e) {
+      console.warn("deal/recap linkage non-fatal:", e);
+    }
+
     return new Response(
       JSON.stringify({ success: true, summary, meetingScore, nextSteps, keyDecisions, buyingSignals, actionItems, talkRatio }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
