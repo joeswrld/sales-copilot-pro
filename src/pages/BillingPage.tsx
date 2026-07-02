@@ -125,6 +125,28 @@ export default function BillingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, subscription?.status]);
 
+  // Auto-sync with Paystack on mount (and when next_payment_date is stale)
+  // so users never see an outdated renewal date.
+  const autoSyncedRef = useRef(false);
+  useEffect(() => {
+    if (autoSyncedRef.current) return;
+    if (!subscription || subscription.status !== "active") return;
+    const nextDate = subscription.next_payment_date
+      ? new Date(subscription.next_payment_date)
+      : null;
+    const isStale = !nextDate || nextDate.getTime() < Date.now();
+    autoSyncedRef.current = true;
+    if (isStale) {
+      verifyPayment.mutate(
+        { reference: null, includeTransactions: false },
+        { onSuccess: () => refetch() }
+      );
+    } else {
+      // Fire a light refresh in the background to keep card + dates fresh.
+      verifyPayment.mutate({ reference: null, includeTransactions: false });
+    }
+  }, [subscription?.status, subscription?.next_payment_date]);
+
   const doRefresh = async () => {
     setRefreshing(true);
     await verifyPayment.mutateAsync({ reference: null, includeTransactions: false });

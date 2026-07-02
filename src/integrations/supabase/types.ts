@@ -7466,6 +7466,10 @@ export type Database = {
       expire_grace_periods: { Args: never; Returns: number }
       expire_guest_requests: { Args: never; Returns: undefined }
       expire_stale_guest_requests: { Args: never; Returns: number }
+      find_deal_by_participants: {
+        Args: { p_call_id: string }
+        Returns: string
+      }
       force_clear_user_live_calls: {
         Args: { p_user_id: string }
         Returns: number
