@@ -315,15 +315,49 @@ export function useLiveCall(options?: {
       }
     },
 
+      // Fallback: if a Daily recording was requested, wait briefly for the
+      // webhook to store the URL, then copy it onto the call row so Call
+      // Details always shows a recording link when one exists.
+      try {
+        const { data: cd } = await supabase
+          .from("calls")
+          .select("daily_recording_id, recording_url")
+          .eq("id", callId)
+          .maybeSingle();
+        if (cd?.daily_recording_id && !cd?.recording_url) {
+          for (let i = 0; i < 6; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            const { data: dr } = await supabase
+              .from("daily_rooms")
+              .select("recording_url")
+              .eq("recording_id", cd.daily_recording_id as any)
+              .maybeSingle();
+            if ((dr as any)?.recording_url) {
+              await supabase.from("calls")
+                .update({ recording_url: (dr as any).recording_url })
+                .eq("id", callId);
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("recording URL fallback non-fatal:", e);
+      }
+    },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
+      queryClient.invalidateQueries({ queryKey: ["call", callId] });
+      queryClient.invalidateQueries({ queryKey: ["call-summary", callId] });
       queryClient.invalidateQueries({ queryKey: ["call-stats"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
       queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       queryClient.invalidateQueries({ queryKey: ["team-minute-usage"] });
       queryClient.invalidateQueries({ queryKey: ["deal-rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["deals"] });
+      queryClient.invalidateQueries({ queryKey: ["deal-timeline"] });
       options?.onCallEnded?.();
     },
     onError: (err: any) => {
