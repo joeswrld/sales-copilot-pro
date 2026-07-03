@@ -27,7 +27,7 @@ const STEPS = [
     id: "live_call",
     icon: Video,
     title: "Start meetings in one click",
-    subtitle: "Create a private 100ms meeting room, share the link — your prospect joins without any account. AI transcribes both sides live.",
+    subtitle: "Create a private  meeting room, share the link — your prospect joins without any account. AI transcribes both sides live.",
     color: "text-primary",
     bg: "bg-primary/10",
     borderColor: "border-primary/20",
@@ -65,7 +65,7 @@ const STEPS = [
 
 const STEP_FEATURES = [
   [
-    { icon: Radio, text: "100ms-powered private rooms" },
+    { icon: Radio, text: "Fixsense-powered private rooms" },
     { icon: Mic, text: "Both sides transcribed in real time" },
     { icon: Users, text: "No account needed for guests" },
     { icon: Video, text: "Host video + mic controls built in" },

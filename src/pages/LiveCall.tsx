@@ -234,7 +234,7 @@ function MeetingCreatedPopup({
               <CheckCircle2 className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">Daily.co room ready</p>
+              <p className="font-semibold text-white text-sm">Fixsense room ready</p>
               <p className="text-xs text-white/40 mt-0.5 truncate max-w-[240px]">{meetingTitle}</p>
             </div>
           </div>
