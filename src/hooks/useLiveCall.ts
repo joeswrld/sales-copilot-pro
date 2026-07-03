@@ -354,6 +354,7 @@ export function useLiveCall(options?: {
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
       queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
       queryClient.invalidateQueries({ queryKey: ["team-minute-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["team-minute-pool"] });
       queryClient.invalidateQueries({ queryKey: ["deal-rooms"] });
       queryClient.invalidateQueries({ queryKey: ["deals"] });
       queryClient.invalidateQueries({ queryKey: ["deal-timeline"] });
