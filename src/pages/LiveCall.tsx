@@ -356,7 +356,7 @@ function ScheduleModal({
           {!prefillLink && (
             <div>
               <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Link (optional)</label>
-              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fixsense.daily.co/..."
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fixsense.com.ng/..."
                 className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none font-mono text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} />
             </div>
