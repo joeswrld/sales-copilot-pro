@@ -22,6 +22,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { TeamUsageBillingCard } from "@/components/TeamMinuteUsageComponents"; 
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Integration {
@@ -391,96 +393,8 @@ export default function SettingsPage() {
         </div>
 
         {/* ── Usage ────────────────────────────────────────────────── */}
-        <section>
-          <h2 className="font-display font-semibold mb-4">Usage Overview</h2>
-          <div className="glass rounded-xl p-5 space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold capitalize flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-primary" />
-                  {usage?.planName || profile?.plan_type || "Free"} Plan
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {usage
-                    ? usage.isUnlimited
-                      ? `${hoursUsed}h used · Unlimited`
-                      : `${hoursUsed}h of ${hoursLimit}h used this month`
-                    : `${profile?.calls_used ?? 0} / ${profile?.calls_limit ?? 5} calls used`}
-                </p>
-              </div>
-              <Button size="sm" onClick={() => navigate("/billing")}>
-                {usage?.isAtLimit ? "Upgrade Now" : "Manage Plan"}
-              </Button>
-            </div>
-
-            {usage && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                    <Timer className="w-3.5 h-3.5" /> Call Minutes This Month
-                  </span>
-                  <span className={cn("text-xs font-semibold", usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-amber-500" : "text-foreground")}>
-                    {usage.isUnlimited ? `${hoursUsed}h · Unlimited` : `${hoursUsed}h / ${hoursLimit}h`}
-                  </span>
-                </div>
-                {!usage.isUnlimited ? (
-                  <>
-                    <Progress value={usage.pct} className={cn("h-2", usage.isAtLimit ? "[&>div]:bg-destructive" : usage.isNearLimit ? "[&>div]:bg-amber-500" : "")} />
-                    <div className="flex justify-between mt-1.5">
-                      <span className="text-xs text-muted-foreground">{hoursLeft}h remaining · {formatMinutes(usage.minutesUsed)} used</span>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> Resets {format(usage.resetDate, "MMM d")}
-                      </span>
-                    </div>
-                    {usage.isAtLimit && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
-                        <p className="text-xs text-destructive font-medium">
-                          Monthly limit reached.{" "}
-                          <button onClick={() => navigate("/billing")} className="underline">Upgrade</button>{" "}
-                          to continue recording.
-                        </p>
-                      </div>
-                    )}
-                    {usage.isNearLimit && !usage.isAtLimit && (
-                      <div className="mt-2 flex items-center gap-1">
-                        <p className="text-xs text-amber-500">{hoursLeft}h remaining.</p>
-                        <button onClick={() => navigate("/billing")} className="text-xs text-amber-500 hover:underline flex items-center gap-0.5">
-                          Upgrade <ArrowUpRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-primary font-medium mt-1">No limits on Scale · fair use above 333h</p>
-                )}
-              </div>
-            )}
-
-            {usage && (
-              <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/30 border border-border">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="w-3.5 h-3.5" /> Meetings this month
-                </div>
-                <span className="text-xs font-semibold">
-                  {usage.meetingsUsed}{usage.meetingLimit > 0 && usage.meetingLimit !== -1 ? ` / ${usage.meetingLimit}` : ""}
-                </span>
-              </div>
-            )}
-
-            {teamUsage && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5" /> Team Members
-                  </span>
-                  <span className="text-xs font-semibold">{teamUsage.membersUsed} / {teamUsage.isUnlimited ? "∞" : teamUsage.membersLimit}</span>
-                </div>
-                <Progress value={teamUsage.isUnlimited ? 0 : teamUsage.membersPct} className={cn("h-2", teamUsage.isAtLimit ? "[&>div]:bg-destructive" : teamUsage.isNearLimit ? "[&>div]:bg-amber-500" : "")} />
-              </div>
-            )}
-          </div>
-        </section>
-
+           {/* Usage Card */}
+                    <TeamUsageBillingCard className="mb-2" />
         {/* ── Integrations ─────────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-1">
