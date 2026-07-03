@@ -1044,7 +1044,7 @@ export default function LandingPage() {
               {
                 icon: "🏆", title: "Performance Intelligence", color: "#a78bfa",
                 desc: "Coach every rep, every call. AI coaching responses, follow-up generators, rep improvement scores, and team leaderboards — no manager required.",
-                features: ["Mid-call AI coaching tips", "Post-call follow-up drafts", "CRM auto-sync (HubSpot, SF)", "Rep performance leaderboard"],
+                features: ["Mid-call AI coaching tips", "Post-call follow-up drafts", "CRM auto-sync", "Rep performance leaderboard"],
               },
             ].map((card, i) => (
               <FadeIn key={i} delay={i * 100}>

@@ -120,17 +120,6 @@ const TESTIMONIALS = [
     category: "management",
   },
   {
-    quote: "The HubSpot sync is flawless. Reps used to spend 20 minutes updating the CRM after every call. Now it's automatic. We saved over 80 hours a month just on admin.",
-    name: "Tomás Vela",
-    role: "Sales Operations Lead",
-    company: "Stackly",
-    initials: "TV",
-    metric: "80 hrs/month saved",
-    industry: "FinTech",
-    teamSize: "12 reps",
-    category: "productivity",
-  },
-  {
     quote: "Talk ratio analytics completely changed how we coach. We discovered our best closers spoke only 42% of the time. We built a program around that insight and watched conversion jump 18% in six weeks.",
     name: "Amara Diallo",
     role: "Sales Enablement Manager",
@@ -141,17 +130,7 @@ const TESTIMONIALS = [
     teamSize: "18 reps",
     category: "coaching",
   },
-  {
-    quote: "Set up in literally 4 minutes. I've deployed Salesforce in a past life — the contrast is unreal. Fixsense connected to Zoom, analyzed our first call, and had summaries waiting in Slack the same morning.",
-    name: "Ryan Cheung",
-    role: "Head of Growth",
-    company: "Fora Labs",
-    initials: "RC",
-    metric: "4-min setup",
-    industry: "AI/ML Tooling",
-    teamSize: "6 reps",
-    category: "productivity",
-  },
+ 
   {
     quote: "We tried two other conversation intelligence tools. Both felt built for companies 10× our size. Fixsense actually works for a scrappy 10-person team without a dedicated RevOps person.",
     name: "Isabelle Morel",
