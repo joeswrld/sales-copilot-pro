@@ -322,7 +322,6 @@ export function useDailyCall({
       subscribeToTracksAutomatically: true,
       dailyConfig: {
         useDevicePreferenceCookies: false,
-        experimentalChromeVideoMuteLightOff: true,
       },
       sendSettings: {
         video: {
