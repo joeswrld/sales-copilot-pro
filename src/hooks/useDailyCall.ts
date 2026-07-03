@@ -337,7 +337,17 @@ export function useDailyCall({
 
   // ── Noise cancellation ─────────────────────────────────────────────────────
   const requestNoiseCancellation = useCallback(async (callObj: any, enabled: boolean) => {
+    // Krisp/noise-cancellation processor requires desktop Chromium with WASM SIMD.
+    // Skip on mobile, Safari, Firefox, and any UA that will make the SDK log
+    // "Ignoring settings for browser- or platform-unsupported input processor(s)".
     try {
+      const ua = navigator.userAgent || "";
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+      const isChromium = /Chrome|Chromium|Edg/i.test(ua) && !/OPR|Opera/i.test(ua);
+      if (enabled && (isMobile || !isChromium)) {
+        setNoiseCancellationState("unsupported");
+        return;
+      }
       await callObj.updateInputSettings({
         audio: { processor: enabled ? { type: "noise-cancellation" } : { type: "none" } },
       });
