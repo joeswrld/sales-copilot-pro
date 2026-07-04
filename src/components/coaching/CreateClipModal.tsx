@@ -68,7 +68,6 @@ export default function CreateClipModal({
 
   const handleCreate = async () => {
     if (!comment.trim()) return;
-    if (slackWebhook) localStorage.setItem("fixsense_slack_webhook", slackWebhook);
 
     const result = await createClip.mutateAsync({
       call_id: callId,
@@ -77,7 +76,6 @@ export default function CreateClipModal({
       transcript_excerpt: transcriptExcerpt,
       manager_comment: comment.trim(),
       tags: selectedTags,
-      slack_webhook_url: slackWebhook || undefined,
     });
     setCreatedClip(result);
     onCreated();
