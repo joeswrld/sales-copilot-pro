@@ -47,10 +47,7 @@ export default function CreateClipModal({
   const [comment, setComment] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [customTag, setCustomTag] = useState("");
-  const [slackWebhook, setSlackWebhook] = useState(
-    () => typeof localStorage !== "undefined" ? localStorage.getItem("fixsense_slack_webhook") || "" : ""
-  );
-  const [showSlack, setShowSlack] = useState(false);
+  const [createdClip, setCreatedClip] = useState<any>(null);
   const [createdClip, setCreatedClip] = useState<any>(null);
 
   const duration = Math.round(endSeconds - startSeconds);
