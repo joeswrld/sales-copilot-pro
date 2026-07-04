@@ -325,12 +325,16 @@ Respond in JSON format:
             type: "system",
             metadata: { call_id, deal_id: dealId, kind: "call_recap" },
           });
+        } else {
+          await postRecapToDmOrActivity(supabase, userId, call_id, recapBody, { dealId });
         }
 
         // Refresh deal AI insights (non-fatal)
         supabase.functions.invoke("analyze-deal-changes", {
           body: { deal_id: dealId, call_id },
         }).catch((e) => console.warn("analyze-deal-changes non-fatal:", e));
+      } else {
+        await postRecapToDmOrActivity(supabase, userId, call_id, recapBody, {});
       }
     } catch (e) {
       console.warn("deal/recap linkage non-fatal:", e);
