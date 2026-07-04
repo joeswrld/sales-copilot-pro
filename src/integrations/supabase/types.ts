@@ -1807,112 +1807,6 @@ export type Database = {
         }
         Relationships: []
       }
-      dcm_notification_prefs: {
-        Row: {
-          channel_id: string
-          id: string
-          mode: string
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          channel_id: string
-          id?: string
-          mode?: string
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          channel_id?: string
-          id?: string
-          mode?: string
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "dcm_notification_prefs_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "deal_channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "dcm_notification_prefs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "dcm_notification_prefs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_feature_access"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "dcm_notification_prefs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_plan_features"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      dcm_reactions: {
-        Row: {
-          created_at: string | null
-          emoji: string
-          id: string
-          message_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          emoji: string
-          id?: string
-          message_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          emoji?: string
-          id?: string
-          message_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "dcm_reactions_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "deal_channel_messages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "dcm_reactions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "dcm_reactions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_feature_access"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "dcm_reactions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_plan_features"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
       dcm_typing: {
         Row: {
           channel_id: string
@@ -5741,19 +5635,46 @@ export type Database = {
       }
       team_conversations: {
         Row: {
+          avatar_url: string | null
           created_at: string
+          dm_key: string | null
           id: string
+          is_archived: boolean
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_message_sender: string | null
+          pinned_at: string | null
           team_id: string
+          title: string | null
+          type: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
+          dm_key?: string | null
           id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_sender?: string | null
+          pinned_at?: string | null
           team_id: string
+          title?: string | null
+          type?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
+          dm_key?: string | null
           id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_sender?: string | null
+          pinned_at?: string | null
           team_id?: string
+          title?: string | null
+          type?: string
         }
         Relationships: [
           {
@@ -5926,19 +5847,9 @@ export type Database = {
           id: string
           is_deleted: boolean | null
           message_text: string
+          metadata: Json | null
           parent_id: string | null
           sender_id: string
-          voice_action_items: Json | null
-          voice_ai_summary: string | null
-          voice_caption: string | null
-          voice_duration_seconds: number | null
-          voice_follow_up_suggestions: Json | null
-          voice_playback_count: number | null
-          voice_storage_path: string | null
-          voice_transcript: string | null
-          voice_upload_status: string | null
-          voice_urgency: string | null
-          voice_waveform: Json | null
         }
         Insert: {
           conversation_id: string
@@ -5950,19 +5861,9 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           message_text: string
+          metadata?: Json | null
           parent_id?: string | null
           sender_id: string
-          voice_action_items?: Json | null
-          voice_ai_summary?: string | null
-          voice_caption?: string | null
-          voice_duration_seconds?: number | null
-          voice_follow_up_suggestions?: Json | null
-          voice_playback_count?: number | null
-          voice_storage_path?: string | null
-          voice_transcript?: string | null
-          voice_upload_status?: string | null
-          voice_urgency?: string | null
-          voice_waveform?: Json | null
         }
         Update: {
           conversation_id?: string
@@ -5974,19 +5875,9 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           message_text?: string
+          metadata?: Json | null
           parent_id?: string | null
           sender_id?: string
-          voice_action_items?: Json | null
-          voice_ai_summary?: string | null
-          voice_caption?: string | null
-          voice_duration_seconds?: number | null
-          voice_follow_up_suggestions?: Json | null
-          voice_playback_count?: number | null
-          voice_storage_path?: string | null
-          voice_transcript?: string | null
-          voice_upload_status?: string | null
-          voice_urgency?: string | null
-          voice_waveform?: Json | null
         }
         Relationships: [
           {
@@ -6197,6 +6088,35 @@ export type Database = {
             columns: ["guest_request_id"]
             isOneToOne: false
             referencedRelation: "call_guest_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      typing_indicators: {
+        Row: {
+          conversation_id: string
+          id: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "typing_indicators_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "team_conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -6430,232 +6350,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_statuses_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      voice_note_plays: {
-        Row: {
-          duration_played: number | null
-          id: string
-          message_id: string
-          message_table: string
-          playback_speed: number | null
-          played_at: string | null
-          played_by: string
-          user_id: string | null
-          voice_note_id: string | null
-        }
-        Insert: {
-          duration_played?: number | null
-          id?: string
-          message_id: string
-          message_table: string
-          playback_speed?: number | null
-          played_at?: string | null
-          played_by: string
-          user_id?: string | null
-          voice_note_id?: string | null
-        }
-        Update: {
-          duration_played?: number | null
-          id?: string
-          message_id?: string
-          message_table?: string
-          playback_speed?: number | null
-          played_at?: string | null
-          played_by?: string
-          user_id?: string | null
-          voice_note_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "voice_note_plays_played_by_fkey"
-            columns: ["played_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_played_by_fkey"
-            columns: ["played_by"]
-            isOneToOne: false
-            referencedRelation: "user_feature_access"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_played_by_fkey"
-            columns: ["played_by"]
-            isOneToOne: false
-            referencedRelation: "user_plan_features"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_feature_access"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_plan_features"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_note_plays_voice_note_id_fkey"
-            columns: ["voice_note_id"]
-            isOneToOne: false
-            referencedRelation: "voice_notes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      voice_notes: {
-        Row: {
-          action_items: Json | null
-          ai_error: string | null
-          ai_processed: boolean | null
-          ai_processed_at: string | null
-          ai_summary: string | null
-          caption: string | null
-          channel_id: string | null
-          conversation_id: string | null
-          converted_to_note: boolean | null
-          created_at: string | null
-          deal_id: string | null
-          deal_note_id: string | null
-          duration_seconds: number
-          file_size_bytes: number
-          id: string
-          mime_type: string
-          play_count: number | null
-          sender_id: string
-          storage_bucket: string
-          storage_path: string
-          suggested_actions: Json | null
-          team_id: string | null
-          transcript: string | null
-          updated_at: string | null
-          upload_status: string | null
-          urgency_level: string | null
-          waveform_data: Json | null
-        }
-        Insert: {
-          action_items?: Json | null
-          ai_error?: string | null
-          ai_processed?: boolean | null
-          ai_processed_at?: string | null
-          ai_summary?: string | null
-          caption?: string | null
-          channel_id?: string | null
-          conversation_id?: string | null
-          converted_to_note?: boolean | null
-          created_at?: string | null
-          deal_id?: string | null
-          deal_note_id?: string | null
-          duration_seconds?: number
-          file_size_bytes?: number
-          id?: string
-          mime_type?: string
-          play_count?: number | null
-          sender_id: string
-          storage_bucket?: string
-          storage_path: string
-          suggested_actions?: Json | null
-          team_id?: string | null
-          transcript?: string | null
-          updated_at?: string | null
-          upload_status?: string | null
-          urgency_level?: string | null
-          waveform_data?: Json | null
-        }
-        Update: {
-          action_items?: Json | null
-          ai_error?: string | null
-          ai_processed?: boolean | null
-          ai_processed_at?: string | null
-          ai_summary?: string | null
-          caption?: string | null
-          channel_id?: string | null
-          conversation_id?: string | null
-          converted_to_note?: boolean | null
-          created_at?: string | null
-          deal_id?: string | null
-          deal_note_id?: string | null
-          duration_seconds?: number
-          file_size_bytes?: number
-          id?: string
-          mime_type?: string
-          play_count?: number | null
-          sender_id?: string
-          storage_bucket?: string
-          storage_path?: string
-          suggested_actions?: Json | null
-          team_id?: string | null
-          transcript?: string | null
-          updated_at?: string | null
-          upload_status?: string | null
-          urgency_level?: string | null
-          waveform_data?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "voice_notes_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "deal_channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_notes_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "team_conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_notes_deal_id_fkey"
-            columns: ["deal_id"]
-            isOneToOne: false
-            referencedRelation: "deals"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_notes_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "voice_notes_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "user_feature_access"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_notes_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "user_plan_features"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "voice_notes_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
@@ -7470,6 +7164,7 @@ export type Database = {
         Args: { p_call_id: string }
         Returns: string
       }
+      find_or_create_dm: { Args: { _other_user: string }; Returns: string }
       force_clear_user_live_calls: {
         Args: { p_user_id: string }
         Returns: number
