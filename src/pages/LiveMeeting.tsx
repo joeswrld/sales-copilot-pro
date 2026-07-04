@@ -25,7 +25,7 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Loader2, AlertCircle, Clock, MessageSquare, Users, Zap,
-  Mic, MicOff, Video, VideoOff, MonitorPlay, PhoneOff,
+  Mic, MicOff, Video, VideoOff, MonitorPlay, PhoneOff, SwitchCamera,
   FileText, Paperclip, Send, AlertTriangle, Shield,
   BrainCircuit, Sparkles, WifiOff,
   Tag, UserCheck, UserX, Bell, BookOpen,
