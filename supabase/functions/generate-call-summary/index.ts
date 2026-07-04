@@ -6,6 +6,103 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Route a meeting recap into the right conversation:
+ *  1. Deal channel (handled by caller if a deal is linked)
+ *  2. DM with the single other participant, if the call has exactly one other identifiable user
+ *  3. #activity channel fallback for the caller's team
+ */
+async function postRecapToDmOrActivity(
+  supabase: any,
+  userId: string,
+  callId: string,
+  body: string,
+  opts: { dealId?: string },
+) {
+  try {
+    // 2) Try DM with the sole other participant
+    const { data: parts } = await supabase
+      .from("daily_participant_sessions")
+      .select("user_id, participant_email")
+      .eq("call_id", callId);
+
+    const otherIds = new Set<string>();
+    for (const p of parts || []) {
+      if (p.user_id && p.user_id !== userId) otherIds.add(p.user_id);
+    }
+    if (otherIds.size === 0 && parts?.length) {
+      const emails = Array.from(new Set(parts.map((p: any) => p.participant_email).filter(Boolean)));
+      if (emails.length) {
+        const { data: profs } = await supabase.from("profiles").select("id,email").in("email", emails);
+        for (const p of profs || []) if (p.id !== userId) otherIds.add(p.id);
+      }
+    }
+
+    if (otherIds.size === 1) {
+      const other = Array.from(otherIds)[0];
+      const [a, b] = userId < other ? [userId, other] : [other, userId];
+      const dmKey = `${a}:${b}`;
+      let { data: conv } = await supabase
+        .from("team_conversations")
+        .select("id")
+        .eq("dm_key", dmKey)
+        .eq("type", "dm")
+        .maybeSingle();
+      if (!conv) {
+        const { data: created } = await supabase
+          .from("team_conversations")
+          .insert({ type: "dm", dm_key: dmKey })
+          .select("id")
+          .single();
+        conv = created;
+        if (conv) {
+          await supabase.from("conversation_participants").insert([
+            { conversation_id: conv.id, user_id: a },
+            { conversation_id: conv.id, user_id: b },
+          ]);
+        }
+      }
+      if (conv?.id) {
+        await supabase.from("team_messages").insert({
+          conversation_id: conv.id,
+          sender_id: userId,
+          message_text: body,
+          metadata: { kind: "call_recap", call_id: callId, deal_id: opts.dealId ?? null },
+        });
+        return;
+      }
+    }
+
+    // 3) #activity fallback — post into deal_channel_messages activity channel if present
+    const { data: team } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!team?.team_id) return;
+
+    const { data: activity } = await supabase
+      .from("deal_channels")
+      .select("id")
+      .eq("team_id", team.team_id)
+      .eq("type", "activity")
+      .maybeSingle();
+    if (activity?.id) {
+      await supabase.from("deal_channel_messages").insert({
+        channel_id: activity.id,
+        user_id: userId,
+        content: body,
+        type: "system",
+        metadata: { call_id: callId, deal_id: opts.dealId ?? null, kind: "call_recap" },
+      });
+    }
+  } catch (e) {
+    console.warn("postRecapToDmOrActivity non-fatal:", e);
+  }
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -325,12 +422,16 @@ Respond in JSON format:
             type: "system",
             metadata: { call_id, deal_id: dealId, kind: "call_recap" },
           });
+        } else {
+          await postRecapToDmOrActivity(supabase, userId, call_id, recapBody, { dealId });
         }
 
         // Refresh deal AI insights (non-fatal)
         supabase.functions.invoke("analyze-deal-changes", {
           body: { deal_id: dealId, call_id },
         }).catch((e) => console.warn("analyze-deal-changes non-fatal:", e));
+      } else {
+        await postRecapToDmOrActivity(supabase, userId, call_id, recapBody, {});
       }
     } catch (e) {
       console.warn("deal/recap linkage non-fatal:", e);

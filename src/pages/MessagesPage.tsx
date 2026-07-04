@@ -34,10 +34,10 @@ import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
   MoreHorizontal, X, CornerUpLeft, Settings, Pin, PinOff,
-  Paperclip, Mic, MessageCircle, AtSign,
+ Paperclip, MessageCircle, AtSign,
 } from "lucide-react";
 import { uploadMessageFile, isImageType, isAudioType } from "@/lib/messageAttachments";
-import VoiceRecorder from "@/components/messages/VoiceRecorder";
+
 import AttachmentRender from "@/components/messages/AttachmentRender";
 import MentionTextarea, { renderWithMentions, type MentionMember } from "@/components/messages/MentionTextarea";
 import ThreadPanel from "@/components/messages/ThreadPanel";
@@ -586,7 +586,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   const [editText, setEditText] = useState("");
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [mentionedIds, setMentionedIds] = useState<string[]>([]);
-  const [recording, setRecording] = useState(false);
+  
   const [uploading, setUploading] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
   const [threadRoot, setThreadRoot] = useState<Msg | null>(null);
@@ -741,21 +741,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
     await sendAttachment(f, { folder, fileName: f.name });
   };
 
-  // ── Voice note send ────────────────────────────────────────────────────
-  // FIX: preserve the ACTUAL recorded MIME type (with codec string) instead
-  // of hardcoding "audio/webm". VoiceRecorder records with mimeRef.current
-  // (e.g. "audio/webm;codecs=opus" on Chrome, "audio/ogg;codecs=opus" on
-  // Firefox) and the resulting blob.type reflects that. Storing the wrong
-  // file_type caused AttachmentRender's audioMimeType() to pick the wrong
-  // <source type>, producing "Cannot play audio" / network errors on
-  // playback after sending.
-  const onVoiceSend = async (blob: Blob, duration: number) => {
-    setRecording(false);
-    const mime = blob.type || "audio/webm";
-    const ext = mime.includes("ogg") ? "ogg" : "webm";
-    const name = `voice-${Math.round(duration)}s.${ext}`;
-    await sendAttachment(blob, { folder: "voice", fileName: name, mimeOverride: mime });
-  };
 
   const handleReact = async (msgId: string, emoji: string) => {
     if (!user) return;
@@ -947,43 +932,36 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
 
         {/* Input */}
         <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
-          {recording ? (
-            <VoiceRecorder onCancel={() => setRecording(false)} onSend={onVoiceSend} />
-          ) : (
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "6px 8px 6px 10px" }}>
-              <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Attach file" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Paperclip size={15} />
-              </button>
-              {allowMentions ? (
-                <MentionTextarea
-                  ref={mentionRef as any}
-                  value={text} onChange={v => { setText(v); sendTyping(); }}
-                  onMentionsChange={setMentionedIds}
-                  onSubmit={send}
-                  members={(members || []).map((m: any) => ({
-                    user_id: m.user_id,
-                    full_name: m.profile?.full_name ?? m.full_name ?? null,
-                    email: m.profile?.email ?? m.email ?? null,
-                    avatar_url: m.profile?.avatar_url ?? m.avatar_url ?? null,
-                  }))}
-                  placeholder={placeholder}
-                />
-              ) : (
-                <textarea value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                  placeholder={placeholder}
-                  rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
-              )}
-              <button onClick={() => setRecording(true)} disabled={uploading} title="Voice note" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Mic size={15} />
-              </button>
-              <button onClick={send} disabled={!text.trim() || sending || uploading} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
-                <Send size={14} />
-              </button>
-            </div>
-          )}
-          {!isMobile && !recording && <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.2)", margin: "4px 0 0 2px", fontFamily: "'Geist',system-ui,sans-serif" }}>
-            {allowMentions ? "Enter to send · @ to mention · Attach files or record voice · Right-click for more" : "Enter to send · Shift+Enter newline · Attach files or record voice"}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "6px 8px 6px 10px" }}>
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Attach file" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Paperclip size={15} />
+            </button>
+            {allowMentions ? (
+              <MentionTextarea
+                ref={mentionRef as any}
+                value={text} onChange={v => { setText(v); sendTyping(); }}
+                onMentionsChange={setMentionedIds}
+                onSubmit={send}
+                members={(members || []).map((m: any) => ({
+                  user_id: m.user_id,
+                  full_name: m.profile?.full_name ?? m.full_name ?? null,
+                  email: m.profile?.email ?? m.email ?? null,
+                  avatar_url: m.profile?.avatar_url ?? m.avatar_url ?? null,
+                }))}
+                placeholder={placeholder}
+              />
+            ) : (
+              <textarea value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                placeholder={placeholder}
+                rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
+            )}
+            <button onClick={send} disabled={!text.trim() || sending || uploading} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
+              <Send size={14} />
+            </button>
+          </div>
+          {!isMobile && <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.2)", margin: "4px 0 0 2px", fontFamily: "'Geist',system-ui,sans-serif" }}>
+            {allowMentions ? "Enter to send · @ to mention · Attach files · Right-click for more" : "Enter to send · Shift+Enter newline · Attach files"}
           </p>}
         </div>
       </div>

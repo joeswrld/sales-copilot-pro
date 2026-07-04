@@ -25,7 +25,7 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Loader2, AlertCircle, Clock, MessageSquare, Users, Zap,
-  Mic, MicOff, Video, VideoOff, MonitorPlay, PhoneOff,
+  Mic, MicOff, Video, VideoOff, MonitorPlay, PhoneOff, SwitchCamera,
   FileText, Paperclip, Send, AlertTriangle, Shield,
   BrainCircuit, Sparkles, WifiOff,
   Tag, UserCheck, UserX, Bell, BookOpen,
@@ -1157,6 +1157,9 @@ export default function LiveMeeting() {
                 <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                   <Ctrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} compact={isMobile} />
                   <Ctrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} compact={isMobile} />
+                  {isMobile && (
+                    <Ctrl icon={SwitchCamera} label="Flip" active onClick={() => daily.switchCamera()} compact />
+                  )}
                   {/* Screen share — hidden on narrowest mobiles, shown from xs up */}
                   <div className="hidden xs:block">
                     <Ctrl

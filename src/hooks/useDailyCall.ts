@@ -797,6 +797,39 @@ export function useDailyCall({
     if (_activeCallObject) await _activeCallObject.setLocalVideo(enabled);
   }, []);
 
+  const toggleMic = useCallback(async () => {
+    if (!_activeCallObject) return;
+    const on = _activeCallObject.localAudio();
+    await _activeCallObject.setLocalAudio(!on);
+  }, []);
+
+  const toggleCamera = useCallback(async () => {
+    if (!_activeCallObject) return;
+    const on = _activeCallObject.localVideo();
+    await _activeCallObject.setLocalVideo(!on);
+  }, []);
+
+  // Cycle through video input devices (mobile front/back camera switch).
+  const switchCamera = useCallback(async () => {
+    if (!_activeCallObject) return;
+    try {
+      const devices = await _activeCallObject.enumerateDevices();
+      const cams = (devices?.devices || []).filter((d: any) => d.kind === "videoinput" && d.deviceId);
+      if (cams.length < 2) {
+        toast.info("No secondary camera available.");
+        return;
+      }
+      const cur = await _activeCallObject.getInputDevices();
+      const currentId = cur?.camera?.deviceId;
+      const nextIdx = Math.max(0, cams.findIndex((c: any) => c.deviceId === currentId)) + 1;
+      const next = cams[nextIdx % cams.length];
+      await _activeCallObject.setInputDevicesAsync({ videoDeviceId: next.deviceId });
+    } catch (err) {
+      console.error("[Daily] switchCamera failed", err);
+      toast.error("Couldn't switch camera.");
+    }
+  }, []);
+
   // ── Screen share ───────────────────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
     if (!_activeCallObject) {
@@ -913,7 +946,7 @@ export function useDailyCall({
     localParticipant, remoteParticipants,
     handRaises,
     joinCall, leaveCall,
-    setAudioEnabled, setVideoEnabled,
+    setAudioEnabled, setVideoEnabled, toggleMic, toggleCamera, switchCamera,
     startScreenShare, stopScreenShare,
     startRecording, stopRecording,
     raiseHand, isHandRaised,
