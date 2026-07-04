@@ -946,7 +946,7 @@ export function useDailyCall({
     localParticipant, remoteParticipants,
     handRaises,
     joinCall, leaveCall,
-    setAudioEnabled, setVideoEnabled,
+    setAudioEnabled, setVideoEnabled, toggleMic, toggleCamera, switchCamera,
     startScreenShare, stopScreenShare,
     startRecording, stopRecording,
     raiseHand, isHandRaised,
