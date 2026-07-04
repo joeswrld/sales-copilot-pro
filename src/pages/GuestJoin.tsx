@@ -975,6 +975,20 @@ export default function GuestJoin() {
             </span>
           </button>
 
+          {/* Switch camera (front/back) — visible on mobile only */}
+          <button
+            onClick={() => daily.switchCamera()}
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex-col items-center justify-center gap-0.5 transition-all touch-manipulation flex sm:hidden"
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: `1px solid ${T.border}`,
+            }}
+            title="Switch camera"
+          >
+            <SwitchCamera className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            <span className="text-[8px] font-medium hidden xs:block" style={{ color: T.muted }}>Flip</span>
+          </button>
+
           {/* Screen Share — now works for guests too */}
           <button
             onClick={handleScreenShare}
