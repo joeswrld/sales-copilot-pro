@@ -48,7 +48,6 @@ export default function CreateClipModal({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [customTag, setCustomTag] = useState("");
   const [createdClip, setCreatedClip] = useState<any>(null);
-  const [createdClip, setCreatedClip] = useState<any>(null);
 
   const duration = Math.round(endSeconds - startSeconds);
 
