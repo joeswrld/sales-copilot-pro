@@ -37,7 +37,7 @@ import {
  Paperclip, MessageCircle, AtSign,
 } from "lucide-react";
 import { uploadMessageFile, isImageType, isAudioType } from "@/lib/messageAttachments";
-import VoiceRecorder from "@/components/messages/VoiceRecorder";
+
 import AttachmentRender from "@/components/messages/AttachmentRender";
 import MentionTextarea, { renderWithMentions, type MentionMember } from "@/components/messages/MentionTextarea";
 import ThreadPanel from "@/components/messages/ThreadPanel";
