@@ -34,7 +34,7 @@ import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
   MoreHorizontal, X, CornerUpLeft, Settings, Pin, PinOff,
-  Paperclip, Mic, MessageCircle, AtSign,
+ Paperclip, MessageCircle, AtSign,
 } from "lucide-react";
 import { uploadMessageFile, isImageType, isAudioType } from "@/lib/messageAttachments";
 import VoiceRecorder from "@/components/messages/VoiceRecorder";
