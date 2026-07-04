@@ -586,7 +586,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   const [editText, setEditText] = useState("");
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [mentionedIds, setMentionedIds] = useState<string[]>([]);
-  const [recording, setRecording] = useState(false);
+  
   const [uploading, setUploading] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
   const [threadRoot, setThreadRoot] = useState<Msg | null>(null);
