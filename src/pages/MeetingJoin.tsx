@@ -353,6 +353,13 @@ export default function MeetingJoin() {
           {isVideoOn ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-white" />}
         </button>
         <button
+          onClick={handleSwitchCamera}
+          className="w-12 h-12 rounded-full bg-zinc-700 hover:bg-zinc-600 flex items-center justify-center transition-colors sm:hidden"
+          title="Switch camera"
+        >
+          <SwitchCamera className="w-5 h-5 text-white" />
+        </button>
+        <button
           onClick={handleLeave}
           className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors"
         >
