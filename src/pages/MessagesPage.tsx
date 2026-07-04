@@ -741,21 +741,6 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
     await sendAttachment(f, { folder, fileName: f.name });
   };
 
-  // ── Voice note send ────────────────────────────────────────────────────
-  // FIX: preserve the ACTUAL recorded MIME type (with codec string) instead
-  // of hardcoding "audio/webm". VoiceRecorder records with mimeRef.current
-  // (e.g. "audio/webm;codecs=opus" on Chrome, "audio/ogg;codecs=opus" on
-  // Firefox) and the resulting blob.type reflects that. Storing the wrong
-  // file_type caused AttachmentRender's audioMimeType() to pick the wrong
-  // <source type>, producing "Cannot play audio" / network errors on
-  // playback after sending.
-  const onVoiceSend = async (blob: Blob, duration: number) => {
-    setRecording(false);
-    const mime = blob.type || "audio/webm";
-    const ext = mime.includes("ogg") ? "ogg" : "webm";
-    const name = `voice-${Math.round(duration)}s.${ext}`;
-    await sendAttachment(blob, { folder: "voice", fileName: name, mimeOverride: mime });
-  };
 
   const handleReact = async (msgId: string, emoji: string) => {
     if (!user) return;
