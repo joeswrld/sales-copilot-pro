@@ -24,7 +24,7 @@ import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Users,
   Loader2, WifiOff, RefreshCw, Monitor, MonitorOff,
   Maximize2, PanelRight, X, Pin, PinOff,
-  AlertCircle, Clock, LayoutGrid, Hand,
+  AlertCircle, Clock, LayoutGrid, Hand, SwitchCamera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
