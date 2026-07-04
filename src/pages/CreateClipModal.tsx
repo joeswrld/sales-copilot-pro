@@ -320,34 +320,6 @@ export default function CreateClipModal({
                 )}
               </div>
 
-              {/* Slack webhook (collapsible) */}
-              <div style={{ marginBottom: 20 }}>
-                <button
-                  onClick={() => setShowSlack(p => !p)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    background: "transparent", border: "none", cursor: "pointer",
-                    color: "rgba(255,255,255,.35)", fontSize: 11, fontFamily: "'DM Sans',sans-serif",
-                    padding: 0,
-                  }}
-                >
-                  <Slack style={{ width: 12, height: 12 }} />
-                  {showSlack ? "Hide Slack" : "Notify Slack"} (optional)
-                </button>
-                {showSlack && (
-                  <div style={{ marginTop: 8 }}>
-                    <input
-                      className="ccm-input"
-                      placeholder="https://hooks.slack.com/services/…"
-                      value={slackWebhook}
-                      onChange={e => setSlackWebhook(e.target.value)}
-                    />
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,.2)", marginTop: 4 }}>
-                      Saved locally for future clips
-                    </p>
-                  </div>
-                )}
-              </div>
 
               {/* Submit */}
               <button
