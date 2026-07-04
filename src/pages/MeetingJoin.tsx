@@ -169,6 +169,28 @@ export default function MeetingJoin() {
     setIsVideoOn((v) => !v);
   };
 
+  const handleSwitchCamera = async () => {
+    try {
+      const actions: any = hmsActionsRef.current;
+      if (!actions) return;
+      // Prefer switchCamera helper when available on the HMS SDK.
+      if (typeof actions.switchCamera === "function") {
+        await actions.switchCamera();
+        return;
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === "videoinput" && d.deviceId);
+      if (cams.length < 2) return;
+      const cur = actions.getLocalPeer?.()?.videoTrack?.deviceId ?? cams[0].deviceId;
+      const next = cams[(cams.findIndex((c) => c.deviceId === cur) + 1) % cams.length];
+      if (typeof actions.setVideoSettings === "function") {
+        await actions.setVideoSettings({ deviceId: next.deviceId });
+      }
+    } catch (err) {
+      console.error("switch camera failed", err);
+    }
+  };
+
   // ── Ended ─────────────────────────────────────────────────────────────────
   if (status === "ended") {
     return (
