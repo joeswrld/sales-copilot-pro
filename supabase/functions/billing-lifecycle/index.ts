@@ -17,6 +17,18 @@ const FINAL_GRACE_HOURS = 24;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Require CRON_SECRET to prevent unauthenticated triggering of real Paystack charges.
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const provided = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "")
+    || req.headers.get("x-cron-secret")
+    || "";
+  if (!cronSecret || provided !== cronSecret) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const url = Deno.env.get("SUPABASE_URL")!;
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
