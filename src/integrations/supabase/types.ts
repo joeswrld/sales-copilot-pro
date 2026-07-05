@@ -1807,6 +1807,38 @@ export type Database = {
         }
         Relationships: []
       }
+      dcm_notification_prefs: {
+        Row: {
+          channel_id: string
+          id: string
+          mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dcm_notification_prefs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "deal_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dcm_typing: {
         Row: {
           channel_id: string
