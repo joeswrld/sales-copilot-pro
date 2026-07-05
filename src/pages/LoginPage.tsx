@@ -247,12 +247,30 @@ export default function LoginPage() {
         toast({ title: "Check your email", description: "We've sent you a password reset link." });
         setMode("login");
       } else if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: window.location.origin } });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { full_name: fullName },
+            emailRedirectTo: `${window.location.origin}/verify-email`,
+          },
+        });
         if (error) throw error;
-        if (data.session) { navigate("/dashboard"); } else { toast({ title: "Check your email", description: "We've sent you a confirmation link." }); }
+        // Email verification is MANDATORY. Even if Supabase happens to return a
+        // session (some legacy settings), gate the app until the address is confirmed.
+        toast({ title: "Check your email", description: "Click the verification link to activate your account." });
+        navigate("/verify-email");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (!data.user?.email_confirmed_at) {
+          toast({
+            title: "Verify your email",
+            description: "You must verify your email before signing in.",
+          });
+          navigate("/verify-email");
+          return;
+        }
         navigate("/dashboard");
       }
     } catch (error: any) {
