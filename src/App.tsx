@@ -96,6 +96,7 @@ function AppRoutes() {
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite/:token" element={<InviteLanding />} />
 
           {/* Marketing */}
