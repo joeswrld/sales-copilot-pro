@@ -29,6 +29,18 @@ Deno.serve(async (req) => {
     // Delete user data in dependent order
     const userId = user.id;
 
+    // ── Permanent, GDPR-compliant hashed trial record (BEFORE dropping data)
+    // Prevents delete-and-recreate free-trial farming across email + Google sign-in.
+    const googleSub =
+      (user.identities?.find((i: any) => i.provider === "google")?.id as string | undefined) ??
+      (user.user_metadata?.sub as string | undefined) ??
+      "";
+    await adminClient.rpc("record_deleted_trial", {
+      _user_id: userId,
+      _email: user.email ?? "",
+      _google_sub: googleSub,
+    });
+
     // Storage cleanup (team attachments)
     // Delete profile, preferences, integrations, subscriptions, calls & related, team memberships
     // The cascade and RLS will handle most, but we clean up explicitly for safety
