@@ -105,3 +105,10 @@ verify_jwt = false
 [functions.billing-lifecycle]
 verify_jwt = false
 
+[functions.start-trial]
+verify_jwt = false
+
+[functions.resend-verification]
+verify_jwt = false
+
+

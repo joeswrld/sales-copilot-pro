@@ -1807,6 +1807,38 @@ export type Database = {
         }
         Relationships: []
       }
+      dcm_notification_prefs: {
+        Row: {
+          channel_id: string
+          id: string
+          mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dcm_notification_prefs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "deal_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dcm_typing: {
         Row: {
           channel_id: string
@@ -4875,12 +4907,15 @@ export type Database = {
           calls_used: number
           created_at: string
           email: string | null
+          email_verified_at: string | null
           full_name: string | null
           gdpr_consent: boolean
           id: string
           onboarding_complete: boolean | null
           plan_type: string
           suspended: boolean
+          trial_blocked_reason: string | null
+          trial_started_at: string | null
           updated_at: string
         }
         Insert: {
@@ -4890,12 +4925,15 @@ export type Database = {
           calls_used?: number
           created_at?: string
           email?: string | null
+          email_verified_at?: string | null
           full_name?: string | null
           gdpr_consent?: boolean
           id: string
           onboarding_complete?: boolean | null
           plan_type?: string
           suspended?: boolean
+          trial_blocked_reason?: string | null
+          trial_started_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -4905,12 +4943,15 @@ export type Database = {
           calls_used?: number
           created_at?: string
           email?: string | null
+          email_verified_at?: string | null
           full_name?: string | null
           gdpr_consent?: boolean
           id?: string
           onboarding_complete?: boolean | null
           plan_type?: string
           suspended?: boolean
+          trial_blocked_reason?: string | null
+          trial_started_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -5472,6 +5513,30 @@ export type Database = {
           id?: string
           ip_address?: string | null
           metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      signup_ip_log: {
+        Row: {
+          created_at: string
+          event: string
+          id: string
+          ip_hash: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          id?: string
+          ip_hash: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          id?: string
+          ip_hash?: string
           user_id?: string | null
         }
         Relationships: []
@@ -6091,6 +6156,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trial_history: {
+        Row: {
+          account_deleted_at: string | null
+          created_at: string
+          ever_paid: boolean
+          fingerprint_hash: string | null
+          first_trial_started_at: string
+          google_sub_hash: string | null
+          id: string
+          ip_hash: string | null
+          last_seen_at: string
+          normalized_email_hash: string | null
+          original_user_id: string | null
+          reason: string | null
+        }
+        Insert: {
+          account_deleted_at?: string | null
+          created_at?: string
+          ever_paid?: boolean
+          fingerprint_hash?: string | null
+          first_trial_started_at?: string
+          google_sub_hash?: string | null
+          id?: string
+          ip_hash?: string | null
+          last_seen_at?: string
+          normalized_email_hash?: string | null
+          original_user_id?: string | null
+          reason?: string | null
+        }
+        Update: {
+          account_deleted_at?: string | null
+          created_at?: string
+          ever_paid?: boolean
+          fingerprint_hash?: string | null
+          first_trial_started_at?: string
+          google_sub_hash?: string | null
+          id?: string
+          ip_hash?: string | null
+          last_seen_at?: string
+          normalized_email_hash?: string | null
+          original_user_id?: string | null
+          reason?: string | null
+        }
+        Relationships: []
       }
       typing_indicators: {
         Row: {
@@ -7039,6 +7149,16 @@ export type Database = {
         Returns: Json
       }
       check_team_usage_limit: { Args: { p_team_id: string }; Returns: boolean }
+      check_trial_eligibility: {
+        Args: {
+          _email: string
+          _fingerprint: string
+          _google_sub: string
+          _ip: string
+          _user_id: string
+        }
+        Returns: Json
+      }
       check_usage_quota: {
         Args: { p_user_id: string }
         Returns: {
@@ -7642,6 +7762,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      hash_identifier: { Args: { _value: string }; Returns: string }
       increment_call_sentiment: {
         Args: { p_call_id: string; p_delta: number }
         Returns: undefined
@@ -7823,6 +7944,7 @@ export type Database = {
         }[]
       }
       my_plan_has_feature: { Args: { p_feature: string }; Returns: boolean }
+      normalize_email: { Args: { _email: string }; Returns: string }
       normalize_plan_key: { Args: { plan_name: string }; Returns: string }
       notify_followup_assigned: {
         Args: { p_followup_id: string }
@@ -7870,6 +7992,10 @@ export type Database = {
           p_trend?: string
         }
         Returns: string
+      }
+      record_deleted_trial: {
+        Args: { _email: string; _google_sub: string; _user_id: string }
+        Returns: undefined
       }
       record_failed_auth: {
         Args: { p_email?: string; p_ip: string }
@@ -8006,6 +8132,16 @@ export type Database = {
           p_user_name?: string
         }
         Returns: undefined
+      }
+      start_trial: {
+        Args: {
+          _email: string
+          _fingerprint: string
+          _google_sub: string
+          _ip: string
+          _user_id: string
+        }
+        Returns: Json
       }
       toggle_agenda_item: {
         Args: { p_completed: boolean; p_item_id: string }

@@ -30,6 +30,7 @@ import AIChatPage from "./pages/AIChatPage";
 import BillingPage from "./pages/BillingPage";
 import PricingPage from "./pages/PricingPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
@@ -95,6 +96,7 @@ function AppRoutes() {
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite/:token" element={<InviteLanding />} />
 
           {/* Marketing */}

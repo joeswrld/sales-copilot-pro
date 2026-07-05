@@ -1,9 +1,10 @@
 import { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -14,5 +15,13 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // Mandatory email verification gate — enforced client-side as UX,
+  // and re-enforced server-side in every trust-critical edge function
+  // (start-trial, delete-account, billing, etc.).
+  if (!user.email_confirmed_at && location.pathname !== "/verify-email") {
+    return <Navigate to="/verify-email" replace />;
+  }
+
   return <>{children}</>;
 }
