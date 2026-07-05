@@ -341,7 +341,7 @@ function AppRoutes() {
           <Route path="/join/:roomName" element={<GuestJoin />} />
 
           {/* Legacy /meet/:roomName — keep for backwards compat */}
-          <Route path="/meet/:roomName" element={<MeetingJoin />} />
+          <Route path="/meet/:roomName" element={<GuestJoin />} />
 
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
