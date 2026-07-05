@@ -30,6 +30,7 @@ import AIChatPage from "./pages/AIChatPage";
 import BillingPage from "./pages/BillingPage";
 import PricingPage from "./pages/PricingPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import ProfilePage from "./pages/ProfilePage";
 import MessagesPage from "./pages/MessagesPage";
 import NotFound from "./pages/NotFound";
