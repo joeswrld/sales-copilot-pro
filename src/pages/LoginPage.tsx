@@ -195,9 +195,13 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ── Redirect already-authenticated users (admins → /admin, others → /dashboard) ──
+  // ── Redirect already-authenticated users ──
   useEffect(() => {
-    const route = async (uid: string) => {
+    const route = async (uid: string, emailConfirmedAt: string | null | undefined) => {
+      if (!emailConfirmedAt) {
+        navigate("/verify-email", { replace: true });
+        return;
+      }
       const { data } = await supabase
         .from("user_roles")
         .select("role")
@@ -208,11 +212,11 @@ export default function LoginPage() {
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) route(session.user.id);
+      if (session?.user) route(session.user.id, session.user.email_confirmed_at);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) route(session.user.id);
+      if (session?.user) route(session.user.id, session.user.email_confirmed_at);
     });
 
     return () => subscription.unsubscribe();
