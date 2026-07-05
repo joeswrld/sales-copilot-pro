@@ -234,7 +234,7 @@ function MeetingCreatedPopup({
               <CheckCircle2 className="w-5 h-5 text-indigo-400" />
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">Fixsense room ready</p>
+              <p className="font-semibold text-white text-sm">Daily.co room ready</p>
               <p className="text-xs text-white/40 mt-0.5 truncate max-w-[240px]">{meetingTitle}</p>
             </div>
           </div>
@@ -276,12 +276,20 @@ function MeetingCreatedPopup({
               <span className="flex items-center gap-2.5 text-white/70"><CalendarPlus className="w-4 h-4" />Schedule this meeting</span>
               <ArrowRight className="w-4 h-4 text-white/30" />
             </button>
-          
+            <a href={dailyDirectUrl} target="_blank" rel="noopener noreferrer">
+              <button
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-white/8"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <span className="flex items-center gap-2.5 text-white/50"><ExternalLink className="w-4 h-4" />Open in Daily.co (new tab)</span>
+                <ArrowRight className="w-4 h-4 text-white/20" />
+              </button>
+            </a>
           </div>
 
           <p className="text-[11px] text-white/20 flex items-center gap-1.5 justify-center">
             <Shield className="w-3 h-3" />
-             No login required for guests · AI transcription active
+            Powered by Daily.co · No login required for guests · AI transcription active
           </p>
         </div>
       </div>
@@ -356,7 +364,7 @@ function ScheduleModal({
           {!prefillLink && (
             <div>
               <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Link (optional)</label>
-              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fixsense.com.ng/..."
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fixsense.daily.co/..."
                 className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none font-mono text-xs"
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} />
             </div>
@@ -742,7 +750,7 @@ export default function LiveCall() {
         expMinutes: 1440, // 24h
       });
       setShowPopup(true);
-      toast.success("Fixsense room created! Share the link with your prospect.");
+      toast.success("Daily.co room created! Share the link with your prospect.");
     } catch (err: any) {
       if (callRow?.id) {
         await supabase.from("calls")
@@ -851,7 +859,7 @@ export default function LiveCall() {
           <div>
             <h1 className="text-2xl font-bold font-display">Live Call</h1>
             <p className="text-sm text-muted-foreground">
-              Meeting control center 
+              Meeting control center — powered by Daily.co
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1152,7 +1160,7 @@ export default function LiveCall() {
                   <input
                     value={joinLink}
                     onChange={(e) => setJoinLink(e.target.value)}
-                    placeholder="https://fixsense.com.ng/..."
+                    placeholder="https://fixsense.daily.co/..."
                     className="w-full pl-9 pr-9 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors font-mono placeholder:font-sans"
                   />
                   {joinLink && (
@@ -1340,5 +1348,4 @@ export default function LiveCall() {
     </DashboardLayout>
   );
 }
-
 
