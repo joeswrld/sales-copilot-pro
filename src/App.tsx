@@ -341,7 +341,7 @@ function AppRoutes() {
           <Route path="/meeting/:roomName" element={<GuestJoin />} />
           {/* Legacy aliases — keep so previously shared links keep working */}
           <Route path="/join/:roomName" element={<GuestJoin />} />
-          <Route path="/meet/:roomName" element={<MeetingJoin />} />
+          <Route path="/meet/:roomName" element={<GuestJoin />} />
 
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
