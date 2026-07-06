@@ -85,13 +85,29 @@ Deno.serve(async (req) => {
     const payload = JSON.parse(rawBody);
     console.log("Daily webhook event:", payload.event);
 
-    if (payload.event !== "recording.ready-to-download") {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const evt = payload.event as string;
+    const p = payload.payload || {};
+    const eventRoomName: string | undefined = p.room_name || p.room;
+
+    // ── Lifecycle events (no recording download involved) ─────────────────────
+    // A meeting only becomes "live" and starts consuming minutes when a real
+    // participant joins. Link creation alone does nothing.
+    if (evt === "participant.joined" || evt === "meeting.started") {
+      if (eventRoomName) await markRoomLive(supabase, eventRoomName);
+      return json({ ok: true });
+    }
+    if (evt === "meeting.ended" || evt === "participant.left") {
+      if (eventRoomName && evt === "meeting.ended") {
+        await markRoomEnded(supabase, eventRoomName, p.duration);
+      }
+      return json({ ok: true });
     }
 
-    const { room_name, recording_id, download_link, duration } = payload.payload || {};
+    if (evt !== "recording.ready-to-download") {
+      return json({ ok: true, skipped: true });
+    }
+
+    const { room_name, recording_id, download_link, duration } = p;
 
     if (!room_name || !download_link || !recording_id) {
       return new Response(JSON.stringify({ error: "Missing data" }), {
@@ -200,4 +216,76 @@ async function processRecording(
   }).eq("call_id", callId);
 
   console.log(`Recording processed for call ${callId}`);
+}
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function resolveCallFromRoom(supabase: any, roomName: string) {
+  const { data: room } = await supabase
+    .from("native_meeting_rooms")
+    .select("call_id, host_id")
+    .eq("room_name", roomName)
+    .maybeSingle();
+  if (room?.call_id) return { callId: room.call_id, userId: room.host_id };
+  const { data: call } = await supabase
+    .from("calls")
+    .select("id, user_id")
+    .eq("daily_room_name", roomName)
+    .maybeSingle();
+  return call ? { callId: call.id, userId: call.user_id } : { callId: null, userId: null };
+}
+
+/**
+ * First real participant joined → mark the meeting live.
+ * Only now do we start the clock, update the call list status, and let usage /
+ * analytics count this meeting. Idempotent: subsequent joins are no-ops.
+ */
+async function markRoomLive(supabase: any, roomName: string) {
+  const { callId } = await resolveCallFromRoom(supabase, roomName);
+  if (!callId) return;
+  const nowIso = new Date().toISOString();
+
+  const { data: existing } = await supabase
+    .from("native_meeting_rooms")
+    .select("status, started_at")
+    .eq("room_name", roomName)
+    .maybeSingle();
+
+  if (existing?.status === "live" && existing?.started_at) return; // idempotent
+
+  await supabase.from("native_meeting_rooms").update({
+    status: "live",
+    started_at: existing?.started_at ?? nowIso,
+  }).eq("room_name", roomName);
+
+  await supabase.from("calls").update({
+    status: "live",
+    start_time: nowIso,
+  }).eq("id", callId).is("start_time", null);
+
+  console.log(`Meeting marked live for call ${callId}`);
+}
+
+async function markRoomEnded(supabase: any, roomName: string, duration?: number) {
+  const { callId } = await resolveCallFromRoom(supabase, roomName);
+  if (!callId) return;
+  const nowIso = new Date().toISOString();
+
+  await supabase.from("native_meeting_rooms").update({
+    status: "ended",
+    ended_at: nowIso,
+  }).eq("room_name", roomName);
+
+  await supabase.from("calls").update({
+    status: "completed",
+    end_time: nowIso,
+    duration_minutes: duration ? Math.ceil(duration / 60) : undefined,
+  }).eq("id", callId);
+
+  console.log(`Meeting ended for call ${callId}`);
 }

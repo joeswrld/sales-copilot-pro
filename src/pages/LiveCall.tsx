@@ -526,7 +526,7 @@ export default function LiveCall() {
       setRoomInfo({
         room_name:     (liveCall as any).daily_room_name,
         room_url:      (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
-        share_link:    (liveCall as any).meeting_url ?? `${window.location.origin}/join/${(liveCall as any).daily_room_name}`,
+        share_link:    (liveCall as any).meeting_url ?? `${window.location.origin}/meeting/${(liveCall as any).daily_room_name}`,
         meeting_token: null,
         expires_at:    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         mgmt_token:    null,

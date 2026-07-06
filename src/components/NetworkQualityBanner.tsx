@@ -135,7 +135,7 @@ export function NetworkQualityBanner({ info, onDismiss, onRetry, compact = false
   );
 }
 
-/** Inline badge for use in tight spaces like the HMS top bar */
+/** Inline badge for use in tight spaces like the Daily.co meeting top bar */
 export function NetworkQualityDot({ quality }: { quality: NetworkInfo["quality"] }) {
   const cfg = {
     good:    { color: "bg-emerald-400", label: "Good signal" },

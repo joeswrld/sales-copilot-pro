@@ -474,7 +474,7 @@ function DashboardSection() {
               { label: "Edge Functions", status: true,                              detail: "Deno Deploy" },
               { label: "Realtime",       status: true,                              detail: `${stats.live_calls} active` },
               { label: "Paystack",       status: stats.failed_webhooks < 5,         detail: stats.failed_webhooks > 0 ? `${stats.failed_webhooks} failed` : "Healthy" },
-              { label: "100ms Infra",    status: true,                              detail: "HMS SDK" },
+              { label: "Daily.co Infra", status: true,                              detail: "Daily SDK" },
               { label: "AI Gateway",     status: true,                              detail: "Gemini Flash" },
             ].map(s => (
               <div key={s.label} className="health-row">
@@ -1497,7 +1497,7 @@ function AIInfraSection() {
         <div className="card-body">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
             {[
-              { svc: "100ms Video",        detail: "HMS SDK active" },
+              { svc: "Daily.co Video",      detail: "Daily SDK active" },
               { svc: "Supabase DB",         detail: "< 50ms latency" },
               { svc: "Realtime",            detail: "WebSocket active" },
               { svc: "Paystack Billing",    detail: "Webhook enabled" },
