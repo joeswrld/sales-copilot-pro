@@ -113,9 +113,14 @@ Deno.serve(async (req) => {
     const roomData = await dailyRes.json();
     const roomName = roomData.name;
     const roomUrl = roomData.url;
-    const shareLink = `${app_origin}/meet/${roomName}`;
+    // Canonical Fixsense meeting URL. Same path for host and guest — GuestJoin
+    // decides which lobby to show based on the authenticated user.
+    const shareLink = `${app_origin}/meeting/${roomName}`;
 
-    // Store in native_meeting_rooms
+    // Store the room in "waiting" — creating the link does NOT start a meeting,
+    // does NOT mark the call live, and does NOT consume any minutes. The status
+    // only flips to "live" when a real participant joins (see
+    // daily-recording-webhook: participant.joined).
     await supabase.from("native_meeting_rooms").insert({
       host_id: user.id,
       call_id,
@@ -128,11 +133,12 @@ Deno.serve(async (req) => {
       expires_at: new Date(expiresAt * 1000).toISOString(),
     });
 
-    // Update call with Daily room info
+    // Attach room info to the call but preserve its current status (typically
+    // "scheduled"). Never flip to "live" here — that happens on real join.
     await supabase.from("calls").update({
       daily_room_name: roomName,
       daily_room_url: roomUrl,
-      meeting_url: roomUrl,
+      meeting_url: shareLink,
       platform: "Daily.co",
     }).eq("id", call_id);
 
