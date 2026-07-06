@@ -474,7 +474,7 @@ function DashboardSection() {
               { label: "Edge Functions", status: true,                              detail: "Deno Deploy" },
               { label: "Realtime",       status: true,                              detail: `${stats.live_calls} active` },
               { label: "Paystack",       status: stats.failed_webhooks < 5,         detail: stats.failed_webhooks > 0 ? `${stats.failed_webhooks} failed` : "Healthy" },
-              { label: "100ms Infra",    status: true,                              detail: "HMS SDK" },
+              { label: "Daily.co Infra", status: true,                              detail: "Daily SDK" },
               { label: "AI Gateway",     status: true,                              detail: "Gemini Flash" },
             ].map(s => (
               <div key={s.label} className="health-row">
