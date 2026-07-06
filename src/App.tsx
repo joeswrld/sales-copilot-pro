@@ -37,7 +37,7 @@ import NotFound from "./pages/NotFound";
 import TestimonialsPage from "./pages/TestimonialsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
-import MeetingJoin from "@/pages/MeetingJoin";
+
 import GuestJoin from "@/pages/GuestJoin";  // ✅ NEW: guest join page
 import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from "@/components/PWABanner";
