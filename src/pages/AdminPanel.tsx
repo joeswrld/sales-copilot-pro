@@ -1497,7 +1497,7 @@ function AIInfraSection() {
         <div className="card-body">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
             {[
-              { svc: "100ms Video",        detail: "HMS SDK active" },
+              { svc: "Daily.co Video",      detail: "Daily SDK active" },
               { svc: "Supabase DB",         detail: "< 50ms latency" },
               { svc: "Realtime",            detail: "WebSocket active" },
               { svc: "Paystack Billing",    detail: "Webhook enabled" },
