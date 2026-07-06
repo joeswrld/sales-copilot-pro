@@ -54,30 +54,42 @@ export default function CallsList() {
             </div>
             <div className="divide-y divide-border">
               {filtered.map(call => {
-                const isLive = call.status === "live";
+                // A call row is created with status "live" the moment a meeting
+                // link is generated, so the host can find/manage their own room
+                // before anyone has actually joined. `start_time` is the only
+                // signal that a real participant (host or guest) has joined —
+                // it's stamped exclusively by the Daily.co webhook on
+                // participant.joined. Without it, this is just an unattended
+                // link sitting idle, not a live call.
+                const hasStarted = !!call.start_time;
+                const isLive = call.status === "live" && hasStarted;
+                const isWaiting = call.status === "live" && !hasStarted;
                 return (
                   <Link
                     key={call.id}
-                    to={isLive ? "/live" : `/calls/${call.id}`}
+                    to={call.status === "live" ? "/live" : `/calls/${call.id}`}
                     className="grid grid-cols-1 md:grid-cols-6 gap-2 md:gap-4 p-4 hover:bg-secondary/30 transition-colors items-center"
                   >
                     <div className="md:col-span-2 min-w-0">
                       <div className="flex items-center gap-2">
                         {isLive && <span className="w-2 h-2 rounded-full bg-destructive animate-pulse-glow shrink-0" />}
+                        {isWaiting && <span className="w-2 h-2 rounded-full bg-muted-foreground/40 shrink-0" />}
                         <p className="font-medium text-sm truncate">{call.name}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">{format(new Date(call.date), "MMM d, yyyy")}</p>
                     </div>
                     <span className="text-sm text-muted-foreground">{(call as any).platform || "—"}</span>
-                    <span className="text-sm text-muted-foreground">{call.duration_minutes ? `${call.duration_minutes} min` : isLive ? "In progress" : "—"}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {call.duration_minutes ? `${call.duration_minutes} min` : isLive ? "In progress" : isWaiting ? "Not started" : "—"}
+                    </span>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-12 rounded-full bg-muted">
                         <div className="h-1.5 rounded-full bg-primary" style={{ width: `${call.sentiment_score || 0}%` }} />
                       </div>
                       <span className="text-xs text-muted-foreground">{call.sentiment_score || 0}%</span>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full w-fit ${statusColors[call.status || ""] || "bg-secondary text-secondary-foreground"}`}>
-                      {isLive ? "● LIVE" : call.status}
+                    <span className={`text-xs px-2 py-1 rounded-full w-fit ${isWaiting ? "bg-muted text-muted-foreground" : statusColors[call.status || ""] || "bg-secondary text-secondary-foreground"}`}>
+                      {isLive ? "● LIVE" : isWaiting ? "Link created" : call.status}
                     </span>
                   </Link>
                 );
