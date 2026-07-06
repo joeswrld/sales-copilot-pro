@@ -217,3 +217,75 @@ async function processRecording(
 
   console.log(`Recording processed for call ${callId}`);
 }
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function resolveCallFromRoom(supabase: any, roomName: string) {
+  const { data: room } = await supabase
+    .from("native_meeting_rooms")
+    .select("call_id, host_id")
+    .eq("room_name", roomName)
+    .maybeSingle();
+  if (room?.call_id) return { callId: room.call_id, userId: room.host_id };
+  const { data: call } = await supabase
+    .from("calls")
+    .select("id, user_id")
+    .eq("daily_room_name", roomName)
+    .maybeSingle();
+  return call ? { callId: call.id, userId: call.user_id } : { callId: null, userId: null };
+}
+
+/**
+ * First real participant joined → mark the meeting live.
+ * Only now do we start the clock, update the call list status, and let usage /
+ * analytics count this meeting. Idempotent: subsequent joins are no-ops.
+ */
+async function markRoomLive(supabase: any, roomName: string) {
+  const { callId } = await resolveCallFromRoom(supabase, roomName);
+  if (!callId) return;
+  const nowIso = new Date().toISOString();
+
+  const { data: existing } = await supabase
+    .from("native_meeting_rooms")
+    .select("status, started_at")
+    .eq("room_name", roomName)
+    .maybeSingle();
+
+  if (existing?.status === "live" && existing?.started_at) return; // idempotent
+
+  await supabase.from("native_meeting_rooms").update({
+    status: "live",
+    started_at: existing?.started_at ?? nowIso,
+  }).eq("room_name", roomName);
+
+  await supabase.from("calls").update({
+    status: "live",
+    start_time: nowIso,
+  }).eq("id", callId).is("start_time", null);
+
+  console.log(`Meeting marked live for call ${callId}`);
+}
+
+async function markRoomEnded(supabase: any, roomName: string, duration?: number) {
+  const { callId } = await resolveCallFromRoom(supabase, roomName);
+  if (!callId) return;
+  const nowIso = new Date().toISOString();
+
+  await supabase.from("native_meeting_rooms").update({
+    status: "ended",
+    ended_at: nowIso,
+  }).eq("room_name", roomName);
+
+  await supabase.from("calls").update({
+    status: "completed",
+    end_time: nowIso,
+    duration_minutes: duration ? Math.ceil(duration / 60) : undefined,
+  }).eq("id", callId);
+
+  console.log(`Meeting ended for call ${callId}`);
+}
