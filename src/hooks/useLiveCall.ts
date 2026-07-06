@@ -191,6 +191,15 @@ export function useLiveCall(options?: {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
+      // NOTE: status stays "live" here purely so this hook's own liveCallQuery
+      // (filtered on status='live') can find the row and let the host manage/
+      // join the room they just created. It does NOT mean a real meeting is
+      // happening yet. `start_time` is intentionally left null — it is only
+      // ever stamped by the Daily.co webhook (daily-recording-webhook →
+      // markRoomLive) when a real participant actually joins. Billing,
+      // "Live" badges in the call list, and usage counters all key off
+      // start_time being non-null, so creating a link and never joining
+      // correctly counts as zero minutes.
       const { data, error } = await supabase.from("calls").insert({
         user_id: user.id,
         name: input.name || `${input.platform} Call`,
@@ -200,7 +209,6 @@ export function useLiveCall(options?: {
         meeting_url: input.meeting_id ?? null,
         meeting_type: input.meeting_type ?? null,
         participants: input.participants ?? [],
-        start_time: new Date().toISOString(),
         date: new Date().toISOString(),
       } as any).select().single();
 
@@ -226,11 +234,30 @@ export function useLiveCall(options?: {
     mutationFn: async () => {
       if (!callId) throw new Error("No live call");
 
+      // Was this meeting ever actually attended? start_time is only ever
+      // stamped by the real-participant-joined webhook — if it's still null,
+      // the host just created a link and is closing it out without anyone
+      // (including themselves) ever joining the room. That's a cancellation,
+      // not a completed meeting: no duration, no AI summary, no deal room.
+      const { data: current } = await supabase
+        .from("calls")
+        .select("start_time")
+        .eq("id", callId)
+        .maybeSingle();
+
+      const neverStarted = !current?.start_time;
+
       const { error } = await supabase.from("calls").update({
-        status: "completed",
+        status: neverStarted ? "cancelled" : "completed",
         end_time: new Date().toISOString(),
+        duration_minutes: neverStarted ? 0 : undefined,
       }).eq("id", callId);
       if (error) throw error;
+
+      if (neverStarted) {
+        // Nothing to summarize, notify, or log usage for.
+        return;
+      }
 
       // Fire update-usage (non-fatal)
       try {
