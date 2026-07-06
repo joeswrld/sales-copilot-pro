@@ -85,13 +85,29 @@ Deno.serve(async (req) => {
     const payload = JSON.parse(rawBody);
     console.log("Daily webhook event:", payload.event);
 
-    if (payload.event !== "recording.ready-to-download") {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const evt = payload.event as string;
+    const p = payload.payload || {};
+    const eventRoomName: string | undefined = p.room_name || p.room;
+
+    // ── Lifecycle events (no recording download involved) ─────────────────────
+    // A meeting only becomes "live" and starts consuming minutes when a real
+    // participant joins. Link creation alone does nothing.
+    if (evt === "participant.joined" || evt === "meeting.started") {
+      if (eventRoomName) await markRoomLive(supabase, eventRoomName);
+      return json({ ok: true });
+    }
+    if (evt === "meeting.ended" || evt === "participant.left") {
+      if (eventRoomName && evt === "meeting.ended") {
+        await markRoomEnded(supabase, eventRoomName, p.duration);
+      }
+      return json({ ok: true });
     }
 
-    const { room_name, recording_id, download_link, duration } = payload.payload || {};
+    if (evt !== "recording.ready-to-download") {
+      return json({ ok: true, skipped: true });
+    }
+
+    const { room_name, recording_id, download_link, duration } = p;
 
     if (!room_name || !download_link || !recording_id) {
       return new Response(JSON.stringify({ error: "Missing data" }), {
