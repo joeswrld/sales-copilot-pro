@@ -330,7 +330,7 @@ export function PrivacyPage() {
           <li><strong>Supabase</strong> — Database and authentication infrastructure</li>
           <li><strong>Paystack</strong> — Payment processing</li>
           <li><strong>Anthropic / Claude</strong> — AI analysis of transcripts to generate insights</li>
-          <li><strong>100ms</strong> — Meeting room infrastructure</li>
+          <li><strong>Daily.co</strong> — Meeting room infrastructure</li>
         </ul>
         <h3>Legal Requirements</h3>
         <p>We may disclose data when required by law, court order, or governmental authority.</p>
