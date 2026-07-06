@@ -336,11 +336,11 @@ function AppRoutes() {
           {/* Public dynamic */}
           <Route path="/clip/:shareToken" element={<ClipSharePage />} />
 
-          {/* ✅ FIX: /join/:roomName — guest join page (NO auth required) */}
-          {/* This is the URL sent to prospects via share_link from create-daily-room */}
+          {/* Canonical Fixsense meeting URL — guest join (NO auth required)
+              Format: https://fixsense.com.ng/meeting/{roomId} */}
+          <Route path="/meeting/:roomName" element={<GuestJoin />} />
+          {/* Legacy aliases — keep so previously shared links keep working */}
           <Route path="/join/:roomName" element={<GuestJoin />} />
-
-          {/* Legacy /meet/:roomName — keep for backwards compat */}
           <Route path="/meet/:roomName" element={<MeetingJoin />} />
 
           {/* Fallback */}
