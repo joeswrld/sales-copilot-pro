@@ -252,9 +252,23 @@ export default function DashboardHome() {
                       </div>
                       <span className="text-xs text-muted-foreground">{call.sentiment_score || 0}%</span>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${statusColors[call.status || ""] || "bg-secondary text-secondary-foreground"}`}>
-                      {call.status}
-                    </span>
+                    {(() => {
+                      // "live" status is stamped at link-creation time so the
+                      // host can locate their own room; it does not mean a
+                      // real participant has joined. Only start_time (set by
+                      // the join webhook) confirms an actual attendee. Show
+                      // unattended links as "Link created", not "live".
+                      const isWaiting = call.status === "live" && !call.start_time;
+                      const label = isWaiting ? "Link created" : call.status;
+                      const classes = isWaiting
+                        ? "bg-muted text-muted-foreground"
+                        : statusColors[call.status || ""] || "bg-secondary text-secondary-foreground";
+                      return (
+                        <span className={`text-xs px-2 py-1 rounded-full ${classes}`}>
+                          {label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </Link>
               ))}
