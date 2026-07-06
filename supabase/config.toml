@@ -79,8 +79,6 @@ verify_jwt = false
 verify_jwt = false
 
 
-[functions.create-hms-room]
-verify_jwt = false
 
 [functions.transcribe-stream]
 verify_jwt = false
