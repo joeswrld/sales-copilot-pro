@@ -461,6 +461,7 @@ export default function GuestJoin() {
 
   // The real Daily meeting token, exchanged once the guest is admitted.
   const guestDailyTokenRef = useRef<string | null>(null);
+  const voluntaryLeaveRef = useRef(false);
 
   // Start camera preview immediately on mount — don't wait for user input
   useEffect(() => {
@@ -503,7 +504,12 @@ export default function GuestJoin() {
     roomName: step === "admitted" ? (roomName ?? null) : null,
     userName: guestName.trim() || "Guest",
     onJoined: () => setStep("admitted"),
-    onLeft: () => navigate("/"),
+    onLeft: () => {
+      if (!voluntaryLeaveRef.current) {
+        toast.info("The host has ended this meeting.");
+      }
+      navigate("/");
+    },
     onParticipantJoined: (p) => toast.info(`${p.user_name || "Someone"} joined`),
     onParticipantLeft: () => {},
     onHandRaiseChange: (_sid, raised, uname) => {
@@ -595,6 +601,7 @@ export default function GuestJoin() {
   }, [guestName, roomName]);
 
   const handleLeave = useCallback(async () => {
+    voluntaryLeaveRef.current = true;
     localStream?.getTracks().forEach((t) => t.stop());
     await daily.leaveCall();
     navigate("/");
