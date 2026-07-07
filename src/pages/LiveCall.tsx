@@ -1,4 +1,3 @@
-
 /**
  * LiveCall.tsx — Meeting Control OS  (v6 — Real-time network, smart host/guest, live room status)
  *
@@ -23,6 +22,7 @@ import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { NetworkQualityBanner } from "@/components/NetworkQualityBanner";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2, Copy, Check, ExternalLink, Calendar,
   Plus, ChevronRight, Radio, Eye, Link2, Mic,
@@ -479,6 +479,7 @@ function NetworkBlockedCard({ shareLink, roomName, onRetry, onDismiss }: {
 
 export default function LiveCall() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { team } = useTeam();
   const { setStatus } = useUserStatus(team?.id);
   const { usage: teamUsage } = useTeamMinuteUsage();
@@ -510,23 +511,48 @@ export default function LiveCall() {
       }, (payload) => {
         const updated = payload.new as any;
         setRealtimeRoomStatus(updated?.status ?? null);
-        // If room was deleted server-side, clear roomInfo
+        // If room was deleted server-side, clear roomInfo instantly.
+        //
+        // IMPORTANT: we also patch the react-query cache for ["live-call"]
+        // directly (setQueryData) instead of only invalidating it. Just
+        // invalidating triggers a background refetch that takes a moment
+        // to land — and until it lands, `liveCall` below still holds the
+        // OLD row (daily_room_name still populated), so the rehydration
+        // effect fires again on this same render and instantly recreates
+        // roomInfo, undoing the delete. Refreshing "fixed" it only because
+        // a full reload forces a fresh fetch before that effect ever runs.
+        // Writing the deleted fields straight into the cache closes that
+        // race — no refresh needed.
         if (updated?.room_deleted_at || updated?.daily_room_expired) {
           setRoomInfo(null);
+          queryClient.setQueryData(["live-call"], (old: any) =>
+            old && old.id === (updated.id ?? callId) ? { ...old, ...updated } : old
+          );
+          queryClient.invalidateQueries({ queryKey: ["calls"] });
           toast.info("Room was closed. Create a new meeting to continue.");
         }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [callId, setRoomInfo]);
+  }, [callId, setRoomInfo, queryClient]);
 
   // ── Rehydrate roomInfo from the live `calls` row on load / refresh ─────────
+  // Guarded against the deleted/expired state so a not-yet-refetched cache
+  // entry can never resurrect a room that was just deleted (see the
+  // realtime handler above for why this matters).
   useEffect(() => {
-    if (!roomInfo && liveCall && (liveCall as any).daily_room_name) {
+    const call = liveCall as any;
+    if (
+      !roomInfo &&
+      call &&
+      call.daily_room_name &&
+      !call.room_deleted_at &&
+      !call.daily_room_expired
+    ) {
       setRoomInfo({
-        room_name:     (liveCall as any).daily_room_name,
-        room_url:      (liveCall as any).daily_room_url ?? `https://fixsense.daily.co/${(liveCall as any).daily_room_name}`,
-        share_link:    (liveCall as any).meeting_url ?? `${window.location.origin}/meeting/${(liveCall as any).daily_room_name}`,
+        room_name:     call.daily_room_name,
+        room_url:      call.daily_room_url ?? `https://fixsense.daily.co/${call.daily_room_name}`,
+        share_link:    call.meeting_url ?? `${window.location.origin}/meeting/${call.daily_room_name}`,
         meeting_token: null,
         expires_at:    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         mgmt_token:    null,
@@ -663,13 +689,25 @@ export default function LiveCall() {
       });
       if (error) throw error;
       setRoomInfo(null);
+      setRealtimeRoomStatus("completed");
+      // Same instant-cache-patch as the realtime handler: don't wait for a
+      // network refetch of ["live-call"] or for the realtime event to
+      // arrive — write the deleted state straight into the cache so this
+      // page (and the Calls list) reflect it on the very next render, no
+      // refresh required.
+      queryClient.setQueryData(["live-call"], (old: any) =>
+        old && old.id === callId
+          ? { ...old, status: "completed", room_deleted_at: new Date().toISOString(), daily_room_name: null, daily_room_url: null, meeting_url: null }
+          : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
       toast.success("Room deleted — create a new meeting when ready.");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to delete room. Try again.");
     } finally {
       setIsDeletingRoom(false);
     }
-  }, [callId, roomInfo, setRoomInfo, isDeletingRoom]);
+  }, [callId, roomInfo, setRoomInfo, isDeletingRoom, queryClient]);
 
   // ── Join as host ───────────────────────────────────────────────────────────
   const handleJoinAsHost = useCallback(async (info?: typeof roomInfo) => {
@@ -1348,4 +1386,3 @@ export default function LiveCall() {
     </DashboardLayout>
   );
 }
-
