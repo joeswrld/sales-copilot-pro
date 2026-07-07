@@ -810,6 +810,26 @@ export default function LiveCall() {
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
     audioStreaming.stopAll();
+
+    // Kick any remaining participants (e.g. a guest) out of the Daily room
+    // first. Otherwise `daily.leaveCall()` below only disconnects the host —
+    // the guest stays connected in a room the call record is about to be
+    // closed out for. Non-fatal: if this fails we still proceed with ending
+    // the call on our side rather than leaving the host stuck.
+    if (callId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          await supabase.functions.invoke("end-daily-room", {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: { call_id: callId },
+          });
+        }
+      } catch (e) {
+        console.warn("end-daily-room non-fatal:", e);
+      }
+    }
+
     await daily.leaveCall();
     try {
       await endCall.mutateAsync();
