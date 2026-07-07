@@ -69,6 +69,9 @@ verify_jwt = false
 [functions.create-daily-room]
 verify_jwt = false
 
+[functions.end-daily-room]
+verify_jwt = false
+
 [functions.daily-recording-webhook]
 verify_jwt = false
 
@@ -108,5 +111,3 @@ verify_jwt = false
 
 [functions.resend-verification]
 verify_jwt = false
-
-
