@@ -38,6 +38,7 @@ interface Props {
   transcriptLines: Array<{
     id?: string;
     speaker: string;
+    speaker_name?: string;
     text: string;
     timestamp: string;
   }>;
@@ -105,6 +106,7 @@ export default function TranscriptClipSelector({
     const hi = Math.max(selectedStart, end);
     return enrichedLines.slice(lo, hi + 1).map(l => ({
       speaker: l.speaker,
+      speaker_name: l.speaker_name,
       text: l.text,
       timestamp: l.timestamp,
       seconds: l.seconds,
@@ -277,7 +279,7 @@ export default function TranscriptClipSelector({
               {/* Speaker + timestamp */}
               <div style={{ minWidth: 90, flexShrink: 0 }}>
                 <span className="cs-speaker" style={{ fontSize: 11, fontWeight: 700 }}>
-                  {line.speaker}
+                  {line.speaker_name || line.speaker}
                 </span>
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,.25)", marginTop: 1 }}>
                   {line.timestamp}
