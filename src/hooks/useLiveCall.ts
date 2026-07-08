@@ -72,6 +72,33 @@ export function useLiveCall(options?: {
 
   const callId = liveCallQuery.data?.id;
 
+  // ── FIX: client-side fallback for stamping start_time ──────────────────────
+  // start_time was previously stamped ONLY by the Daily.co server webhook
+  // (participant.joined / meeting.started -> daily-recording-webhook ->
+  // markRoomLive). If that webhook is delayed, misconfigured, or dropped
+  // (flaky mobile networks, signature/config issues), start_time stays null
+  // forever — even though a real meeting with a real guest happened. That
+  // silently broke two things: (1) endCall() below saw no start_time and
+  // marked a fully-attended meeting "cancelled" instead of "completed", and
+  // (2) the DB trigger that logs minute usage only fires for
+  // completed/ended calls, so usage was never counted.
+  //
+  // markCallStarted mirrors exactly what the webhook does server-side
+  // (idempotent via .is("start_time", null)), but fires the moment the host's
+  // own browser confirms it joined the Daily room — no dependency on webhook
+  // delivery. Safe to call multiple times; a no-op once start_time is set.
+  const markCallStarted = async (id: string) => {
+    try {
+      await supabase
+        .from("calls")
+        .update({ status: "live", start_time: new Date().toISOString() })
+        .eq("id", id)
+        .is("start_time", null);
+    } catch (e) {
+      console.warn("markCallStarted non-fatal:", e);
+    }
+  };
+
   // ── Transcripts / objections / topics ───────────────────────────────────
   const transcriptsQuery = useQuery({
     queryKey: ["live-transcripts", callId],
@@ -246,11 +273,23 @@ export function useLiveCall(options?: {
         .maybeSingle();
 
       const neverStarted = !current?.start_time;
+      const endTimeIso = new Date().toISOString();
+
+      // FIX: duration_minutes used to be left `undefined` here, relying on an
+      // "update-usage" edge function to fill it in later. That function does
+      // not exist in this project, so duration_minutes was silently staying
+      // blank on every organically-ended call - Call Details/Call List showed
+      // "N/A" minutes even when the meeting completed correctly. Compute it
+      // directly from start_time -> end_time here (same rounding the DB usage
+      // trigger uses: whole minutes, minimum 1) so it's always populated.
+      const durationMinutes = neverStarted
+        ? 0
+        : Math.max(1, Math.ceil((Date.now() - new Date(current!.start_time).getTime()) / 60000));
 
       const { error } = await supabase.from("calls").update({
         status: neverStarted ? "cancelled" : "completed",
-        end_time: new Date().toISOString(),
-        duration_minutes: neverStarted ? 0 : undefined,
+        end_time: endTimeIso,
+        duration_minutes: durationMinutes,
       }).eq("id", callId);
       if (error) throw error;
 
@@ -259,18 +298,9 @@ export function useLiveCall(options?: {
         return;
       }
 
-      // Fire update-usage (non-fatal)
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          await supabase.functions.invoke("update-usage", {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-            body: { call_id: callId },
-          });
-        }
-      } catch (e) {
-        console.warn("update-usage non-fatal:", e);
-      }
+      // NOTE: minute usage itself is logged by the DB trigger
+      // trg_log_usage_on_call_complete, which fires on the status update
+      // above (status -> 'completed'). No edge function call needed for that.
 
       // Generate AI summary (non-fatal)
       let summaryData: any = null;
@@ -402,6 +432,7 @@ export function useLiveCall(options?: {
     topics:      topicsQuery.data ?? [],
     startCall,
     endCall,
+    markCallStarted,
     callId,
   };
 }
