@@ -319,13 +319,22 @@ export function useDailyCall({
     return {
       url: `https://fixsense.daily.co/${room}`,
       ...(token ? { token } : {}),
-      audioSource: !startWithAudioOff,
+      audioSource: startWithAudioOff ? false : {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: { ideal: 1 },
+      },
       videoSource: !startWithVideoOff,
       subscribeToTracksAutomatically: true,
       dailyConfig: {
         useDevicePreferenceCookies: false,
       },
+      // Opus 48kHz mono, DTX (no packets during silence), audio always
+      // prioritized over video when bandwidth is constrained — the same
+      // approach Zoom/Meet use to keep voice clear even on weak networks.
       sendSettings: {
+        audio: { maxBitrate: 32_000, dtx: true },
         video: {
           encodings: {
             low:    { maxBitrate: 150_000,   maxFramerate: 15, scaleResolutionDownBy: 4 },
@@ -492,11 +501,35 @@ export function useDailyCall({
       );
       setNetworkQuality(quality);
       onNetworkQualityChange?.(quality);
-      if (quality === "poor") {
+      if (quality === "poor" || quality === "disconnected") {
         toast.warning("Weak connection — reducing video quality", { id: "network-warning" });
-        callObj.updateSendSettings({ video: { encodings: { low: { maxBitrate: 150000, maxFramerate: 15, scaleResolutionDownBy: 4 } } } }).catch(() => {});
+        callObj.updateSendSettings({
+          video: { encodings: { low: { maxBitrate: 60_000, maxFramerate: 5, scaleResolutionDownBy: 8 } } },
+          audio: { maxBitrate: 32_000, dtx: true }, // never degrade audio
+        }).catch(() => {});
+      } else if (quality === "fair") {
+        toast.warning("Fair connection — adjusting video quality", { id: "network-warning" });
+        callObj.updateSendSettings({
+          video: {
+            encodings: {
+              low:    { maxBitrate: 80_000,  maxFramerate: 10, scaleResolutionDownBy: 4 },
+              medium: { maxBitrate: 250_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+            },
+          },
+          audio: { maxBitrate: 32_000, dtx: true },
+        }).catch(() => {});
       } else if (quality === "excellent" || quality === "good") {
         toast.dismiss("network-warning");
+        callObj.updateSendSettings({
+          video: {
+            encodings: {
+              low:    { maxBitrate: 150_000,   maxFramerate: 15, scaleResolutionDownBy: 4 },
+              medium: { maxBitrate: 500_000,   maxFramerate: 24, scaleResolutionDownBy: 2 },
+              high:   { maxBitrate: 1_200_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+            },
+          },
+          audio: { maxBitrate: 32_000, dtx: true },
+        }).catch(() => {});
       }
     });
 
