@@ -463,6 +463,16 @@ export default function GuestJoin() {
   const guestDailyTokenRef = useRef<string | null>(null);
   const voluntaryLeaveRef = useRef(false);
 
+  // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
+  // already self-heals brief transport blips internally, but once THAT is
+  // exhausted the call drops to a full "error" state. The host page auto-
+  // rejoins up to 3 more times with backoff when that happens; this guest
+  // page previously had no equivalent — a guest whose connection dropped on
+  // a flaky network just saw a "Connection failed" screen and had to notice
+  // and manually tap Retry, easily missing part (or all) of the meeting.
+  const [reconnectCount, setReconnectCount] = useState(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
   // Start camera preview immediately on mount — don't wait for user input
   useEffect(() => {
     let active = true;
@@ -503,7 +513,7 @@ export default function GuestJoin() {
     callId: null,
     roomName: step === "admitted" ? (roomName ?? null) : null,
     userName: guestName.trim() || "Guest",
-    onJoined: () => setStep("admitted"),
+    onJoined: () => { setStep("admitted"); setReconnectCount(0); },
     onLeft: () => {
       if (!voluntaryLeaveRef.current) {
         toast.info("The host has ended this meeting.");
@@ -516,6 +526,26 @@ export default function GuestJoin() {
       if (raised) toast.info(`✋ ${uname} raised their hand`, { duration: 5000 });
     },
   });
+
+  // FIX: auto-reconnect after a full transport error, same policy as the
+  // host page (3 attempts, exponential backoff capped at 8s). Manual Retry
+  // button (handleRetryJoin / onRetry below) still remains as a fallback
+  // once attempts are exhausted.
+  useEffect(() => {
+    if (daily.callState === "error" && step === "admitted" && reconnectCount < 3 && roomName) {
+      setReconnectCount((c) => c + 1);
+      const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
+      reconnectTimerRef.current = setTimeout(() => {
+        daily.joinCall({
+          rName: roomName,
+          token: guestDailyTokenRef.current ?? undefined,
+          displayName: guestName.trim() || "Guest",
+        });
+      }, delay);
+    }
+    return () => clearTimeout(reconnectTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daily.callState]);
 
   /**
    * Exchange the guest_session_token (minted by guest-request-status the
