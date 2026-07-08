@@ -144,6 +144,7 @@ export interface UseDailyCallOptions {
   meetingToken?: string | null;
   userName?: string;
   startWithVideoOff?: boolean;
+  startWithAudioOff?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   onParticipantJoined?: (p: DailyParticipant) => void;
@@ -202,6 +203,7 @@ export function useDailyCall({
   meetingToken,
   userName = "Host",
   startWithVideoOff = false,
+  startWithAudioOff = false,
   onJoined,
   onLeft,
   onParticipantJoined,
@@ -317,7 +319,7 @@ export function useDailyCall({
     return {
       url: `https://fixsense.daily.co/${room}`,
       ...(token ? { token } : {}),
-      audioSource: true,
+      audioSource: !startWithAudioOff,
       videoSource: !startWithVideoOff,
       subscribeToTracksAutomatically: true,
       dailyConfig: {
@@ -775,7 +777,7 @@ export function useDailyCall({
       return false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomName, meetingToken, userName, startWithVideoOff, fetchMeetingToken, registerHandlers, snapshotParticipants, onJoined]);
+  }, [roomName, meetingToken, userName, startWithVideoOff, startWithAudioOff, fetchMeetingToken, registerHandlers, snapshotParticipants, onJoined]);
 
   // ── Leave ──────────────────────────────────────────────────────────────────
   const leaveCall = useCallback(async () => {
