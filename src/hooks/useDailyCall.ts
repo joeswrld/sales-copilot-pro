@@ -618,6 +618,7 @@ export function useDailyCall({
       toast.warning(`Connection lost — reconnecting (attempt ${attempt + 1})…`, { id: "transport-reconnect" });
 
       try { await callObj.leave(); } catch (_) {}
+      try { await callObj.destroy(); } catch (_) {}
       handlersRegisteredRef.current = false;
       joinedRef.current = false;
       await new Promise((r) => setTimeout(r, 300));
