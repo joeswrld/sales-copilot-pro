@@ -817,7 +817,7 @@ export default function LiveMeeting() {
 
   const {
     liveCall, isLive, isLoading, transcripts: rawTranscripts,
-    objections, topics, endCall, callId,
+    objections, topics, endCall, markCallStarted, callId,
   } = useLiveCall({ onCallEnded: () => setStatus("available") });
 
   const roomName     = (liveCall as any)?.daily_room_name    ?? null;
@@ -828,7 +828,15 @@ export default function LiveMeeting() {
 
   const daily = useDailyCall({
     callId: callId ?? null, roomName, meetingToken, userName: hostName,
-    onJoined:  () => { setStatus("on_call"); health.recordReconnect(); },
+    // FIX: previously start_time (which determines whether the call ends up
+    // "completed" vs "cancelled", and whether minutes get counted at all)
+    // was stamped only by a server-side Daily webhook. If that webhook was
+    // ever delayed or missed, a fully-attended meeting would incorrectly be
+    // marked "cancelled" with 0 minutes used. Stamping it here too — the
+    // instant the host's own browser confirms it joined — makes this
+    // reliable regardless of webhook delivery. Idempotent / safe to call
+    // more than once (no-op once start_time is already set).
+    onJoined:  () => { setStatus("on_call"); health.recordReconnect(); if (callId) markCallStarted(callId); },
     onLeft:    () => {},
     onParticipantJoined: (p) => toast.success(`${p.user_name || "Someone"} joined`),
     onParticipantLeft:   () => toast.info("A participant left"),
