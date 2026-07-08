@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
+import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
 import { VideoTile } from "@/components/VideoTile";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -463,6 +464,17 @@ export default function GuestJoin() {
   const guestDailyTokenRef = useRef<string | null>(null);
   const voluntaryLeaveRef = useRef(false);
 
+  // FIX: guest speech was never transcribed — GuestJoin had no MediaRecorder
+  // and never called transcribe-guest-stream. The raw guest_session_token
+  // (minted by guest-request-status on admission — distinct from the Daily
+  // meeting token exchanged from it above) is kept in state so it can be
+  // handed to useGuestAudioStreaming, which authorizes each chunk with it.
+  // transcribe-guest-stream resolves call_id server-side from this token, so
+  // this page never needs to know its own call_id.
+  const [guestAuthToken, setGuestAuthToken] = useState<string | null>(null);
+  const guestAudio = useGuestAudioStreaming({ guestToken: guestAuthToken });
+  const guestTrackStartedRef = useRef(false);
+
   // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
   // already self-heals brief transport blips internally, but once THAT is
   // exhausted the call drops to a full "error" state. The host page auto-
@@ -547,6 +559,23 @@ export default function GuestJoin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daily.callState]);
 
+  // FIX: wire up guest transcription. Mirrors the host's tracksStartedRef
+  // pattern in LiveMeeting.tsx — attach the recorder to the guest's own
+  // local Daily audio track (so it reflects live mute state) as soon as it's
+  // available post-join, rather than a separate getUserMedia stream.
+  useEffect(() => {
+    if (step !== "admitted" || guestTrackStartedRef.current) return;
+    const localP = daily.participants.find((p) => p.local);
+    if (localP?.audioTrack) {
+      guestTrackStartedRef.current = true;
+      guestAudio.startTrackRecording(localP.audioTrack);
+    }
+    // guestAudio omitted intentionally: it's a fresh object every render, and
+    // startTrackRecording is idempotent per the ref guard above. useGuestAudioStreaming
+    // stops itself internally on unmount, so no separate cleanup effect is needed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, daily.participants]);
+
   /**
    * Exchange the guest_session_token (minted by guest-request-status the
    * moment the host admits this guest) for a real Daily.co meeting token.
@@ -585,6 +614,9 @@ export default function GuestJoin() {
           let dailyToken: string | null = null;
           if (data.guest_token) {
             dailyToken = await exchangeForDailyToken(data.guest_token, displayName);
+            // Keep the raw guest_session_token too — transcribe-guest-stream
+            // authorizes with this one, not the exchanged Daily token.
+            setGuestAuthToken(data.guest_token);
           }
           guestDailyTokenRef.current = dailyToken;
 
@@ -632,10 +664,11 @@ export default function GuestJoin() {
 
   const handleLeave = useCallback(async () => {
     voluntaryLeaveRef.current = true;
+    guestAudio.stopAll();
     localStream?.getTracks().forEach((t) => t.stop());
     await daily.leaveCall();
     navigate("/");
-  }, [localStream, daily, navigate]);
+  }, [localStream, daily, navigate, guestAudio]);
 
   const handleToggleMic = useCallback(async () => {
     if (step === "admitted") {
