@@ -525,6 +525,8 @@ export default function GuestJoin() {
     callId: null,
     roomName: step === "admitted" ? (roomName ?? null) : null,
     userName: guestName.trim() || "Guest",
+    startWithAudioOff: !isAudioOn,
+    startWithVideoOff: !isVideoOn,
     onJoined: () => { setStep("admitted"); setReconnectCount(0); },
     onLeft: () => {
       if (!voluntaryLeaveRef.current) {
