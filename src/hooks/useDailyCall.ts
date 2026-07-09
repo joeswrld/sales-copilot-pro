@@ -319,12 +319,7 @@ export function useDailyCall({
     return {
       url: `https://fixsense.daily.co/${room}`,
       ...(token ? { token } : {}),
-      audioSource: startWithAudioOff ? false : {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: { ideal: 1 },
-      },
+      audioSource: !startWithAudioOff,
       videoSource: !startWithVideoOff,
       subscribeToTracksAutomatically: true,
       dailyConfig: {
