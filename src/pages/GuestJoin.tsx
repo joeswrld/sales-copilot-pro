@@ -29,6 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
 import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
+import { useMeetingHealth } from "@/hooks/useMeetingHealth";
+import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { VideoTile } from "@/components/VideoTile";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -472,7 +474,12 @@ export default function GuestJoin() {
   // transcribe-guest-stream resolves call_id server-side from this token, so
   // this page never needs to know its own call_id.
   const [guestAuthToken, setGuestAuthToken] = useState<string | null>(null);
-  const guestAudio = useGuestAudioStreaming({ guestToken: guestAuthToken });
+  const [callMicStream, setCallMicStream] = useState<MediaStream | null>(null);
+  const health = useMeetingHealth(null, callMicStream ?? localStream);
+  const guestAudio = useGuestAudioStreaming({
+    guestToken: guestAuthToken,
+    onTranscript: (text) => health.recordTranscriptReceived(text.split(/\s+/).length),
+  });
   const guestTrackStartedRef = useRef(false);
 
   // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
@@ -528,6 +535,7 @@ export default function GuestJoin() {
     startWithAudioOff: !isAudioOn,
     startWithVideoOff: !isVideoOn,
     onJoined: () => { setStep("admitted"); setReconnectCount(0); },
+    onNetworkQualityChange: (q) => health.updateDailyNetworkQuality(q),
     onLeft: () => {
       if (!voluntaryLeaveRef.current) {
         toast.info("The host has ended this meeting.");
@@ -548,6 +556,7 @@ export default function GuestJoin() {
   useEffect(() => {
     if (daily.callState === "error" && step === "admitted" && reconnectCount < 3 && roomName) {
       setReconnectCount((c) => c + 1);
+      health.recordReconnect();
       const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
       reconnectTimerRef.current = setTimeout(() => {
         daily.joinCall({
@@ -571,6 +580,7 @@ export default function GuestJoin() {
     if (localP?.audioTrack) {
       guestTrackStartedRef.current = true;
       guestAudio.startTrackRecording(localP.audioTrack);
+      setCallMicStream(new MediaStream([localP.audioTrack]));
     }
     // guestAudio omitted intentionally: it's a fresh object every render, and
     // startTrackRecording is idempotent per the ref guard above. useGuestAudioStreaming
@@ -947,10 +957,7 @@ export default function GuestJoin() {
               {fmt(daily.elapsedSeconds)}
             </span>
           </div>
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: qualityColor(daily.networkQuality) }}
-          />
+          <MeetingHealthBar health={health.health} isStreaming={guestAudio.state?.isStreaming ?? false} />
           {handRaiseCount > 0 && (
             <div
               className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg"
