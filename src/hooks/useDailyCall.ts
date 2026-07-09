@@ -131,6 +131,7 @@ export interface DailyParticipant {
   video: boolean;
   screen: boolean;
   joinedAt: number;
+  owner?: boolean;
   handRaised?: boolean;
   videoTrack?: MediaStreamTrack;
   audioTrack?: MediaStreamTrack;
@@ -148,7 +149,7 @@ export interface UseDailyCallOptions {
   onJoined?: () => void;
   onLeft?: () => void;
   onParticipantJoined?: (p: DailyParticipant) => void;
-  onParticipantLeft?: (sessionId: string) => void;
+  onParticipantLeft?: (sessionId: string, wasOwner: boolean) => void;
   onRecordingStarted?: () => void;
   onRecordingStopped?: () => void;
   onNetworkQualityChange?: (quality: CallQuality) => void;
@@ -295,6 +296,7 @@ export function useDailyCall({
       session_id: p.session_id,
       user_name: p.user_name ?? fallbackName ?? "Participant",
       local: p.local ?? false,
+      owner: p.owner ?? false,
       audio: p.audio ?? false,
       video: p.video ?? false,
       screen: p.screen ?? false,
@@ -487,10 +489,11 @@ export function useDailyCall({
     callObj.on("participant-left", (event: any) => {
       const sid = event?.participant?.session_id;
       if (!sid) return;
+      const wasOwner = event?.participant?.owner ?? false;
       setParticipants((prev) => { const next = new Map(prev); next.delete(sid); return next; });
       setHandRaises((prev) => { const next = new Map(prev); next.delete(sid); return next; });
       setParticipantCount((n) => Math.max(0, n - 1));
-      onParticipantLeft?.(sid);
+      onParticipantLeft?.(sid, wasOwner);
     });
 
     callObj.on("active-speaker-change", (event: any) => {
