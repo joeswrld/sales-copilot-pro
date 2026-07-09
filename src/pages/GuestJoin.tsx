@@ -37,7 +37,7 @@ import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 type VideoLayout = "spotlight" | "grid" | "sidebar";
-type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied";
+type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied" | "disconnected";
 
 // ─── Design tokens ───────────────────────────────────────────────────────────────
 const T = {
@@ -537,13 +537,31 @@ export default function GuestJoin() {
     onJoined: () => { setStep("admitted"); setReconnectCount(0); },
     onNetworkQualityChange: (q) => health.updateDailyNetworkQuality(q),
     onLeft: () => {
-      if (!voluntaryLeaveRef.current) {
-        toast.info("The host has ended this meeting.");
+      if (voluntaryLeaveRef.current) {
+        navigate("/");
+        return;
       }
-      navigate("/");
+      // IMPORTANT: this fires when THIS guest's own connection drops out of
+      // the call (network blip, ICE failure, etc). It has nothing to do with
+      // whether the host is still in the meeting — Daily gives us no signal
+      // here that the host ended anything, and the room is very likely still
+      // live for everyone else. Claiming "the host has ended this meeting"
+      // was simply wrong in this case, so instead we show a dedicated
+      // "disconnected" screen with a retry/rejoin control and let the guest
+      // (or the auto-reconnect effect below) attempt to rejoin, rather than
+      // guessing what happened and bouncing them back to the homepage.
+      setStep("disconnected");
     },
     onParticipantJoined: (p) => toast.info(`${p.user_name || "Someone"} joined`),
-    onParticipantLeft: () => {},
+    onParticipantLeft: (_sid, wasOwner) => {
+      // This IS a reliable, evidence-based signal (the host's own
+      // participant actually left) — unlike guessing from our own
+      // connection dropping, so it's safe to surface. It's informational
+      // only: the Daily room stays live, so we don't force a disconnect.
+      if (wasOwner) {
+        toast.info("The host has left the meeting.", { duration: 6000 });
+      }
+    },
     onHandRaiseChange: (_sid, raised, uname) => {
       if (raised) toast.info(`✋ ${uname} raised their hand`, { duration: 5000 });
     },
@@ -569,6 +587,29 @@ export default function GuestJoin() {
     return () => clearTimeout(reconnectTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daily.callState]);
+
+  // Auto-reconnect after a FULL disconnect (left-meeting), same bounded
+  // policy as above. This covers the case above's "error" state doesn't:
+  // when the guest's call object fully leaves the meeting rather than
+  // dropping into an in-call "error" state, onLeft routes here instead of
+  // assuming the meeting ended. We quietly try to rejoin a few times before
+  // asking the guest to tap Retry themselves.
+  useEffect(() => {
+    if (step === "disconnected" && reconnectCount < 3 && roomName) {
+      setReconnectCount((c) => c + 1);
+      health.recordReconnect();
+      const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
+      reconnectTimerRef.current = setTimeout(() => {
+        daily.joinCall({
+          rName: roomName,
+          token: guestDailyTokenRef.current ?? undefined,
+          displayName: guestName.trim() || "Guest",
+        });
+      }, delay);
+    }
+    return () => clearTimeout(reconnectTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   // FIX: wire up guest transcription. Mirrors the host's tracksStartedRef
   // pattern in LiveMeeting.tsx — attach the recorder to the guest's own
@@ -716,6 +757,11 @@ export default function GuestJoin() {
 
   const handleRetryJoin = useCallback(() => {
     if (!roomName) return;
+    // Manual retry always gets a fresh budget of auto-reconnect attempts,
+    // so a guest who taps Retry after the automatic attempts ran out isn't
+    // silently left with none remaining if this rejoin also has to recover.
+    setReconnectCount(0);
+    clearTimeout(reconnectTimerRef.current);
     daily.joinCall({
       rName: roomName,
       token: guestDailyTokenRef.current ?? undefined,
@@ -727,6 +773,71 @@ export default function GuestJoin() {
     () => daily.participants.filter((p) => p.handRaised).length,
     [daily.participants],
   );
+
+  // ── DISCONNECTED ──────────────────────────────────────────────────────────────
+  // Shown when THIS guest's own connection drops out of the call. We never
+  // claim the host ended the meeting here — we simply don't know that, and
+  // the meeting is very likely still live for everyone else. The auto-retry
+  // effect above keeps trying quietly in the background; this screen just
+  // keeps the guest informed and gives them a manual way to try again.
+  if (step === "disconnected") {
+    const attemptsExhausted = reconnectCount >= 3;
+    return (
+      <div
+        className="min-h-dvh flex flex-col items-center justify-center p-3 sm:p-6"
+        style={{ background: T.bg }}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center gap-4"
+          style={{ background: T.panel, border: `1px solid ${T.border}` }}
+        >
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" }}
+          >
+            <WifiOff className="w-7 h-7 text-amber-400" />
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-white mb-1">
+              You've been disconnected
+            </p>
+            <p className="text-xs max-w-xs" style={{ color: T.muted }}>
+              Your connection dropped — the meeting is likely still going on
+              without you.{" "}
+              {attemptsExhausted
+                ? "Tap below to try rejoining."
+                : "Trying to reconnect automatically…"}
+            </p>
+          </div>
+
+          {!attemptsExhausted && (
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: T.accent }} />
+          )}
+
+          <div className="w-full flex flex-col gap-2 mt-1">
+            <button
+              onClick={handleRetryJoin}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation min-h-[48px]"
+              style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}
+            >
+              <RefreshCw className="w-4 h-4" /> Rejoin meeting
+            </button>
+            <button
+              onClick={() => {
+                voluntaryLeaveRef.current = true;
+                navigate("/");
+              }}
+              className="w-full py-3 rounded-xl text-xs font-medium touch-manipulation min-h-[44px]"
+              style={{ background: T.card, border: `1px solid ${T.border}`, color: T.muted }}
+            >
+              Leave
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── LOBBY ─────────────────────────────────────────────────────────────────────
   if (step !== "admitted") {
