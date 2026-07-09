@@ -858,6 +858,17 @@ export default function LiveMeeting() {
     onAIAnalysis: () => health.recordAIReceived(),
   });
 
+  // Surface transcription connectivity trouble the same way we already do
+  // for Daily video quality — previously this failed silently in the
+  // console with no indication to the person running the meeting.
+  useEffect(() => {
+    if (audioStreaming.state.isReconnecting) {
+      toast.warning("Reconnecting transcription…", { id: "transcribe-reconnect" });
+    } else {
+      toast.dismiss("transcribe-reconnect");
+    }
+  }, [audioStreaming.state.isReconnecting]);
+
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
   const { workspace } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
