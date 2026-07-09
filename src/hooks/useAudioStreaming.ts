@@ -1,5 +1,18 @@
 /**
- * useAudioStreaming.ts — v6
+ * useAudioStreaming.ts — v7
+ *
+ * Fixes from v6:
+ *  - Cache the access token via onAuthStateChange instead of calling
+ *    supabase.auth.getSession() before every single chunk upload. With
+ *    multiple recorders running at once (host mic + one per remote track),
+ *    each firing every 8s, this was issuing several concurrent gotrue
+ *    Web Lock acquisitions per second — the direct cause of the
+ *    "Lock ... was not released within 5000ms" console warnings during
+ *    live meetings. The lock always recovered on its own, but the
+ *    contention was unnecessary: the token only changes on refresh/sign-in.
+ *  - Exposed `isReconnecting` (true once we've been backing off for >2
+ *    consecutive chunks) so the UI can show a small status indicator
+ *    instead of failures being invisible to the user.
  *
  * Fixes from v5:
  *  - Reduced STALE_THRESHOLD to 60s (was 90s) — chunks older than 60s are useless
@@ -41,6 +54,7 @@ interface AudioStreamingOptions {
 interface AudioStreamingState {
   isStreaming: boolean;
   chunksSent: number;
+  isReconnecting: boolean;
 }
 
 interface AudioStreamingResult {
@@ -90,11 +104,29 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
   const isDrainingRef = useRef(false);
   const backoffRef    = useRef(BASE_BACKOFF_MS);
   const destroyedRef  = useRef(false);
+  const retryStreakRef = useRef(0);
 
-  const [state, setState] = useState<AudioStreamingState>({ isStreaming: false, chunksSent: 0 });
+  // Cached access token, kept fresh via onAuthStateChange instead of
+  // calling supabase.auth.getSession() (which acquires a Web Lock) before
+  // every chunk upload. See v7 header note above.
+  const accessTokenRef = useRef<string | null>(null);
+
+  const [state, setState] = useState<AudioStreamingState>({ isStreaming: false, chunksSent: 0, isReconnecting: false });
 
   const updateStreaming  = useCallback((s: boolean) => setState((p) => ({ ...p, isStreaming: s })), []);
   const incrementChunks  = useCallback(() => setState((p) => ({ ...p, chunksSent: p.chunksSent + 1 })), []);
+  const setReconnecting  = useCallback((r: boolean) => setState((p) => (p.isReconnecting === r ? p : { ...p, isReconnecting: r })), []);
+
+  // ── Keep the access token cached, refreshed on auth changes only ────────
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // ── Enqueue ──────────────────────────────────────────────────────────────
   const enqueue = useCallback((job: ChunkJob) => {
@@ -117,8 +149,14 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     if (!navigator.onLine) return 'retry';
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return 'retry';
+      let token = accessTokenRef.current;
+      if (!token) {
+        // Cold start / not cached yet — fall back to a direct check just this once.
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token ?? null;
+        accessTokenRef.current = token;
+      }
+      if (!token) return 'retry';
 
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-stream`,
@@ -126,7 +164,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
           method: 'POST',
           headers: {
             'Content-Type':  'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${token}`,
             'apikey':        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
@@ -146,6 +184,11 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
         backoffRef.current = Math.min(retryAfter || backoffRef.current * 2, MAX_BACKOFF_MS);
         return 'retry';
       }
+      if (res.status === 401) {
+        // Cached token is stale — drop it so the next attempt re-fetches a fresh one.
+        accessTokenRef.current = null;
+        return 'retry';
+      }
       if (!res.ok) {
         console.warn(`[AudioStreaming] Edge fn ${res.status} for chunk ${job.chunkIndex}`);
         if (res.status === 405) {
@@ -158,6 +201,7 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
 
       const data = await res.json();
       backoffRef.current = BASE_BACKOFF_MS;
+      if (retryStreakRef.current > 0) { retryStreakRef.current = 0; setReconnecting(false); }
       incrementChunks();
 
       if (data.text_preview && onTranscript) onTranscript(data.text_preview, job.speakerLabel);
@@ -190,6 +234,11 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
           await new Promise((r) => setTimeout(r, DRAIN_INTERVAL_MS));
         }
       } else {
+        retryStreakRef.current += 1;
+        // 2+ consecutive retries (~3-5s of real trouble) is enough to tell
+        // the user we're having connectivity issues, without flickering on
+        // every single transient blip.
+        if (retryStreakRef.current >= 2) setReconnecting(true);
         console.log(`[AudioStreaming] Backing off ${backoffRef.current}ms`);
         await new Promise((r) => setTimeout(r, backoffRef.current));
         if (!navigator.onLine) break;
@@ -338,8 +387,10 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     });
     trackRecordersRef.current.clear();
     updateStreaming(false);
+    retryStreakRef.current = 0;
+    setReconnecting(false);
     console.log('[AudioStreaming] Stopped all recorders');
-  }, [stopRecording, updateStreaming]);
+  }, [stopRecording, updateStreaming, setReconnecting]);
 
   // ── Online/offline handling ──────────────────────────────────────────────
   useEffect(() => {
