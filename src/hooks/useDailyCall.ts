@@ -325,19 +325,6 @@ export function useDailyCall({
       dailyConfig: {
         useDevicePreferenceCookies: false,
       },
-      // Opus 48kHz mono, DTX (no packets during silence), audio always
-      // prioritized over video when bandwidth is constrained — the same
-      // approach Zoom/Meet use to keep voice clear even on weak networks.
-      sendSettings: {
-        audio: { maxBitrate: 32_000, dtx: true },
-        video: {
-          encodings: {
-            low:    { maxBitrate: 150_000,   maxFramerate: 15, scaleResolutionDownBy: 4 },
-            medium: { maxBitrate: 500_000,   maxFramerate: 24, scaleResolutionDownBy: 2 },
-            high:   { maxBitrate: 1_200_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
-          },
-        },
-      },
     } as any;
   }
 
@@ -375,6 +362,21 @@ export function useDailyCall({
       setError(null);
       clearTimeout(transportReconnectRef.current);
       clearTimeout(selfHealTimerRef.current);
+
+      // Layered video encodings only — this is the correct, validated way to
+      // apply this (sendSettings is not a valid createCallObject/join option;
+      // Daily only accepts it via updateSendSettings on an active call).
+      // Audio bitrate/DTX aren't configurable via this API at all — Daily
+      // handles Opus encoding internally, so we don't attempt to set them.
+      callObj.updateSendSettings({
+        video: {
+          encodings: {
+            low:    { maxBitrate: 150_000,   maxFramerate: 15, scaleResolutionDownBy: 4 },
+            medium: { maxBitrate: 500_000,   maxFramerate: 24, scaleResolutionDownBy: 2 },
+            high:   { maxBitrate: 1_200_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+          },
+        },
+      }).catch(() => {});
 
       const allParts = event?.participants ?? {};
       const newMap = new Map<string, DailyParticipant>();
@@ -500,7 +502,6 @@ export function useDailyCall({
         toast.warning("Weak connection — reducing video quality", { id: "network-warning" });
         callObj.updateSendSettings({
           video: { encodings: { low: { maxBitrate: 60_000, maxFramerate: 5, scaleResolutionDownBy: 8 } } },
-          audio: { maxBitrate: 32_000, dtx: true }, // never degrade audio
         }).catch(() => {});
       } else if (quality === "fair") {
         toast.warning("Fair connection — adjusting video quality", { id: "network-warning" });
@@ -511,7 +512,6 @@ export function useDailyCall({
               medium: { maxBitrate: 250_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
             },
           },
-          audio: { maxBitrate: 32_000, dtx: true },
         }).catch(() => {});
       } else if (quality === "excellent" || quality === "good") {
         toast.dismiss("network-warning");
@@ -523,7 +523,6 @@ export function useDailyCall({
               high:   { maxBitrate: 1_200_000, maxFramerate: 30, scaleResolutionDownBy: 1 },
             },
           },
-          audio: { maxBitrate: 32_000, dtx: true },
         }).catch(() => {});
       }
     });
