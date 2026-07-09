@@ -240,6 +240,14 @@ export function useDailyCall({
   const selfHealTimerRef       = useRef<ReturnType<typeof setTimeout>>();
   const transportRetryCountRef = useRef(0);
   const localAudioReadyFiredRef = useRef(false);
+  // Set right before we call callObj.leave() as part of an internal transport
+  // reconnect (see scheduleTransportReconnect). Daily fires "left-meeting"
+  // for that leave() the same as it would for a genuine leave/kick, and the
+  // "left-meeting" handler used to always call onLeft() — which pages like
+  // GuestJoin.tsx treat as "the host ended the meeting" and navigate away.
+  // That meant a plain connection blip could boot a guest off the page
+  // before the reconnect attempt even got a chance to run.
+  const internalReconnectLeaveRef = useRef(false);
 
   useEffect(() => { callIdRef.current = callId; },           [callId]);
   useEffect(() => { roomNameRef.current = roomName; },       [roomName]);
@@ -415,6 +423,9 @@ export function useDailyCall({
     });
 
     callObj.on("left-meeting", () => {
+      const wasInternalReconnect = internalReconnectLeaveRef.current;
+      internalReconnectLeaveRef.current = false;
+
       joinedRef.current = false;
       setCallState("idle");
       setParticipants(new Map());
@@ -428,7 +439,14 @@ export function useDailyCall({
       handlersRegisteredRef.current = false;
       clearTimeout(transportReconnectRef.current);
       clearTimeout(selfHealTimerRef.current);
-      onLeft?.();
+
+      // Don't tell the page "we left" — this leave() was just the teardown
+      // half of an in-progress reconnect, which is about to rejoin. Firing
+      // onLeft here would make GuestJoin.tsx (and any other consumer) treat
+      // a transient connection blip as the meeting having ended.
+      if (!wasInternalReconnect) {
+        onLeft?.();
+      }
     });
 
     callObj.on("participant-joined", (event: any) => {
@@ -644,6 +662,7 @@ export function useDailyCall({
 
       toast.warning(`Connection lost — reconnecting (attempt ${attempt + 1})…`, { id: "transport-reconnect" });
 
+      internalReconnectLeaveRef.current = true;
       try { await callObj.leave(); } catch (_) {}
       try { await callObj.destroy(); } catch (_) {}
       handlersRegisteredRef.current = false;
