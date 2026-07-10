@@ -404,20 +404,57 @@ const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
   );
 });
 
+// Conversation-stage machine names -> short display labels for the live pill.
+const STAGE_LABELS: Record<string, string> = {
+  opening: "Opening", rapport_building: "Rapport Building", discovery: "Discovery",
+  demo_or_pitch: "Demo / Pitch", objection_handling: "Objection Handling",
+  negotiation: "Negotiation", closing: "Closing", wrap_up: "Wrap-up",
+};
+
+// Category -> visual treatment for the live AI Coaching feed (ai_coaching_suggestions).
+const COACHING_CATEGORY_META: Record<string, { icon: any; color: string; label: string }> = {
+  coaching:   { icon: Flame,          color: "#f59e0b", label: "Coaching" },
+  next_step:  { icon: Target,         color: "#60a5fa", label: "Next Step" },
+  objection:  { icon: Shield,         color: "#a78bfa", label: "Objection" },
+  risk:       { icon: AlertTriangle,  color: "#ef4444", label: "Risk" },
+};
+
 // ─── Right AI Panel ─────────────────────────────────────────────────────────────
 const RightPanel = memo(({
   activeTab, onTab, transcripts, objections, topics,
   sentimentScore, talkRatio, questionsCount, participantCount,
-  isStreaming, chunksSent, workspace,
+  isStreaming, chunksSent, workspace, onDismissCoaching,
 }: any) => {
   const txEndRef  = useRef<HTMLDivElement>(null);
   const [autoscroll, setAutoscroll] = useState(true);
   const sm = sentimentMeta(sentimentScore);
   const SmIcon = sm.icon;
 
+  // Live AI Analysis snapshot — refreshed every few seconds server-side by
+  // live-meeting-ai and pushed here via Realtime (see useMeetingWorkspace).
+  const live = workspace?.live_analysis ?? null;
+  const coachingFeed = workspace?.coaching_suggestions ?? [];
+
   useEffect(() => {
     if (autoscroll && activeTab === "transcript") txEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts.length, autoscroll, activeTab]);
+
+  // Merge legacy per-detection key_topics rows with the deduped rolling list
+  // the live-analysis snapshot maintains, so nothing regresses if one path
+  // is quieter than the other, and nothing shows twice.
+  const mergedTopics = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of (topics ?? [])) {
+      const label = t.topic; const key = label?.trim().toLowerCase();
+      if (label && key && !seen.has(key)) { seen.add(key); out.push(label); }
+    }
+    for (const label of (live?.key_topics ?? [])) {
+      const key = label?.trim?.().toLowerCase();
+      if (label && key && !seen.has(key)) { seen.add(key); out.push(label); }
+    }
+    return out;
+  }, [topics, live?.key_topics]);
 
   const allInsights = useMemo(() => {
     const out: any[] = [];
@@ -435,7 +472,7 @@ const RightPanel = memo(({
   const tabs = [
     { id: "transcript", label: "Transcript", icon: MessageSquare },
     { id: "insights",   label: "Insights",   icon: Sparkles, badge: allInsights.length || undefined },
-    { id: "coaching",   label: "Coaching",   icon: BrainCircuit },
+    { id: "coaching",   label: "Coaching",   icon: BrainCircuit, badge: coachingFeed.length || undefined },
   ];
 
   return (
@@ -525,10 +562,10 @@ const RightPanel = memo(({
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "Questions",  value: questionsCount,    icon: MessageCircle, color: "#818cf8" },
-                { label: "Topics",     value: topics.length,     icon: Hash,          color: "#2dd4bf" },
-                { label: "People",     value: participantCount,  icon: Users,         color: "#60a5fa" },
-                { label: "Objections", value: objections.length, icon: AlertTriangle, color: T.amber   },
+                { label: "Questions",  value: questionsCount,      icon: MessageCircle, color: "#818cf8" },
+                { label: "Topics",     value: mergedTopics.length,  icon: Hash,          color: "#2dd4bf" },
+                { label: "People",     value: participantCount,    icon: Users,         color: "#60a5fa" },
+                { label: "Objections", value: live ? live.objections_total : objections.length, icon: AlertTriangle, color: T.amber },
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="p-2.5 rounded-xl border text-center" style={{ background: T.card, borderColor: T.border }}>
                   <Icon className="w-3 h-3 mx-auto mb-0.5" style={{ color }} />
@@ -537,19 +574,97 @@ const RightPanel = memo(({
                 </div>
               ))}
             </div>
-            {topics.length > 0 && (
+
+            {live && (
+              <div className="p-3 rounded-xl border space-y-2.5" style={{ background: T.card, borderColor: T.border }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold" style={{ color: T.muted }}>Live AI Analysis</span>
+                  {live.conversation_stage && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(99,102,241,0.14)", border: "1px solid rgba(99,102,241,0.25)", color: "#a5b4fc" }}>
+                      {STAGE_LABELS[live.conversation_stage] || live.conversation_stage}
+                    </span>
+                  )}
+                </div>
+                {[
+                  { label: "Engagement",       value: live.engagement_score,          icon: Activity,  color: "#2dd4bf" },
+                  { label: "Discovery Quality", value: live.discovery_quality_score,   icon: BarChart2, color: "#60a5fa" },
+                  { label: "Objective Progress", value: live.objective_progress,       icon: ArrowUpRight, color: T.emerald },
+                ].map(({ label, value, icon: Icon, color }) => (
+                  <div key={label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] flex items-center gap-1" style={{ color: T.muted }}>
+                        <Icon className="w-3 h-3" style={{ color }} />{label}
+                      </span>
+                      <span className="text-[11px] font-bold" style={{ color }}>{value}%</span>
+                    </div>
+                    <div className="h-1 rounded-full" style={{ background: T.subtle }}>
+                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${value}%`, background: color }} />
+                    </div>
+                  </div>
+                ))}
+                {live.intent && (
+                  <p className="text-[11px] leading-relaxed pt-1" style={{ color: T.text }}>
+                    <span className="font-semibold" style={{ color: T.muted }}>Current intent: </span>{live.intent}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {mergedTopics.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Key Topics</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {topics.map((t: any) => (
-                    <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-lg"
+                  {mergedTopics.map((label: string) => (
+                    <span key={label} className="text-[11px] px-2 py-0.5 rounded-lg"
                       style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", color: "#a5b4fc" }}>
-                      {t.topic}
+                      {label}
                     </span>
                   ))}
                 </div>
               </div>
             )}
+
+            {live?.buying_signals?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.emerald }}>Buying Signals</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {live.buying_signals.map((s: string, i: number) => (
+                    <span key={i} className="text-[11px] px-2 py-0.5 rounded-lg"
+                      style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: T.emerald }}>
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {live?.questions?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Open Questions</p>
+                <div className="space-y-1.5">
+                  {live.questions.slice(-6).map((q: string, i: number) => (
+                    <div key={i} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.text }}>
+                      <MessageCircle className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#818cf8" }} />{q}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {live?.action_items?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Action Items</p>
+                <div className="space-y-1.5">
+                  {live.action_items.slice(-6).map((a: string, i: number) => (
+                    <div key={i} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.text }}>
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: T.emerald }} />{a}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {allInsights.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>AI Detections</p>
@@ -565,25 +680,70 @@ const RightPanel = memo(({
                 <div>
                   <p className="text-[11px] font-medium mb-0.5" style={{ color: T.muted }}>Meeting Score</p>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-black text-white">{Math.round(sentimentScore * 0.9)}</span>
+                    <span className="text-2xl font-black text-white">{live ? live.meeting_score : "—"}</span>
                     <span className="text-sm" style={{ color: T.muted }}>/100</span>
                   </div>
                 </div>
                 <Trophy className="w-5 h-5 text-indigo-400" />
               </div>
+              {live?.score_breakdown && (
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1 mt-3 pt-3 border-t" style={{ borderColor: "rgba(99,102,241,0.15)" }}>
+                  {[
+                    ["Sentiment",  live.score_breakdown.sentiment],
+                    ["Engagement", live.score_breakdown.engagement],
+                    ["Objections", live.score_breakdown.objection_handling],
+                    ["Discovery",  live.score_breakdown.discovery_quality],
+                    ["Talk ratio", live.score_breakdown.talk_ratio_balance],
+                    ["Progress",   live.score_breakdown.objective_progress],
+                  ].map(([label, value]: any) => (
+                    <div key={label} className="text-[10px]" style={{ color: T.muted }}>
+                      {label}: <span className="font-semibold" style={{ color: T.text }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!live && (
+                <p className="text-[10px] mt-2" style={{ color: T.muted }}>
+                  Building the score as the conversation unfolds…
+                </p>
+              )}
             </div>
-            {[
-              { icon: Flame,  text: "Ask open-ended questions to uncover pain points", color: T.amber },
-              { icon: Target, text: "Re-qualify the decision maker and timeline",       color: "#60a5fa" },
-              { icon: Shield, text: "Confirm all stakeholders are on this call",        color: "#a78bfa" },
-              { icon: MessageCircle, text: "Pause — let them fill the silence",         color: T.emerald },
-            ].map(({ icon: Icon, text, color }, i) => (
-              <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl border"
-                style={{ background: `${color}0a`, borderColor: `${color}22` }}>
-                <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color }} />
-                <p className="text-xs leading-relaxed" style={{ color: T.text }}>{text}</p>
+
+            {coachingFeed.length === 0 && (
+              <div className="py-8 text-center">
+                <BrainCircuit className="w-7 h-7 mx-auto mb-2" style={{ color: T.subtle }} />
+                <p className="text-xs" style={{ color: T.muted }}>
+                  Context-aware coaching will appear here as the conversation develops
+                </p>
               </div>
-            ))}
+            )}
+
+            {coachingFeed.map((c: any) => {
+              const meta = COACHING_CATEGORY_META[c.category] || COACHING_CATEGORY_META.coaching;
+              const Icon = meta.icon;
+              return (
+                <div key={c.id} className="flex items-start gap-2.5 p-3 rounded-xl border group"
+                  style={{ background: `${meta.color}0a`, borderColor: `${meta.color}22` }}>
+                  <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: meta.color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: meta.color }}>{meta.label}</span>
+                      {c.priority === "high" && (
+                        <span className="text-[9px] font-bold px-1.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: T.red }}>HIGH</span>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: T.text }}>{c.suggestion_text}</p>
+                  </div>
+                  {onDismissCoaching && (
+                    <button onClick={() => onDismissCoaching(c.id)}
+                      className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation"
+                      style={{ color: T.muted }} aria-label="Dismiss suggestion">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -870,12 +1030,8 @@ export default function LiveMeeting() {
   }, [audioStreaming.state.isReconnecting]);
 
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
-  const { workspace } = useMeetingWorkspace(callId);
+  const { workspace, dismissCoachingSuggestion } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
-
-  // Async live AI analysis + coaching — runs server-side every 20s.
-  // Never blocks audio/transcription; results stream in via Realtime.
-  useLiveMeetingAI(callId, Boolean(isLive && callId));
 
   const [leftTab,         setLeftTab]         = useState<LeftTab>("people");
   const [rightTab,        setRightTab]        = useState<RightTab>("transcript");
@@ -957,6 +1113,13 @@ export default function LiveMeeting() {
 
   const questionsCount = useMemo(() => transcripts.filter((t: any) => t.text.includes("?")).length, [transcripts]);
   const sentimentScore = liveCall?.sentiment_score ?? 74;
+
+  // Async live AI analysis + coaching — runs server-side every few seconds.
+  // Never blocks audio/transcription; results stream in via Realtime through
+  // useMeetingWorkspace's `live_analysis` snapshot. Feeding it the live talk
+  // ratio lets the server-computed Meeting Score stay accurate instead of
+  // falling back to a 50/50 default.
+  useLiveMeetingAI(callId, Boolean(isLive && callId), talkRatio);
 
   const handleToggleMic = useCallback(async () => {
     await daily.setAudioEnabled(!isAudioOn);
@@ -1271,7 +1434,7 @@ export default function LiveMeeting() {
                 sentimentScore={sentimentScore} talkRatio={talkRatio}
                 questionsCount={questionsCount} participantCount={daily.participantCount}
                 isStreaming={audioStreaming.state.isStreaming} chunksSent={audioStreaming.state.chunksSent}
-                workspace={workspace}
+                workspace={workspace} onDismissCoaching={dismissCoachingSuggestion}
               />
             </div>
           )}
@@ -1290,7 +1453,7 @@ export default function LiveMeeting() {
             sentimentScore={sentimentScore} talkRatio={talkRatio}
             questionsCount={questionsCount} participantCount={daily.participantCount}
             isStreaming={audioStreaming.state.isStreaming} chunksSent={audioStreaming.state.chunksSent}
-            workspace={workspace}
+            workspace={workspace} onDismissCoaching={dismissCoachingSuggestion}
           />
         </MobileSheet>
 
