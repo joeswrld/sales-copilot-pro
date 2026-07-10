@@ -180,6 +180,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+// Screen sharing needs getDisplayMedia. Desktop Chrome/Edge/Firefox/Safari all
+// have it; Android Chrome has it behind a flag-free implementation on recent
+// versions; iOS Safari (all browsers on iOS are WebKit under the hood, so this
+// covers iOS Chrome too) does not expose it at all as of this writing. Rather
+// than let startScreenShare() throw a confusing SDK/permission error on those
+// browsers, callers can check this up front and show a clear explanation.
+function isScreenShareSupported(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return typeof navigator.mediaDevices?.getDisplayMedia === "function";
+}
+
 function networkScoreToQuality(score: number): CallQuality {
   if (score >= 4) return "excellent";
   if (score >= 3) return "good";
@@ -749,20 +760,46 @@ export function useDailyCall({
         ? Promise.resolve(explicitToken)
         : fetchMeetingToken(targetRoom, true);
 
+      // FIX: previously a foreign Daily call instance was only torn down when
+      // it was actively "joined-meeting" or "joining-meeting". An IDLE foreign
+      // instance (created — e.g. by another mounted useDailyCall() hook for a
+      // *different* role/room in the same tab, or left behind by a component
+      // that didn't clean up — but never joined, or already left) fell through
+      // both checks below and got silently adopted by getOrCreateCallObject()
+      // via DailyIframe.getCallInstance(), then .join()'d into a *different*
+      // room than it was created for. That's how one participant's tile could
+      // end up bound to another participant's tracks (host/guest showing the
+      // same video+audio). Any foreign instance that isn't demonstrably OUR
+      // own already-correct call object for this exact room is now always
+      // destroyed before we create a fresh one — never silently reused.
+      let foreign: any = null;
       let foreignState: string | undefined;
       try {
         await ensureDailySDKReady();
-        const foreign = (DailyIframe as any).getCallInstance?.();
+        foreign = (DailyIframe as any).getCallInstance?.();
         if (foreign) foreignState = foreign.meetingState?.();
       } catch (_) {}
+      const isForeignInstance = foreign && foreign !== _activeCallObject;
       const staleForeignSession = foreignState === "joined-meeting" || foreignState === "joining-meeting";
 
-      if (_activeCallObject && (isRetry || _activeRoomName !== targetRoom)) {
+      // FIX: reaching this line means the fast-path reuse check above (which
+      // returns early for an already joined/joining call object on the same
+      // room) did NOT return — so whatever _activeCallObject currently holds
+      // (wrong room, or same room but idle/errored/left) is not usable as-is
+      // and we're about to force-create a fresh one below. Daily only allows
+      // ONE live call object per tab, so our own stale object must always be
+      // torn down here too, not just when the room differs or it's a retry —
+      // previously an idle same-room object slipped through both this check
+      // and the foreign-instance check, so createCallObject() below could be
+      // called while it was still alive.
+      if (_activeCallObject) {
         await releaseCallObject();
         handlersRegisteredRef.current = false;
       }
-      if (staleForeignSession) {
-        console.warn("[Daily] Stale foreign instance — forcing teardown");
+      if (staleForeignSession || isForeignInstance) {
+        console.warn("[Daily] Foreign/mismatched call instance detected — forcing teardown", {
+          foreignState, isForeignInstance,
+        });
         await destroyForeignCallInstance();
         handlersRegisteredRef.current = false;
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
@@ -770,7 +807,11 @@ export function useDailyCall({
 
       const callObjPromise = getOrCreateCallObject(
         buildCallOpts(targetRoom, undefined),
-        isRetry || staleForeignSession,
+        true, // FIX: always force a fresh call object here — we've just torn
+              // down anything foreign or stale above, and _activeRoomName===
+              // targetRoom re-joins already short-circuited via the fast path
+              // at the top of this function, so reaching this point always
+              // means we need our own clean instance for targetRoom.
       );
 
       const [token, callObj] = await Promise.all([tokenPromise, callObjPromise]);
@@ -888,6 +929,13 @@ export function useDailyCall({
       toast.error("Not connected to the meeting yet.");
       return;
     }
+    if (!isScreenShareSupported()) {
+      toast.error(
+        "Screen sharing isn't supported in this browser. Try Chrome, Edge, or Firefox on desktop, or Chrome on Android.",
+        { duration: 6000 },
+      );
+      return;
+    }
     try {
       await _activeCallObject.startScreenShare({
         captureMethod: "user-choice",
@@ -992,6 +1040,7 @@ export function useDailyCall({
 
   return {
     callState, isConnected, isConnecting, isRecording, isScreenSharing,
+    isScreenShareSupported: isScreenShareSupported(),
     networkQuality, activeSpeakerId, activeSpeaker, participantCount,
     elapsedSeconds, error, noiseCancellation,
     participants: Array.from(participants.values()),
