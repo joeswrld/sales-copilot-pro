@@ -23,6 +23,10 @@ interface VideoTileProps {
   isMain?: boolean;
   activeSpeakerId: string | null;
   className?: string;
+  /** "cover" (default) crops to fill — right for camera feeds. "contain" letterboxes
+   *  instead of cropping — used for screen-share thumbnails (e.g. the self PiP while
+   *  presenting) where cropping would cut off the part of the screen someone needs to see. */
+  fit?: "cover" | "contain";
 }
 
 /** Derive a display-friendly initial from any name string */
@@ -55,18 +59,29 @@ export function VideoTile({
   isMain = false,
   activeSpeakerId,
   className,
+  fit = "cover",
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const screenAudioRef = useRef<HTMLAudioElement>(null);
   const isSpeaking = participant.session_id === activeSpeakerId;
 
   // ── Attach video track ──────────────────────────────────────────────────────
+  // FIX: previously this always attached participant.videoTrack (the camera),
+  // even while participant.screen was true — screenVideoTrack was captured
+  // by useDailyCall but never actually rendered anywhere, so a screen share
+  // published fine to Daily but nobody's tile ever displayed it. When a
+  // participant is presenting, prefer their screen track; fall back to the
+  // camera the instant sharing stops.
+  const isScreenShare = !!(participant.screen && participant.screenVideoTrack);
+  const activeVideoTrack = isScreenShare ? participant.screenVideoTrack : participant.videoTrack;
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
 
-    if (participant.videoTrack && participant.video) {
-      const stream = new MediaStream([participant.videoTrack]);
+    if (activeVideoTrack && (isScreenShare || participant.video)) {
+      const stream = new MediaStream([activeVideoTrack]);
       el.srcObject = stream;
       el.play().catch(() => {});
     } else {
@@ -76,7 +91,7 @@ export function VideoTile({
     return () => {
       if (el.srcObject) el.srcObject = null;
     };
-  }, [participant.videoTrack, participant.video]);
+  }, [activeVideoTrack, isScreenShare, participant.video]);
 
   // ── Attach audio track (remote only) ────────────────────────────────────────
   useEffect(() => {
@@ -96,8 +111,26 @@ export function VideoTile({
     };
   }, [participant.audioTrack, participant.audio, participant.local]);
 
-  const hasVideo    = !!(participant.video && participant.videoTrack);
-  const isScreenShare = !!(participant.screen);
+  // ── Attach screen-share system audio (remote only) — e.g. sharing a tab
+  // with "share audio" checked. Kept on its own element/track so it never
+  // interferes with the mic audio element above.
+  useEffect(() => {
+    const el = screenAudioRef.current;
+    if (!el || participant.local) return;
+
+    if (isScreenShare && participant.screenAudioTrack) {
+      el.srcObject = new MediaStream([participant.screenAudioTrack]);
+      el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
+    }
+
+    return () => {
+      if (el.srcObject) el.srcObject = null;
+    };
+  }, [isScreenShare, participant.screenAudioTrack, participant.local]);
+
+  const hasVideo = isScreenShare || !!(participant.video && participant.videoTrack);
   const initial    = getInitial(participant.user_name);
   const displayName = participant.user_name?.replace(/\s*\(You\)\s*$/i, "").trim() || "Participant";
 
@@ -123,15 +156,19 @@ export function VideoTile({
         playsInline
         muted
         className={cn(
-          "w-full h-full object-cover",
+          "w-full h-full",
+          (isScreenShare ? fit : "cover") === "contain" ? "object-contain bg-black" : "object-cover",
           participant.local && !isScreenShare && "scale-x-[-1]",
           !hasVideo && "hidden",
         )}
       />
 
-      {/* Audio element for remote participants */}
+      {/* Audio elements for remote participants — mic + optional screen-share system audio */}
       {!participant.local && (
-        <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
+        <>
+          <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
+          <audio ref={screenAudioRef} autoPlay playsInline style={{ display: "none" }} />
+        </>
       )}
 
       {/* Avatar — shown when camera is off */}
