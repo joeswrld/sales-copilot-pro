@@ -41,6 +41,32 @@ export function useCalls() {
 
 export function useCallDetail(callId: string | undefined) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Realtime: push updates into the Call Details page the moment the
+  // background AI analysis finishes, so it's always the live source of
+  // truth without the person needing to refresh.
+  useEffect(() => {
+    if (!user || !callId) return;
+    const channel = supabase
+      .channel(`call-detail-${callId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "call_summaries", filter: `call_id=eq.${callId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["call-summary", callId] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "calls", filter: `id=eq.${callId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["call", callId] });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, callId, queryClient]);
 
   const callQuery = useQuery({
     queryKey: ["call", callId],
@@ -105,6 +131,25 @@ export function useDeleteCall() {
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calls"] }),
+  });
+}
+
+export function useGenerateCallSummary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ callId, force }: { callId: string; force?: boolean }) => {
+      const { data, error } = await supabase.functions.invoke("generate-call-summary", {
+        body: { call_id: callId, force: force ?? false },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["call-summary", variables.callId] });
+      queryClient.invalidateQueries({ queryKey: ["call", variables.callId] });
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+    },
   });
 }
 
