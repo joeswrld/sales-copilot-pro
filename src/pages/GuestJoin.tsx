@@ -1640,10 +1640,14 @@ export default function GuestJoin() {
 
         return showPeople ? (
           <>
+            {/* Fixed, not absolute — an absolutely-positioned popover here was
+                being silently clipped by the call container's overflow-hidden,
+                so clicking "People" appeared to do nothing on desktop. Fixed
+                positioning is immune to that ancestor clipping. */}
             <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setShowPeople(false)} />
             <div
-              className="absolute z-50 top-12 right-3 w-64 rounded-xl overflow-hidden"
-              style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
+              className="fixed z-50 top-16 right-3 w-72 max-w-[calc(100vw-24px)] rounded-xl overflow-hidden"
+              style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)", maxHeight: "70vh" }}
             >
               <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
                 <span className="text-sm font-semibold text-white">Participants ({daily.participantCount})</span>
