@@ -1,14 +1,15 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
-  ArrowLeft, Clock, Users, TrendingUp, AlertCircle, CheckCircle,
+  ArrowLeft, Clock, AlertCircle, CheckCircle,
   Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare,
-  Bot, ChevronRight, Calendar, FileText, Lightbulb, ShieldAlert, Video, Download
+  Bot, ChevronRight, Calendar, FileText, Lightbulb, ShieldAlert, Video, Download,
+  Smile, Meh, Frown, Zap, HelpCircle, Mail, RefreshCw, Copy, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCallDetail, useUpdateCall } from "@/hooks/useCalls";
+import { useCallDetail, useUpdateCall, useGenerateCallSummary } from "@/hooks/useCalls";
 import { format } from "date-fns";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
@@ -30,7 +31,19 @@ interface TranscriptLine {
   time?: string;
   timestamp?: string;
   speaker: string;
+  speaker_name?: string;
   text: string;
+}
+
+interface NextBestAction {
+  text?: string;
+  priority?: "high" | "medium" | "low";
+}
+
+interface QuestionAsked {
+  question?: string;
+  asked_by?: string;
+  answered?: boolean;
 }
 
 function parseTimeToSeconds(time?: string) {
@@ -51,14 +64,41 @@ function statusColor(status?: string | null) {
   }
 }
 
+function scoreColor(score: number) {
+  if (score >= 75) return "text-green-400";
+  if (score >= 50) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function sentimentDisplay(sentiment?: string | null) {
+  switch ((sentiment || "").toLowerCase()) {
+    case "positive": return { icon: Smile, color: "text-green-400", label: "Positive" };
+    case "negative": return { icon: Frown, color: "text-red-400", label: "Negative" };
+    case "mixed": return { icon: Meh, color: "text-yellow-400", label: "Mixed" };
+    default: return { icon: Meh, color: "text-muted-foreground", label: sentiment ? sentiment : "Neutral" };
+  }
+}
+
+function normalizeNextBestAction(item: unknown): NextBestAction {
+  if (typeof item === "string") return { text: item };
+  if (item && typeof item === "object") return item as NextBestAction;
+  return {};
+}
+
+function normalizeQuestion(item: unknown): QuestionAsked {
+  if (typeof item === "string") return { question: item };
+  if (item && typeof item === "object") return item as QuestionAsked;
+  return {};
+}
+
 export default function CallDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
 
   const { call, summary } = useCallDetail(id);
   const { useCallClips }  = useCoachingClips();
   const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
+  const generateSummary = useGenerateCallSummary();
 
   const {
     action,
@@ -74,16 +114,25 @@ export default function CallDetail() {
   const callData    = call.data;
   const summaryData = summary.data;
 
-  const objections  = (summaryData?.objections as unknown as Objection[]) || [];
-  const rawTranscript = (summaryData?.transcript as unknown as TranscriptLine[]) || [];
-  const topics        = summaryData?.topics       || [];
-  const nextSteps     = summaryData?.next_steps   || [];
-  const actionItems   = summaryData?.action_items || [];
-  const keyDecisions  = summaryData?.key_decisions || [];
-  const buyingSignals = summaryData?.buying_signals || [];
-  const summaryText   = summaryData?.summary || "";
-  const meetingScore  = summaryData?.meeting_score;
-  const talkRatio     = summaryData?.talk_ratio as Record<string, number> | null;
+  const objections    = (summaryData?.objections as unknown as Objection[]) || [];
+  const rawTranscript  = (summaryData?.transcript as unknown as TranscriptLine[]) || [];
+  const topics         = summaryData?.topics       || [];
+  const nextBestActionsRaw = (summaryData?.next_best_actions as unknown as unknown[]) || summaryData?.next_steps || [];
+  const actionItems    = summaryData?.action_items || [];
+  const buyingSignals  = summaryData?.buying_signals || [];
+  const summaryText    = summaryData?.summary || "";
+  const meetingScore   = summaryData?.meeting_score;
+  const talkRatio      = summaryData?.talk_ratio as Record<string, number> | null;
+  const sentiment      = summaryData?.sentiment;
+  const sentimentScore = summaryData?.sentiment_score;
+  const engagementScore = summaryData?.engagement_score;
+  const questionsAskedRaw = (summaryData?.questions_asked as unknown as unknown[]) || [];
+  const followUpSubject = summaryData?.follow_up_email_subject;
+  const followUpBody    = summaryData?.follow_up_email_body;
+  const analysisStatus  = summaryData?.analysis_status;
+
+  const nextBestActions = useMemo(() => nextBestActionsRaw.map(normalizeNextBestAction), [nextBestActionsRaw]);
+  const questionsAsked  = useMemo(() => questionsAskedRaw.map(normalizeQuestion), [questionsAskedRaw]);
 
   const normalizedTranscript = useMemo(() => {
     if (!Array.isArray(rawTranscript)) return [];
@@ -97,7 +146,28 @@ export default function CallDetail() {
     });
   }, [rawTranscript]);
 
-  const recordingUrl = callData?.recording_url || callData?.audio_url || null;
+  const recordingUrl = callData?.recording_url || callData?.daily_recording_url || callData?.hms_recording_url || callData?.audio_url || null;
+
+  // ── Auto-trigger: make sure the AI Analysis Hub is always up to date ──
+  // If the meeting is done but analysis never ran (or is stuck pending/
+  // failed), kick it off automatically so this page is a reliable single
+  // source of truth without the person needing to know a trigger exists.
+  const autoTriggeredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!callData || !id) return;
+    if (callData.status !== "completed") return;
+    if (summary.isLoading) return;
+    if (generateSummary.isPending) return;
+    const status = summaryData?.analysis_status;
+    const needsRun = !summaryData || status === "pending" || status === "failed";
+    if (!needsRun) return;
+    if (autoTriggeredRef.current === id) return;
+    autoTriggeredRef.current = id;
+    generateSummary.mutate({ callId: id });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callData?.status, id, summary.isLoading, summaryData?.analysis_status]);
+
+  const isProcessing = analysisStatus === "processing" || generateSummary.isPending;
 
   if (call.isLoading) {
     return (
@@ -121,6 +191,8 @@ export default function CallDetail() {
       </DashboardLayout>
     );
   }
+
+  const SentimentIcon = sentimentDisplay(sentiment).icon;
 
   return (
     <DashboardLayout>
@@ -162,16 +234,49 @@ export default function CallDetail() {
           <Badge className={statusColor(callData.status)}>{callData.status || "Unknown"}</Badge>
         </div>
 
+        {/* ── Processing banner ── */}
+        {callData.status === "completed" && isProcessing && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-2.5">
+            <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              Analyzing the final transcript — Meeting Score, sentiment, and the rest of this hub will fill in automatically.
+            </p>
+          </div>
+        )}
+        {callData.status === "completed" && analysisStatus === "failed" && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+              <p className="text-sm text-muted-foreground">AI analysis failed to complete for this call.</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => generateSummary.mutate({ callId: callData.id, force: true })}
+              disabled={generateSummary.isPending}
+            >
+              {generateSummary.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* ── Meta info cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetaCard icon={<Calendar className="w-4 h-4" />} label="Date"
             value={format(new Date(callData.date), "MMM d, yyyy")} />
           <MetaCard icon={<Clock className="w-4 h-4" />} label="Duration"
             value={callData.duration_minutes ? `${callData.duration_minutes} min` : "N/A"} />
-          <MetaCard icon={<TrendingUp className="w-4 h-4" />} label="Sentiment"
-            value={callData.sentiment_score ? `${callData.sentiment_score}%` : "N/A"} />
-          <MetaCard icon={<Target className="w-4 h-4" />} label="Score"
-            value={meetingScore != null ? `${meetingScore}/100` : "N/A"} />
+          <MetaCard
+            icon={<SentimentIcon className={`w-4 h-4 ${sentimentDisplay(sentiment).color}`} />}
+            label="Sentiment"
+            value={sentiment ? `${sentimentDisplay(sentiment).label}${sentimentScore != null ? ` (${sentimentScore}%)` : ""}` : (isProcessing ? "Analyzing…" : "N/A")}
+          />
+          <MetaCard icon={<Target className="w-4 h-4" />} label="Meeting Score"
+            value={meetingScore != null ? `${meetingScore}/100` : (isProcessing ? "Analyzing…" : "N/A")}
+            valueClassName={meetingScore != null ? scoreColor(meetingScore) : undefined}
+          />
         </div>
 
         {/* ── Recording player ── */}
@@ -227,7 +332,6 @@ export default function CallDetail() {
 
             {action && (
               <div className="space-y-3">
-                {/* Priority action checkbox */}
                 <div className="flex items-start gap-3">
                   <button
                     onClick={() => toggleComplete.mutate({ actionId: action.id, completed: !action.is_completed })}
@@ -244,7 +348,6 @@ export default function CallDetail() {
                   </p>
                 </div>
 
-                {/* Draft email */}
                 {action.draft_email_subject && (
                   <div className="rounded-lg bg-card border border-border p-3 space-y-2">
                     <div className="flex items-center justify-between">
@@ -271,7 +374,6 @@ export default function CallDetail() {
                   </div>
                 )}
 
-                {/* ── CRM push ── */}
                 <div className="flex items-center gap-2 flex-wrap">
                   {action.crm_pushed ? (
                     <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs">
@@ -280,7 +382,6 @@ export default function CallDetail() {
                     </Badge>
                   ) : (
                     <>
-                      {/* HubSpot — live */}
                       <Button
                         size="sm"
                         variant="outline"
@@ -288,13 +389,10 @@ export default function CallDetail() {
                         onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}
                         disabled={markCrmPushed.isPending}
                       >
-                        {markCrmPushed.isPending
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : null}
+                        {markCrmPushed.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                         Push to HubSpot
                       </Button>
 
-                      {/* Salesforce — coming soon */}
                       <div className="relative group">
                         <Button
                           size="sm"
@@ -307,7 +405,6 @@ export default function CallDetail() {
                             Soon
                           </span>
                         </Button>
-                        {/* Tooltip */}
                         <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center gap-1.5 whitespace-nowrap bg-popover border border-border rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg z-20">
                           🚧 Salesforce sync is coming soon
                         </div>
@@ -326,35 +423,68 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* ── Talk ratio ── */}
-        {talkRatio && Object.keys(talkRatio).length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" /> Talk Ratio
-            </h3>
-            <div className="space-y-2">
-              {Object.entries(talkRatio).map(([speaker, pct]) => (
-                <div key={speaker} className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-16 truncate">{speaker}</span>
+        {/* ── Engagement + Talk ratio ── */}
+        {(engagementScore != null || (talkRatio && Object.keys(talkRatio).length > 0)) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {engagementScore != null && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-yellow-400" /> Engagement
+                </h3>
+                <div className="flex items-center gap-3">
                   <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${Math.min(100, Number(pct))}%` }}
+                      className="h-full rounded-full bg-yellow-400"
+                      style={{ width: `${Math.min(100, engagementScore)}%` }}
                     />
                   </div>
-                  <span className="text-xs font-medium w-10 text-right">{Number(pct).toFixed(0)}%</span>
+                  <span className={`text-sm font-semibold ${scoreColor(engagementScore)}`}>{engagementScore}%</span>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {talkRatio && Object.keys(talkRatio).length > 0 && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" /> Talk Ratio
+                </h3>
+                <div className="space-y-2">
+                  {Object.entries(talkRatio).map(([speaker, pct]) => (
+                    <div key={speaker} className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-20 truncate" title={speaker}>{speaker}</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${Math.min(100, Number(pct))}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">{Number(pct).toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── Summary ── */}
         {summaryText && (
           <div className="rounded-xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" /> Summary
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" /> Meeting Summary
+              </h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs gap-1 text-muted-foreground"
+                onClick={() => generateSummary.mutate({ callId: callData.id, force: true })}
+                disabled={generateSummary.isPending}
+              >
+                {generateSummary.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Regenerate
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground leading-relaxed">{summaryText}</p>
           </div>
         )}
@@ -363,7 +493,7 @@ export default function CallDetail() {
         {topics.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
             <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" /> Topics Discussed
+              <Sparkles className="w-4 h-4 text-primary" /> Key Topics
             </h3>
             <div className="flex flex-wrap gap-2">
               {topics.map((t, i) => (
@@ -423,21 +553,32 @@ export default function CallDetail() {
           </div>
         )}
 
-        {/* ── Next steps & Action items ── */}
-        {(nextSteps.length > 0 || actionItems.length > 0) && (
+        {/* ── Questions asked ── */}
+        {questionsAsked.length > 0 && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-primary" /> Questions Asked ({questionsAsked.length})
+            </h3>
+            <ul className="space-y-1.5">
+              {questionsAsked.map((q, i) => (
+                <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>
+                    {q.question}
+                    {q.asked_by && <span className="text-xs text-muted-foreground/70"> — {q.asked_by}</span>}
+                    {q.answered === false && (
+                      <Badge variant="outline" className="ml-1.5 text-[10px] border-yellow-500/30 text-yellow-400">unanswered</Badge>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* ── Action items & Next best actions ── */}
+        {(actionItems.length > 0 || nextBestActions.length > 0) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {nextSteps.length > 0 && (
-              <div className="rounded-xl border border-border bg-card p-4">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <ChevronRight className="w-4 h-4 text-primary" /> Next Steps
-                </h3>
-                <ul className="space-y-1">
-                  {nextSteps.map((s, i) => (
-                    <li key={i} className="text-sm text-muted-foreground">• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {actionItems.length > 0 && (
               <div className="rounded-xl border border-border bg-card p-4">
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
@@ -450,20 +591,59 @@ export default function CallDetail() {
                 </ul>
               </div>
             )}
+            {nextBestActions.length > 0 && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <ChevronRight className="w-4 h-4 text-primary" /> Next Best Actions
+                </h3>
+                <ul className="space-y-1.5">
+                  {nextBestActions.map((a, i) => (
+                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                      <span>• {a.text}</span>
+                      {a.priority && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] shrink-0 ${
+                            a.priority === "high" ? "border-red-500/30 text-red-400"
+                            : a.priority === "medium" ? "border-yellow-500/30 text-yellow-400"
+                            : "border-muted-foreground/30 text-muted-foreground"
+                          }`}
+                        >
+                          {a.priority}
+                        </Badge>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Key decisions ── */}
-        {keyDecisions.length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-primary" /> Key Decisions
-            </h3>
-            <ul className="space-y-1">
-              {keyDecisions.map((d, i) => (
-                <li key={i} className="text-sm text-muted-foreground">• {d}</li>
-              ))}
-            </ul>
+        {/* ── Follow-up email draft ── */}
+        {(followUpSubject || followUpBody) && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Mail className="w-4 h-4 text-primary" /> Follow-up Email Draft
+              </h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs gap-1"
+                onClick={() => {
+                  const text = `Subject: ${followUpSubject || ""}\n\n${followUpBody || ""}`;
+                  navigator.clipboard.writeText(text);
+                  toast.success("Email copied to clipboard!");
+                }}
+              >
+                <Copy className="w-3 h-3" /> Copy
+              </Button>
+            </div>
+            {followUpSubject && <p className="text-sm font-medium">{followUpSubject}</p>}
+            {followUpBody && (
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{followUpBody}</p>
+            )}
           </div>
         )}
 
@@ -485,7 +665,7 @@ export default function CallDetail() {
         )}
 
         {/* ── No summary yet ── */}
-        {!summary.isLoading && !summaryData && (
+        {!summary.isLoading && !summaryData && callData.status !== "completed" && (
           <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
             <Bot className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">No AI summary available yet for this call.</p>
@@ -497,13 +677,13 @@ export default function CallDetail() {
   );
 }
 
-function MetaCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function MetaCard({ icon, label, value, valueClassName }: { icon: React.ReactNode; label: string; value: string; valueClassName?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
       <div className="text-primary">{icon}</div>
       <div>
         <p className="text-[10px] uppercase text-muted-foreground tracking-wider">{label}</p>
-        <p className="text-sm font-semibold">{value}</p>
+        <p className={`text-sm font-semibold ${valueClassName || ""}`}>{value}</p>
       </div>
     </div>
   );
