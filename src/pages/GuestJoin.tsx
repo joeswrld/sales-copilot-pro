@@ -23,11 +23,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Users,
   Loader2, WifiOff, RefreshCw, Monitor, MonitorOff,
-  Maximize2, PanelRight, X, Pin, PinOff,
+  Maximize2, Minimize2, PanelRight, X, Pin, PinOff,
   AlertCircle, Clock, LayoutGrid, Hand, SwitchCamera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
 import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
@@ -445,10 +446,334 @@ const VideoGrid = memo(
   },
 );
 
+// ─── "Someone is presenting" banner with Stop control (matches host page) ───────
+const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
+  isSelfPresenting: boolean;
+  presenterName: string | null;
+  onStop: () => void;
+}) => {
+  if (!isSelfPresenting && !presenterName) return null;
+  return (
+    <div
+      className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full"
+      style={{
+        top: "max(10px, env(safe-area-inset-top))",
+        background: "rgba(79,70,229,0.94)",
+        backdropFilter: "blur(14px)",
+        boxShadow: "0 6px 20px rgba(79,70,229,0.4)",
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" style={{ animation: "soundwave 1.1s ease-in-out infinite alternate" }} />
+      <span className="text-[11px] font-semibold text-white whitespace-nowrap">
+        {isSelfPresenting ? "You're presenting" : `${presenterName} is presenting`}
+      </span>
+      {isSelfPresenting && (
+        <button
+          onClick={onStop}
+          className="flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full text-[10px] font-bold text-white touch-manipulation min-h-[28px]"
+          style={{ background: "rgba(0,0,0,0.25)" }}
+        >
+          <MonitorOff className="w-3 h-3" /> Stop
+        </button>
+      )}
+    </div>
+  );
+});
+
+// ─── Draggable / resizable / expandable self-view (PiP) ─────────────────────────
+const PIP_SIZES = { sm: { w: 84, h: 112 }, md: { w: 114, h: 152 } } as const;
+
+const DraggablePiP = memo(({
+  participant, containerRef, onExpand, onSwitchCamera, fit = "cover",
+}: {
+  participant: DailyParticipant;
+  containerRef: React.RefObject<HTMLDivElement>;
+  onExpand: () => void;
+  onSwitchCamera: () => void;
+  fit?: "cover" | "contain";
+}) => {
+  const [size, setSize] = useState<"sm" | "md">("md");
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const draggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number; origX: number; origY: number } | null>(null);
+  const dims = PIP_SIZES[size];
+
+  const clamp = useCallback((x: number, y: number) => {
+    const c = containerRef.current;
+    const pad = 10;
+    if (!c) return { x: Math.max(pad, x), y: Math.max(pad, y) };
+    const b = c.getBoundingClientRect();
+    const maxX = Math.max(pad, b.width - dims.w - pad);
+    const maxY = Math.max(pad, b.height - dims.h - pad);
+    return { x: Math.min(Math.max(pad, x), maxX), y: Math.min(Math.max(pad, y), maxY) };
+  }, [containerRef, dims.w, dims.h]);
+
+  // Initial resting spot: top-right, below the presenting banner / safe area.
+  useEffect(() => {
+    if (pos) return;
+    const c = containerRef.current;
+    if (!c) return;
+    const b = c.getBoundingClientRect();
+    setPos(clamp(b.width - dims.w - 12, 52));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the PiP on-screen if the viewport (or size) changes.
+  useEffect(() => {
+    if (!pos) return;
+    setPos((p) => (p ? clamp(p.x, p.y) : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dims.w, dims.h]);
+
+  useEffect(() => {
+    const onResize = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clamp]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, origX: pos?.x ?? 0, origY: pos?.y ?? 0 };
+    draggingRef.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const start = dragStartRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (!draggingRef.current && Math.hypot(dx, dy) < 5) return;
+    draggingRef.current = true;
+    setPos(clamp(start.origX + dx, start.origY + dy));
+  };
+  const onPointerUp = () => {
+    const wasDragging = draggingRef.current;
+    dragStartRef.current = null;
+    draggingRef.current = false;
+    if (!wasDragging || !pos || !containerRef.current) return;
+    // Snap to nearest side, like a native PiP window.
+    const b = containerRef.current.getBoundingClientRect();
+    const snappedX = pos.x + dims.w / 2 < b.width / 2 ? 10 : b.width - dims.w - 10;
+    setPos(clamp(snappedX, pos.y));
+  };
+
+  if (!pos) return null;
+
+  return (
+    <div
+      role="group"
+      aria-label={participant.local ? "Your video preview, drag to reposition" : `${participant.user_name}'s video`}
+      className="absolute z-20 rounded-2xl overflow-hidden touch-none select-none"
+      style={{
+        width: dims.w, height: dims.h,
+        left: pos.x, top: pos.y,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+        border: "1.5px solid rgba(255,255,255,0.16)",
+        transition: draggingRef.current ? "none" : "left 0.22s cubic-bezier(.32,.72,0,1), top 0.22s cubic-bezier(.32,.72,0,1), width 0.18s ease, height 0.18s ease",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <VideoTile participant={participant} activeSpeakerId={null} className="w-full h-full" fit={fit} />
+
+      <div className="absolute top-1 right-1 flex items-center gap-1">
+        {!participant.screen && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSwitchCamera(); }}
+            aria-label="Switch camera"
+            className="w-6 h-6 rounded-lg flex items-center justify-center touch-manipulation"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+          >
+            <SwitchCamera className="w-3 h-3 text-white" />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onExpand(); }}
+          aria-label="Expand to full screen"
+          className="w-6 h-6 rounded-lg flex items-center justify-center touch-manipulation"
+          style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+        >
+          <Maximize2 className="w-3 h-3 text-white" />
+        </button>
+      </div>
+
+      <button
+        onClick={(e) => { e.stopPropagation(); setSize((s) => (s === "sm" ? "md" : "sm")); }}
+        aria-label={size === "sm" ? "Enlarge preview" : "Shrink preview"}
+        className="absolute bottom-1 left-1 w-5 h-5 rounded-md flex items-center justify-center touch-manipulation"
+        style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+      >
+        <span
+          className="block rounded-[2px] border border-white/80"
+          style={{ width: size === "sm" ? 7 : 9, height: size === "sm" ? 7 : 9 }}
+        />
+      </button>
+    </div>
+  );
+});
+
+// ─── Mobile video stage: full-bleed main tile + floating PiP self-view ─────────
+// Used instead of VideoGrid on mobile once 2+ participants are present — for
+// 0/1 participants VideoGrid's existing waiting/solo states already cover it.
+const MobileVideoStage = memo(({
+  participants, activeSpeakerId, pinnedId, onPin, onSwitchCamera, onStopShare,
+}: {
+  participants: DailyParticipant[];
+  activeSpeakerId: string | null;
+  pinnedId: string | null;
+  onPin: (id: string | null) => void;
+  onSwitchCamera: () => void;
+  onStopShare: () => void;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const local = participants.find((p) => p.local) ?? null;
+  const remotePresenter = participants.find((p) => p.screen && !p.local) ?? null;
+  const selfPresenting = !!local?.screen;
+
+  const mainParticipant =
+    remotePresenter
+    ?? (pinnedId && participants.find((p) => p.session_id === pinnedId))
+    ?? (activeSpeakerId && participants.find((p) => p.session_id === activeSpeakerId && !p.local))
+    ?? participants.find((p) => !p.local)
+    ?? local;
+
+  const pipParticipant = local && mainParticipant?.session_id !== local.session_id ? local : null;
+
+  return (
+    <div ref={containerRef} className="relative w-full h-full rounded-2xl overflow-hidden">
+      {mainParticipant && (
+        <VideoTile
+          participant={mainParticipant}
+          isMain
+          activeSpeakerId={activeSpeakerId}
+          className="w-full h-full"
+          fit={mainParticipant.screen ? "contain" : "cover"}
+        />
+      )}
+
+      <PresentingBanner
+        isSelfPresenting={selfPresenting}
+        presenterName={remotePresenter && !selfPresenting ? (remotePresenter.user_name?.replace(/\s*\(You\)\s*$/i, "").trim() ?? "Someone") : null}
+        onStop={onStopShare}
+      />
+
+      {mainParticipant?.local && (
+        <button
+          onClick={() => onPin(null)}
+          aria-label="Back to call view"
+          className="absolute z-30 left-2 w-8 h-8 rounded-lg flex items-center justify-center touch-manipulation"
+          style={{ top: "max(10px, env(safe-area-inset-top))", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+        >
+          <Minimize2 className="w-4 h-4 text-white" />
+        </button>
+      )}
+
+      {pipParticipant && (
+        <DraggablePiP
+          participant={pipParticipant}
+          containerRef={containerRef}
+          onExpand={() => onPin(pipParticipant.session_id)}
+          onSwitchCamera={onSwitchCamera}
+          fit={pipParticipant.screen ? "contain" : "cover"}
+        />
+      )}
+    </div>
+  );
+});
+
+// ─── Mobile bottom sheet — real swipe-up / swipe-down-to-dismiss gesture ────────
+const MobileSheet = memo(({ open, onClose, title, children }: any) => {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [dragY, setDragY] = useState(0);
+  const dragging = useRef(false);
+  const start = useRef<{ y: number } | null>(null);
+
+  useEffect(() => { if (open) setDragY(0); }, [open]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const scroller = sheetRef.current?.querySelector("[data-sheet-scroll]") as HTMLElement | null;
+    const fromHandle = (e.target as HTMLElement).closest("[data-sheet-handle]");
+    if (!fromHandle && scroller && scroller.scrollTop > 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    start.current = { y: e.clientY };
+    dragging.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!start.current) return;
+    const dy = e.clientY - start.current.y;
+    if (dy <= 0) return;
+    dragging.current = true;
+    setDragY(dy);
+  };
+  const onPointerUp = () => {
+    if (!start.current) return;
+    const wasDragging = dragging.current;
+    start.current = null;
+    dragging.current = false;
+    if (wasDragging && dragY > 110) onClose();
+    setDragY(0);
+  };
+
+  return (
+    <>
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300",
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+        )}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl flex flex-col md:hidden touch-none"
+        style={{
+          background: T.panel,
+          backdropFilter: "blur(24px)",
+          border: `1px solid ${T.border}`,
+          boxShadow: "0 -12px 40px rgba(0,0,0,0.45)",
+          maxHeight: "70dvh",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          transform: open ? `translateY(${dragY}px)` : "translateY(100%)",
+          transition: dragging.current ? "none" : "transform 0.32s cubic-bezier(.32,.72,0,1)",
+          opacity: open ? Math.max(1 - dragY / 400, 0.4) : 1,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <div
+          data-sheet-handle
+          className="relative flex items-center justify-between px-4 pt-5 pb-3 border-b shrink-0 cursor-grab active:cursor-grabbing"
+          style={{ borderColor: T.border }}
+        >
+          <div className="w-10 h-1 rounded-full absolute top-2 left-1/2 -translate-x-1/2" style={{ background: T.subtle }} />
+          <span className="text-sm font-semibold" style={{ color: T.text }}>{title}</span>
+          <button
+            onClick={onClose}
+            aria-label={`Close ${title}`}
+            className="w-8 h-8 rounded-lg flex items-center justify-center touch-manipulation"
+            style={{ background: T.card }}
+          >
+            <X className="w-4 h-4" style={{ color: T.muted }} />
+          </button>
+        </div>
+        <div data-sheet-scroll className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">{children}</div>
+      </div>
+    </>
+  );
+});
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────────
 export default function GuestJoin() {
   const { roomName } = useParams<{ roomName: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [step, setStep] = useState<JoinStep>("lobby");
   const [guestName, setGuestName] = useState("");
@@ -1096,23 +1421,35 @@ export default function GuestJoin() {
         </div>
       </div>
 
-      {/* Video */}
-      <div className="flex-1 min-h-0 p-1.5 sm:p-3">
-        <VideoGrid
-          participants={daily.participants}
-          activeSpeakerId={daily.activeSpeakerId}
-          isConnecting={daily.isConnecting}
-          error={daily.error}
-          onRetry={handleRetryJoin}
-          pinnedId={pinnedId}
-          onPin={setPinnedId}
-          layout={videoLayout}
-          onLayoutChange={setVideoLayout}
-        />
+      {/* Video — full-bleed stage with a draggable self-view on mobile once a
+          second participant is present, matching the host's LiveMeeting page */}
+      <div className="flex-1 min-h-0 p-1 sm:p-3">
+        {isMobile && !daily.isConnecting && !daily.error && daily.participants.length >= 2 ? (
+          <MobileVideoStage
+            participants={daily.participants}
+            activeSpeakerId={daily.activeSpeakerId}
+            pinnedId={pinnedId}
+            onPin={setPinnedId}
+            onSwitchCamera={() => daily.switchCamera()}
+            onStopShare={handleScreenShare}
+          />
+        ) : (
+          <VideoGrid
+            participants={daily.participants}
+            activeSpeakerId={daily.activeSpeakerId}
+            isConnecting={daily.isConnecting}
+            error={daily.error}
+            onRetry={handleRetryJoin}
+            pinnedId={pinnedId}
+            onPin={setPinnedId}
+            layout={videoLayout}
+            onLayoutChange={setVideoLayout}
+          />
+        )}
       </div>
 
       {/* Control bar */}
-      <div className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0">
+      <div className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0" style={{ paddingBottom: "max(6px, env(safe-area-inset-bottom))" }}>
         <div
           className="flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl flex-wrap"
           style={{
@@ -1236,101 +1573,93 @@ export default function GuestJoin() {
         </div>
       </div>
 
-      {/* Participants panel */}
-      {showPeople && (
-        <>
-          <div
-            className="fixed inset-0 z-40 sm:hidden bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowPeople(false)}
-          />
-          <div
-            className="fixed z-50 bottom-0 left-0 right-0 sm:absolute sm:top-12 sm:right-3 sm:bottom-auto sm:w-64 rounded-t-2xl sm:rounded-xl"
-            style={{
-              background: T.panel,
-              border: `1px solid ${T.border}`,
-              maxHeight: "70vh",
-            }}
-          >
-            <div
-              className="flex items-center justify-between px-4 py-3 border-b"
-              style={{ borderColor: T.border }}
-            >
+      {/* Participants — reusable list, shown in a swipeable sheet on mobile and
+          an anchored popover on desktop */}
+      {(() => {
+        const list = (
+          <div className="overflow-y-auto p-2" style={{ maxHeight: isMobile ? undefined : "calc(70vh - 56px)" }}>
+            {daily.participants.map((p) => (
               <div
-                className="w-8 h-1 rounded-full absolute top-2 left-1/2 -translate-x-1/2 sm:hidden"
-                style={{ background: T.subtle }}
-              />
-              <span className="text-sm font-semibold text-white">
-                Participants ({daily.participantCount})
-              </span>
-              <button
-                onClick={() => setShowPeople(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center touch-manipulation"
-                style={{ background: T.card }}
+                key={p.session_id}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] active:bg-white/[0.06] cursor-pointer transition-colors touch-manipulation"
+                onClick={() => {
+                  setPinnedId(pinnedId === p.session_id ? null : p.session_id);
+                  setShowPeople(false);
+                }}
               >
-                <X className="w-4 h-4" style={{ color: T.muted }} />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-2" style={{ maxHeight: "calc(70vh - 56px)" }}>
-              {daily.participants.map((p) => (
-                <div
-                  key={p.session_id}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] cursor-pointer transition-colors"
-                  onClick={() => {
-                    setPinnedId(
-                      pinnedId === p.session_id ? null : p.session_id,
-                    );
-                    setShowPeople(false);
-                  }}
-                >
-                  <div className="relative">
+                <div className="relative">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{
+                      background:
+                        p.session_id === daily.activeSpeakerId
+                          ? "linear-gradient(135deg,#10b981,#059669)"
+                          : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                    }}
+                  >
+                    {getInitial(p.user_name)}
+                  </div>
+                  {p.session_id === daily.activeSpeakerId && (
                     <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                      style={{
-                        background:
-                          p.session_id === daily.activeSpeakerId
-                            ? "linear-gradient(135deg,#10b981,#059669)"
-                            : "linear-gradient(135deg,#6366f1,#8b5cf6)",
-                      }}
-                    >
-                      {getInitial(p.user_name)}
-                    </div>
-                    {p.session_id === daily.activeSpeakerId && (
-                      <div
-                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-emerald-400"
-                        style={{ borderColor: T.bg }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className="text-xs font-medium truncate flex items-center gap-1"
-                      style={{ color: T.text }}
-                    >
-                      {p.user_name || "Participant"}
-                      {p.local && (
-                        <span style={{ color: T.muted }}> (You)</span>
-                      )}
-                      {p.handRaised && <span className="text-sm">✋</span>}
-                    </p>
-                    <p className="text-[10px]" style={{ color: T.muted }}>
-                      {pinnedId === p.session_id ? "Pinned" : p.local ? "You" : "Guest"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {!p.audio && <MicOff className="w-3 h-3 text-red-400" />}
-                    {!p.video && (
-                      <VideoOff className="w-3 h-3" style={{ color: T.muted }} />
-                    )}
-                    {pinnedId === p.session_id && (
-                      <Pin className="w-3 h-3 text-indigo-400" />
-                    )}
-                  </div>
+                      className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-emerald-400"
+                      style={{ borderColor: T.bg }}
+                    />
+                  )}
                 </div>
-              ))}
-            </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate flex items-center gap-1" style={{ color: T.text }}>
+                    {p.user_name || "Participant"}
+                    {p.local && <span style={{ color: T.muted }}> (You)</span>}
+                    {p.handRaised && <span className="text-sm">✋</span>}
+                  </p>
+                  <p className="text-[10px]" style={{ color: T.muted }}>
+                    {pinnedId === p.session_id ? "Pinned" : p.local ? "You" : "Guest"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {!p.audio && <MicOff className="w-3 h-3 text-red-400" />}
+                  {!p.video && <VideoOff className="w-3 h-3" style={{ color: T.muted }} />}
+                  {pinnedId === p.session_id && <Pin className="w-3 h-3 text-indigo-400" />}
+                </div>
+              </div>
+            ))}
           </div>
-        </>
-      )}
+        );
+
+        if (isMobile) {
+          return (
+            <MobileSheet
+              open={showPeople}
+              onClose={() => setShowPeople(false)}
+              title={`Participants (${daily.participantCount})`}
+            >
+              {list}
+            </MobileSheet>
+          );
+        }
+
+        return showPeople ? (
+          <>
+            <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setShowPeople(false)} />
+            <div
+              className="absolute z-50 top-12 right-3 w-64 rounded-xl overflow-hidden"
+              style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
+                <span className="text-sm font-semibold text-white">Participants ({daily.participantCount})</span>
+                <button
+                  onClick={() => setShowPeople(false)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center touch-manipulation"
+                  style={{ background: T.card }}
+                >
+                  <X className="w-4 h-4" style={{ color: T.muted }} />
+                </button>
+              </div>
+              {list}
+            </div>
+          </>
+        ) : null;
+      })()}
     </div>
   );
 }
