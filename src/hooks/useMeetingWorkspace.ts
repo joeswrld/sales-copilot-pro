@@ -91,6 +91,40 @@ export interface CoachingSuggestion {
   created_at: string;
 }
 
+export interface CoachingTip {
+  text: string;
+}
+
+export interface LiveAnalysis {
+  sentiment_score: number;
+  engagement_score: number;
+  talk_ratio_rep: number | null;
+  talk_ratio_prospect: number | null;
+  intent: string | null;
+  conversation_stage: string | null;
+  discovery_quality_score: number;
+  objective_progress: number;
+  objections_total: number;
+  objections_handled: number;
+  buying_signals: string[];
+  key_topics: string[];
+  questions: string[];
+  action_items: string[];
+  coaching_tips: string[];
+  meeting_score: number;
+  score_breakdown: {
+    sentiment: number;
+    engagement: number;
+    objection_handling: number;
+    discovery_quality: number;
+    talk_ratio_balance: number;
+    objective_progress: number;
+  };
+  analysis_version: number;
+  last_transcript_at: string | null;
+  updated_at: string;
+}
+
 export interface LinkedDeal {
   id: string;
   deal_name: string;
@@ -111,6 +145,7 @@ export interface MeetingWorkspace {
   hand_raises: HandRaise[];
   coaching_suggestions: CoachingSuggestion[];
   deal: LinkedDeal | null;
+  live_analysis: LiveAnalysis | null;
 }
 
 const EMPTY_WORKSPACE: MeetingWorkspace = {
@@ -122,6 +157,7 @@ const EMPTY_WORKSPACE: MeetingWorkspace = {
   hand_raises: [],
   coaching_suggestions: [],
   deal: null,
+  live_analysis: null,
 };
 
 export function useMeetingWorkspace(callId: string | null) {
@@ -140,7 +176,10 @@ export function useMeetingWorkspace(callId: string | null) {
       return (data ?? EMPTY_WORKSPACE) as MeetingWorkspace;
     },
     enabled: !!callId && !!user,
-    staleTime: 4_000,
+    // Live AI Analysis / Coaching / Meeting Score need to feel real-time —
+    // shorter staleTime than the rest of the workspace bundle, but realtime
+    // invalidation below is what actually drives freshness during a call.
+    staleTime: 2_000,
   });
 
   // ── Realtime: any change on the meeting tables refreshes the bundle ──────
@@ -154,6 +193,7 @@ export function useMeetingWorkspace(callId: string | null) {
       "meeting_engagement",
       "meeting_hand_raises",
       "ai_coaching_suggestions",
+      "meeting_live_analysis",
     ];
     const channel = supabase.channel(`meeting-workspace-${callId}`);
     tables.forEach((table) => {
