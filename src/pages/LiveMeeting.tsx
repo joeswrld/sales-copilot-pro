@@ -35,8 +35,9 @@ import {
   TrendingUp, TrendingDown, Minus, BarChart2,
   ArrowUpRight, CheckCircle2,
   PanelLeft, PanelRight, RefreshCw,
-  Maximize2, LayoutGrid, Pin, PinOff,
+  Maximize2, Minimize2, LayoutGrid, Pin, PinOff,
   Volume2, VolumeX, MonitorOff, MoreHorizontal,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
@@ -368,6 +369,242 @@ const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, 
     )}
   </button>
 ));
+
+// ─── Presenting indicator ─────────────────────────────────────────────────────
+const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
+  isSelfPresenting: boolean;
+  presenterName: string | null;
+  onStop: () => void;
+}) => {
+  if (!isSelfPresenting && !presenterName) return null;
+  return (
+    <div
+      className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full"
+      style={{
+        top: "max(10px, env(safe-area-inset-top))",
+        background: "rgba(79,70,229,0.94)",
+        backdropFilter: "blur(14px)",
+        boxShadow: "0 6px 20px rgba(79,70,229,0.4)",
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" style={{ animation: "soundwave 1.1s ease-in-out infinite alternate" }} />
+      <span className="text-[11px] font-semibold text-white whitespace-nowrap">
+        {isSelfPresenting ? "You're presenting" : `${presenterName} is presenting`}
+      </span>
+      {isSelfPresenting && (
+        <button
+          onClick={onStop}
+          className="flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full text-[10px] font-bold text-white touch-manipulation min-h-[28px]"
+          style={{ background: "rgba(0,0,0,0.25)" }}
+        >
+          <MonitorOff className="w-3 h-3" /> Stop
+        </button>
+      )}
+    </div>
+  );
+});
+
+// ─── Draggable / resizable / expandable self-view (PiP) ────────────────────────
+const PIP_SIZES = { sm: { w: 84, h: 112 }, md: { w: 114, h: 152 } } as const;
+
+const DraggablePiP = memo(({
+  participant, containerRef, onExpand, onSwitchCamera, fit = "cover",
+}: {
+  participant: DailyParticipant;
+  containerRef: React.RefObject<HTMLDivElement>;
+  onExpand: () => void;
+  onSwitchCamera: () => void;
+  fit?: "cover" | "contain";
+}) => {
+  const [size, setSize] = useState<"sm" | "md">("md");
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const draggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number; origX: number; origY: number } | null>(null);
+  const dims = PIP_SIZES[size];
+
+  const clamp = useCallback((x: number, y: number) => {
+    const c = containerRef.current;
+    const pad = 10;
+    if (!c) return { x: Math.max(pad, x), y: Math.max(pad, y) };
+    const b = c.getBoundingClientRect();
+    const maxX = Math.max(pad, b.width - dims.w - pad);
+    const maxY = Math.max(pad, b.height - dims.h - pad);
+    return { x: Math.min(Math.max(pad, x), maxX), y: Math.min(Math.max(pad, y), maxY) };
+  }, [containerRef, dims.w, dims.h]);
+
+  // Initial resting spot: top-right, below the presenting banner / safe area.
+  useEffect(() => {
+    if (pos) return;
+    const c = containerRef.current;
+    if (!c) return;
+    const b = c.getBoundingClientRect();
+    setPos(clamp(b.width - dims.w - 12, 52));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the PiP on-screen if the viewport (or size) changes.
+  useEffect(() => {
+    if (!pos) return;
+    setPos((p) => (p ? clamp(p.x, p.y) : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dims.w, dims.h]);
+
+  useEffect(() => {
+    const onResize = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clamp]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, origX: pos?.x ?? 0, origY: pos?.y ?? 0 };
+    draggingRef.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const start = dragStartRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (!draggingRef.current && Math.hypot(dx, dy) < 5) return;
+    draggingRef.current = true;
+    setPos(clamp(start.origX + dx, start.origY + dy));
+  };
+  const onPointerUp = () => {
+    const wasDragging = draggingRef.current;
+    dragStartRef.current = null;
+    draggingRef.current = false;
+    if (!wasDragging || !pos || !containerRef.current) return;
+    // Snap to nearest side, like a native PiP window.
+    const b = containerRef.current.getBoundingClientRect();
+    const snappedX = pos.x + dims.w / 2 < b.width / 2 ? 10 : b.width - dims.w - 10;
+    setPos(clamp(snappedX, pos.y));
+  };
+
+  if (!pos) return null;
+
+  return (
+    <div
+      role="group"
+      aria-label={participant.local ? "Your video preview, drag to reposition" : `${participant.user_name}'s video`}
+      className="absolute z-20 rounded-2xl overflow-hidden touch-none select-none"
+      style={{
+        width: dims.w, height: dims.h,
+        left: pos.x, top: pos.y,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+        border: "1.5px solid rgba(255,255,255,0.16)",
+        transition: draggingRef.current ? "none" : "left 0.22s cubic-bezier(.32,.72,0,1), top 0.22s cubic-bezier(.32,.72,0,1), width 0.18s ease, height 0.18s ease",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <VideoTile participant={participant} activeSpeakerId={null} className="w-full h-full" fit={fit} />
+
+      <div className="absolute top-1 right-1 flex items-center gap-1">
+        {!participant.screen && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSwitchCamera(); }}
+            aria-label="Switch camera"
+            className="w-6 h-6 rounded-lg flex items-center justify-center touch-manipulation"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+          >
+            <SwitchCamera className="w-3 h-3 text-white" />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onExpand(); }}
+          aria-label="Expand to full screen"
+          className="w-6 h-6 rounded-lg flex items-center justify-center touch-manipulation"
+          style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+        >
+          <Maximize2 className="w-3 h-3 text-white" />
+        </button>
+      </div>
+
+      <button
+        onClick={(e) => { e.stopPropagation(); setSize((s) => (s === "sm" ? "md" : "sm")); }}
+        aria-label={size === "sm" ? "Enlarge preview" : "Shrink preview"}
+        className="absolute bottom-1 left-1 w-5 h-5 rounded-md flex items-center justify-center touch-manipulation"
+        style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+      >
+        <span
+          className="block rounded-[2px] border border-white/80"
+          style={{ width: size === "sm" ? 7 : 9, height: size === "sm" ? 7 : 9 }}
+        />
+      </button>
+    </div>
+  );
+});
+
+// ─── Mobile video stage: full-bleed main tile + floating PiP self-view ─────────
+// Used instead of VideoGrid on mobile once 2+ participants are present — for
+// 0/1 participants VideoGrid's existing waiting/solo states already cover it.
+const MobileVideoStage = memo(({
+  participants, activeSpeakerId, pinnedId, onPin, onSwitchCamera, onStopShare,
+}: {
+  participants: DailyParticipant[];
+  activeSpeakerId: string | null;
+  pinnedId: string | null;
+  onPin: (id: string | null) => void;
+  onSwitchCamera: () => void;
+  onStopShare: () => void;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const local = participants.find((p) => p.local) ?? null;
+  const remotePresenter = participants.find((p) => p.screen && !p.local) ?? null;
+  const selfPresenting = !!local?.screen;
+
+  const mainParticipant =
+    remotePresenter
+    ?? (pinnedId && participants.find((p) => p.session_id === pinnedId))
+    ?? (activeSpeakerId && participants.find((p) => p.session_id === activeSpeakerId && !p.local))
+    ?? participants.find((p) => !p.local)
+    ?? local;
+
+  const pipParticipant = local && mainParticipant?.session_id !== local.session_id ? local : null;
+
+  return (
+    <div ref={containerRef} className="relative w-full h-full rounded-2xl overflow-hidden">
+      {mainParticipant && (
+        <VideoTile
+          participant={mainParticipant}
+          isMain
+          activeSpeakerId={activeSpeakerId}
+          className="w-full h-full"
+          fit={mainParticipant.screen ? "contain" : "cover"}
+        />
+      )}
+
+      <PresentingBanner
+        isSelfPresenting={selfPresenting}
+        presenterName={remotePresenter && !selfPresenting ? (remotePresenter.user_name?.replace(/\s*\(You\)\s*$/i, "").trim() ?? "Someone") : null}
+        onStop={onStopShare}
+      />
+
+      {mainParticipant?.local && (
+        <button
+          onClick={() => onPin(null)}
+          aria-label="Back to call view"
+          className="absolute z-30 left-2 w-8 h-8 rounded-lg flex items-center justify-center touch-manipulation"
+          style={{ top: "max(10px, env(safe-area-inset-top))", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+        >
+          <Minimize2 className="w-4 h-4 text-white" />
+        </button>
+      )}
+
+      {pipParticipant && (
+        <DraggablePiP
+          participant={pipParticipant}
+          containerRef={containerRef}
+          onExpand={() => onPin(pipParticipant.session_id)}
+          onSwitchCamera={onSwitchCamera}
+          fit={pipParticipant.screen ? "contain" : "cover"}
+        />
+      )}
+    </div>
+  );
+});
 
 // ─── Guest approval banner ──────────────────────────────────────────────────────
 const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
