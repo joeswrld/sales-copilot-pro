@@ -1162,43 +1162,92 @@ const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callI
   );
 });
 
-// ─── Mobile bottom sheet ────────────────────────────────────────────────────────
-const MobileSheet = memo(({ open, onClose, title, children }: any) => (
-  <>
-    {open && (
+// ─── Mobile bottom sheet — real swipe-up / swipe-down-to-dismiss gesture ────────
+const MobileSheet = memo(({ open, onClose, title, children }: any) => {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [dragY, setDragY] = useState(0);
+  const dragging = useRef(false);
+  const start = useRef<{ y: number } | null>(null);
+
+  useEffect(() => { if (open) setDragY(0); }, [open]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const scroller = sheetRef.current?.querySelector("[data-sheet-scroll]") as HTMLElement | null;
+    const fromHandle = (e.target as HTMLElement).closest("[data-sheet-handle]");
+    if (!fromHandle && scroller && scroller.scrollTop > 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    start.current = { y: e.clientY };
+    dragging.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!start.current) return;
+    const dy = e.clientY - start.current.y;
+    if (dy <= 0) return;
+    dragging.current = true;
+    setDragY(dy);
+  };
+  const onPointerUp = () => {
+    if (!start.current) return;
+    const wasDragging = dragging.current;
+    start.current = null;
+    dragging.current = false;
+    if (wasDragging && dragY > 110) onClose();
+    setDragY(0);
+  };
+
+  return (
+    <>
       <div
-        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+        className={cn(
+          "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300",
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+        )}
         onClick={onClose}
+        aria-hidden="true"
       />
-    )}
-    <div
-      className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl flex flex-col md:hidden",
-        "transition-transform duration-300 ease-out",
-      )}
-      style={{
-        background: T.panel,
-        border: `1px solid ${T.border}`,
-        maxHeight: "82dvh",
-        transform: open ? "translateY(0)" : "translateY(100%)",
-      }}
-    >
-      {/* drag handle */}
-      <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b shrink-0" style={{ borderColor: T.border }}>
-        <div className="w-10 h-1 rounded-full absolute top-2 left-1/2 -translate-x-1/2" style={{ background: T.subtle }} />
-        <span className="text-sm font-semibold" style={{ color: T.text }}>{title}</span>
-        <button
-          onClick={onClose}
-          className="w-8 h-8 rounded-lg flex items-center justify-center touch-manipulation"
-          style={{ background: T.card }}
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl flex flex-col md:hidden touch-none"
+        style={{
+          background: T.panel,
+          backdropFilter: "blur(24px)",
+          border: `1px solid ${T.border}`,
+          boxShadow: "0 -12px 40px rgba(0,0,0,0.45)",
+          maxHeight: "82dvh",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          transform: open ? `translateY(${dragY}px)` : "translateY(100%)",
+          transition: dragging.current ? "none" : "transform 0.32s cubic-bezier(.32,.72,0,1)",
+          opacity: open ? Math.max(1 - dragY / 400, 0.4) : 1,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <div
+          data-sheet-handle
+          className="relative flex items-center justify-between px-4 pt-5 pb-3 border-b shrink-0 cursor-grab active:cursor-grabbing"
+          style={{ borderColor: T.border }}
         >
-          <X className="w-4 h-4" style={{ color: T.muted }} />
-        </button>
+          <div className="w-10 h-1 rounded-full absolute top-2 left-1/2 -translate-x-1/2" style={{ background: T.subtle }} />
+          <span className="text-sm font-semibold" style={{ color: T.text }}>{title}</span>
+          <button
+            onClick={onClose}
+            aria-label={`Close ${title}`}
+            className="w-8 h-8 rounded-lg flex items-center justify-center touch-manipulation"
+            style={{ background: T.card }}
+          >
+            <X className="w-4 h-4" style={{ color: T.muted }} />
+          </button>
+        </div>
+        <div data-sheet-scroll className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">{children}</div>
       </div>
-      <div className="flex-1 overflow-y-auto overscroll-contain">{children}</div>
-    </div>
-  </>
-));
+    </>
+  );
+});
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 export default function LiveMeeting() {
