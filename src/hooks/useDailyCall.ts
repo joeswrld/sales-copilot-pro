@@ -180,15 +180,64 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-// Screen sharing needs getDisplayMedia. Desktop Chrome/Edge/Firefox/Safari all
-// have it; Android Chrome has it behind a flag-free implementation on recent
-// versions; iOS Safari (all browsers on iOS are WebKit under the hood, so this
-// covers iOS Chrome too) does not expose it at all as of this writing. Rather
-// than let startScreenShare() throw a confusing SDK/permission error on those
-// browsers, callers can check this up front and show a clear explanation.
+// ─── Platform detection ─────────────────────────────────────────────────────
+// Shared by screen-share support checks and noise-cancellation gating below.
+function detectPlatform(): { isIOS: boolean; isAndroid: boolean; isMobile: boolean } {
+  if (typeof navigator === "undefined") return { isIOS: false, isAndroid: false, isMobile: false };
+  const ua = navigator.userAgent || "";
+  // iPadOS 13+ identifies as "Macintosh" in the UA string but exposes multi-touch,
+  // which real Macs don't — this is the standard way to distinguish the two.
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
+  const isMobile = isIOS || isAndroid || /Mobile/i.test(ua);
+  return { isIOS, isAndroid, isMobile };
+}
+
+// FIX: getDisplayMedia() (the WebRTC Screen Capture API Daily's startScreenShare()
+// relies on for browsers) is a desktop-only capability. Per Chromium's own
+// engineering docs, it is explicitly not shipped on Android or Android WebView,
+// and WebKit — the engine behind every iOS browser, including Chrome-on-iOS —
+// has never exposed it to websites either (iOS's screen-recording API,
+// ReplayKit, is only reachable from native/App-Store apps via a broadcast
+// extension, not from a web page). None of that is a bug we can work around in
+// JS; it's a real platform limitation. What we *can* fix is telling the truth
+// about it — the previous message claimed "Chrome on Android" works, which is
+// incorrect and just confused people on exactly the devices where this matters
+// most. This still does real feature detection first (so if a browser adds
+// support later, or an org-managed browser enables it, we pick that up
+// automatically) and only falls back to a platform explanation when the API
+// is genuinely absent.
 function isScreenShareSupported(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  return getScreenShareUnavailableReason() === null;
+}
+
+type ScreenShareUnavailableReason = "insecure-context" | "ios" | "android" | "unsupported" | null;
+
+function getScreenShareUnavailableReason(): ScreenShareUnavailableReason {
+  if (typeof navigator === "undefined") return "unsupported";
+  // getDisplayMedia is only exposed in secure contexts. On plain http:// (other
+  // than localhost) navigator.mediaDevices itself can be undefined, which would
+  // otherwise look identical to "browser doesn't support this" — worth calling
+  // out separately since it's fixable by serving over HTTPS.
+  if (typeof window !== "undefined" && window.isSecureContext === false) return "insecure-context";
+  if (typeof navigator.mediaDevices?.getDisplayMedia === "function") return null;
+  const { isIOS, isAndroid } = detectPlatform();
+  if (isIOS) return "ios";
+  if (isAndroid) return "android";
+  return "unsupported";
+}
+
+function screenShareUnavailableMessage(reason: ScreenShareUnavailableReason): string {
+  switch (reason) {
+    case "insecure-context":
+      return "Screen sharing requires a secure connection. This page isn't being served over HTTPS.";
+    case "ios":
+      return "Screen sharing from a website isn't available on iPhone or iPad — every iOS browser (Safari, Chrome, etc.) runs on Apple's WebKit engine, which doesn't expose screen capture to websites. You can still watch others share here; to share your own screen, join from a desktop browser (Chrome, Edge, Firefox, or Safari).";
+    case "android":
+      return "This browser doesn't support sharing your screen from a website. You can still watch others share here; to share your own screen, join from a desktop browser (Chrome, Edge, or Firefox), or check for a Chrome update on this device.";
+    default:
+      return "Screen sharing isn't supported in this browser. Try the latest Chrome, Edge, Firefox, or Safari on a desktop computer.";
+  }
 }
 
 function networkScoreToQuality(score: number): CallQuality {
@@ -535,6 +584,33 @@ export function useDailyCall({
       setIsRecording(false);
       onRecordingStopped?.();
       toast.info("Recording stopped — processing...");
+    });
+
+    // FIX: previously isScreenSharing was only ever derived indirectly, from
+    // the local participant's `.screen` flag inside "joined-meeting" and
+    // "participant-updated" snapshots. That works most of the time, but these
+    // are Daily's dedicated, purpose-built events for this exact transition —
+    // using them directly is both more reliable (no dependency on a snapshot
+    // happening to include the local participant at the right moment) and
+    // lets us clear the start-in-progress guard and give real user feedback
+    // for all three outcomes: started, stopped, and canceled-by-the-user.
+    callObj.on("local-screen-share-started", () => {
+      screenShareBusyRef.current = false;
+      setIsScreenSharing(true);
+      toast.success("You're sharing your screen");
+    });
+
+    callObj.on("local-screen-share-stopped", () => {
+      screenShareBusyRef.current = false;
+      setIsScreenSharing(false);
+    });
+
+    callObj.on("local-screen-share-canceled", () => {
+      // Fires when the user dismisses the browser's share picker without
+      // choosing anything — distinct from a stop after sharing was live.
+      screenShareBusyRef.current = false;
+      setIsScreenSharing(false);
+      toast.info("Screen sharing was canceled.");
     });
 
     callObj.on("network-quality-change", (event: any) => {
@@ -938,21 +1014,42 @@ export function useDailyCall({
   }, []);
 
   // ── Screen share ───────────────────────────────────────────────────────────
+  // FIX: `captureMethod: "user-choice"` (used previously) isn't a real
+  // startScreenShare() option — it doesn't exist in Daily's current API, so it
+  // was silently ignored and none of the constraints below were ever actually
+  // applied. The real, documented option is `displayMediaOptions`, passed
+  // straight through to the browser's getDisplayMedia() call. Explicitly
+  // setting it here (rather than relying on Daily's defaults) is what actually
+  // gets us: the option to share a tab/window/whole screen, system audio where
+  // the browser supports it, and the "share this tab instead" switcher.
+  const screenShareBusyRef = useRef(false);
+
   const startScreenShare = useCallback(async () => {
     if (!_activeCallObject) {
       toast.error("Not connected to the meeting yet.");
       return;
     }
-    if (!isScreenShareSupported()) {
-      toast.error(
-        "Screen sharing isn't supported in this browser. Try Chrome, Edge, or Firefox on desktop, or Chrome on Android.",
-        { duration: 6000 },
-      );
+    // Guard against double-taps starting two overlapping getDisplayMedia()
+    // prompts, which is where "switch between camera and screen share without
+    // leaving the meeting" tends to break in practice.
+    if (screenShareBusyRef.current) return;
+
+    const reason = getScreenShareUnavailableReason();
+    if (reason) {
+      toast.error(screenShareUnavailableMessage(reason), { duration: 7000 });
       return;
     }
+
+    screenShareBusyRef.current = true;
     try {
       await _activeCallObject.startScreenShare({
-        captureMethod: "user-choice",
+        displayMediaOptions: {
+          video: true,
+          audio: true,               // offer to include tab/system audio where the browser supports it
+          selfBrowserSurface: "exclude", // avoid the "hall of mirrors" of sharing this same tab
+          surfaceSwitching: "include",   // let the user switch which tab/window is shared mid-share
+          systemAudio: "include",
+        },
         screenVideoSendSettings: {
           maxQuality: "medium",
           encodings: {
@@ -961,15 +1058,32 @@ export function useDailyCall({
           },
         },
       });
+      // Confirmation (success/cancel toasts) happens in the
+      // local-screen-share-started/-canceled handlers below — Daily has no
+      // way to tell us synchronously whether the user actually picked
+      // something, only whether the *call* to start it was rejected outright.
     } catch (err: any) {
       console.error("[Daily] Screen share failed:", extractDailyError(err), err);
-      if (err?.name === "NotAllowedError" || err?.errorMsg?.includes("Permission")) {
-        toast.info("Screen sharing was cancelled.");
+      screenShareBusyRef.current = false;
+      if (err?.name === "NotAllowedError") {
+        // Covers both "user dismissed the picker" and "OS/browser permission
+        // denied" — the browser doesn't distinguish these for us. Only the
+        // second case needs the extra hint, so mention it without asserting
+        // it's definitely what happened.
+        toast.info(
+          "Screen sharing didn't start. If you dismissed the picker, just try again — if it keeps happening, check your browser's or OS's screen-recording permission for this site.",
+          { duration: 7000 },
+        );
         return;
       }
+      // One retry with minimal constraints — some browsers reject specific
+      // constraint combinations (e.g. systemAudio) that aren't the reason
+      // sharing itself is unsupported.
       try {
-        await _activeCallObject.startScreenShare({ captureMethod: "user-choice" });
+        screenShareBusyRef.current = true;
+        await _activeCallObject.startScreenShare({ displayMediaOptions: { video: true, audio: true } });
       } catch (err2: any) {
+        screenShareBusyRef.current = false;
         const msg = extractDailyError(err2);
         console.error("[Daily] Screen share retry failed:", msg, err2);
         toast.error(
@@ -1055,6 +1169,11 @@ export function useDailyCall({
   return {
     callState, isConnected, isConnecting, isRecording, isScreenSharing,
     isScreenShareSupported: isScreenShareSupported(),
+    screenShareUnavailableReason: getScreenShareUnavailableReason(),
+    screenShareUnavailableMessage: (() => {
+      const reason = getScreenShareUnavailableReason();
+      return reason ? screenShareUnavailableMessage(reason) : null;
+    })(),
     networkQuality, activeSpeakerId, activeSpeaker, participantCount,
     elapsedSeconds, error, noiseCancellation,
     participants: Array.from(participants.values()),
