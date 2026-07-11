@@ -481,7 +481,18 @@ const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
 });
 
 // ─── Draggable / resizable / expandable self-view (PiP) ─────────────────────────
-const PIP_SIZES = { sm: { w: 84, h: 112 }, md: { w: 114, h: 152 } } as const;
+// Camera self-view: portrait-ish (matches a phone's front camera). Enlarged
+// from the original { sm: 84x112, md: 114x152 } — that was too small to
+// actually see yourself clearly. Aspect ratio (3:4) kept, just scaled up.
+const CAM_PIP_SIZES = { sm: { w: 132, h: 176 }, md: { w: 176, h: 235 } } as const;
+
+// FIX: while you're screen-sharing, this same PiP automatically switches to
+// showing your own screen-share preview instead of your camera (see
+// VideoTile's isScreenShare logic) — but it was still being boxed into the
+// small *portrait* camera size above, which both cropped/shrank a widescreen
+// desktop capture and made any on-screen text unreadable. Screen content
+// gets its own, much bigger, landscape (16:9) box instead.
+const SCREEN_PIP_SIZES = { sm: { w: 220, h: 124 }, md: { w: 300, h: 169 } } as const;
 
 const DraggablePiP = memo(({
   participant, containerRef, onExpand, onSwitchCamera, fit = "cover",
@@ -496,7 +507,11 @@ const DraggablePiP = memo(({
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number; origX: number; origY: number } | null>(null);
-  const dims = PIP_SIZES[size];
+  // Screen-share previews get the bigger landscape box; camera previews keep
+  // the portrait one. `participant.screen` flips automatically the instant
+  // this participant starts/stops sharing, so the box resizes (and repositions
+  // via the effect below) right along with it — no separate prop needed.
+  const dims = participant.screen ? SCREEN_PIP_SIZES[size] : CAM_PIP_SIZES[size];
 
   const clamp = useCallback((x: number, y: number) => {
     const c = containerRef.current;
