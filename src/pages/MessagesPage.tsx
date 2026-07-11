@@ -270,6 +270,12 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
   const [hovered, setHovered] = useState(false);
   const icon = ch.type === "deal" ? "◈" : ch.type === "dm" ? "●" : "#";
   const iconColor = ch.type === "deal" ? getStage(ch.deal_stage).color : ch.type === "dm" ? "#a78bfa" : "#60a5fa";
+  // deal_health now comes populated from get_deal_channels_v2 (was previously
+  // hardcoded NULL server-side) — surface it as a quick-glance health dot.
+  const healthColor = ch.deal_health == null ? null
+    : ch.deal_health >= 70 ? "#22c55e"
+    : ch.deal_health >= 40 ? "#eab308"
+    : "#ef4444";
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", textAlign: "left", background: isActive ? "rgba(14,245,212,.09)" : hovered ? "rgba(255,255,255,.04)" : "transparent", borderLeft: `2px solid ${isActive ? "#0ef5d4" : "transparent"}`, cursor: "pointer", transition: "all .1s" }}>
       {ch.type === "dm" ? (
@@ -280,6 +286,12 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#f0f6fc" : "rgba(255,255,255,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Geist',system-ui,sans-serif" }}>{ch.name}</span>
+          {healthColor && (
+            <span
+              title={`Deal health: ${ch.deal_health}/100`}
+              style={{ width: 6, height: 6, borderRadius: 999, background: healthColor, flexShrink: 0 }}
+            />
+          )}
           {ch.last_msg_at && <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)", flexShrink: 0 }}>{fmtTime(ch.last_msg_at)}</span>}
         </div>
         {ch.last_msg && <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{ch.last_msg.length > 40 ? ch.last_msg.slice(0, 40) + "…" : ch.last_msg}</span>}
