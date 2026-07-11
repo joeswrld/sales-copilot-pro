@@ -820,6 +820,12 @@ export default function GuestJoin() {
   // transcribe-guest-stream resolves call_id server-side from this token, so
   // this page never needs to know its own call_id.
   const [guestAuthToken, setGuestAuthToken] = useState<string | null>(null);
+  // FIX: the call's real, DB-backed start_time (returned by
+  // guest-request-status as `call_start_time` once admitted). Anchoring the
+  // timer to this instead of this tab's own join instant is what keeps the
+  // guest's timer in sync with the host's — see sharedStartTime doc comment
+  // in useDailyCall.ts.
+  const [callStartTime, setCallStartTime] = useState<string | null>(null);
   const [callMicStream, setCallMicStream] = useState<MediaStream | null>(null);
   const health = useMeetingHealth(null, callMicStream ?? localStream);
   const guestAudio = useGuestAudioStreaming({
@@ -905,6 +911,9 @@ export default function GuestJoin() {
     userName: guestName.trim() || "Guest",
     startWithAudioOff: !isAudioOn,
     startWithVideoOff: !isVideoOn,
+    // FIX: anchors this guest's timer to the same wall-clock start_time the
+    // host's timer uses, instead of the moment this guest happened to join.
+    sharedStartTime: callStartTime,
     onJoined: () => { setStep("admitted"); setReconnectCount(0); },
     onNetworkQualityChange: (q) => health.updateDailyNetworkQuality(q),
     onLeft: () => {
@@ -1033,6 +1042,8 @@ export default function GuestJoin() {
 
         if (data?.status === "admitted") {
           clearInterval(interval);
+
+          if (data.call_start_time) setCallStartTime(data.call_start_time);
 
           const displayName = guestName.trim() || "Guest";
           let dailyToken: string | null = null;
