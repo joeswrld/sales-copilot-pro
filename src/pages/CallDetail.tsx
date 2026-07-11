@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallDetail, useUpdateCall, useGenerateCallSummary } from "@/hooks/useCalls";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Briefcase } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -99,6 +102,25 @@ export default function CallDetail() {
   const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
   const generateSummary = useGenerateCallSummary();
+
+  // The call is already linked to a deal (calls.deal_id) the moment it's
+  // created — this just surfaces that link on the page. Re-fetches whenever
+  // call.data.deal_id changes, which happens automatically because
+  // useCallDetail already keeps `calls` in sync via Realtime.
+  const dealId = call.data?.deal_id ?? null;
+  const { data: linkedDeal } = useQuery({
+    queryKey: ["call-linked-deal", dealId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("deals")
+        .select("id, name, company, stage, deal_health_score")
+        .eq("id", dealId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!dealId,
+  });
 
   const {
     action,
@@ -233,6 +255,29 @@ export default function CallDetail() {
           </div>
           <Badge className={statusColor(callData.status)}>{callData.status || "Unknown"}</Badge>
         </div>
+
+        {/* ── Linked deal banner ── */}
+        {linkedDeal ? (
+          <Link
+            to={`/dashboard/deals/${linkedDeal.id}`}
+            className="flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-2.5 text-sm hover:bg-primary/10 transition-colors"
+          >
+            <Briefcase className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-muted-foreground">Linked to deal:</span>
+            <span className="font-medium">{linkedDeal.name}</span>
+            {linkedDeal.company && (
+              <span className="text-muted-foreground">— {linkedDeal.company}</span>
+            )}
+            <ChevronRight className="w-3.5 h-3.5 ml-auto text-muted-foreground shrink-0" />
+          </Link>
+        ) : dealId === null ? (
+          <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3.5 py-2.5 text-sm">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-muted-foreground">
+              This call isn't linked to a deal, so its insights won't sync anywhere else.
+            </span>
+          </div>
+        ) : null}
 
         {/* ── Processing banner ── */}
         {callData.status === "completed" && isProcessing && (
