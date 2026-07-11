@@ -224,8 +224,17 @@ export function useLiveCall(options?: {
       scheduled_time?: string;
       duration_minutes?: number;
       description?: string;
+      /** Deal this meeting belongs to. Required — a meeting cannot start
+       * without being linked to a deal first. Pass explicit `null` only
+       * for the rare non-sales flows that intentionally skip deal linking
+       * (e.g. internal test calls); the UI should otherwise always supply
+       * a real deal id before calling startCall. */
+      deal_id: string | null;
     }) => {
       if (!user) throw new Error("Not authenticated");
+      if (input.deal_id === undefined) {
+        throw new Error("DEAL_REQUIRED");
+      }
 
       const callsLimit    = effectivePlan?.callsLimit ?? 5;
       const workspaceId   = effectivePlan?.workspaceId ?? null;
@@ -275,20 +284,43 @@ export function useLiveCall(options?: {
         meeting_type: input.meeting_type ?? null,
         participants: input.participants ?? [],
         date: new Date().toISOString(),
+        // Linked at creation time, not guessed after the call ends.
+        deal_id: input.deal_id,
       } as any).select().single();
 
       if (error) throw error;
+
+      // Deal is the anchor for this meeting's whole workflow — seed the
+      // timeline immediately so Deal/Messages pages have something to show
+      // the instant the call exists, instead of waiting for call-end sync.
+      if (input.deal_id) {
+        await supabase.from("deal_timeline_events").insert({
+          deal_id: input.deal_id,
+          user_id: user.id,
+          event_type: "meeting_started",
+          title: `Meeting started — ${input.name || `${input.platform} Call`}`,
+          metadata: { call_id: data.id },
+          happened_at: new Date().toISOString(),
+        } as any).then(({ error: e }) => {
+          if (e) console.warn("deal_timeline_events insert (non-fatal):", e);
+        });
+      }
+
       return data;
     },
 
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["live-call"] });
       queryClient.invalidateQueries({ queryKey: ["calls"] });
       queryClient.invalidateQueries({ queryKey: ["meeting-usage"] });
+      if (data?.deal_id) {
+        queryClient.invalidateQueries({ queryKey: ["deal", data.deal_id] });
+        queryClient.invalidateQueries({ queryKey: ["deal-timeline", data.deal_id] });
+      }
       options?.onCallStarted?.();
     },
     onError: (err: any) => {
-      if (err.message !== "PLAN_LIMIT_REACHED") {
+      if (err.message !== "PLAN_LIMIT_REACHED" && err.message !== "DEAL_REQUIRED") {
         console.error("startCall error:", err);
       }
     },
