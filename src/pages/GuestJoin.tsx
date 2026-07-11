@@ -817,33 +817,58 @@ export default function GuestJoin() {
   const [reconnectCount, setReconnectCount] = useState(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Start camera preview immediately on mount — don't wait for user input
+  // Start camera preview immediately on mount — don't wait for user input.
+  // Pulled out into a standalone, re-callable function: previously this only
+  // ran once on mount, so if the guest denied the permission prompt (or a
+  // camera/mic was busy in another app) there was no way to recover — the
+  // Mic/Camera buttons below just flipped their own on/off label with no
+  // actual stream behind them, which is why they looked "unavailable"
+  // forever even after the guest fixed the underlying permission.
+  const requestMedia = useCallback(async () => {
+    setMediaError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      setLocalStream(stream);
+      setIsAudioOn(true);
+      setIsVideoOn(true);
+      return true;
+    } catch {
+      // Try audio only
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setLocalStream(stream);
+        setIsAudioOn(true);
+        setIsVideoOn(false);
+        setMediaError("Camera unavailable — audio only. Check your browser's camera permission.");
+        return true;
+      } catch {
+        // Neither camera nor mic could be acquired — surface this clearly and
+        // turn both toggles "off" so they reflect reality (nothing is live)
+        // instead of showing a misleading "on" state with no stream.
+        setLocalStream(null);
+        setIsAudioOn(false);
+        setIsVideoOn(false);
+        setMediaError("Camera & microphone unavailable. Check your browser's site permissions, then tap to retry.");
+        return false;
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
-        if (active) setLocalStream(stream);
-      } catch {
-        // Try audio only
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          if (active) {
-            setLocalStream(stream);
-            setIsVideoOn(false);
-            setMediaError("Camera unavailable — audio only");
-          }
-        } catch {
-          if (active) setMediaError("Microphone unavailable");
-        }
-      }
+      const result = await requestMedia();
+      if (!active) return;
+      // requestMedia already applied its own state; nothing further needed.
+      void result;
     })();
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cleanup local stream on unmount
@@ -1051,20 +1076,33 @@ export default function GuestJoin() {
   const handleToggleMic = useCallback(async () => {
     if (step === "admitted") {
       await daily.setAudioEnabled(!isAudioOn);
-    } else if (localStream) {
-      localStream.getAudioTracks().forEach((t) => { t.enabled = !isAudioOn; });
+      setIsAudioOn((v) => !v);
+      return;
     }
+    if (!localStream || localStream.getAudioTracks().length === 0) {
+      // No live mic track (denied/busy earlier) — tapping the button is the
+      // guest's retry gesture, so re-request permission instead of just
+      // toggling a label that has nothing behind it.
+      await requestMedia();
+      return;
+    }
+    localStream.getAudioTracks().forEach((t) => { t.enabled = !isAudioOn; });
     setIsAudioOn((v) => !v);
-  }, [step, daily, isAudioOn, localStream]);
+  }, [step, daily, isAudioOn, localStream, requestMedia]);
 
   const handleToggleCam = useCallback(async () => {
     if (step === "admitted") {
       await daily.setVideoEnabled(!isVideoOn);
-    } else if (localStream) {
-      localStream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOn; });
+      setIsVideoOn((v) => !v);
+      return;
     }
+    if (!localStream || localStream.getVideoTracks().length === 0) {
+      await requestMedia();
+      return;
+    }
+    localStream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOn; });
     setIsVideoOn((v) => !v);
-  }, [step, daily, isVideoOn, localStream]);
+  }, [step, daily, isVideoOn, localStream, requestMedia]);
 
   const handleScreenShare = useCallback(async () => {
     if (daily.isScreenSharing) {
@@ -1202,9 +1240,20 @@ export default function GuestJoin() {
 
             {/* Media error */}
             {mediaError && (
-              <p className="text-[11px] text-center" style={{ color: T.muted }}>
-                ⚠ {mediaError}
-              </p>
+              <div
+                className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
+                style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
+              >
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+                <p className="text-[11px] leading-snug" style={{ color: "rgba(255,255,255,0.65)" }}>
+                  {mediaError}
+                  {!localStream && (
+                    <span className="block mt-0.5 font-medium text-red-300">
+                      Tap Mic or Camera below to try again.
+                    </span>
+                  )}
+                </p>
+              </div>
             )}
 
             {/* Mic / Camera toggles */}
