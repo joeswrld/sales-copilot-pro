@@ -332,8 +332,14 @@ const VideoGrid = memo(
         </div>
       );
 
+    // FIX: previously this only ever followed a manual pin or the active
+    // speaker — someone starting a screen share had no effect on what showed
+    // in the main tile unless they also happened to be speaking or got
+    // pinned. A screen share should automatically become the focus the
+    // instant it starts (a manual pin still overrides it, same as before).
+    const screenSharer = participants.find((p) => p.screen);
     const spotlightId =
-      pinnedId ?? activeSpeakerId ?? participants[0]?.session_id;
+      pinnedId ?? screenSharer?.session_id ?? activeSpeakerId ?? participants[0]?.session_id;
     const spotlight =
       participants.find((p) => p.session_id === spotlightId) ?? participants[0];
     const strip = participants.filter((p) => p.session_id !== spotlight.session_id);
@@ -1580,15 +1586,21 @@ export default function GuestJoin() {
             <span className="text-[8px] font-medium hidden xs:block" style={{ color: T.muted }}>Flip</span>
           </button>
 
-          {/* Screen Share — now works for guests too */}
+          {/* Screen Share — now works for guests too. FIX: proactively dimmed
+              + tooltipped (not disabled outright — some browsers only reveal
+              the real answer once the user gesture actually happens) when
+              screen sharing is genuinely unavailable, with an accurate,
+              platform-specific reason instead of a generic message. */}
           <button
             onClick={handleScreenShare}
+            title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
               background: daily.isScreenSharing
                 ? "rgba(99,102,241,0.2)"
                 : "rgba(255,255,255,0.08)",
               border: `1px solid ${daily.isScreenSharing ? "rgba(99,102,241,0.4)" : T.border}`,
+              opacity: !daily.isScreenSharing && daily.screenShareUnavailableReason ? 0.45 : 1,
             }}
           >
             {daily.isScreenSharing ? (
