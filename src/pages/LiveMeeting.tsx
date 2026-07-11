@@ -460,7 +460,7 @@ const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
 });
 
 // ─── Draggable / resizable / expandable self-view (PiP) ────────────────────────
-const PIP_SIZES = { sm: { w: 84, h: 112 }, md: { w: 114, h: 152 } } as const;
+const PIP_SIZES = { sm: { w: 68, h: 90 }, md: { w: 96, h: 128 } } as const;
 
 const DraggablePiP = memo(({
   participant, containerRef, onExpand, onSwitchCamera, fit = "cover",
@@ -471,7 +471,7 @@ const DraggablePiP = memo(({
   onSwitchCamera: () => void;
   fit?: "cover" | "contain";
 }) => {
-  const [size, setSize] = useState<"sm" | "md">("md");
+  const [size, setSize] = useState<"sm" | "md">("sm");
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number; origX: number; origY: number } | null>(null);
@@ -1631,15 +1631,29 @@ export default function LiveMeeting() {
 
           {/* Center: video + controls */}
           <div className="flex-1 flex flex-col min-w-0 relative">
-            {/* Video */}
-            <div className="flex-1 p-1.5 sm:p-3 min-h-0">
-              <VideoGrid
-                participants={daily.participants} activeSpeakerId={daily.activeSpeakerId}
-                isConnecting={daily.isConnecting} isConnected={daily.isConnected}
-                error={daily.error} roomName={roomName} onRetry={handleRetryJoin}
-                pinnedId={pinnedId} onPin={setPinnedId}
-                layout={videoLayout} onLayoutChange={setVideoLayout}
-              />
+            {/* Video — full-bleed stage with a small, draggable, resizable,
+                expandable self-view once a second participant joins on
+                mobile (matches the reference design); desktop and the
+                single-participant/connecting/error states keep VideoGrid. */}
+            <div className="flex-1 p-1 sm:p-3 min-h-0">
+              {isMobile && daily.isConnected && !daily.error && daily.participants.length >= 2 ? (
+                <MobileVideoStage
+                  participants={daily.participants}
+                  activeSpeakerId={daily.activeSpeakerId}
+                  pinnedId={pinnedId}
+                  onPin={setPinnedId}
+                  onSwitchCamera={() => daily.switchCamera()}
+                  onStopShare={handleScreenShare}
+                />
+              ) : (
+                <VideoGrid
+                  participants={daily.participants} activeSpeakerId={daily.activeSpeakerId}
+                  isConnecting={daily.isConnecting} isConnected={daily.isConnected}
+                  error={daily.error} roomName={roomName} onRetry={handleRetryJoin}
+                  pinnedId={pinnedId} onPin={setPinnedId}
+                  layout={videoLayout} onLayoutChange={setVideoLayout}
+                />
+              )}
             </div>
 
             {/* AI status nudge — desktop */}
@@ -1672,8 +1686,7 @@ export default function LiveMeeting() {
               style={{ paddingBottom: isMobile ? "max(6px, env(safe-area-inset-bottom))" : undefined }}
             >
               {isMobile ? (
-                <div className="flex flex-col gap-2">
-                  {/* Primary pill — Mic / Cam / AI / Raise / Leave, mirrors the
+                <div className="flex flex-col gap-1.5">                  {/* Primary pill — Mic / Cam / AI / Raise / Leave, mirrors the
                       reference mobile design: five clear circular actions,
                       nothing competing for thumb reach. */}
                   <div
@@ -1711,7 +1724,7 @@ export default function LiveMeeting() {
                       Chat / Live Transcript / More, same set the reference
                       design surfaces beneath the primary bar. */}
                   <div
-                    className="flex items-center justify-between px-3 py-2 rounded-2xl"
+                    className="flex items-center justify-between px-3 py-1.5 rounded-2xl"
                     style={{ background: "rgba(13,15,24,0.7)", border: `1px solid ${T.border}` }}
                   >
                     <QuickAction
