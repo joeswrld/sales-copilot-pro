@@ -586,6 +586,9 @@ export default function LiveCall() {
     roomName: roomInfo?.room_name ?? null,
     meetingToken: roomInfo?.meeting_token ?? null,
     userName: "Host",
+    // FIX: keeps this page's timer consistent with /live/:id's — see the
+    // sharedStartTime doc comment in useDailyCall.ts.
+    sharedStartTime: (liveCall as any)?.start_time ?? null,
     onJoined: () => {
       setJoinState("connected");
       setHostJoined(true);
