@@ -301,12 +301,14 @@ function MeetingCreatedPopup({
 // ─── Schedule Meeting Modal ────────────────────────────────────────────────────
 
 function ScheduleModal({
-  prefillLink, prefillTitle, timezone, onSave, onClose,
+  prefillLink, prefillTitle, prefillDealId, deals, timezone, onSave, onClose,
 }: {
   prefillLink?: string;
   prefillTitle?: string;
+  prefillDealId?: string | null;
+  deals: { id: string; name: string; company?: string | null }[];
   timezone: string;
-  onSave: (params: { title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string }) => Promise<void>;
+  onSave: (params: { title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; deal_id: string }) => Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(prefillTitle || "");
@@ -314,15 +316,17 @@ function ScheduleModal({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [meetingType, setMeetingType] = useState("discovery");
+  const [dealId, setDealId] = useState<string>(prefillDealId || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     if (!title.trim()) { toast.error("Title is required"); return; }
     if (!date || !time) { toast.error("Date and time are required"); return; }
+    if (!dealId) { toast.error("Select a deal — every meeting has to be linked to one before it starts."); return; }
     setIsSaving(true);
     try {
       const dt = new Date(`${date}T${time}:00`);
-      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time: dt.toISOString(), meeting_type: meetingType, scheduled_timezone: timezone });
+      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time: dt.toISOString(), meeting_type: meetingType, scheduled_timezone: timezone, deal_id: dealId });
       toast.success("Meeting scheduled!");
       onClose();
     } catch (e: any) {
@@ -353,6 +357,32 @@ function ScheduleModal({
               <p className="font-semibold text-white text-sm">Schedule Meeting</p>
               <p className="text-xs text-white/40">Add to your Fixsense calendar</p>
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-white/50 font-medium mb-1.5 block flex items-center gap-1">
+              <Tag className="w-3 h-3" />Deal <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={dealId}
+              onChange={(e) => setDealId(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                border: dealId ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(239,68,68,0.4)",
+                colorScheme: "dark",
+              }}
+            >
+              <option value="">Select a deal…</option>
+              {deals.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}{d.company ? ` — ${d.company}` : ""}
+                </option>
+              ))}
+            </select>
+            {!dealId && (
+              <p className="text-[11px] text-red-400 mt-1">Required — a meeting can't be scheduled without a deal.</p>
+            )}
           </div>
 
           <div>
@@ -402,11 +432,11 @@ function ScheduleModal({
             </div>
           </div>
 
-          <button onClick={handleSave} disabled={isSaving}
+          <button onClick={handleSave} disabled={isSaving || !dealId}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
             style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
-            {isSaving ? "Scheduling…" : "Schedule Meeting"}
+            {isSaving ? "Scheduling…" : !dealId ? "Select a deal to continue" : "Schedule Meeting"}
           </button>
         </div>
       </div>
@@ -899,7 +929,7 @@ export default function LiveCall() {
   }, []);
 
   const handleScheduleSave = useCallback(async (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; deal_id: string;
   }) => {
     await createMeeting.mutateAsync({ ...params });
   }, [createMeeting]);
@@ -953,6 +983,8 @@ export default function LiveCall() {
         <ScheduleModal
           prefillLink={schedulePrefilledLink}
           prefillTitle={schedulePrefilledTitle}
+          prefillDealId={selectedDealId}
+          deals={deals ?? []}
           timezone={userTz}
           onSave={handleScheduleSave}
           onClose={() => setShowScheduleModal(false)}
