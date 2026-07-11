@@ -32,6 +32,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
 import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
 import { LiveCaptions, CaptionLine } from "@/components/LiveCaptions";
+import { useGuestTranscripts } from "@/hooks/useGuestTranscripts";
 import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { VideoTile } from "@/components/VideoTile";
