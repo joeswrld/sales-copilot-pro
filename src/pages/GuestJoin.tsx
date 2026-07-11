@@ -863,6 +863,43 @@ export default function GuestJoin() {
     }
   }, [liveSocket.status]); // eslint-disable-line
 
+  // ── Full transcript feed (host + guest lines), not just this tab's own
+  // mic — this was the actual gap: RLS blocks a guest's normal reads/
+  // postgres_changes on `transcripts` outright (see useGuestTranscripts.ts
+  // doc comment), so nothing from the host ever reached this page before.
+  // Only runs once the call has actually been admitted (guestAuthToken set)
+  // and stops when the component unmounts on leave/meeting-end — never on
+  // its own while the guest is still connected.
+  const { transcripts: fullTranscripts } = useGuestTranscripts({
+    callId: callStartTime ? guestAuthToken : null, // gate on "admitted & live", not just token presence
+    guestToken: guestAuthToken,
+    enabled: Boolean(guestAuthToken),
+  });
+
+  // Merge finalized full-transcript lines into the same caption map the
+  // live socket feeds, keyed by speaker name, so both this guest's own
+  // in-progress caption AND the host's (or another guest's) latest line are
+  // visible with correct speaker names — no separate UI surface needed.
+  useEffect(() => {
+    if (!fullTranscripts.length) return;
+    setCaptionLines((prev) => {
+      const next = new Map(prev);
+      for (const row of fullTranscripts) {
+        if (row.is_partial) continue; // only surface settled lines from the reconciliation feed
+        const existing = next.get(row.speaker_name);
+        if (!existing || row.timestamp >= new Date(existing.updatedAt).toISOString()) {
+          next.set(row.speaker_name, {
+            speaker: row.speaker_name,
+            text: row.text,
+            isFinal: true,
+            updatedAt: new Date(row.timestamp).getTime(),
+          });
+        }
+      }
+      return next;
+    });
+  }, [fullTranscripts]);
+
   // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
   // already self-heals brief transport blips internally, but once THAT is
   // exhausted the call drops to a full "error" state. The host page auto-
