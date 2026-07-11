@@ -336,12 +336,26 @@ export function useDailyCall({
   // ── Build call object options ──────────────────────────────────────────────
   // FIX: Use conditional spread so `token` key is entirely absent when falsy.
   // Daily.co rejects token: undefined/null — the key must not be present at all.
+  //
+  // FIX: previously this set `audioSource`/`videoSource` to `false` whenever the
+  // guest had toggled mic/camera off in the lobby before joining. Those two
+  // options don't mean "start muted" — they mean "never acquire this device
+  // for the lifetime of this call object at all". So once inside the meeting,
+  // tapping Mic/Camera to turn back on called setLocalAudio(true)/
+  // setLocalVideo(true), which has no underlying track to re-enable and
+  // silently no-ops. Devices must always be acquired (`audioSource`/
+  // `videoSource: true`); the *muted-at-start* behavior belongs to the
+  // separate `startAudioOff`/`startVideoOff` flags, which still create the
+  // track (so it can be turned back on later) but keep it off until the user
+  // (or code) explicitly enables it.
   function buildCallOpts(room: string, token?: string | null) {
     return {
       url: `https://fixsense.daily.co/${room}`,
       ...(token ? { token } : {}),
-      audioSource: !startWithAudioOff,
-      videoSource: !startWithVideoOff,
+      audioSource: true,
+      videoSource: true,
+      startAudioOff: startWithAudioOff,
+      startVideoOff: startWithVideoOff,
       subscribeToTracksAutomatically: true,
       dailyConfig: {
         useDevicePreferenceCookies: false,
