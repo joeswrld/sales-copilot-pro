@@ -1341,7 +1341,7 @@ export default function LiveMeeting() {
 
   const {
     liveCall, isLive, isLoading, transcripts: rawTranscripts,
-    objections, topics, endCall, markCallStarted, callId,
+    objections, topics, endCall, markCallStarted, markHostJoined, callId,
   } = useLiveCall({ onCallEnded: () => setStatus("available") });
 
   const roomName     = (liveCall as any)?.daily_room_name    ?? null;
@@ -1360,7 +1360,11 @@ export default function LiveMeeting() {
     // instant the host's own browser confirms it joined — makes this
     // reliable regardless of webhook delivery. Idempotent / safe to call
     // more than once (no-op once start_time is already set).
-    onJoined:  () => { setStatus("on_call"); health.recordReconnect(); if (callId) markCallStarted(callId); },
+    onJoined:  () => {
+      setStatus("on_call");
+      health.recordReconnect();
+      if (callId) { markCallStarted(callId); markHostJoined(callId); }
+    },
     onLeft:    () => {},
     onParticipantJoined: (p) => toast.success(`${p.user_name || "Someone"} joined`),
     onParticipantLeft:   () => toast.info("A participant left"),
