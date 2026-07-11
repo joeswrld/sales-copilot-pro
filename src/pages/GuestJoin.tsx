@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
+import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
+import { LiveCaptions, CaptionLine } from "@/components/LiveCaptions";
 import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { VideoTile } from "@/components/VideoTile";
@@ -833,6 +835,32 @@ export default function GuestJoin() {
     onTranscript: (text) => health.recordTranscriptReceived(text.split(/\s+/).length),
   });
   const guestTrackStartedRef = useRef(false);
+  const guestLocalTrackRef = useRef<MediaStreamTrack | null>(null);
+
+  // ── Live captions (sub-500ms) — same relay the host uses, resolved via
+  // guest_session_token instead of a Supabase JWT. Falls back to the
+  // existing chunked guestAudio pipeline if the socket can't connect.
+  const [captionLines, setCaptionLines] = useState<Map<string, CaptionLine>>(new Map());
+  const liveSocket = useLiveTranscriptionSocket({
+    callId: guestAuthToken ? "guest" : null, // any truthy value — resolved server-side from guestToken
+    role: "guest",
+    guestToken: guestAuthToken,
+    onCaption: (evt) => {
+      setCaptionLines((prev) => {
+        const next = new Map(prev);
+        next.set(guestName.trim() || "Guest", {
+          speaker: guestName.trim() || "Guest", text: evt.text, isFinal: evt.speechFinal, updatedAt: Date.now(),
+        });
+        return next;
+      });
+      health.recordTranscriptReceived(evt.text.split(/\s+/).length);
+    },
+  });
+  useEffect(() => {
+    if (liveSocket.status === "failed" && guestLocalTrackRef.current) {
+      guestAudio.startTrackRecording(guestLocalTrackRef.current);
+    }
+  }, [liveSocket.status]); // eslint-disable-line
 
   // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
   // already self-heals brief transport blips internally, but once THAT is
@@ -1000,7 +1028,8 @@ export default function GuestJoin() {
     const localP = daily.participants.find((p) => p.local);
     if (localP?.audioTrack) {
       guestTrackStartedRef.current = true;
-      guestAudio.startTrackRecording(localP.audioTrack);
+      guestLocalTrackRef.current = localP.audioTrack;
+      liveSocket.start(localP.audioTrack);
       setCallMicStream(new MediaStream([localP.audioTrack]));
     }
     // guestAudio omitted intentionally: it's a fresh object every render, and
@@ -1099,6 +1128,7 @@ export default function GuestJoin() {
 
   const handleLeave = useCallback(async () => {
     voluntaryLeaveRef.current = true;
+    liveSocket.stop();
     guestAudio.stopAll();
     // Best-effort: give the last few seconds of speech a short window to
     // upload before navigating away. Not required for correctness — the
@@ -1510,7 +1540,7 @@ export default function GuestJoin() {
 
       {/* Video — full-bleed stage with a draggable self-view on mobile once a
           second participant is present, matching the host's LiveMeeting page */}
-      <div className="flex-1 min-h-0 p-1 sm:p-3">
+      <div className="flex-1 min-h-0 p-1 sm:p-3 relative">
         {isMobile && !daily.isConnecting && !daily.error && daily.participants.length >= 2 ? (
           <MobileVideoStage
             participants={daily.participants}
@@ -1533,6 +1563,7 @@ export default function GuestJoin() {
             onLayoutChange={setVideoLayout}
           />
         )}
+        <LiveCaptions lines={Array.from(captionLines.values())} />
       </div>
 
       {/* Control bar */}
