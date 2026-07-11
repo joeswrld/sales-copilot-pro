@@ -761,10 +761,12 @@ function DealDetailPageInner() {
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Quick Actions</div>
                 {[
-                  { label: "Start a Call", icon: Phone, to: "/live" },
-                  { label: "View All Calls", icon: BarChart3, to: "/calls" },
-                ].map(({ label, to, icon: Icon }) => (
-                  <Link key={to} to={to} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 9, textDecoration: "none", color: "rgba(255,255,255,0.55)", fontSize: 12, marginBottom: 6 }}>
+                  // Deal id is passed through so LiveCall pre-selects this deal —
+                  // meetings started from a deal page are linked before they start.
+                  { key: "start-call", label: "Start a Call", icon: Phone, to: `/live?dealId=${id}` },
+                  { key: "view-calls", label: "View All Calls", icon: BarChart3, to: "/calls" },
+                ].map(({ key, label, to, icon: Icon }) => (
+                  <Link key={key} to={to} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 9, textDecoration: "none", color: "rgba(255,255,255,0.55)", fontSize: 12, marginBottom: 6 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Icon style={{ width: 12, height: 12 }} />{label}</span>
                     <ChevronRight style={{ width: 12, height: 12 }} />
                   </Link>
