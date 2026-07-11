@@ -99,6 +99,27 @@ export function useLiveCall(options?: {
     }
   };
 
+  // ── FIX: persist "host has actually joined" separately from room creation ──
+  // status='live' is set the instant the room is created (before anyone has
+  // joined), and start_time can be stamped by a guest joining first. Neither
+  // tells us whether *the host* has ever actually joined the video call for
+  // this session — which is exactly the signal needed to know whether
+  // returning to /live should silently reconnect the host into the meeting,
+  // or still show the "Create/Host Meeting" screen because the room was
+  // created but never actually joined. Idempotent via .is(...,null): first
+  // join wins, later rejoins during the same live call are no-ops.
+  const markHostJoined = async (id: string) => {
+    try {
+      await supabase
+        .from("calls")
+        .update({ host_joined_at: new Date().toISOString() })
+        .eq("id", id)
+        .is("host_joined_at", null);
+    } catch (e) {
+      console.warn("markHostJoined non-fatal:", e);
+    }
+  };
+
   // ── Transcripts / objections / topics ───────────────────────────────────
   const transcriptsQuery = useQuery({
     queryKey: ["live-transcripts", callId],
@@ -433,6 +454,12 @@ export function useLiveCall(options?: {
     startCall,
     endCall,
     markCallStarted,
+    markHostJoined,
+    // Has the host ever actually joined the Daily room for this live call
+    // (as opposed to merely having created it)? Drives auto-reconnect on
+    // /live: a value of `true` means it's safe to skip the Create/Host
+    // Meeting screen and restore the host straight into the meeting.
+    hostJoinedAt: (liveCallQuery.data as any)?.host_joined_at ?? null,
     callId,
   };
 }
