@@ -52,16 +52,22 @@ interface GuestAudioStreamingState {
 interface GuestAudioStreamingResult {
   startTrackRecording: (track: MediaStreamTrack) => void;
   stopAll: () => void;
+  flush: (maxWaitMs?: number) => Promise<void>;
   state: GuestAudioStreamingState;
 }
 
 // ─── Constants — mirrors useAudioStreaming.ts host-side tuning ───────────────
 const CHUNK_INTERVAL_MS  = 8_000;
-const MAX_QUEUE_SIZE     = 10;
-const STALE_THRESHOLD_MS = 60_000;
+// FIX: was 10 (~80s buffer). See useAudioStreaming.ts host-side comment —
+// same reasoning applies to the guest (prospect) side.
+const MAX_QUEUE_SIZE     = 150;
+// FIX: was 60s — a late transcript is still correct since it's ordered by
+// its real timestamp, not upload order.
+const STALE_THRESHOLD_MS = 10 * 60_000;
 const DRAIN_INTERVAL_MS  = 800;
 const BASE_BACKOFF_MS    = 1_500;
 const MAX_BACKOFF_MS     = 20_000;
+const BACKGROUND_DRAIN_GRACE_MS = 3 * 60_000;
 
 const SUPABASE_URL           = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -90,9 +96,11 @@ export function useGuestAudioStreaming(options: GuestAudioStreamingOptions): Gue
   // ── Enqueue ──────────────────────────────────────────────────────────────
   const enqueue = useCallback((job: ChunkJob) => {
     if (destroyedRef.current) return;
+    // See useAudioStreaming.ts host-side comment — drop the newest, not the
+    // oldest/next-to-send, to preserve chronological continuity.
     if (queueRef.current.length >= MAX_QUEUE_SIZE) {
-      queueRef.current.shift();
-      console.warn(`[GuestAudioStreaming] Queue full (${MAX_QUEUE_SIZE}) — dropped oldest chunk`);
+      queueRef.current.pop();
+      console.warn(`[GuestAudioStreaming] Queue full (${MAX_QUEUE_SIZE}) — dropped newest chunk`);
     }
     queueRef.current.push(job);
   }, []);
@@ -164,6 +172,19 @@ export function useGuestAudioStreaming(options: GuestAudioStreamingOptions): Gue
       return 'retry';
     }
   }, [onTranscript, onError, incrementChunks]);
+
+  // ── Flush ────────────────────────────────────────────────────────────────
+  const flush = useCallback((maxWaitMs = 8_000): Promise<void> => {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const check = () => {
+        if (queueRef.current.length === 0 && !isDrainingRef.current) { resolve(); return; }
+        if (Date.now() - startedAt >= maxWaitMs) { resolve(); return; }
+        setTimeout(check, 250);
+      };
+      check();
+    });
+  }, []);
 
   // ── Drain queue serially ─────────────────────────────────────────────────
   const drainQueue = useCallback(async () => {
@@ -285,20 +306,42 @@ export function useGuestAudioStreaming(options: GuestAudioStreamingOptions): Gue
 
   // ── Online/offline handling ──────────────────────────────────────────────
   useEffect(() => {
-    const onOnline  = () => { backoffRef.current = BASE_BACKOFF_MS; drainQueue(); };
+    const onOnline = () => { backoffRef.current = BASE_BACKOFF_MS; drainQueue(); };
     window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+    return () => {
+      // See useAudioStreaming.ts host-side comment — keep listening for a
+      // bounded grace period so a stalled background drain can still
+      // recover after this hook unmounts (e.g. the guest's tab navigates).
+      if (queueRef.current.length === 0) {
+        window.removeEventListener('online', onOnline);
+        return;
+      }
+      const graceDeadline = window.setTimeout(() => {
+        window.removeEventListener('online', onOnline);
+        window.clearInterval(emptyPoll);
+      }, BACKGROUND_DRAIN_GRACE_MS);
+      const emptyPoll = window.setInterval(() => {
+        if (queueRef.current.length === 0) {
+          window.clearTimeout(graceDeadline);
+          window.clearInterval(emptyPoll);
+          window.removeEventListener('online', onOnline);
+        }
+      }, 2_000);
+    };
   }, [drainQueue]);
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {
     destroyedRef.current = false;
     return () => {
-      destroyedRef.current = true;
+      // FIX: no longer sets destroyedRef.current = true or wipes queueRef —
+      // see useAudioStreaming.ts host-side comment for the full reasoning.
+      // stopAll() still stops the mic/recorders so no new audio is captured
+      // after unmount; anything already queued keeps draining in the
+      // background.
       stopAll();
-      queueRef.current = [];
     };
   }, [stopAll]);
 
-  return { startTrackRecording, stopAll, state };
+  return { startTrackRecording, stopAll, flush, state };
 }
