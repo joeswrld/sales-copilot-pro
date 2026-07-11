@@ -487,7 +487,7 @@ export default function LiveCall() {
   // ── Real-time network detector (no refresh needed) ─────────────────────────
   const networkInfo = useRealtimeNetwork();
 
-  const { startCall, endCall, liveCall, isLive, isLoading, callId } = useLiveCall({
+  const { startCall, endCall, liveCall, isLive, isLoading, callId, markHostJoined, hostJoinedAt } = useLiveCall({
     onCallStarted: () => setStatus("on_call"),
     onCallEnded:   () => setStatus("available"),
   });
@@ -561,6 +561,25 @@ export default function LiveCall() {
     }
   }, [liveCall, roomInfo, setRoomInfo]);
 
+  // ── FIX: auto-reconnect to an already-joined meeting ────────────────────────
+  // If the host previously joined this live call's Daily room (hostJoinedAt
+  // set) and then navigated away — to another page, or just refreshed —
+  // landing back on /live should never show the Create/Host Meeting screen
+  // or ask them to re-host. It should silently take them straight back into
+  // the meeting, the same way LiveMeeting.tsx auto-(re)joins the Daily room
+  // itself on mount. A room that was merely *created* but never actually
+  // joined (hostJoinedAt still null) is left alone here — that's the normal
+  // "share the link" flow and still belongs on this screen.
+  const autoReconnectedRef = useRef(false);
+  useEffect(() => {
+    if (autoReconnectedRef.current) return;
+    if (isLoading) return;
+    if (isLive && callId && hostJoinedAt) {
+      autoReconnectedRef.current = true;
+      navigate(`/live/${callId}`, { replace: true });
+    }
+  }, [isLoading, isLive, callId, hostJoinedAt, navigate]);
+
   // Daily call hook
   const daily = useDailyCall({
     callId: callId ?? null,
@@ -570,6 +589,7 @@ export default function LiveCall() {
     onJoined: () => {
       setJoinState("connected");
       setHostJoined(true);
+      if (callId) markHostJoined(callId);
       toast.success("Connected to Daily.co room!");
     },
     onLeft: () => {
@@ -876,7 +896,10 @@ export default function LiveCall() {
     : networkInfo.quality === "poor" ? "text-red-400"
     : "text-muted-foreground";
 
-  if (isLoading) {
+  // Also keep the spinner up (instead of the Create Meeting screen) for the
+  // one render where we know we're about to auto-redirect into an
+  // already-joined meeting — avoids a flash of the creation form.
+  if (isLoading || (isLive && !!callId && !!hostJoinedAt)) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center py-20">
