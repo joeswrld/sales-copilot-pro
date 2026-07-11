@@ -21,7 +21,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { NetworkQualityBanner } from "@/components/NetworkQualityBanner";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2, Copy, Check, ExternalLink, Calendar,
@@ -43,6 +43,7 @@ import { useUserStatus } from "@/hooks/useUserStatus";
 import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
 import { TeamUsageBanner } from "@/components/TeamMinuteUsageComponents";
 import { useScheduledMeetings } from "@/hooks/useScheduledMeetings";
+import { useDeals } from "@/hooks/useDeals";
 import MeetingTimeline from "@/components/MeetingTimeline";
 import { MeetingNotificationBanner, NotificationStatusPill } from "@/components/MeetingNotificationBanner";
 import { supabase } from "@/integrations/supabase/client";
@@ -624,6 +625,21 @@ export default function LiveCall() {
   const [meetingType,            setMeetingType]            = useState("discovery");
   const [meetingTitleInput,      setMeetingTitleInput]      = useState("");
   const [meetingNotes,           setMeetingNotes]           = useState("");
+
+  // ── Deal linking (required before a meeting can start) ──────────────────
+  const [searchParams] = useSearchParams();
+  const { deals } = useDeals();
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(
+    () => searchParams.get("dealId"),
+  );
+  // If arriving fresh from a Deal page after deals finish loading, make
+  // sure the id from the URL is still honored (covers the case where the
+  // deals list hook resolves after first paint).
+  useEffect(() => {
+    const fromUrl = searchParams.get("dealId");
+    if (fromUrl && fromUrl !== selectedDealId) setSelectedDealId(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [joinState,              setJoinState]              = useState<JoinState>("idle");
   const [networkWarningDismissed, setNetworkWarningDismissed] = useState(false);
   const [isAudioOn,              setIsAudioOn]              = useState(true);
@@ -786,6 +802,11 @@ export default function LiveCall() {
     const title = meetingTitleInput.trim() || "Fixsense Meeting";
     if (!checkLimit()) return;
 
+    if (!selectedDealId) {
+      toast.error("Select a deal before starting this meeting — every meeting has to be linked to a deal.");
+      return;
+    }
+
     if (isLive) {
       toast.info("You already have an active meeting link. End the current call to create a new one.");
       setShowPopup(true);
@@ -802,6 +823,7 @@ export default function LiveCall() {
         meeting_type: meetingType,
         participants: [],
         description:  meetingNotes,
+        deal_id:      selectedDealId,
       } as any);
       setJoinState("creating_room");
       await createRoom({
@@ -828,7 +850,7 @@ export default function LiveCall() {
       setIsStarting(false);
       setJoinState("idle");
     }
-  }, [meetingTitleInput, meetingNotes, meetingType, checkLimit, isLive, startCall, createRoom]);
+  }, [meetingTitleInput, meetingNotes, meetingType, selectedDealId, checkLimit, isLive, startCall, createRoom]);
 
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
@@ -1164,6 +1186,32 @@ export default function LiveCall() {
               )}
 
               <div>
+                <label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-1">
+                  <Tag className="w-3 h-3" />Deal <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={selectedDealId ?? ""}
+                  onChange={(e) => setSelectedDealId(e.target.value || null)}
+                  className={cn(
+                    "w-full px-3.5 py-2.5 rounded-xl text-sm bg-secondary/60 border outline-none transition-colors",
+                    selectedDealId ? "border-border focus:border-primary/60" : "border-red-500/40",
+                  )}
+                >
+                  <option value="">Select a deal…</option>
+                  {(deals ?? []).map((d: any) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}{d.company ? ` — ${d.company}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {!selectedDealId && (
+                  <p className="text-[11px] text-red-400 mt-1">
+                    A meeting can't be started until it's linked to a deal.
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">Title</label>
                 <div className="relative">
                   <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -1208,10 +1256,10 @@ export default function LiveCall() {
               <Button
                 className="w-full gap-2"
                 onClick={handleCreateMeeting}
-                disabled={isCreating || isStarting || (teamUsage?.isAtLimit ?? false)}
+                disabled={isCreating || isStarting || !selectedDealId || (teamUsage?.isAtLimit ?? false)}
               >
                 {isCreating || isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                {isCreating || isStarting ? "Creating…" : "Create Meeting"}
+                {isCreating || isStarting ? "Creating…" : !selectedDealId ? "Select a deal to continue" : "Create Meeting"}
               </Button>
 
               <Button variant="outline" className="w-full gap-2" onClick={openFreshSchedule}>
