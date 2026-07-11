@@ -1538,19 +1538,49 @@ export default function LiveMeeting() {
   // end-call mutation is in flight, "ready" for a brief celebratory beat
   // right before navigating to the summary.
   const [endingPhase, setEndingPhase] = useState<"processing" | "ready" | null>(null);
+  const [summaryFailed, setSummaryFailed] = useState(false);
+
+  // Minimum time to hold each phase so the overlay reads as steady,
+  // deliberate progress rather than a flash — especially on a fast
+  // connection where the underlying work could otherwise finish in under a
+  // second and make the whole thing feel abrupt.
+  const MIN_PROCESSING_MS = 4_500;
+  const READY_HOLD_MS     = 2_200;
 
   const handleEnd = useCallback(async () => {
+    const startedAt = Date.now();
     setEndingPhase("processing");
+    setSummaryFailed(false);
     audioStreaming.stopAll();
     await daily.leaveCall();
     try {
-      await endCall.mutateAsync();
+      // Give any speech still sitting in the upload queue (the last few
+      // seconds of the call, or anything backed up from a rough patch of
+      // network) a real chance to reach the server before we generate the
+      // AI summary from the transcript — otherwise the summary could be
+      // built while the tail end of the conversation is still missing.
+      await audioStreaming.flush(8_000);
+      const result = await endCall.mutateAsync();
+      setSummaryFailed(!(result as any)?.summaryGenerated);
+
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_PROCESSING_MS) {
+        await new Promise((r) => setTimeout(r, MIN_PROCESSING_MS - elapsed));
+      }
+
       setEndingPhase("ready");
       // Brief pause so "Almost there" is actually seen rather than flashing
       // by — the navigation underneath happens instantly, this is purely
       // about the transition feeling intentional instead of abrupt.
-      await new Promise((r) => setTimeout(r, 900));
-      navigate(callId ? `/calls/${callId}` : "/live");
+      await new Promise((r) => setTimeout(r, READY_HOLD_MS));
+
+      // FIX: always land on Call Details (where the summary lives), never
+      // back on a "live call" screen. callId should always be set here
+      // (we're mid-call-end), but if it somehow isn't, the call list is a
+      // far better fallback than /live, which reads as "start a new
+      // meeting" — the opposite of what someone who just finished one
+      // wants to see.
+      navigate(callId ? `/calls/${callId}` : "/calls");
     } catch {
       setEndingPhase(null);
       toast.error("Failed to end call");
@@ -1571,7 +1601,7 @@ export default function LiveMeeting() {
 
   return (
     <DashboardLayout>
-      {endingPhase && <CallEndingOverlay phase={endingPhase} />}
+      {endingPhase && <CallEndingOverlay phase={endingPhase} summaryFailed={summaryFailed} />}
       <div
         className="flex flex-col -mx-4 -mt-4 overflow-hidden"
         style={{ height: "calc(100dvh - 56px)", background: T.bg }}
