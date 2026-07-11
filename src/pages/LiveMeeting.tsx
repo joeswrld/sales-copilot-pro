@@ -1484,12 +1484,33 @@ export default function LiveMeeting() {
   // Local mic goes to the live WS captioner first (sub-500ms). Only falls
   // back to the older 8s-chunk pipeline if the socket can't connect or keeps
   // dropping — never runs both at once (double STT cost + duplicate lines).
-  const tracksStartedRef = useRef<Set<string>>(new Set());
+  //
+  // FIX: previously keyed purely on session_id, and only ever attached once
+  // per session. After a real network drop (e.g. Daily's signaling socket
+  // closing with code 1005 and the send transport going to "failed" —
+  // exactly what happens on a flaky connection), Daily commonly keeps the
+  // SAME local session_id but swaps in a brand-new MediaStreamTrack once
+  // the transport recovers. Because we'd already marked that session_id as
+  // "started," we never noticed the track changed — live captions and the
+  // fallback recorder stayed attached to a dead track for the rest of the
+  // call, with nothing telling the user transcription had silently stopped.
+  // Now we key on (session_id + track.id) so a track swap is treated as a
+  // fresh attach: the old live socket / recorder is torn down and a new one
+  // is started against the live track, recovering automatically once the
+  // network comes back instead of requiring a full page reload.
+  const attachedTrackIdRef = useRef<string | null>(null);
   const localTrackRef = useRef<MediaStreamTrack | null>(null);
   useEffect(() => {
     for (const p of daily.participants) {
-      if (p.audioTrack && p.local && !tracksStartedRef.current.has(p.session_id)) {
-        tracksStartedRef.current.add(p.session_id);
+      if (p.audioTrack && p.local && p.audioTrack.id !== attachedTrackIdRef.current) {
+        // Tear down whatever was previously attached (old live socket
+        // connection + fallback chunked recorder) before attaching to the
+        // new track, so we never run two pipelines against two different
+        // tracks at once.
+        liveSocket.stop();
+        audioStreaming.stopAll();
+
+        attachedTrackIdRef.current = p.audioTrack.id;
         localTrackRef.current = p.audioTrack;
         liveSocket.start(p.audioTrack);
         health.recordChunkSent();
@@ -1508,7 +1529,7 @@ export default function LiveMeeting() {
 
   useEffect(() => () => {
     clearTimeout(reconnectTimerRef.current);
-    tracksStartedRef.current.clear();
+    attachedTrackIdRef.current = null;
     setMicStream(null);
   }, []);
 
