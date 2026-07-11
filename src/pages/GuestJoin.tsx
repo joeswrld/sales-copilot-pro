@@ -1100,6 +1100,12 @@ export default function GuestJoin() {
   const handleLeave = useCallback(async () => {
     voluntaryLeaveRef.current = true;
     guestAudio.stopAll();
+    // Best-effort: give the last few seconds of speech a short window to
+    // upload before navigating away. Not required for correctness — the
+    // queue keeps draining in the background for a while after unmount
+    // regardless (see useGuestAudioStreaming.ts) — but this avoids relying
+    // on that fallback when it's cheap not to.
+    await guestAudio.flush(4_000);
     localStream?.getTracks().forEach((t) => t.stop());
     await daily.leaveCall();
     navigate("/");
