@@ -208,9 +208,35 @@ export function useLiveCall(options?: {
         event: "UPDATE", schema: "public", table: "calls",
         filter: `id=eq.${callId}`,
       }, () => queryClient.invalidateQueries({ queryKey: ["live-call"] }))
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[useLiveCall][subscribe] postgres_changes channel status=${status} call=${callId}`);
+      });
 
-    return () => { supabase.removeChannel(channel); };
+    // Broadcast is a second, lower-latency path for the SAME transcript
+    // events (pushed directly by transcribe-live / transcribe-stream after
+    // every DB write on topic `call-transcripts-{callId}` — must be a
+    // SEPARATE channel/topic from the postgres_changes one above, since
+    // Realtime channels are matched by exact topic string) — it skips the
+    // Postgres WAL → replication round trip postgres_changes depends on.
+    // Purely additive: worst case invalidateQueries just runs a touch
+    // earlier than the postgres_changes listener would have. This is also
+    // the same topic the Guest Join page listens on (see
+    // useGuestTranscripts.ts), since RLS blocks guests from postgres_changes
+    // entirely.
+    const broadcastChannel = supabase
+      .channel(`call-transcripts-${callId}`)
+      .on("broadcast", { event: "transcript" }, (msg) => {
+        console.log(`[useLiveCall][broadcast] transcript event for call=${callId}`, msg.payload);
+        queryClient.invalidateQueries({ queryKey: ["live-transcripts", callId] });
+      })
+      .subscribe((status) => {
+        console.log(`[useLiveCall][subscribe] broadcast channel status=${status} call=${callId}`);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(broadcastChannel);
+    };
   }, [callId, user, queryClient]);
 
   // ── START CALL ───────────────────────────────────────────────────────────
