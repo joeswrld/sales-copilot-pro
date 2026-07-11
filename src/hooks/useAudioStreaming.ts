@@ -62,6 +62,7 @@ interface AudioStreamingResult {
   stopRecording: () => void;
   stopAll: () => void;
   startTrackRecording: (track: MediaStreamTrack, participantId: string, isLocal: boolean) => void;
+  flush: (maxWaitMs?: number) => Promise<void>;
   isRecording: boolean;
   queueLength: number;
   state: AudioStreamingState;
@@ -69,11 +70,32 @@ interface AudioStreamingResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CHUNK_INTERVAL_MS  = 8_000;   // 8s chunks (was 5s — reduces pressure)
-const MAX_QUEUE_SIZE     = 10;       // was 20
-const STALE_THRESHOLD_MS = 60_000;  // 60s (was 90s)
+// FIX: was 10 (~80s of audio before permanent loss). On a genuinely bad
+// connection — the exact scenario this exists to protect — an 80s backlog
+// is trivial to hit, and every chunk past it used to be discarded forever,
+// which is precisely the "some of what I said never shows up" symptom.
+// 150 chunks ≈ 20 minutes of buffered audio at ~20KB each (a few MB total,
+// nothing for a browser tab) so a rough patch of network never costs
+// permanent data loss.
+const MAX_QUEUE_SIZE     = 150;
+// FIX: was 60s. A transcript that arrives late is still correct — it's
+// ordered by its real `sent_at` timestamp, not by upload order — so there
+// is no good reason to throw audio away just because the network took a
+// while to recover. 10 minutes is a generous but still finite ceiling that
+// only kicks in for a connection that's been down long enough that the
+// data is genuinely unrecoverable for practical purposes.
+const STALE_THRESHOLD_MS = 10 * 60_000;
 const DRAIN_INTERVAL_MS  = 800;
 const BASE_BACKOFF_MS    = 1_500;
 const MAX_BACKOFF_MS     = 20_000;
+// FIX: how long to keep retrying already-queued (but not yet uploaded)
+// audio in the background after this hook unmounts — e.g. the host
+// navigates away from /live/:id, or the brief window between "End Call"
+// and the page navigating to Call Details. The fetch calls themselves
+// don't depend on the component staying mounted; this just bounds how long
+// we keep the 'online' listener and retry loop alive for a queue that may
+// never recover (e.g. the tab genuinely went offline for good).
+const BACKGROUND_DRAIN_GRACE_MS = 3 * 60_000;
 
 // ─── Audio constraints with noise cancellation ────────────────────────────────
 const AUDIO_CONSTRAINTS_LOCAL: MediaTrackConstraints = {
@@ -131,10 +153,17 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
   // ── Enqueue ──────────────────────────────────────────────────────────────
   const enqueue = useCallback((job: ChunkJob) => {
     if (destroyedRef.current) return;
-    // Drop oldest when queue is full
+    // FIX: was `.shift()` — that evicts index 0, which is exactly the chunk
+    // the drain loop is about to send next (FIFO: oldest = next up). Under
+    // sustained overflow that means we kept discarding the audio closest to
+    // actually being delivered while holding onto newer chunks behind it,
+    // scrambling which moments of the conversation survive. Dropping the
+    // newest instead preserves chronological continuity from wherever the
+    // backlog started, which reads far better as a transcript than random
+    // gaps throughout.
     if (queueRef.current.length >= MAX_QUEUE_SIZE) {
-      queueRef.current.shift();
-      console.warn(`[AudioStreaming] Queue full (${MAX_QUEUE_SIZE}) — dropped oldest chunk`);
+      queueRef.current.pop();
+      console.warn(`[AudioStreaming] Queue full (${MAX_QUEUE_SIZE}) — dropped newest chunk`);
     }
     queueRef.current.push(job);
   }, []);
@@ -218,6 +247,23 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
       return 'retry';
     }
   }, [callId, onTranscript, onAIAnalysis, incrementChunks]);
+
+  // ── Flush ────────────────────────────────────────────────────────────────
+  // Waits until the queue is empty (everything uploaded) or maxWaitMs
+  // elapses, whichever comes first. Used before ending a call so the last
+  // few seconds of speech get a real chance to upload before the AI summary
+  // is generated from the transcript, instead of racing them.
+  const flush = useCallback((maxWaitMs = 8_000): Promise<void> => {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const check = () => {
+        if (queueRef.current.length === 0 && !isDrainingRef.current) { resolve(); return; }
+        if (Date.now() - startedAt >= maxWaitMs) { resolve(); return; }
+        setTimeout(check, 250);
+      };
+      check();
+    });
+  }, []);
 
   // ── Drain queue serially ─────────────────────────────────────────────────
   const drainQueue = useCallback(async () => {
@@ -399,8 +445,27 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
     window.addEventListener('online',  onOnline);
     window.addEventListener('offline', onOffline);
     return () => {
-      window.removeEventListener('online',  onOnline);
       window.removeEventListener('offline', onOffline);
+      // FIX: if there's still unsent audio when this hook unmounts (e.g.
+      // the host navigated away from /live/:id), don't immediately rip
+      // away the one thing that lets a stalled drain resume the moment the
+      // connection comes back. Keep listening for a bounded grace period,
+      // or until the queue actually empties, whichever comes first.
+      if (queueRef.current.length === 0) {
+        window.removeEventListener('online', onOnline);
+        return;
+      }
+      const graceDeadline = window.setTimeout(() => {
+        window.removeEventListener('online', onOnline);
+        window.clearInterval(emptyPoll);
+      }, BACKGROUND_DRAIN_GRACE_MS);
+      const emptyPoll = window.setInterval(() => {
+        if (queueRef.current.length === 0) {
+          window.clearTimeout(graceDeadline);
+          window.clearInterval(emptyPoll);
+          window.removeEventListener('online', onOnline);
+        }
+      }, 2_000);
     };
   }, [drainQueue]);
 
@@ -408,14 +473,23 @@ export function useAudioStreaming(options: AudioStreamingOptions): AudioStreamin
   useEffect(() => {
     destroyedRef.current = false;
     return () => {
-      destroyedRef.current = true;
+      // FIX: this used to set destroyedRef.current = true and wipe
+      // queueRef here, which silently discarded any recorded-but-not-yet-
+      // uploaded audio the instant the page unmounted — most commonly the
+      // final few seconds of a call (End Call → summary generation →
+      // navigate happens fast) and any time the host simply navigated away
+      // from the meeting page. stopAll() below stops the mic/recorders so
+      // no *new* audio is captured after unmount, but chunks already
+      // queued keep draining in the background: the fetch calls and their
+      // retry/backoff loop don't actually depend on this component still
+      // being mounted, only on destroyedRef staying false and the queue
+      // reference staying intact — both of which we now preserve.
       stopAll();
-      queueRef.current = [];
     };
   }, [stopAll]);
 
   return {
-    startRecording, stopRecording, stopAll, startTrackRecording,
+    startRecording, stopRecording, stopAll, startTrackRecording, flush,
     isRecording: isRecordingRef.current,
     queueLength: queueRef.current.length,
     state,
