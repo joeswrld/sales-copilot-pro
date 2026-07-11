@@ -322,7 +322,7 @@ export function useLiveCall(options?: {
 
       if (neverStarted) {
         // Nothing to summarize, notify, or log usage for.
-        return;
+        return { neverStarted: true, summaryGenerated: false };
       }
 
       // NOTE: minute usage itself is logged by the DB trigger
@@ -426,6 +426,14 @@ export function useLiveCall(options?: {
       } catch (e) {
         console.warn("recording URL fallback non-fatal:", e);
       }
+
+      // FIX: this used to fall off the end of the function returning
+      // undefined, so the caller (LiveMeeting's handleEnd) had no way to
+      // know whether generate-call-summary above actually succeeded or
+      // failed silently (it's caught non-fatally on purpose, so a failure
+      // here never throws). Surfacing it lets the post-call overlay show an
+      // honest "ready" state instead of always claiming success.
+      return { neverStarted: false, summaryGenerated: !!summaryData };
     },
 
     onSuccess: () => {
