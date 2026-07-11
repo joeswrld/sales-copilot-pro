@@ -38,6 +38,7 @@ export interface ScheduledMeeting {
   reminder_10min_sent: boolean;
   reminder_start_sent: boolean;
   call_id: string | null;
+  deal_id: string | null;
   created_at: string;
   updated_at: string;
   // Computed client-side
@@ -55,6 +56,10 @@ export interface CreateMeetingParams {
   participants?: string[];
   /** IANA timezone the user used when scheduling, e.g. "America/New_York". */
   scheduled_timezone?: string;
+  /** Deal this meeting belongs to. Required — mirrors the same rule enforced
+   * on instant meetings in useLiveCall: nothing gets scheduled without a
+   * deal to attach it to. */
+  deal_id: string;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -118,6 +123,9 @@ export function useScheduledMeetings() {
   // ── Create ────────────────────────────────────────────────────────────────
   const create = useMutation({
     mutationFn: async (params: CreateMeetingParams): Promise<ScheduledMeeting> => {
+      if (!params.deal_id) {
+        throw new Error("DEAL_REQUIRED");
+      }
       const { data, error } = await (supabase as any)
         .from("scheduled_meetings")
         .insert({
@@ -133,17 +141,42 @@ export function useScheduledMeetings() {
           meeting_type: params.meeting_type || "other",
           notes: params.notes || null,
           participants: params.participants || [],
+          deal_id: params.deal_id,
         })
         .select()
         .single();
       if (error) throw error;
+
+      // Same pattern as instant meetings in useLiveCall — seed the deal
+      // timeline right away instead of waiting for the meeting to happen.
+      await supabase.from("deal_timeline_events").insert({
+        deal_id: params.deal_id,
+        user_id: user!.id,
+        event_type: "meeting_scheduled",
+        title: `Meeting scheduled — ${params.title}`,
+        metadata: { scheduled_meeting_id: (data as any).id, scheduled_time: params.scheduled_time },
+        happened_at: new Date().toISOString(),
+      } as any).then(({ error: e }) => {
+        if (e) console.warn("deal_timeline_events insert (non-fatal):", e);
+      });
+
       return data as ScheduledMeeting;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["scheduled-meetings", user?.id] });
+      if (data.deal_id) {
+        qc.invalidateQueries({ queryKey: ["deal", data.deal_id] });
+        qc.invalidateQueries({ queryKey: ["deal-timeline", data.deal_id] });
+      }
       toast.success("Meeting scheduled!");
     },
-    onError: (err: any) => toast.error(err.message || "Failed to schedule meeting"),
+    onError: (err: any) => {
+      if (err.message === "DEAL_REQUIRED") {
+        toast.error("Select a deal before scheduling — every meeting has to be linked to a deal.");
+      } else {
+        toast.error(err.message || "Failed to schedule meeting");
+      }
+    },
   });
 
   // ── Reschedule ────────────────────────────────────────────────────────────
