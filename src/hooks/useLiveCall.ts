@@ -94,6 +94,12 @@ export function useLiveCall(options?: {
         .update({ status: "live", start_time: new Date().toISOString() })
         .eq("id", id)
         .is("start_time", null);
+      // FIX: without this, the freshly-stamped start_time only reached the
+      // host's own `liveCall` (and therefore the shared timer anchor) on
+      // the next 10s poll tick — up to a 10s window where the timer was
+      // still falling back to local Date.now(). Invalidating immediately
+      // after the write makes the real start_time available right away.
+      queryClient.invalidateQueries({ queryKey: ["live-call"] });
     } catch (e) {
       console.warn("markCallStarted non-fatal:", e);
     }
