@@ -36,27 +36,37 @@ export type CallEndingPhase = "processing" | "ready";
 
 interface CallEndingOverlayProps {
   phase: CallEndingPhase;
+  /** True if we confirmed the AI summary generation actually failed —
+   * softens the "ready" messaging instead of claiming a summary exists
+   * when it doesn't. Call Details will still show a "processing"/retry
+   * state and pick it up via Realtime if it finishes shortly after. */
+  summaryFailed?: boolean;
 }
 
 const PROCESSING_STEPS = [
   "Saving your call…",
+  "Uploading the last of the audio…",
   "Analyzing the conversation…",
   "Generating your AI summary…",
+  "Polishing the details…",
 ];
 
-export default function CallEndingOverlay({ phase }: CallEndingOverlayProps) {
+export default function CallEndingOverlay({ phase, summaryFailed }: CallEndingOverlayProps) {
   const [stepIndex, setStepIndex] = useState(0);
 
   // Cycle through a few reassuring status lines while we wait — purely
   // cosmetic, not tied to real progress (there's no reliable sub-step
   // signal from the backend to hook into), so timings are deliberately
-  // generic rather than implying precision we don't have.
+  // generic rather than implying precision we don't have. Paced slowly on
+  // purpose — this covers a genuinely multi-second wait (final audio
+  // upload, AI summary generation, deal room creation), so it should read
+  // as steady progress, not a flash of text.
   useEffect(() => {
     if (phase !== "processing") return;
     setStepIndex(0);
     const id = window.setInterval(() => {
-      setStepIndex((i) => (i + 1) % PROCESSING_STEPS.length);
-    }, 2200);
+      setStepIndex((i) => Math.min(i + 1, PROCESSING_STEPS.length - 1));
+    }, 3_200);
     return () => window.clearInterval(id);
   }, [phase]);
 
@@ -214,7 +224,9 @@ export default function CallEndingOverlay({ phase }: CallEndingOverlayProps) {
             }}
           >
             {phase === "ready"
-              ? "Your summary is ready — taking you there now."
+              ? summaryFailed
+                ? "Call saved — we'll finish the summary in the background."
+                : "Your summary is ready — taking you there now."
               : PROCESSING_STEPS[stepIndex]}
           </motion.p>
         </AnimatePresence>
