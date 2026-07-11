@@ -43,6 +43,8 @@ import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
 import { useAudioStreaming } from "@/hooks/useAudioStreaming";
+import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
+import { LiveCaptions, CaptionLine } from "@/components/LiveCaptions";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useUserProfile } from "@/hooks/useSettings";
@@ -1404,6 +1406,30 @@ export default function LiveMeeting() {
     }
   }, [audioStreaming.state.isReconnecting]);
 
+  // ── Live captions (sub-500ms, Zoom/Meet-style) ────────────────────────────
+  // Own mic only — each participant's browser transcribes and broadcasts its
+  // own audio; the other side's line arrives through the transcripts
+  // Realtime subscription in useLiveCall (INSERT + UPDATE) instead of this
+  // socket re-processing remote tracks.
+  const [captionLines, setCaptionLines] = useState<Map<string, CaptionLine>>(new Map());
+  const liveSocket = useLiveTranscriptionSocket({
+    callId: callId ?? null,
+    role: "host",
+    onCaption: (evt) => {
+      setCaptionLines((prev) => {
+        const next = new Map(prev);
+        next.set(hostName, { speaker: hostName, text: evt.text, isFinal: evt.speechFinal, updatedAt: Date.now() });
+        return next;
+      });
+      health.recordTranscriptReceived(evt.text.split(/\s+/).length);
+    },
+    onStatusChange: (s) => {
+      if (s === "failed") {
+        toast.info("Live captions unavailable — falling back to standard transcription", { id: "live-caption-fallback" });
+      }
+    },
+  });
+
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
   const { workspace, dismissCoachingSuggestion } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
@@ -1455,17 +1481,28 @@ export default function LiveMeeting() {
   }, [daily.callState]); // eslint-disable-line
 
   // ── Track recording ─────────────────────────────────────────────────────────
+  // Local mic goes to the live WS captioner first (sub-500ms). Only falls
+  // back to the older 8s-chunk pipeline if the socket can't connect or keeps
+  // dropping — never runs both at once (double STT cost + duplicate lines).
   const tracksStartedRef = useRef<Set<string>>(new Set());
+  const localTrackRef = useRef<MediaStreamTrack | null>(null);
   useEffect(() => {
     for (const p of daily.participants) {
       if (p.audioTrack && p.local && !tracksStartedRef.current.has(p.session_id)) {
         tracksStartedRef.current.add(p.session_id);
-        audioStreaming.startTrackRecording(p.audioTrack, p.session_id, true);
+        localTrackRef.current = p.audioTrack;
+        liveSocket.start(p.audioTrack);
         health.recordChunkSent();
         setMicStream(new MediaStream([p.audioTrack]));
       }
     }
   }, [daily.participants]); // eslint-disable-line
+
+  useEffect(() => {
+    if (liveSocket.status === "failed" && localTrackRef.current) {
+      audioStreaming.startTrackRecording(localTrackRef.current, "live-fallback", true);
+    }
+  }, [liveSocket.status]); // eslint-disable-line
 
   useEffect(() => { if (!isLoading && !isLive) navigate("/live"); }, [isLoading, isLive, navigate]);
 
@@ -1551,6 +1588,7 @@ export default function LiveMeeting() {
     const startedAt = Date.now();
     setEndingPhase("processing");
     setSummaryFailed(false);
+    liveSocket.stop();
     audioStreaming.stopAll();
     await daily.leaveCall();
     try {
@@ -1713,7 +1751,7 @@ export default function LiveMeeting() {
                 expandable self-view once a second participant joins on
                 mobile (matches the reference design); desktop and the
                 single-participant/connecting/error states keep VideoGrid. */}
-            <div className="flex-1 p-1 sm:p-3 min-h-0">
+            <div className="flex-1 p-1 sm:p-3 min-h-0 relative">
               {isMobile && daily.isConnected && !daily.error && daily.participants.length >= 2 ? (
                 <MobileVideoStage
                   participants={daily.participants}
@@ -1732,6 +1770,7 @@ export default function LiveMeeting() {
                   layout={videoLayout} onLayoutChange={setVideoLayout}
                 />
               )}
+              <LiveCaptions lines={Array.from(captionLines.values())} />
             </div>
 
             {/* AI status nudge — desktop */}
