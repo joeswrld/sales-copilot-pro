@@ -57,6 +57,7 @@ import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { useAuth } from "@/contexts/AuthContext";
 import { VideoTile } from "@/components/VideoTile";
+import CallEndingOverlay from "@/components/CallEndingOverlay";
 import { toast } from "sonner";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -1352,6 +1353,12 @@ export default function LiveMeeting() {
 
   const daily = useDailyCall({
     callId: callId ?? null, roomName, meetingToken, userName: hostName,
+    // FIX: anchors the on-screen timer to the call's real DB start_time
+    // instead of this tab's own join instant — see the sharedStartTime doc
+    // comment in useDailyCall.ts. Fixes the timer resetting to 0 whenever
+    // the host navigates away from /live/:id and back, and keeps it in
+    // sync with whatever a guest sees on GuestJoin.
+    sharedStartTime: (liveCall as any)?.start_time ?? null,
     // FIX: previously start_time (which determines whether the call ends up
     // "completed" vs "cancelled", and whether minutes get counted at all)
     // was stamped only by a server-side Daily webhook. If that webhook was
@@ -1527,14 +1534,27 @@ export default function LiveMeeting() {
     daily.joinCall({ rName: roomName, ...(meetingToken ? { token: meetingToken } : {}), displayName: hostName });
   }, [roomName, meetingToken, hostName, daily]);
 
+  // Drives CallEndingOverlay: null = not ending, "processing" while the
+  // end-call mutation is in flight, "ready" for a brief celebratory beat
+  // right before navigating to the summary.
+  const [endingPhase, setEndingPhase] = useState<"processing" | "ready" | null>(null);
+
   const handleEnd = useCallback(async () => {
+    setEndingPhase("processing");
     audioStreaming.stopAll();
     await daily.leaveCall();
     try {
       await endCall.mutateAsync();
-      toast.success("Call ended — generating AI summary…");
+      setEndingPhase("ready");
+      // Brief pause so "Almost there" is actually seen rather than flashing
+      // by — the navigation underneath happens instantly, this is purely
+      // about the transition feeling intentional instead of abrupt.
+      await new Promise((r) => setTimeout(r, 900));
       navigate(callId ? `/calls/${callId}` : "/live");
-    } catch { toast.error("Failed to end call"); }
+    } catch {
+      setEndingPhase(null);
+      toast.error("Failed to end call");
+    }
   }, [endCall, callId, navigate, audioStreaming, daily]);
 
   const handRaiseCount = useMemo(() =>
@@ -1551,6 +1571,7 @@ export default function LiveMeeting() {
 
   return (
     <DashboardLayout>
+      {endingPhase && <CallEndingOverlay phase={endingPhase} />}
       <div
         className="flex flex-col -mx-4 -mt-4 overflow-hidden"
         style={{ height: "calc(100dvh - 56px)", background: T.bg }}
