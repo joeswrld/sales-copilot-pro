@@ -214,8 +214,14 @@ const VideoGrid = memo(({
     </div>
   );
 
-  const spotlightId = pinnedId ?? activeSpeakerId ?? participants[0]?.session_id;
-  const spotlight   = participants.find((p) => p.session_id === spotlightId) ?? participants[0];
+  // FIX: previously this only ever followed a manual pin or the active
+  // speaker — someone starting a screen share had no effect on what showed in
+  // the main tile unless they also happened to be speaking or got pinned. A
+  // screen share should automatically become the focus the instant it starts
+  // (a manual pin still overrides it, same as before).
+  const screenSharer = participants.find((p) => p.screen);
+  const spotlightId  = pinnedId ?? screenSharer?.session_id ?? activeSpeakerId ?? participants[0]?.session_id;
+  const spotlight     = participants.find((p) => p.session_id === spotlightId) ?? participants[0];
   const strip       = participants.filter((p) => p.session_id !== spotlight.session_id);
 
   if (layout === "spotlight") return (
@@ -347,8 +353,8 @@ const InsightCard = memo(({ type, text, suggestion, time }: any) => {
 });
 
 // ─── Control button ─────────────────────────────────────────────────────────────
-const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, badge, disabled = false, compact = false, highlight = false, hideLabel = false }: any) => (
-  <button onClick={onClick} disabled={disabled} title={label}
+const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, badge, disabled = false, compact = false, highlight = false, hideLabel = false, title }: any) => (
+  <button onClick={onClick} disabled={disabled} title={title ?? label}
     className={cn(
       "relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all select-none touch-manipulation",
       compact ? "w-11 h-11 px-1" : "px-2.5 sm:px-3 py-2 sm:py-2.5 min-w-[44px] min-h-[44px]",
@@ -409,10 +415,11 @@ const RoundCtrl = memo(({ icon: Icon, label, onClick, active = true, highlight =
 ));
 
 // ─── Secondary quick-access row item ────────────────────────────────────────────
-const QuickAction = memo(({ icon: Icon, label, onClick, active = false, badge }: any) => (
+const QuickAction = memo(({ icon: Icon, label, onClick, active = false, badge, title }: any) => (
   <button
     onClick={onClick}
     aria-label={label}
+    title={title}
     className="relative flex flex-col items-center justify-center gap-1 touch-manipulation min-w-[52px]"
   >
     <Icon className="w-[18px] h-[18px]" style={{ color: active ? "#a5b4fc" : T.muted }} />
@@ -1746,6 +1753,7 @@ export default function LiveMeeting() {
                     <QuickAction
                       icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
                       label={daily.isScreenSharing ? "Stop" : "Share"}
+                      title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
                       active={daily.isScreenSharing}
                       onClick={handleScreenShare}
                     />
@@ -1789,6 +1797,7 @@ export default function LiveMeeting() {
                   <Ctrl
                     icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
                     label={daily.isScreenSharing ? "Stop" : "Share"}
+                    title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
                     active={!daily.isScreenSharing}
                     highlight={daily.isScreenSharing}
                     onClick={handleScreenShare}
