@@ -370,6 +370,61 @@ const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, 
   </button>
 ));
 
+// ─── Primary mobile pill button — Mic / Cam / AI / Raise (Leave is separate) ────
+const RoundCtrl = memo(({ icon: Icon, label, onClick, active = true, highlight = false, glow = false, badge }: any) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    className="relative flex flex-col items-center justify-center gap-1 shrink-0 touch-manipulation active:scale-95 transition-transform"
+  >
+    <span
+      className="w-11 h-11 rounded-full flex items-center justify-center transition-all"
+      style={{
+        background: glow && active
+          ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+          : highlight
+          ? "rgba(245,158,11,0.2)"
+          : active
+          ? "rgba(255,255,255,0.08)"
+          : "rgba(239,68,68,0.15)",
+        border: highlight
+          ? "1px solid rgba(245,158,11,0.4)"
+          : !active && !glow
+          ? "1px solid rgba(239,68,68,0.3)"
+          : "1px solid rgba(255,255,255,0.08)",
+        boxShadow: glow && active ? "0 0 0 4px rgba(99,102,241,0.18), 0 4px 16px rgba(99,102,241,0.4)" : undefined,
+      }}
+    >
+      <Icon
+        className="w-5 h-5"
+        style={{ color: glow && active ? "#fff" : highlight ? "#fbbf24" : active ? "#fff" : "#f87171" }}
+      />
+    </span>
+    {badge != null && badge > 0 && (
+      <span className="absolute -top-0.5 right-0 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center border-2" style={{ borderColor: T.bg }}>
+        {badge > 9 ? "9+" : badge}
+      </span>
+    )}
+  </button>
+));
+
+// ─── Secondary quick-access row item ────────────────────────────────────────────
+const QuickAction = memo(({ icon: Icon, label, onClick, active = false, badge }: any) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    className="relative flex flex-col items-center justify-center gap-1 touch-manipulation min-w-[52px]"
+  >
+    <Icon className="w-[18px] h-[18px]" style={{ color: active ? "#a5b4fc" : T.muted }} />
+    <span className="text-[10px] font-medium" style={{ color: active ? "#a5b4fc" : T.muted }}>{label}</span>
+    {badge != null && badge > 0 && (
+      <span className="absolute -top-1 right-1 w-3.5 h-3.5 rounded-full bg-indigo-500 text-white text-[8px] font-bold flex items-center justify-center">
+        {badge > 9 ? "9+" : badge}
+      </span>
+    )}
+  </button>
+));
+
 // ─── Presenting indicator ─────────────────────────────────────────────────────
 const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
   isSelfPresenting: boolean;
@@ -1612,7 +1667,83 @@ export default function LiveMeeting() {
             )}
 
             {/* ── Control bar ─────────────────────────────────────────────── */}
-            <div className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0">
+            <div
+              className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0"
+              style={{ paddingBottom: isMobile ? "max(6px, env(safe-area-inset-bottom))" : undefined }}
+            >
+              {isMobile ? (
+                <div className="flex flex-col gap-2">
+                  {/* Primary pill — Mic / Cam / AI / Raise / Leave, mirrors the
+                      reference mobile design: five clear circular actions,
+                      nothing competing for thumb reach. */}
+                  <div
+                    className="flex items-center justify-between gap-1 px-2.5 py-2 rounded-full mx-auto w-full max-w-sm"
+                    style={{
+                      background: "rgba(13,15,24,0.96)",
+                      border: `1px solid ${T.border}`,
+                      backdropFilter: "blur(24px)",
+                      boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    <RoundCtrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} />
+                    <RoundCtrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} />
+                    <RoundCtrl
+                      icon={Sparkles} label="AI" glow
+                      active={mobilePanel === "ai"}
+                      badge={(objections.length || 0) || undefined}
+                      onClick={() => setMobilePanel(mobilePanel === "ai" ? "none" : "ai")}
+                    />
+                    <RoundCtrl icon={Hand} label="Raise" active={isHandRaised} highlight={isHandRaised} onClick={handleHandRaise} />
+                    <button
+                      onClick={handleEnd}
+                      disabled={endCall.isPending}
+                      aria-label="Leave call"
+                      className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 touch-manipulation active:scale-95 transition-transform"
+                      style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", boxShadow: "0 4px 16px rgba(220,38,38,.4)" }}
+                    >
+                      {endCall.isPending
+                        ? <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        : <PhoneOff className="w-5 h-5 text-white" />}
+                    </button>
+                  </div>
+
+                  {/* Secondary quick-access row — Share Screen / Participants /
+                      Chat / Live Transcript / More, same set the reference
+                      design surfaces beneath the primary bar. */}
+                  <div
+                    className="flex items-center justify-between px-3 py-2 rounded-2xl"
+                    style={{ background: "rgba(13,15,24,0.7)", border: `1px solid ${T.border}` }}
+                  >
+                    <QuickAction
+                      icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
+                      label={daily.isScreenSharing ? "Stop" : "Share"}
+                      active={daily.isScreenSharing}
+                      onClick={handleScreenShare}
+                    />
+                    <QuickAction
+                      icon={Users} label="People"
+                      badge={guestRequests.length || daily.participantCount || undefined}
+                      active={mobilePanel === "people"}
+                      onClick={() => setMobilePanel(mobilePanel === "people" ? "none" : "people")}
+                    />
+                    <QuickAction
+                      icon={MessageSquare} label="Chat"
+                      active={mobilePanel === "chat"}
+                      onClick={() => setMobilePanel(mobilePanel === "chat" ? "none" : "chat")}
+                    />
+                    <QuickAction
+                      icon={FileText} label="Transcript"
+                      active={mobilePanel === "ai" && rightTab === "transcript"}
+                      onClick={() => { setRightTab("transcript"); setMobilePanel("ai"); }}
+                    />
+                    <QuickAction
+                      icon={MoreHorizontal} label="More"
+                      active={mobilePanel === "more"}
+                      onClick={() => setMobilePanel(mobilePanel === "more" ? "none" : "more")}
+                    />
+                  </div>
+                </div>
+              ) : (
               <div
                 className="flex items-center justify-between gap-0.5 sm:gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-2xl"
                 style={{
@@ -1623,74 +1754,52 @@ export default function LiveMeeting() {
               >
                 {/* Core media controls */}
                 <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                  <Ctrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} compact={isMobile} />
-                  <Ctrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} compact={isMobile} />
-                  {isMobile && (
-                    <Ctrl icon={SwitchCamera} label="Flip" active onClick={() => daily.switchCamera()} compact />
-                  )}
-                  {/* Screen share — hidden on narrowest mobiles, shown from xs up */}
-                  <div className="hidden xs:block">
-                    <Ctrl
-                      icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
-                      label={daily.isScreenSharing ? "Stop" : "Share"}
-                      active={!daily.isScreenSharing}
-                      highlight={daily.isScreenSharing}
-                      onClick={handleScreenShare}
-                      compact={isMobile}
-                    />
-                  </div>
+                  <Ctrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} />
+                  <Ctrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} />
+                  {/* Screen share */}
+                  <Ctrl
+                    icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
+                    label={daily.isScreenSharing ? "Stop" : "Share"}
+                    active={!daily.isScreenSharing}
+                    highlight={daily.isScreenSharing}
+                    onClick={handleScreenShare}
+                  />
                   {/* Hand raise */}
                   <Ctrl
                     icon={Hand}
                     label={isHandRaised ? "Lower" : "Raise"}
                     highlight={isHandRaised}
                     onClick={handleHandRaise}
-                    compact={isMobile}
                   />
                   {/* Noise cancel — desktop only */}
-                  {!isMobile && (
-                    <Ctrl
-                      icon={noiseCancelOn ? Volume2 : VolumeX}
-                      label={noiseCancelOn ? "NC On" : "NC Off"}
-                      active={noiseCancelOn}
-                      onClick={handleNoiseCancellation}
-                    />
-                  )}
+                  <Ctrl
+                    icon={noiseCancelOn ? Volume2 : VolumeX}
+                    label={noiseCancelOn ? "NC On" : "NC Off"}
+                    active={noiseCancelOn}
+                    onClick={handleNoiseCancellation}
+                  />
                 </div>
 
-                {/* Secondary controls */}
-                {isMobile ? (
-                  /* Mobile: three panel toggles */
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <Ctrl icon={Users} label="People" compact badge={guestRequests.length || undefined}
-                      onClick={() => setMobilePanel(mobilePanel === "people" ? "none" : "people")} />
-                    <Ctrl icon={BrainCircuit} label="AI" compact badge={(objections.length || 0) || undefined}
-                      onClick={() => setMobilePanel(mobilePanel === "ai" ? "none" : "ai")} />
-                    <Ctrl icon={MessageSquare} label="Chat" compact
-                      onClick={() => setMobilePanel(mobilePanel === "chat" ? "none" : "chat")} />
-                  </div>
-                ) : (
-                  /* Desktop: extra controls */
-                  <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                    <Ctrl
-                      icon={BrainCircuit} label="AI"
-                      onClick={() => setRightCollapsed((v) => !v)}
-                      badge={rightCollapsed && objections.length ? objections.length : undefined}
-                    />
-                    <Ctrl
-                      icon={CircleDot}
-                      label={daily.isRecording ? "Stop" : "Record"}
-                      active={!daily.isRecording}
-                      badge={daily.isRecording ? 1 : undefined}
-                      onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
-                    />
-                    <Ctrl
-                      icon={Users} label="People"
-                      badge={guestRequests.length || undefined}
-                      onClick={() => { setLeftCollapsed(false); setLeftTab("people"); }}
-                    />
-                  </div>
-                )}
+                {/* Desktop: extra controls */}
+                <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                  <Ctrl
+                    icon={BrainCircuit} label="AI"
+                    onClick={() => setRightCollapsed((v) => !v)}
+                    badge={rightCollapsed && objections.length ? objections.length : undefined}
+                  />
+                  <Ctrl
+                    icon={CircleDot}
+                    label={daily.isRecording ? "Stop" : "Record"}
+                    active={!daily.isRecording}
+                    badge={daily.isRecording ? 1 : undefined}
+                    onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
+                  />
+                  <Ctrl
+                    icon={Users} label="People"
+                    badge={guestRequests.length || undefined}
+                    onClick={() => { setLeftCollapsed(false); setLeftTab("people"); }}
+                  />
+                </div>
 
                 {/* End call */}
                 <button
@@ -1708,6 +1817,7 @@ export default function LiveMeeting() {
                   <span className="text-xs sm:text-sm hidden sm:inline">End Call</span>
                 </button>
               </div>
+              )}
             </div>
           </div>
 
@@ -1741,6 +1851,39 @@ export default function LiveMeeting() {
             isStreaming={audioStreaming.state.isStreaming} chunksSent={audioStreaming.state.chunksSent}
             workspace={workspace} onDismissCoaching={dismissCoachingSuggestion}
           />
+        </MobileSheet>
+
+        <MobileSheet open={mobilePanel === "more"} onClose={() => setMobilePanel("none")} title="More">
+          <div className="p-3 space-y-2">
+            <button
+              onClick={() => daily.switchCamera()}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
+              style={{ background: T.card, border: `1px solid ${T.border}` }}
+            >
+              <SwitchCamera className="w-4 h-4" style={{ color: T.text }} />
+              <span className="text-sm font-medium" style={{ color: T.text }}>Switch camera</span>
+            </button>
+            <button
+              onClick={handleNoiseCancellation}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
+              style={{ background: T.card, border: `1px solid ${T.border}` }}
+            >
+              {noiseCancelOn ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" style={{ color: T.muted }} />}
+              <span className="text-sm font-medium" style={{ color: T.text }}>
+                Noise cancellation {noiseCancelOn ? "on" : "off"}
+              </span>
+            </button>
+            <button
+              onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
+              style={{ background: T.card, border: `1px solid ${T.border}` }}
+            >
+              <CircleDot className={cn("w-4 h-4", daily.isRecording ? "text-red-400" : "")} style={!daily.isRecording ? { color: T.text } : undefined} />
+              <span className="text-sm font-medium" style={{ color: T.text }}>
+                {daily.isRecording ? "Stop recording" : "Start recording"}
+              </span>
+            </button>
+          </div>
         </MobileSheet>
 
         <MobileSheet open={mobilePanel === "chat"} onClose={() => setMobilePanel("none")} title="Team Chat">
