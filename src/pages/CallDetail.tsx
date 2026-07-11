@@ -259,7 +259,7 @@ export default function CallDetail() {
         {/* ── Linked deal banner ── */}
         {linkedDeal ? (
           <Link
-            to={`/dashboard/deals/${linkedDeal.id}`}
+            to={`/deals/${linkedDeal.id}`}
             className="flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-2.5 text-sm hover:bg-primary/10 transition-colors"
           >
             <Briefcase className="w-4 h-4 text-primary shrink-0" />
