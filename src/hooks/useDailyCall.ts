@@ -146,6 +146,21 @@ export interface UseDailyCallOptions {
   userName?: string;
   startWithVideoOff?: boolean;
   startWithAudioOff?: boolean;
+  // FIX: anchors the elapsed-time timer to the call's real, DB-backed
+  // `start_time` (ISO string or epoch ms) instead of the instant *this*
+  // browser tab happened to join. Without this, the timer had two bugs:
+  //   1. Navigating away from the meeting page unmounts this hook, which
+  //      tears down the Daily call object. Coming back remounts it and
+  //      rejoins, which used to reset joinTimeRef to `Date.now()` — so the
+  //      timer restarted from 0 even though the meeting had been running
+  //      the whole time.
+  //   2. Host and guest join at different real moments, so each computing
+  //      elapsed time from their own local join instant never agreed.
+  // Passing the same shared, server-stamped start_time to every participant
+  // fixes both: the timer is a pure function of wall-clock time since the
+  // meeting actually started, not of when this particular tab connected.
+  // Falls back to Date.now() (old behavior) if omitted or unparseable.
+  sharedStartTime?: string | number | null;
   onJoined?: () => void;
   onLeft?: () => void;
   onParticipantJoined?: (p: DailyParticipant) => void;
@@ -265,6 +280,7 @@ export function useDailyCall({
   userName = "Host",
   startWithVideoOff = false,
   startWithAudioOff = false,
+  sharedStartTime,
   onJoined,
   onLeft,
   onParticipantJoined,
@@ -297,6 +313,7 @@ export function useDailyCall({
   const roomNameRef            = useRef<string | null>(roomName);
   const meetingTokenRef        = useRef<string | null | undefined>(meetingToken);
   const userNameRef            = useRef<string>(userName);
+  const sharedStartTimeRef     = useRef<string | number | null | undefined>(sharedStartTime);
   const transportReconnectRef  = useRef<ReturnType<typeof setTimeout>>();
   const selfHealTimerRef       = useRef<ReturnType<typeof setTimeout>>();
   const transportRetryCountRef = useRef(0);
@@ -314,22 +331,56 @@ export function useDailyCall({
   useEffect(() => { roomNameRef.current = roomName; },       [roomName]);
   useEffect(() => { meetingTokenRef.current = meetingToken; }, [meetingToken]);
   useEffect(() => { userNameRef.current = userName; },       [userName]);
+  useEffect(() => { sharedStartTimeRef.current = sharedStartTime; }, [sharedStartTime]);
 
   useEffect(() => { ensureDailySDKReady(); }, []);
 
   // ── Timer ──────────────────────────────────────────────────────────────────
+  // Anchors elapsed time to sharedStartTime (the call's DB start_time) when
+  // available, instead of Date.now() at the moment this hook joined. See the
+  // `sharedStartTime` doc comment on UseDailyCallOptions for why — this is
+  // what keeps the timer correct across page navigation and in sync between
+  // host and guest.
+  function resolveAnchor(): number {
+    const shared = sharedStartTimeRef.current;
+    if (shared != null) {
+      const t = typeof shared === "number" ? shared : new Date(shared).getTime();
+      if (Number.isFinite(t) && t > 0) return t;
+    }
+    return Date.now();
+  }
+
   useEffect(() => {
     if (callState === "joined") {
-      joinTimeRef.current = Date.now();
+      joinTimeRef.current = resolveAnchor();
+      // Set immediately so the displayed value is correct before the first
+      // 1s tick — matters most when resuming an in-progress meeting, where
+      // waiting a full second to show the real elapsed time reads as a
+      // reset even though it isn't one.
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - joinTimeRef.current) / 1000)));
       timerRef.current = window.setInterval(() => {
-        setElapsedSeconds(Math.floor((Date.now() - joinTimeRef.current) / 1000));
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - joinTimeRef.current) / 1000)));
       }, 1000);
     } else {
       clearInterval(timerRef.current);
       if (callState === "idle") setElapsedSeconds(0);
     }
     return () => clearInterval(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState]);
+
+  // If sharedStartTime arrives or changes *after* we're already joined
+  // (e.g. react-query's live-call poll fills it in a few seconds after the
+  // host's own optimistic join, or a guest's admitted-status poll resolves
+  // it), re-anchor immediately rather than waiting for the next join.
+  useEffect(() => {
+    if (callState !== "joined") return;
+    const anchor = resolveAnchor();
+    if (Math.abs(anchor - joinTimeRef.current) < 1000) return; // no meaningful change
+    joinTimeRef.current = anchor;
+    setElapsedSeconds(Math.max(0, Math.floor((Date.now() - joinTimeRef.current) / 1000)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedStartTime, callState]);
 
   // ── Fetch meeting token ────────────────────────────────────────────────────
   const fetchMeetingToken = useCallback(async (rName: string, isOwnerUser = true): Promise<string | null> => {
