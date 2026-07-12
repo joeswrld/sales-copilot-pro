@@ -1407,10 +1407,14 @@ export default function LiveMeeting() {
   }, [audioStreaming.state.isReconnecting]);
 
   // ── Live captions (sub-500ms, Zoom/Meet-style) ────────────────────────────
-  // Own mic only — each participant's browser transcribes and broadcasts its
-  // own audio; the other side's line arrives through the transcripts
-  // Realtime subscription in useLiveCall (INSERT + UPDATE) instead of this
-  // socket re-processing remote tracks.
+  // Own mic only through the socket below — each participant's browser
+  // transcribes and broadcasts its own audio. The other side's (guest's)
+  // line is NOT pushed into this map by the socket; it has to be merged in
+  // separately from the full transcripts feed, same as GuestJoin.tsx does —
+  // see the merge effect further down. Without that merge this panel only
+  // ever showed the host's own captions, never the guest's, even though the
+  // guest's lines were already arriving fine in `rawTranscripts` / the
+  // transcript tab.
   const [captionLines, setCaptionLines] = useState<Map<string, CaptionLine>>(new Map());
   const liveSocket = useLiveTranscriptionSocket({
     callId: callId ?? null,
@@ -1435,6 +1439,36 @@ export default function LiveMeeting() {
       }
     },
   });
+
+  // Merge finalized full-transcript lines (host + guest, from the same
+  // `transcripts` feed the right-hand panel uses) into the same caption map
+  // the live socket feeds — this is the actual fix: the socket above only
+  // ever carries the host's OWN mic, so without this merge the caption
+  // panel silently never showed the guest's side at all. Mirrors the
+  // identical effect in GuestJoin.tsx (which needs it for the reverse
+  // reason: RLS blocks a guest's direct reads, so guests rely on this same
+  // merge pattern against their own reconciliation feed instead).
+  useEffect(() => {
+    if (!rawTranscripts.length) return;
+    setCaptionLines((prev) => {
+      const next = new Map(prev);
+      for (const row of rawTranscripts as any[]) {
+        if (row.is_partial) continue; // only surface settled lines here
+        const speakerKey = row.speaker_name || (row.is_guest ? "Guest" : hostName);
+        const existing = next.get(speakerKey);
+        const rowTime = new Date(row.timestamp).getTime();
+        if (!existing || rowTime >= existing.updatedAt) {
+          next.set(speakerKey, {
+            speaker: speakerKey,
+            text: row.text,
+            isFinal: true,
+            updatedAt: rowTime,
+          });
+        }
+      }
+      return next;
+    });
+  }, [rawTranscripts, hostName]);
 
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
   const { workspace, dismissCoachingSuggestion } = useMeetingWorkspace(callId);
