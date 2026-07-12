@@ -81,6 +81,32 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     onStatusChange?.(s);
   }, [onStatusChange]);
 
+  // FIX: Cache the access token via onAuthStateChange instead of calling
+  // supabase.auth.getSession() inside buildUrl() on every single connect/
+  // reconnect attempt. buildUrl() used to call getSession() fresh each time
+  // — with up to 4 connection attempts firing within ~7s during the
+  // reconnect backoff sequence (initial + 3 retries at 1s/2s/4s), that's 4
+  // concurrent gotrue Web Lock acquisitions in quick succession, which is
+  // exactly what produced the "Lock ... was not released within 5000ms...
+  // Forcefully acquiring the lock to recover" console warnings — the same
+  // root cause useAudioStreaming.ts's v7 fix already addressed on the
+  // chunked-upload pipeline. Host-side live captions were also more likely
+  // to spend all their reconnect attempts waiting on a contended lock
+  // (rather than actually re-attempting the WS handshake), making the
+  // socket give up and fall back to the slower chunked pipeline more often
+  // than it needed to.
+  const accessTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (role !== 'host') return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [role]);
+
   const teardownAudio = useCallback(() => {
     try { workletNodeRef.current?.disconnect(); } catch { /* noop */ }
     try { sourceRef.current?.disconnect(); } catch { /* noop */ }
@@ -102,8 +128,16 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     if (!callId) return null;
     const base = `${wsUrlBase()}/functions/v1/transcribe-live`;
     if (role === 'host') {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      let token = accessTokenRef.current;
+      if (!token) {
+        // Cold start — the cache effect hasn't resolved yet (e.g. the very
+        // first connect attempt right after mount). Fall back to a direct
+        // check just this once rather than failing outright; subsequent
+        // attempts will read from the cache.
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token ?? null;
+        accessTokenRef.current = token;
+      }
       if (!token) return null;
       return `${base}?role=host&call_id=${encodeURIComponent(callId)}&token=${encodeURIComponent(token)}`;
     }
@@ -145,7 +179,25 @@ export function useLiveTranscriptionSocket(options: Options): Result {
   const connect = useCallback(async (track: MediaStreamTrack) => {
     if (intentionallyClosedRef.current) return;
     const url = await buildUrl();
-    if (!url) { setStatus('failed'); return; }
+    if (!url) {
+      // FIX: previously set 'failed' immediately here with zero retries —
+      // a session that just hasn't hydrated yet on the very first attempt
+      // (right after the meeting page mounts) permanently killed live
+      // captions for the whole call instead of trying again a moment
+      // later. Route this through the same backoff/retry path as a
+      // dropped socket so a transient "no token yet" only costs one
+      // reconnect attempt, not the whole feature.
+      attemptsRef.current += 1;
+      if (attemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+        setStatus('failed');
+        return;
+      }
+      const delay = RECONNECT_BASE_MS * Math.pow(2, attemptsRef.current - 1);
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!intentionallyClosedRef.current) connect(track);
+      }, delay);
+      return;
+    }
 
     setStatus(attemptsRef.current === 0 ? 'connecting' : 'reconnecting');
 
