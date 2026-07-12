@@ -29,7 +29,6 @@
  */
 
 import { useRef, useCallback, useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 
 export type CaptionEvent = {
   text: string;
@@ -41,9 +40,31 @@ export type LiveSocketStatus = 'idle' | 'connecting' | 'connected' | 'reconnecti
 
 interface Options {
   callId: string | null;
-  /** 'host' uses the current Supabase session; 'guest' uses guestToken. */
+  /** 'host' uses accessToken; 'guest' uses guestToken. */
   role: 'host' | 'guest';
   guestToken?: string | null;
+  /**
+   * FIX: the host's Supabase access token, read directly from AuthContext's
+   * already-resolved session — NOT fetched here via supabase.auth.getSession().
+   *
+   * This hook used to call getSession() itself on every connect/reconnect
+   * attempt. In practice the live meeting page mounts half a dozen hooks
+   * (auth, team, profile, status, audio streaming, this one) that all touch
+   * gotrue around the same moment, and they contend for gotrue's internal
+   * navigator-lock. Real observed behavior: "Lock ... was not released
+   * within 5000ms ... Forcefully acquiring the lock to recover" — meaning a
+   * getSession() call here could block for 5+ seconds. With only 3 retries
+   * on a 1s/2s/4s backoff (~7s total), the socket burned through its whole
+   * retry budget waiting on a contended lock and gave up before ever
+   * reaching the server — captions silently never worked, no server-side
+   * trace at all, and the fallback chunked pipeline was the only thing that
+   * (partially) ran.
+   *
+   * Reading the token from AuthContext's React state is synchronous and
+   * lock-free, since AuthProvider already resolved it once at app startup
+   * and keeps it current via onAuthStateChange.
+   */
+  accessToken?: string | null;
   onCaption?: (evt: CaptionEvent) => void;
   onStatusChange?: (status: LiveSocketStatus) => void;
 }
@@ -64,7 +85,7 @@ function wsUrlBase(): string {
 }
 
 export function useLiveTranscriptionSocket(options: Options): Result {
-  const { callId, role, guestToken, onCaption, onStatusChange } = options;
+  const { callId, role, guestToken, accessToken, onCaption, onStatusChange } = options;
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -81,31 +102,24 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     onStatusChange?.(s);
   }, [onStatusChange]);
 
-  // FIX: Cache the access token via onAuthStateChange instead of calling
-  // supabase.auth.getSession() inside buildUrl() on every single connect/
-  // reconnect attempt. buildUrl() used to call getSession() fresh each time
-  // — with up to 4 connection attempts firing within ~7s during the
-  // reconnect backoff sequence (initial + 3 retries at 1s/2s/4s), that's 4
-  // concurrent gotrue Web Lock acquisitions in quick succession, which is
-  // exactly what produced the "Lock ... was not released within 5000ms...
-  // Forcefully acquiring the lock to recover" console warnings — the same
-  // root cause useAudioStreaming.ts's v7 fix already addressed on the
-  // chunked-upload pipeline. Host-side live captions were also more likely
-  // to spend all their reconnect attempts waiting on a contended lock
-  // (rather than actually re-attempting the WS handshake), making the
-  // socket give up and fall back to the slower chunked pipeline more often
-  // than it needed to.
-  const accessTokenRef = useRef<string | null>(null);
+  // FIX v2: don't call supabase.auth.getSession() (or onAuthStateChange) in
+  // this hook at all anymore — that was still hitting gotrue's Web Lock
+  // even when cached via a ref, because the *first* population of that
+  // cache was itself a getSession() call racing against every other hook on
+  // this page doing the same thing. Observed in production: gotrue's lock
+  // not releasing within 5000ms, well past this socket's entire 3-attempt
+  // retry budget (~7s), so the live-caption socket gave up before ever
+  // reaching the server — with zero server-side trace, since it never got
+  // far enough to open the WebSocket.
+  //
+  // AuthContext already holds the resolved session in React state and keeps
+  // it current via its own single onAuthStateChange subscription. Reading
+  // the token from there (passed in as `accessToken`) is synchronous, free,
+  // and doesn't touch gotrue's lock at all.
+  const accessTokenRef = useRef<string | null>(accessToken ?? null);
   useEffect(() => {
-    if (role !== 'host') return;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      accessTokenRef.current = session?.access_token ?? null;
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      accessTokenRef.current = session?.access_token ?? null;
-    });
-    return () => sub.subscription.unsubscribe();
-  }, [role]);
+    accessTokenRef.current = accessToken ?? null;
+  }, [accessToken]);
 
   const teardownAudio = useCallback(() => {
     try { workletNodeRef.current?.disconnect(); } catch { /* noop */ }
@@ -128,16 +142,13 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     if (!callId) return null;
     const base = `${wsUrlBase()}/functions/v1/transcribe-live`;
     if (role === 'host') {
-      let token = accessTokenRef.current;
-      if (!token) {
-        // Cold start — the cache effect hasn't resolved yet (e.g. the very
-        // first connect attempt right after mount). Fall back to a direct
-        // check just this once rather than failing outright; subsequent
-        // attempts will read from the cache.
-        const { data: { session } } = await supabase.auth.getSession();
-        token = session?.access_token ?? null;
-        accessTokenRef.current = token;
-      }
+      // No getSession() fallback here anymore — accessTokenRef is kept in
+      // sync with AuthContext's `accessToken` prop via the effect above,
+      // which is already resolved React state, not a fresh gotrue call. If
+      // it's still null this is a genuine "not signed in yet" case, and the
+      // existing retry/backoff loop below will pick it up as soon as
+      // AuthContext resolves and the prop change re-renders this hook.
+      const token = accessTokenRef.current;
       if (!token) return null;
       return `${base}?role=host&call_id=${encodeURIComponent(callId)}&token=${encodeURIComponent(token)}`;
     }
@@ -187,8 +198,15 @@ export function useLiveTranscriptionSocket(options: Options): Result {
       // later. Route this through the same backoff/retry path as a
       // dropped socket so a transient "no token yet" only costs one
       // reconnect attempt, not the whole feature.
+      //
+      // FIX: this branch used to be completely silent — no console output
+      // at all — which is exactly why the gotrue-lock bug took a full
+      // console-log capture to track down instead of one glance at the
+      // logs. Now it's visible immediately if it ever happens again.
       attemptsRef.current += 1;
+      console.warn(`[LiveTranscription] No URL yet (role=${role}, has_token=${!!accessTokenRef.current}, has_call=${!!callId}) — attempt ${attemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}`);
       if (attemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+        console.warn('[LiveTranscription] Giving up — no valid connect URL after all retries, falling back to chunked pipeline');
         setStatus('failed');
         return;
       }
