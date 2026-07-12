@@ -1335,7 +1335,7 @@ export default function LiveMeeting() {
   const { id }    = useParams<{ id: string }>();
   const navigate  = useNavigate();
   const isMobile  = useIsMobile();
-  const { user }  = useAuth();
+  const { user, session } = useAuth();
   const { team }  = useTeam();
   const { setStatus } = useUserStatus(team?.id);
   const { profile }   = useUserProfile();
@@ -1415,6 +1415,12 @@ export default function LiveMeeting() {
   const liveSocket = useLiveTranscriptionSocket({
     callId: callId ?? null,
     role: "host",
+    // FIX: pass the already-resolved session token from AuthContext instead
+    // of letting the hook call supabase.auth.getSession() itself — see the
+    // FIX v2 comment in useLiveTranscriptionSocket.ts for why that caused
+    // captions to silently never connect (gotrue lock contention with the
+    // half-dozen other auth-touching hooks this page mounts).
+    accessToken: session?.access_token ?? null,
     onCaption: (evt) => {
       setCaptionLines((prev) => {
         const next = new Map(prev);
