@@ -13,7 +13,7 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffectivePlan } from "@/hooks/useEffectivePlan";
+import { useTeamMinutePool } from "@/hooks/useTeamMinutePool";
 import { toast } from "sonner";
 import { stageFromCall } from "@/hooks/useDealRooms";
 import { useTeam } from "@/hooks/useTeam";
@@ -56,9 +56,12 @@ export function useLiveCall(options?: {
   onCallEnded?: () => void;
 }) {
   const { user } = useAuth();
-  const { effectivePlan } = useEffectivePlan();
   const { team } = useTeam();
   const queryClient = useQueryClient();
+  // Single source of truth for "can this user start another meeting?" —
+  // base plan minutes + any purchased extra minutes, minus minutes already
+  // used this billing cycle. Replaces the old raw meeting-count gate below.
+  const { pool: minutePool } = useTeamMinutePool();
 
   // ── Live call query ──────────────────────────────────────────────────────
   const liveCallQuery = useQuery({
@@ -272,32 +275,16 @@ export function useLiveCall(options?: {
         throw new Error("DEAL_REQUIRED");
       }
 
-      const callsLimit    = effectivePlan?.callsLimit ?? 5;
-      const workspaceId   = effectivePlan?.workspaceId ?? null;
-
-      const cycleStart = new Date();
-      cycleStart.setDate(1);
-      cycleStart.setHours(0, 0, 0, 0);
-
-      let usedCount = 0;
-      if (workspaceId) {
-        const { data: usageRow } = await supabase
-          .from("workspace_meeting_usage" as any)
-          .select("meetings_used")
-          .eq("workspace_id", workspaceId)
-          .maybeSingle();
-        usedCount = (usageRow as any)?.meetings_used ?? 0;
-      } else {
-        const { count } = await supabase
-          .from("calls")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .neq("status", "live")
-          .gte("created_at", cycleStart.toISOString());
-        usedCount = count ?? 0;
-      }
-
-      if (callsLimit !== -1 && usedCount >= callsLimit) {
+      // ── Gate on minutes, not on meeting count ─────────────────────────────
+      // A user should be allowed to create as many meeting rooms as they
+      // like as long as they still have minutes available — plan minutes
+      // plus whatever extra minutes they've purchased. Counting *meetings*
+      // (however short) instead of minutes actually used unfairly blocks
+      // people who run lots of short calls while letting a single long call
+      // eat the whole quota unnoticed. minutePool (get_team_minute_pool) is
+      // the same source used for the in-call/near-limit warnings, so both
+      // checks now agree with each other.
+      if (minutePool && !minutePool.isUnlimited && minutePool.isAtLimit) {
         throw new Error("PLAN_LIMIT_REACHED");
       }
 
