@@ -20,6 +20,16 @@ import { useTeam } from "@/hooks/useTeam";
 
 export interface Transcript {
   id: string; call_id: string; speaker: string; text: string; timestamp: string;
+  // These columns have always been returned by the `select("*")` below (see
+  // upsert_partial_transcript, which writes all of them) but were missing
+  // from this type — every caller that needed them was reaching for `as
+  // any`. Declaring them properly is what let LiveMeeting.tsx merge this
+  // feed into its live-captions map the same way GuestJoin.tsx already does.
+  speaker_name?: string;
+  speaker_role?: string | null;
+  is_guest?: boolean;
+  is_partial?: boolean;
+  client_chunk_id?: string | null;
 }
 export interface Objection {
   id: string; call_id: string; objection_type: string;
