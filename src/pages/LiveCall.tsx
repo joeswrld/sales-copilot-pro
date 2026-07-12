@@ -871,7 +871,7 @@ export default function LiveCall() {
           .eq("id", callRow.id);
       }
       if (err?.message === "PLAN_LIMIT_REACHED") {
-        toast.error("Meeting limit reached. Upgrade to continue.");
+        toast.error("You're out of call minutes for this cycle. Buy more minutes or upgrade to continue.");
       } else {
         toast.error(err?.message ?? "Could not create meeting room.");
       }
