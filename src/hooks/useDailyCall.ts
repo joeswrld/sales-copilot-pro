@@ -542,11 +542,79 @@ export function useDailyCall({
       }
     });
 
+    // FIX: this handler previously only used track-started to fire
+    // onLocalAudioReady — it never wrote the new track into `participants`
+    // state. That state update was left entirely to "participant-updated",
+    // but Daily's own guidance is explicit that these two events are NOT
+    // interchangeable: "we need to update our app state not only on
+    // participant-updated events, but also on track-started/track-stopped."
+    // (https://www.daily.co/blog/optimize-call-quality-in-larger-calls-by-manually-managing-media-tracks-in-a-paginated-video-call-ui/)
+    // In practice this meant: whenever a track-started fired for the local
+    // mic WITHOUT a participant-updated landing at the same moment (timing
+    // varies by browser/device — reliably reproducible, not rare), the
+    // local participant's `audioTrack` in our state stayed undefined for
+    // the rest of the call. Nothing downstream ever noticed, because
+    // onLocalAudioReady still fired (it doesn't touch participants state),
+    // so nothing looked broken from that signal alone. The real casualty
+    // was LiveMeeting.tsx's track-attach effect, which only calls
+    // liveSocket.start() once `daily.participants` contains a local
+    // participant with a defined audioTrack — with that field stuck
+    // undefined, live captions never left "idle" ("Not started yet /
+    // Waiting for your microphone track"), even though the mic itself was
+    // live and Daily was happily sending it to remote participants.
+    //
+    // Re-reading the fresh participant snapshot here (the same source
+    // participant-updated already trusts) and writing it into state
+    // ourselves closes that gap instead of hoping a second event shows up.
     callObj.on("track-started", (event: any) => {
+      const sid = event?.participant?.session_id;
+      if (sid) {
+        const allParts = callObj.participants?.() ?? {};
+        const freshP = event.participant.local ? allParts.local : allParts[sid];
+        if (freshP) {
+          const { videoTrack, audioTrack, screenVideoTrack, screenAudioTrack } = extractTracks(freshP);
+          setParticipants((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(sid);
+            if (existing) {
+              next.set(sid, {
+                ...existing,
+                videoTrack: videoTrack ?? existing.videoTrack,
+                audioTrack: audioTrack ?? existing.audioTrack,
+                screenVideoTrack: screenVideoTrack ?? existing.screenVideoTrack,
+                screenAudioTrack: screenAudioTrack ?? existing.screenAudioTrack,
+              });
+            } else {
+              next.set(sid, buildParticipant(freshP, freshP.local ? userNameRef.current : undefined));
+            }
+            return next;
+          });
+        }
+      }
+
       if (event?.participant?.local && event?.track?.kind === "audio" && !localAudioReadyFiredRef.current) {
         localAudioReadyFiredRef.current = true;
         onLocalAudioReady?.(Date.now() - joinCallStartedAtRef.current);
       }
+    });
+
+    // FIX: matching gap on the way down — a track-stopped (mic muted,
+    // device revoked, camera turned off) previously had no handler at all,
+    // so a stale MediaStreamTrack could keep sitting in `participants`
+    // state pointing at a track that's no longer live. Clearing the
+    // relevant field mirrors the track-started handler above.
+    callObj.on("track-stopped", (event: any) => {
+      const sid = event?.participant?.session_id;
+      const kind = event?.track?.kind;
+      if (!sid || !kind) return;
+      setParticipants((prev) => {
+        const existing = prev.get(sid);
+        if (!existing) return prev;
+        const next = new Map(prev);
+        if (kind === "audio") next.set(sid, { ...existing, audioTrack: undefined });
+        else if (kind === "video") next.set(sid, { ...existing, videoTrack: undefined });
+        return next;
+      });
     });
 
     callObj.on("left-meeting", () => {
