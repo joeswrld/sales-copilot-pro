@@ -1076,6 +1076,52 @@ export default function GuestJoin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, daily.participants]);
 
+  // ── Backgrounded-tab guard ───────────────────────────────────────────────────
+  // Mirrors the host-side guard in LiveMeeting.tsx — see the doc comment
+  // there for the full root-cause explanation. Short version: if this tab
+  // gets backgrounded (e.g. the guest switches to another app on the same
+  // phone), mobile browsers throttle its audio pipeline and this guest's own
+  // mic silently stops being transcribed until they switch back.
+  const guestWakeLockRef = useRef<any>(null);
+  const guestBackgroundWarnedRef = useRef(false);
+  useEffect(() => {
+    if (step !== "admitted") return;
+
+    const requestWakeLock = async () => {
+      try {
+        if ("wakeLock" in navigator) {
+          guestWakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+        }
+      } catch (e) {
+        console.warn("[GuestJoin] Wake Lock request failed:", e);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (!guestBackgroundWarnedRef.current) {
+          guestBackgroundWarnedRef.current = true;
+          toast.warning(
+            "This tab is now in the background — your mic and live captions will pause on most phones until you switch back.",
+            { id: "bg-tab-warning-guest", duration: 6000 },
+          );
+        }
+      } else {
+        guestBackgroundWarnedRef.current = false;
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    requestWakeLock();
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      try { guestWakeLockRef.current?.release?.(); } catch { /* noop */ }
+      guestWakeLockRef.current = null;
+    };
+  }, [step]);
+
   /**
    * Exchange the guest_session_token (minted by guest-request-status the
    * moment the host admits this guest) for a real Daily.co meeting token.
