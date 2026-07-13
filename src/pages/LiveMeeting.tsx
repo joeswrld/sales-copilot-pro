@@ -1565,6 +1565,80 @@ export default function LiveMeeting() {
     }
   }, [liveSocket.status]); // eslint-disable-line
 
+  // ── Backgrounded-tab guard ───────────────────────────────────────────────────
+  // FIX: this is the actual root cause behind "my own voice never gets
+  // captioned/transcribed" reports from hosts testing with a guest on the
+  // SAME physical device (e.g. one phone, host in Chrome + guest in a second
+  // browser app). A phone can only have one app/tab in the foreground at a
+  // time — switching to the guest browser necessarily backgrounds this host
+  // tab. Mobile browsers aggressively throttle backgrounded tabs (timers,
+  // the WebAudio graph feeding useLiveTranscriptionSocket's worklet, and the
+  // MediaRecorder behind the chunked fallback all get paused or heavily
+  // deprioritized), so the host's own mic audio stops reaching Deepgram
+  // entirely for as long as the tab is hidden — while the guest tab, being
+  // the one actually in view, keeps transcribing normally. Confirmed via the
+  // transcripts table and transcribe-live/transcribe-stream function logs:
+  // zero host-side audio frames or requests occur during the exact window
+  // the host was speaking from a backgrounded tab, even though nothing on
+  // the client throws an error.
+  //
+  // Two things this can't fully solve (browsers intentionally reserve the
+  // right to suspend a hidden tab's audio pipeline for battery reasons — no
+  // page-level API can force it to keep processing at full rate), but this
+  // makes the failure visible instead of silent, and reduces how often it
+  // happens:
+  //   1. A Screen Wake Lock, re-acquired on every visibility change, which
+  //      keeps the device awake and measurably reduces (though doesn't
+  //      eliminate) how aggressively some mobile browsers throttle a hidden
+  //      tab's audio processing.
+  //   2. A one-time-per-hide toast telling the host their mic/captions will
+  //      pause while this tab isn't in view, instead of the current
+  //      completely silent failure.
+  const wakeLockRef = useRef<any>(null);
+  const backgroundWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!isLive) return;
+
+    const requestWakeLock = async () => {
+      try {
+        if ("wakeLock" in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+        }
+      } catch (e) {
+        // Not fatal — just means the throttling mitigation below is
+        // unavailable on this browser/OS. The visibility warning still works.
+        console.warn("[LiveMeeting] Wake Lock request failed:", e);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (!backgroundWarnedRef.current) {
+          backgroundWarnedRef.current = true;
+          toast.warning(
+            "This tab is now in the background — your mic and live captions will pause on most phones until you switch back.",
+            { id: "bg-tab-warning", duration: 6000 },
+          );
+        }
+      } else {
+        // Coming back to the foreground: re-arm the one-time warning for
+        // the next time it happens, and re-acquire the wake lock (the OS
+        // releases it automatically whenever the tab is hidden).
+        backgroundWarnedRef.current = false;
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    requestWakeLock();
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      try { wakeLockRef.current?.release?.(); } catch { /* noop */ }
+      wakeLockRef.current = null;
+    };
+  }, [isLive]);
+
   useEffect(() => { if (!isLoading && !isLive) navigate("/live"); }, [isLoading, isLive, navigate]);
 
   useEffect(() => () => {
