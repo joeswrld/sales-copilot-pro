@@ -823,6 +823,22 @@ export default function GuestJoin() {
   // transcribe-guest-stream resolves call_id server-side from this token, so
   // this page never needs to know its own call_id.
   const [guestAuthToken, setGuestAuthToken] = useState<string | null>(null);
+  // FIX: the real call UUID (returned as `call_id` by guest-request-status
+  // on admission — see the polling effect below). useGuestTranscripts
+  // subscribes to the Realtime broadcast topic `call-transcripts-{callId}`,
+  // which MUST be this real call id: it's the exact same topic
+  // transcribe-live / transcribe-stream / transcribe-guest-stream broadcast
+  // to server-side, and the exact same topic the host's LiveMeeting page
+  // (useLiveCall.ts) listens on. guestAuthToken (the raw
+  // guest_session_token) is a completely different value — it's only used
+  // to AUTHORIZE the get_guest_call_transcripts RPC, never as a channel
+  // name. Passing guestAuthToken as the channel id (as this used to do)
+  // meant this guest was subscribed to a channel nobody ever broadcasts
+  // on, so it silently missed every low-latency transcript push and fell
+  // back entirely on the 8s reconciliation poll — which is also why a
+  // guest's own live caption (fed directly by the low-latency socket) and
+  // the transcript panel could visibly drift out of sync with each other.
+  const [guestCallId, setGuestCallId] = useState<string | null>(null);
   // FIX: the call's real, DB-backed start_time (returned by
   // guest-request-status as `call_start_time` once admitted). Anchoring the
   // timer to this instead of this tab's own join instant is what keeps the
@@ -871,7 +887,7 @@ export default function GuestJoin() {
   // and stops when the component unmounts on leave/meeting-end — never on
   // its own while the guest is still connected.
   const { transcripts: fullTranscripts } = useGuestTranscripts({
-    callId: callStartTime ? guestAuthToken : null, // gate on "admitted & live", not just token presence
+    callId: callStartTime ? guestCallId : null, // gate on "admitted & live", not just token presence
     guestToken: guestAuthToken,
     enabled: Boolean(guestAuthToken),
   });
@@ -1157,6 +1173,7 @@ export default function GuestJoin() {
           clearInterval(interval);
 
           if (data.call_start_time) setCallStartTime(data.call_start_time);
+          if (data.call_id) setGuestCallId(data.call_id);
 
           const displayName = guestName.trim() || "Guest";
           let dailyToken: string | null = null;
