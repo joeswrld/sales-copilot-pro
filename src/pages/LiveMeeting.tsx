@@ -313,6 +313,110 @@ const RecBadge = memo(() => (
   </div>
 ));
 
+// ── Caption & Transcript self-test ────────────────────────────────────────
+// Lets the host verify the whole live-caption + saved-transcript pipeline
+// is actually working, alone, with nobody else in the call — no need to
+// recruit a guest just to find out captions are broken again. It checks
+// three independent things, in the order data actually flows through the
+// system, so if something's wrong you can tell exactly which stage failed:
+//
+//   1. Socket connected  — the browser's WS to transcribe-live is open and
+//      Deepgram's upstream is live (this is `liveSocket.status`).
+//   2. Live caption seen — at least one interim/final caption has come
+//      back over that socket for YOUR voice (this is `captionLines` being
+//      populated for your own speaker key).
+//   3. Saved to transcript — at least one of those captions reached
+//      `speech_final` and was written to the `transcripts` table, which is
+//      the same table the post-call summary / transcript panel reads from
+//      (this is a `!row.is_guest` row showing up in `rawTranscripts`).
+//
+// Step 1 can be true while 2 and 3 are still catching up (normal — takes a
+// beat after you start talking). If 1 stays anything other than
+// "Connected" for more than a few seconds, or 2 is true but 3 never
+// becomes true, that pinpoints exactly which half of the pipeline to look
+// at (the realtime socket vs. the DB write / RLS / RPC side).
+const SelfTestStep = memo(({ ok, pending, label, detail }: { ok: boolean; pending: boolean; label: string; detail: string }) => (
+  <div className="flex items-start gap-2.5 py-2">
+    <div className="mt-0.5 shrink-0">
+      {ok ? (
+        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+      ) : pending ? (
+        <Loader2 className="w-4 h-4 animate-spin" style={{ color: T.amber }} />
+      ) : (
+        <div className="w-4 h-4 rounded-full" style={{ border: `1.5px solid ${T.subtle}` }} />
+      )}
+    </div>
+    <div className="min-w-0">
+      <p className="text-xs font-semibold" style={{ color: ok ? "#6ee7b7" : pending ? T.amber : T.text }}>{label}</p>
+      <p className="text-[11px] mt-0.5 leading-snug" style={{ color: T.muted }}>{detail}</p>
+    </div>
+  </div>
+));
+
+const CaptionSelfTestPanel = memo(({
+  status, lastCaption, lastSavedText, lastSavedAgoSec, hostLineCount, onClose,
+}: {
+  status: string;
+  lastCaption: string | null;
+  lastSavedText: string | null;
+  lastSavedAgoSec: number | null;
+  hostLineCount: number;
+  onClose: () => void;
+}) => {
+  const socketOk = status === "connected";
+  const socketPending = status === "connecting" || status === "reconnecting";
+  const captionOk = !!lastCaption;
+  const savedOk = hostLineCount > 0;
+
+  return (
+    <div
+      className="absolute z-30 top-2 right-2 w-[290px] max-w-[calc(100vw-24px)] rounded-2xl overflow-hidden"
+      style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
+    >
+      <div className="flex items-center justify-between px-3.5 pt-3 pb-2 border-b" style={{ borderColor: T.border }}>
+        <div className="flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5" style={{ color: "#a5b4fc" }} />
+          <span className="text-xs font-semibold text-white">Caption &amp; transcript check</span>
+        </div>
+        <button onClick={onClose} className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: T.card }}>
+          <X className="w-3.5 h-3.5" style={{ color: T.muted }} />
+        </button>
+      </div>
+
+      <div className="px-3.5 py-1 divide-y" style={{ borderColor: T.border }}>
+        <SelfTestStep
+          ok={socketOk}
+          pending={socketPending}
+          label={socketOk ? "Socket connected" : socketPending ? "Connecting…" : status === "failed" ? "Socket failed — using fallback" : "Not started yet"}
+          detail={socketOk ? "Live connection to the transcription relay is up." : socketPending ? "Opening the live-caption connection." : status === "failed" ? "Live captions couldn't connect; falling back to the slower chunked pipeline (~8-11s delay)." : "Waiting for your microphone track."}
+        />
+        <SelfTestStep
+          ok={captionOk}
+          pending={socketOk && !captionOk}
+          label={captionOk ? "Live caption received" : "Waiting for a live caption"}
+          detail={captionOk ? `Last heard: "${lastCaption!.slice(0, 60)}${lastCaption!.length > 60 ? "…" : ""}"` : "Say a sentence out loud — this should light up within about half a second."}
+        />
+        <SelfTestStep
+          ok={savedOk}
+          pending={captionOk && !savedOk}
+          label={savedOk ? `Saved to transcript (${hostLineCount} line${hostLineCount === 1 ? "" : "s"})` : "Waiting for a saved line"}
+          detail={
+            savedOk
+              ? `Last saved${lastSavedAgoSec != null ? ` ${lastSavedAgoSec}s ago` : ""}: "${(lastSavedText ?? "").slice(0, 60)}${(lastSavedText ?? "").length > 60 ? "…" : ""}"`
+              : "Finish a sentence and pause briefly — a short pause is what marks it \"final\" and writes it to the transcript."
+          }
+        />
+      </div>
+
+      <div className="px-3.5 pb-3 pt-1">
+        <p className="text-[10px] leading-snug" style={{ color: T.subtle }}>
+          This checks your own mic only — no one else needs to be in the call for these three to go green.
+        </p>
+      </div>
+    </div>
+  );
+});
+
 const TxLine = memo(({ speaker, speakerName, text, time, isHost, isPartial }: any) => (
   <div className={cn("flex gap-2 sm:gap-2.5", isPartial && "opacity-60")}>
     <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5"
@@ -1474,6 +1578,23 @@ export default function LiveMeeting() {
   const { workspace, dismissCoachingSuggestion } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
 
+  // ── Caption & transcript self-test ──────────────────────────────────────
+  // Everything needed to verify the pipeline is already in scope above
+  // (liveSocket.status, captionLines, rawTranscripts) — this just derives
+  // the three checkpoints the panel displays. See CaptionSelfTestPanel's
+  // doc comment for what each one means. Deliberately does NOT filter on
+  // "another participant present" — the whole point is this works solo.
+  const [showSelfTest, setShowSelfTest] = useState(false);
+  const hostTranscriptLines = useMemo(
+    () => (rawTranscripts as any[]).filter((r) => !r.is_guest && !r.is_partial),
+    [rawTranscripts],
+  );
+  const lastHostTranscriptLine = hostTranscriptLines[hostTranscriptLines.length - 1] ?? null;
+  const lastHostCaptionText = captionLines.get(hostName)?.text ?? null;
+  const lastHostSavedAgoSec = lastHostTranscriptLine
+    ? Math.max(0, Math.round((Date.now() - new Date(lastHostTranscriptLine.timestamp).getTime()) / 1000))
+    : null;
+
   const [leftTab,         setLeftTab]         = useState<LeftTab>("people");
   const [rightTab,        setRightTab]        = useState<RightTab>("transcript");
   const [isAudioOn,       setIsAudioOn]       = useState(true);
@@ -1847,6 +1968,22 @@ export default function LiveMeeting() {
               </div>
             )}
 
+            {/* Caption & transcript self-test toggle — visible on mobile
+                too (unlike the panel toggles below), since verifying your
+                own mic pipeline is exactly the thing you'd want to do
+                before/without a guest around. */}
+            <button
+              onClick={() => setShowSelfTest((v) => !v)}
+              title="Check that captions & transcript are working"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+              style={{
+                background: showSelfTest ? "rgba(99,102,241,0.2)" : T.card,
+                border: `1px solid ${showSelfTest ? "rgba(99,102,241,0.4)" : T.border}`,
+              }}
+            >
+              <Activity className="w-3.5 h-3.5" style={{ color: showSelfTest ? "#a5b4fc" : T.muted }} />
+            </button>
+
             {/* Panel toggles — desktop only */}
             <div className="hidden md:flex items-center gap-1">
               <button
@@ -1906,6 +2043,16 @@ export default function LiveMeeting() {
                 />
               )}
               <LiveCaptions lines={Array.from(captionLines.values())} />
+              {showSelfTest && (
+                <CaptionSelfTestPanel
+                  status={liveSocket.status}
+                  lastCaption={lastHostCaptionText}
+                  lastSavedText={lastHostTranscriptLine?.text ?? null}
+                  lastSavedAgoSec={lastHostSavedAgoSec}
+                  hostLineCount={hostTranscriptLines.length}
+                  onClose={() => setShowSelfTest(false)}
+                />
+              )}
             </div>
 
             {/* AI status nudge — desktop */}
