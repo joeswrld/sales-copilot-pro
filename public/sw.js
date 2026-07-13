@@ -1,7 +1,20 @@
 /**
- * Fixsense Service Worker — v3
+ * Fixsense Service Worker — v4
  *
- * KEY FIX: Added fetch handler that passes API/WebSocket calls directly
+ * v4 FIX: The v3 fetch handler forwarded EVERY intercepted request —
+ * including WebSocket upgrade handshakes — through `fetch(request)`.
+ * Service workers aren't supposed to receive fetch events for WebSocket
+ * connections at all per spec, but that isn't reliably true across every
+ * browser/version, and the Fetch API has no way to represent a "101
+ * Switching Protocols" response. If the handshake to transcribe-live
+ * (real-time captions) ever got routed through here, replaying it via
+ * fetch() would break the upgrade — observed client-side as the socket
+ * silently failing to reach 'connected' and a 405 logged for the request.
+ * WebSocket upgrade requests are now explicitly bypassed before any other
+ * handling, so they always go straight to the browser's native network
+ * stack untouched.
+ *
+ * v3 FIX: Added fetch handler that passes API/WebSocket calls directly
  * to the network, bypassing any cache layer entirely.
  *
  * Root cause of the 16:30:48 flood:
@@ -15,7 +28,7 @@
  *      API domains. Only cache static assets (JS/CSS/fonts/images).
  */
 
-const CACHE_NAME = 'fixsense-v3';
+const CACHE_NAME = 'fixsense-v4';
 
 // Domains that must ALWAYS go direct to network — never cached
 const NETWORK_ONLY_HOSTS = [
@@ -89,6 +102,19 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = request.url;
+
+  // 0. NEVER touch WebSocket upgrade requests. Per spec, fetch events
+  //    aren't supposed to fire for these at all, but that isn't perfectly
+  //    consistent across browsers/versions — and fetch() has no way to
+  //    represent a "101 Switching Protocols" response, so if one of these
+  //    ever does land here and gets forwarded via fetch(request), the
+  //    upgrade breaks. This is exactly the request useLiveTranscriptionSocket
+  //    makes to transcribe-live for real-time captions — bail out
+  //    immediately and let the browser's native network stack handle the
+  //    handshake untouched.
+  if ((request.headers.get('upgrade') || '').toLowerCase() === 'websocket') {
+    return;
+  }
 
   // 1. NETWORK ONLY: API calls must never be cached or intercepted
   if (isNetworkOnly(url) || request.method !== 'GET') {
