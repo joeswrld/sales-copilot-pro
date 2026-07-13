@@ -121,6 +121,37 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     accessTokenRef.current = accessToken ?? null;
   }, [accessToken]);
 
+  // FIX: same class of bug as accessToken above, but for callId/guestToken.
+  // buildUrl() (below) used to close over `callId`/`guestToken` directly.
+  // The very first time a track becomes available on the host side,
+  // `daily.participants` can populate before the `calls` row lookup
+  // (useLiveCall's liveCallQuery) has finished its network round trip, so
+  // `callId` is still null/undefined at that instant. That first call to
+  // start()/connect() spawns a `connect` closure bound to that stale null
+  // callId, and — because the reconnect setTimeout below calls `connect`
+  // recursively on ITSELF, not a freshly-read one from React state — every
+  // retry in that backoff chain kept reusing the same stale closure with
+  // callId still null, even after the real callId showed up moments later
+  // and this hook re-rendered with a brand-new (correct) `connect`
+  // function that nothing was calling anymore. Net effect: buildUrl()
+  // returned null on all 3 retry attempts, the hook gave up after ~7s, and
+  // the host's own mic was never transcribed for the rest of the call —
+  // confirmed in production logs: zero `role=host` requests ever reached
+  // transcribe-live for the affected call, while `role=guest` connections
+  // (which don't depend on callId at all) worked immediately.
+  //
+  // Reading callId/guestToken from refs instead means every retry —
+  // regardless of which render's closure is technically running it — sees
+  // whatever the latest value actually is at the moment it fires.
+  const callIdRef = useRef<string | null>(callId ?? null);
+  useEffect(() => {
+    callIdRef.current = callId ?? null;
+  }, [callId]);
+  const guestTokenRef = useRef<string | null>(guestToken ?? null);
+  useEffect(() => {
+    guestTokenRef.current = guestToken ?? null;
+  }, [guestToken]);
+
   const teardownAudio = useCallback(() => {
     try { workletNodeRef.current?.disconnect(); } catch { /* noop */ }
     try { sourceRef.current?.disconnect(); } catch { /* noop */ }
@@ -139,7 +170,15 @@ export function useLiveTranscriptionSocket(options: Options): Result {
   }, []);
 
   const buildUrl = useCallback(async (): Promise<string | null> => {
-    if (!callId) return null;
+    // FIX: read the live call id / guest token off the refs above (kept in
+    // sync with the latest props via effects) instead of closing over the
+    // `callId`/`guestToken` values from whichever render spawned this
+    // particular `connect` closure — see the doc comment on those refs for
+    // why that staleness was silently killing host captions for an entire
+    // call. This makes every retry attempt — even ones running inside a
+    // long-lived recursive setTimeout chain — check the CURRENT value.
+    const liveCallId = callIdRef.current;
+    if (!liveCallId) return null;
     const base = `${wsUrlBase()}/functions/v1/transcribe-live`;
     if (role === 'host') {
       // No getSession() fallback here anymore — accessTokenRef is kept in
@@ -150,11 +189,12 @@ export function useLiveTranscriptionSocket(options: Options): Result {
       // AuthContext resolves and the prop change re-renders this hook.
       const token = accessTokenRef.current;
       if (!token) return null;
-      return `${base}?role=host&call_id=${encodeURIComponent(callId)}&token=${encodeURIComponent(token)}`;
+      return `${base}?role=host&call_id=${encodeURIComponent(liveCallId)}&token=${encodeURIComponent(token)}`;
     }
-    if (!guestToken) return null;
-    return `${base}?role=guest&token=${encodeURIComponent(guestToken)}`;
-  }, [callId, role, guestToken]);
+    const gToken = guestTokenRef.current;
+    if (!gToken) return null;
+    return `${base}?role=guest&token=${encodeURIComponent(gToken)}`;
+  }, [role]);
 
   const attachAudio = useCallback(async (track: MediaStreamTrack, ws: WebSocket) => {
     // 16kHz to match Deepgram's expected encoding — most browsers honor this
@@ -274,13 +314,24 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     };
   }, [buildUrl, attachAudio, onCaption, setStatus, teardownAudio]);
 
+  // FIX: this used to bail out immediately if `callId` wasn't populated
+  // yet (`if (!callId) return;`) — a no-op, not even a 'failed' status.
+  // On the host side, the local Daily audio track routinely becomes
+  // available before useLiveCall's `calls` row lookup finishes its
+  // network round trip, so `callId` was still null right when the caller
+  // (LiveMeeting.tsx's track-attach effect) called this. Since that
+  // effect only calls start() once per (session_id + track.id) — see its
+  // own doc comment — this silent no-op meant live captions (AND the
+  // chunked fallback, which only ever triggers off `status === 'failed'`)
+  // never started for the rest of the call. connect() already has a
+  // dedicated "no URL yet, retry with backoff" path for exactly this
+  // race — go straight there instead of skipping it.
   const start = useCallback(async (track: MediaStreamTrack) => {
-    if (!callId) return;
     intentionallyClosedRef.current = false;
     attemptsRef.current = 0;
     trackRef.current = track;
     await connect(track);
-  }, [callId, connect]);
+  }, [connect]);
 
   const stop = useCallback(() => {
     intentionallyClosedRef.current = true;
