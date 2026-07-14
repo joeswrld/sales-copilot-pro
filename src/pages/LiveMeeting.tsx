@@ -749,6 +749,23 @@ const MobileVideoStage = memo(({
 
   const pipParticipant = local && mainParticipant?.session_id !== local.session_id ? local : null;
 
+  // FIX: this stage was built for the 1:1 case — one full-bleed main tile
+  // plus a small self-PiP — and that's still correct for exactly 2
+  // participants. But it was used unconditionally for ANY call with 2+
+  // people, including 4/5/6-person calls, and it only ever renders
+  // `mainParticipant` (one participant) + `pipParticipant` (local self).
+  // Everyone else in `participants` was computed into the DOM never:
+  // no error, no indicator, just silently absent from the screen. From
+  // the host's (or guest's) point of view that's indistinguishable from
+  // "the other people didn't actually join" even though they're fully
+  // connected and sending media. Add a tappable strip for anyone not
+  // currently occupying the main or PiP slot, so nobody is ever rendered
+  // nowhere. Tapping a strip tile pins them into the main slot (existing
+  // onPin behavior), swapping whoever was there into the strip instead.
+  const others = participants.filter(
+    (p) => p.session_id !== mainParticipant?.session_id && p.session_id !== pipParticipant?.session_id,
+  );
+
   return (
     <div ref={containerRef} className="relative w-full h-full rounded-2xl overflow-hidden">
       {mainParticipant && (
@@ -778,6 +795,25 @@ const MobileVideoStage = memo(({
         </button>
       )}
 
+      {others.length > 0 && (
+        <div
+          className="absolute left-2 right-2 z-30 flex gap-1.5 overflow-x-auto"
+          style={{ bottom: "max(10px, env(safe-area-inset-bottom))" }}
+        >
+          {others.map((p) => (
+            <button
+              key={p.session_id}
+              onClick={() => onPin(p.session_id)}
+              aria-label={`Show ${p.user_name ?? "participant"} as main view`}
+              className="shrink-0 rounded-xl overflow-hidden touch-manipulation"
+              style={{ width: 56, height: 56, border: "2px solid rgba(255,255,255,0.35)" }}
+            >
+              <VideoTile participant={p} activeSpeakerId={activeSpeakerId} className="w-full h-full" fit="cover" />
+            </button>
+          ))}
+        </div>
+      )}
+
       {pipParticipant && (
         <DraggablePiP
           participant={pipParticipant}
@@ -790,8 +826,6 @@ const MobileVideoStage = memo(({
     </div>
   );
 });
-
-// ─── Guest approval banner ──────────────────────────────────────────────────────
 const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
   if (!requests.length) return null;
   return (
@@ -1662,23 +1696,48 @@ export default function LiveMeeting() {
   const attachedTrackIdRef = useRef<string | null>(null);
   const localTrackRef = useRef<MediaStreamTrack | null>(null);
   useEffect(() => {
-    for (const p of daily.participants) {
-      if (p.audioTrack && p.local && p.audioTrack.id !== attachedTrackIdRef.current) {
-        // Tear down whatever was previously attached (old live socket
-        // connection + fallback chunked recorder) before attaching to the
-        // new track, so we never run two pipelines against two different
-        // tracks at once.
-        liveSocket.stop();
-        audioStreaming.stopAll();
+    const localP = daily.participants.find((p) => p.local && p.audioTrack);
+    if (!localP?.audioTrack) return;
 
-        attachedTrackIdRef.current = p.audioTrack.id;
-        localTrackRef.current = p.audioTrack;
-        liveSocket.start(p.audioTrack);
-        health.recordChunkSent();
-        setMicStream(new MediaStream([p.audioTrack]));
-      }
-    }
-  }, [daily.participants]); // eslint-disable-line
+    const isNewTrack = localP.audioTrack.id !== attachedTrackIdRef.current;
+
+    // FIX: this effect used to fire liveSocket.start() exactly once per
+    // track id and never again. useLiveTranscriptionSocket's own retry loop
+    // re-reads accessTokenRef fresh on every attempt, so it WOULD recover
+    // on its own if session.access_token showed up mid-retry — but that
+    // loop only runs for ~7s (1s/2s/4s backoff, 3 attempts) before setting
+    // status 'failed' and stopping for good. AuthContext resolves
+    // session.access_token via supabase.auth.getSession() at mount, which
+    // this page's own handful of other auth-touching hooks can delay well
+    // past 7s under gotrue's navigator-lock contention (same class of bug
+    // documented at length in useLiveTranscriptionSocket.ts). Net effect:
+    // the token arrives eventually, but the retry loop that would have used
+    // it already gave up, and nothing here ever tried again — live captions
+    // silently dead for the rest of the call. The guest page never hits
+    // this because guestAuthToken comes from a plain REST poll
+    // (guest-request-status), not gotrue, so there's no lock to contend
+    // for. Re-firing this effect when the token itself changes, and
+    // restarting the socket if it previously gave up, gives the host the
+    // same "retry once the missing piece shows up" resilience the guest
+    // gets for free.
+    const shouldRetryForToken =
+      !isNewTrack && liveSocket.status === "failed" && !!session?.access_token;
+
+    if (!isNewTrack && !shouldRetryForToken) return;
+
+    // Tear down whatever was previously attached (old live socket
+    // connection + fallback chunked recorder) before attaching to the
+    // new track, so we never run two pipelines against two different
+    // tracks at once.
+    liveSocket.stop();
+    audioStreaming.stopAll();
+
+    attachedTrackIdRef.current = localP.audioTrack.id;
+    localTrackRef.current = localP.audioTrack;
+    liveSocket.start(localP.audioTrack);
+    health.recordChunkSent();
+    setMicStream(new MediaStream([localP.audioTrack]));
+  }, [daily.participants, session?.access_token]); // eslint-disable-line
 
   useEffect(() => {
     if (liveSocket.status === "failed" && localTrackRef.current) {
