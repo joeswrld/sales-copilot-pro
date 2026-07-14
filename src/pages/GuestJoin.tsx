@@ -664,6 +664,18 @@ const MobileVideoStage = memo(({
 
   const pipParticipant = local && mainParticipant?.session_id !== local.session_id ? local : null;
 
+  // FIX: see LiveMeeting.tsx's MobileVideoStage for the full explanation —
+  // same component, same bug. This stage only ever rendered one remote
+  // participant (`mainParticipant`) plus the local self-PiP, regardless of
+  // how many people were actually in the call. Anyone beyond those two was
+  // fully connected and sending media but never appeared anywhere on
+  // screen — indistinguishable from "the app dropped them" to the guest
+  // looking at their phone. Add a tappable strip for everyone not
+  // currently in the main or PiP slot.
+  const others = participants.filter(
+    (p) => p.session_id !== mainParticipant?.session_id && p.session_id !== pipParticipant?.session_id,
+  );
+
   return (
     <div ref={containerRef} className="relative w-full h-full rounded-2xl overflow-hidden">
       {mainParticipant && (
@@ -691,6 +703,25 @@ const MobileVideoStage = memo(({
         >
           <Minimize2 className="w-4 h-4 text-white" />
         </button>
+      )}
+
+      {others.length > 0 && (
+        <div
+          className="absolute left-2 right-2 z-30 flex gap-1.5 overflow-x-auto"
+          style={{ bottom: "max(10px, env(safe-area-inset-bottom))" }}
+        >
+          {others.map((p) => (
+            <button
+              key={p.session_id}
+              onClick={() => onPin(p.session_id)}
+              aria-label={`Show ${p.user_name ?? "participant"} as main view`}
+              className="shrink-0 rounded-xl overflow-hidden touch-manipulation"
+              style={{ width: 56, height: 56, border: "2px solid rgba(255,255,255,0.35)" }}
+            >
+              <VideoTile participant={p} activeSpeakerId={activeSpeakerId} className="w-full h-full" fit="cover" />
+            </button>
+          ))}
+        </div>
       )}
 
       {pipParticipant && (
