@@ -470,9 +470,9 @@ export default function LandingPage() {
     .hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(14,245,212,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(14,245,212,.025) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(ellipse 100% 80% at 50% 0,black 0,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 100% 80% at 50% 0,black 0,transparent 100%);}
     .hero-glow{position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:min(900px,130vw);height:700px;background:radial-gradient(ellipse,rgba(14,245,212,.055) 0,transparent 65%);pointer-events:none;}
     .hero-inner{max-width:1180px;margin:0 auto;width:100%;position:relative;z-index:1;}
-    .hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:100px;padding:5px 14px 5px 8px;font-size:11px;font-weight:700;color:#f87171;margin-bottom:22px;font-family:'DM Sans',monospace;letter-spacing:.04em;}
-    .hero-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0;animation:hpulse 2s ease-in-out infinite;}
     @keyframes hpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+    @keyframes cpulse{0%,100%{box-shadow:0 0 0 0 rgba(14,245,212,.5)}50%{box-shadow:0 0 0 6px rgba(14,245,212,0)}}
+    @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
     .hero-h{font-family:var(--fd);font-size:clamp(32px,7vw,82px);font-weight:800;line-height:1.04;letter-spacing:-.04em;color:var(--ink);max-width:960px;margin-bottom:22px;word-break:break-word;}
     .hero-h .loss{color:#ef4444;}
     .hero-h .gain{color:var(--cyan);}
@@ -485,6 +485,28 @@ export default function LandingPage() {
     .hero-trust{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:8px;}
     .trust-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:500;}
     .trust-check{width:17px;height:17px;border-radius:50%;background:rgba(14,245,212,.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--cyan);flex-shrink:0;}
+
+    /* Eyebrow — repositions the old unused red "urgency" badge as a calm,
+       cyan "this is live AI" signal that matches the rest of the brand
+       rather than an alarm. */
+    .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(14,245,212,.07);border:1px solid rgba(14,245,212,.22);border-radius:100px;padding:6px 14px 6px 10px;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:20px;font-family:'DM Sans',monospace;letter-spacing:.05em;text-transform:uppercase;}
+    .hero-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);flex-shrink:0;animation:cpulse 2s ease-in-out infinite;}
+
+    /* "Who is it for" — answered as a scannable strip, not a sentence
+       buried in the subheadline. */
+    .hero-audience{margin-bottom:28px;}
+    .hero-audience-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px;}
+    .hero-audience-list{display:flex;flex-wrap:wrap;gap:8px;}
+    .hero-audience-pill{font-size:12px;font-weight:600;color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:100px;padding:6px 13px;white-space:nowrap;}
+
+    /* Live-caption cursor for the mockup's in-progress transcript line */
+    .hero-caption-cursor{display:inline-block;width:2px;height:11px;background:var(--cyan);margin-left:2px;vertical-align:-1px;animation:blink 1s step-end infinite;}
+    .hero-caption-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+
+    /* Signal tags — buying signals / risks / action items, distinct from
+       the red objection tag so all three read at a glance. */
+    .hero-signal-row{padding:0 16px 14px;display:flex;flex-wrap:wrap;gap:6px;}
+    .hero-signal-tag{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;border-radius:5px;padding:4px 9px;border:1px solid;white-space:nowrap;}
 
     /* Hero dashboard preview */
     .hero-dashboard{margin-top:52px;}
@@ -520,6 +542,8 @@ export default function LandingPage() {
       .hero-h{font-size:28px;letter-spacing:-.03em;}
       .hero-trust{gap:8px;}
       .trust-pill{font-size:11px;}
+      .hero-audience-list{gap:6px;}
+      .hero-audience-pill{font-size:11px;padding:5px 11px;}
     }
 
     /* ══════════════════════════════════════════
@@ -883,27 +907,40 @@ export default function LandingPage() {
         <div className="hero-glow" />
         <div className="hero-inner">
           <div style={{ opacity: 0, animation: "slidein .6s ease .1s forwards" }}>
-            
-    
+            <div className="hero-eyebrow">
+              <span className="hero-eyebrow-dot" />
+              AI Meeting Intelligence · Live On Every Call
+            </div>
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
             <h1 className="hero-h">
-              Stop watching <span className="loss">deals die</span>{" "}
-              on calls you thought <span className="gain">were going well.</span>
+              Stop <span className="loss">guessing</span> what happened in your meetings.{" "}
+              <span className="gain">Start knowing.</span>
             </h1>
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .3s forwards" }}>
             <p className="hero-sub">
-              Fixsense detects objections, tracks sentiment, and surfaces AI coaching mid-call — so your reps recover revenue in the moment, not in the debrief.
+              Fixsense automatically joins, records, and transcribes your meetings — then uses AI to surface sentiment, objections, buying signals, risks, and action items in real time, for any team that lives in calls.
             </p>
+          </div>
+
+          <div style={{ opacity: 0, animation: "slidein .7s ease .35s forwards" }}>
+            <div className="hero-audience">
+              <div className="hero-audience-label">Built for every team that meets</div>
+              <div className="hero-audience-list">
+                {["Sales Teams", "Founders", "Agencies", "Recruiters", "Consultants", "Customer Success"].map((t, i) => (
+                  <span key={i} className="hero-audience-pill">{t}</span>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .4s forwards" }}>
             <div className="hero-ctas">
               <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
-                Start Free Trial
+                Analyze Your Next Meeting Free
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -911,7 +948,7 @@ export default function LandingPage() {
               <a href="#demo" className="btn-hero-outline">Try Live Demo</a>
             </div>
             <div className="hero-trust">
-              {["No Zoom bot", "Real-time", "30 min free", "Live in 48hrs"].map((t, i) => (
+              {["No Google Meet or Zoom Bot", "Live AI Analysis", "Instant Transcripts", "AI Meeting Reports", "Free Trial", "No Credit Card Required"].map((t, i) => (
                 <div key={i} className="trust-pill">
                   <div className="trust-check">✓</div>
                   {t}
@@ -920,7 +957,12 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Dashboard preview */}
+          {/* Dashboard preview — deliberately dense: a first-time visitor
+              should be able to identify every core capability (live
+              captions, AI coaching, sentiment, meeting score, talk ratio,
+              objections, buying signals, risks, action items, next-best-
+              action) within a five-second glance, without reading a word
+              of surrounding copy. */}
           <div style={{ opacity: 0, animation: "slidein .8s ease .5s forwards" }}>
             <div className="hero-dashboard">
               <div className="hero-dashboard-frame">
@@ -928,7 +970,7 @@ export default function LandingPage() {
                   <div className="db-dot" style={{ background: "#ef4444" }} />
                   <div className="db-dot" style={{ background: "#f59e0b" }} />
                   <div className="db-dot" style={{ background: "#22c55e" }} />
-                  <span className="hero-db-bar-label">Acme Corp — Enterprise Discovery · LIVE</span>
+                  <span className="hero-db-bar-label">Weekly Client Sync — Acme Corp · LIVE</span>
                   <div className="hero-db-bar-live">
                     <span className="hero-db-bar-live-dot" />
                     LIVE · 00:14:32
@@ -936,10 +978,10 @@ export default function LandingPage() {
                 </div>
                 <div className="hero-db-content">
                   {[
-                    { val: "72%", label: "Sentiment", color: "#22c55e" },
-                    { val: "38", label: "Deal Risk", color: "#f59e0b" },
-                    { val: "2", label: "Objections", color: "#ef4444" },
-                    { val: "$85K", label: "Rev at Risk", color: "#a78bfa" },
+                    { val: "84", label: "Meeting Score", color: "#0ef5d4" },
+                    { val: "46 / 54", label: "Talk Ratio", color: "#3b82f6" },
+                    { val: "↑ 78%", label: "Sentiment", color: "#22c55e" },
+                    { val: "3", label: "Buying Signals", color: "#a78bfa" },
                   ].map((k, i) => (
                     <div key={i} className="hero-db-kpi">
                       <div className="hero-kpi-val" style={{ color: k.color }}>{k.val}</div>
@@ -950,17 +992,32 @@ export default function LandingPage() {
                 <div className="hero-db-transcript">
                   {[
                     { speaker: "Prospect", text: "Honestly the price feels steep for where we are budget-wise right now.", obj: true, color: "#2dd4bf" },
-                    { speaker: "AI Coach", text: "💡 Pricing objection detected — Reframe: ask what one lost $85k deal costs them annually.", obj: false, color: "#0ef5d4", isCoach: true },
-                    { speaker: "Rep", text: "What does a deal like this typically cost you when it slips? Let me frame the math...", obj: false, color: "#818cf8" },
+                    { speaker: "AI Coach", text: "💡 Pricing objection detected — Reframe: ask what one lost $85k deal costs them annually.", color: "#0ef5d4", isCoach: true },
+                    { speaker: "Rep", text: "What does a deal like this typically cost you when it slips? Let me frame the math", color: "#818cf8", live: true },
                   ].map((line, i) => (
                     <div key={i} className="hero-tline">
                       <span className="hero-tspeaker" style={{ color: line.color }}>{line.speaker}</span>
                       <div>
-                        <span className="hero-ttext" style={line.isCoach ? { color: "rgba(14,245,212,.8)", fontStyle: "italic" } : undefined}>{line.text}</span>
+                        <span className="hero-ttext" style={line.isCoach ? { color: "rgba(14,245,212,.8)", fontStyle: "italic" } : undefined}>
+                          {line.text}
+                          {line.live && <span className="hero-caption-cursor" />}
+                        </span>
                         {line.obj && <div className="hero-objection-tag">⚠ Pricing Objection · 94% confidence</div>}
+                        {line.live && <div className="hero-caption-badge">● Live caption</div>}
                       </div>
                     </div>
                   ))}
+                </div>
+                <div className="hero-signal-row">
+                  <span className="hero-signal-tag" style={{ color: "#4ade80", background: "rgba(34,197,94,.08)", borderColor: "rgba(34,197,94,.25)" }}>
+                    🟢 Buying Signal · Budget confirmed
+                  </span>
+                  <span className="hero-signal-tag" style={{ color: "#fbbf24", background: "rgba(245,158,11,.08)", borderColor: "rgba(245,158,11,.25)" }}>
+                    ⚠ Risk · Champion quiet 4 min
+                  </span>
+                  <span className="hero-signal-tag" style={{ color: "#a5b4fc", background: "rgba(129,140,248,.08)", borderColor: "rgba(129,140,248,.25)" }}>
+                    ✓ Action Item · Send case study by Friday
+                  </span>
                 </div>
                 <div className="hero-insight-bar">
                   <span className="hero-insight-label">Next Action</span>
