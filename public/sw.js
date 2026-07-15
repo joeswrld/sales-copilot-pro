@@ -28,7 +28,7 @@
  *      API domains. Only cache static assets (JS/CSS/fonts/images).
  */
 
-const CACHE_NAME = 'fixsense-v4';
+const CACHE_NAME = 'fixsense-v5';
 
 // Domains that must ALWAYS go direct to network — never cached
 const NETWORK_ONLY_HOSTS = [
