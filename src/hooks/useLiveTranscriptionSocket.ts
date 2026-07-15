@@ -15,11 +15,13 @@
  *     The caller should NOT also call the chunked pipeline's
  *     startTrackRecording for the same track — that would double-bill
  *     Deepgram and produce duplicate transcript rows.
- *   - If the socket can't connect, or drops repeatedly (network blocks
- *     WebSocket, corporate proxy, etc.): `status` becomes 'failed' and the
- *     caller should fall back to the chunked pipeline for that track. This
- *     hook makes no more reconnect attempts once failed, and never buffers
- *     audio for later replay — a caption that arrives late isn't a caption.
+ *   - If the socket can't connect, or drops repeatedly, it cycles through
+ *     several cooldown-and-retry bursts (status: 'reconnecting') before
+ *     finally giving up — see MAX_FAILURE_CYCLES below. Only once that's
+ *     exhausted does `status` become 'failed', at which point the caller
+ *     should fall back to the chunked pipeline for that track. This hook
+ *     never buffers audio for later replay — a caption that arrives late
+ *     isn't a caption.
  *
  * Latency budget: mic → AudioWorklet frame (~100ms) → WS send → Deepgram
  * → interim result back over the same WS. In practice interim text
@@ -79,6 +81,30 @@ const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_BASE_MS = 1000;
 const WORKLET_URL = '/audio-worklets/pcm16-processor.js';
 
+// FIX: previously, once a *single* burst of MAX_RECONNECT_ATTEMPTS (3
+// attempts / ~7s) was exhausted, this hook set status: 'failed' for good —
+// permanent, for the rest of the call, no matter what caused the drop. In
+// production this meant a single transient hiccup (Deepgram's relay doing
+// its own reconnect, a momentary network blip, a backgrounded tab throttling
+// timers) could kill live captions after capturing only the first sentence,
+// even though the underlying mic track and network recovered seconds later.
+// Confirmed in the transcripts table: a real host call with exactly one row
+// ("Hello,") and nothing after it, while the call continued for minutes.
+//
+// A single connection attempt failing for a real, permanent reason (bad
+// auth, no such call) fails fast within one burst same as before — this
+// only changes what happens *after* a burst is exhausted. Instead of giving
+// up, the hook now waits out a cooldown and starts a fresh burst, up to
+// MAX_FAILURE_CYCLES times. Status is reported as 'reconnecting' throughout
+// (not 'failed') so the LiveMeeting.tsx fallback-to-chunked-pipeline effect
+// (which keys off status === 'failed') doesn't fire prematurely for what's
+// likely a recoverable blip. Only once every cycle is exhausted — around
+// 8 cycles * (~7s bursts + 15s cooldowns) ≈ 3 minutes of a socket that
+// simply cannot stay connected — does status finally become 'failed' and
+// hand off to the durable chunked recorder for the rest of the call.
+const MAX_FAILURE_CYCLES = 8;
+const FAILURE_COOLDOWN_MS = 15_000;
+
 function wsUrlBase(): string {
   const httpUrl: string = import.meta.env.VITE_SUPABASE_URL;
   return httpUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
@@ -93,8 +119,10 @@ export function useLiveTranscriptionSocket(options: Options): Result {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const attemptsRef = useRef(0);
+  const failureCyclesRef = useRef(0);
   const intentionallyClosedRef = useRef(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const [status, setStatusState] = useState<LiveSocketStatus>('idle');
   const setStatus = useCallback((s: LiveSocketStatus) => {
@@ -227,6 +255,28 @@ export function useLiveTranscriptionSocket(options: Options): Result {
     workletNodeRef.current = worklet;
   }, []);
 
+  // FIX: called whenever one burst of MAX_RECONNECT_ATTEMPTS is exhausted,
+  // from either give-up point below. Instead of setting 'failed' outright,
+  // this waits out FAILURE_COOLDOWN_MS and starts a fresh burst — up to
+  // MAX_FAILURE_CYCLES times — so a transient drop mid-call recovers on its
+  // own instead of permanently killing captions after the first sentence.
+  // See the MAX_FAILURE_CYCLES doc comment above for the full reasoning.
+  const exhaustBurst = useCallback((track: MediaStreamTrack, reason: string) => {
+    failureCyclesRef.current += 1;
+    if (failureCyclesRef.current > MAX_FAILURE_CYCLES) {
+      console.warn(`[LiveTranscription] Giving up for real after ${MAX_FAILURE_CYCLES} failure cycles (${reason}) — falling back to chunked pipeline`);
+      setStatus('failed');
+      return;
+    }
+    console.warn(`[LiveTranscription] Burst exhausted (${reason}) — cooling down ${FAILURE_COOLDOWN_MS}ms before failure cycle ${failureCyclesRef.current}/${MAX_FAILURE_CYCLES}`);
+    setStatus('reconnecting');
+    cooldownTimerRef.current = setTimeout(() => {
+      if (intentionallyClosedRef.current) return;
+      attemptsRef.current = 0;
+      connect(track);
+    }, FAILURE_COOLDOWN_MS);
+  }, []); // eslint-disable-line
+
   const connect = useCallback(async (track: MediaStreamTrack) => {
     if (intentionallyClosedRef.current) return;
     const url = await buildUrl();
@@ -246,8 +296,7 @@ export function useLiveTranscriptionSocket(options: Options): Result {
       attemptsRef.current += 1;
       console.warn(`[LiveTranscription] No URL yet (role=${role}, has_token=${!!accessTokenRef.current}, has_call=${!!callId}) — attempt ${attemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}`);
       if (attemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
-        console.warn('[LiveTranscription] Giving up — no valid connect URL after all retries, falling back to chunked pipeline');
-        setStatus('failed');
+        exhaustBurst(track, 'no valid connect URL after all retries in this burst');
         return;
       }
       const delay = RECONNECT_BASE_MS * Math.pow(2, attemptsRef.current - 1);
@@ -276,6 +325,7 @@ export function useLiveTranscriptionSocket(options: Options): Result {
       if (msg?.type === 'ready') {
         attachAudio(track, ws).then(() => {
           attemptsRef.current = 0;
+          failureCyclesRef.current = 0;
           setStatus('connected');
         }).catch((e) => {
           console.warn('[LiveTranscription] audio graph setup failed:', e);
@@ -304,7 +354,7 @@ export function useLiveTranscriptionSocket(options: Options): Result {
 
       attemptsRef.current += 1;
       if (attemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
-        setStatus('failed');
+        exhaustBurst(track, 'socket kept dropping after all retries in this burst');
         return;
       }
       const delay = RECONNECT_BASE_MS * Math.pow(2, attemptsRef.current - 1);
@@ -329,6 +379,8 @@ export function useLiveTranscriptionSocket(options: Options): Result {
   const start = useCallback(async (track: MediaStreamTrack) => {
     intentionallyClosedRef.current = false;
     attemptsRef.current = 0;
+    failureCyclesRef.current = 0;
+    clearTimeout(cooldownTimerRef.current);
     trackRef.current = track;
     await connect(track);
   }, [connect]);
@@ -336,6 +388,7 @@ export function useLiveTranscriptionSocket(options: Options): Result {
   const stop = useCallback(() => {
     intentionallyClosedRef.current = true;
     clearTimeout(reconnectTimerRef.current);
+    clearTimeout(cooldownTimerRef.current);
     teardownSocket();
     teardownAudio();
     trackRef.current = null;
