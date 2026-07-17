@@ -24,34 +24,28 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  Loader2, AlertCircle, Clock, MessageSquare, Users, Zap,
+  Loader2, Clock, MessageSquare, Users,
   Mic, MicOff, Video, VideoOff, MonitorPlay, PhoneOff, SwitchCamera,
-  FileText, Paperclip, Send, AlertTriangle, Shield,
-  BrainCircuit, Sparkles, WifiOff,
-  Tag, UserCheck, UserX, Bell, BookOpen,
-  Hash, Trophy, Flame, Target, MessageCircle,
-  CircleDot, Upload, Eye, EyeOff, Plus,
-  ChevronRight, X, Hand, Activity,
-  TrendingUp, TrendingDown, Minus, BarChart2,
-  ArrowUpRight, CheckCircle2,
+  Paperclip, Send, WifiOff,
+  UserCheck, UserX, Bell, BookOpen,
+  CircleDot, Upload, Plus,
+  X, Hand,
+  ArrowUpRight,
   PanelLeft, PanelRight, RefreshCw,
   Maximize2, Minimize2, LayoutGrid, Pin, PinOff,
   Volume2, VolumeX, MonitorOff, MoreHorizontal,
-  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
 import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
-import { LiveCaptions, CaptionLine } from "@/components/LiveCaptions";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingGuestRequests } from "@/hooks/useGuestApproval";
 import { useMeetingWorkspace } from "@/hooks/useMeetingWorkspace";
-import { useLiveMeetingAI } from "@/hooks/useLiveMeetingAI";
 import { useCoaching } from "@/hooks/useCoaching";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useMinuteUsage } from "@/hooks/useMeetingUsage";
@@ -61,10 +55,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { VideoTile } from "@/components/VideoTile";
 import CallEndingOverlay from "@/components/CallEndingOverlay";
 import { toast } from "sonner";
-
-// ─── Constants ─────────────────────────────────────────────────────────────────
-const MAX_TRANSCRIPTS = 200;
-const MAX_INSIGHTS    = 30;
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
 const T = {
@@ -81,9 +71,8 @@ const T = {
   red:     "#ef4444",
 };
 
-type MobilePanel = "none" | "people" | "ai" | "chat" | "more";
+type MobilePanel = "none" | "people" | "chat" | "notes" | "more";
 type LeftTab     = "people" | "chat" | "notes" | "files" | "notifications";
-type RightTab    = "transcript" | "insights" | "coaching";
 type VideoLayout = "spotlight" | "grid" | "sidebar";
 
 function fmt(s: number) {
@@ -91,11 +80,6 @@ function fmt(s: number) {
 }
 function qualityColor(q: CallQuality) {
   return q === "excellent" || q === "good" ? T.emerald : q === "fair" ? T.amber : T.red;
-}
-function sentimentMeta(score: number) {
-  if (score >= 70) return { label: "Positive", color: T.emerald, icon: TrendingUp };
-  if (score >= 45) return { label: "Neutral",  color: T.amber,   icon: Minus };
-  return             { label: "At Risk",  color: T.red,     icon: TrendingDown };
 }
 function deriveHostName(profile?: { full_name?: string | null; email?: string | null }, authEmail?: string | null) {
   if (profile?.full_name?.trim()) return profile.full_name.trim();
@@ -286,15 +270,6 @@ const VideoGrid = memo(({
 });
 
 // ─── Small helpers ──────────────────────────────────────────────────────────────
-const Pill = memo(({ icon: Icon, label, color, bg, border, pulse = false }: any) => (
-  <div className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-semibold"
-    style={{ color: color ?? T.muted, background: bg ?? T.card, border: `1px solid ${border ?? T.border}` }}>
-    {pulse && <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: color }} />}
-    {Icon && <Icon className="w-3 h-3" />}
-    {label}
-  </div>
-));
-
 const NetDot = memo(({ quality }: { quality: CallQuality }) => {
   const c = qualityColor(quality);
   return (
@@ -312,152 +287,6 @@ const RecBadge = memo(() => (
     <span className="text-[10px] font-bold text-red-400">REC</span>
   </div>
 ));
-
-// ── Caption & Transcript self-test ────────────────────────────────────────
-// Lets the host verify the whole live-caption + saved-transcript pipeline
-// is actually working, alone, with nobody else in the call — no need to
-// recruit a guest just to find out captions are broken again. It checks
-// three independent things, in the order data actually flows through the
-// system, so if something's wrong you can tell exactly which stage failed:
-//
-//   1. Socket connected  — the browser's WS to transcribe-live is open and
-//      Deepgram's upstream is live (this is `liveSocket.status`).
-//   2. Live caption seen — at least one interim/final caption has come
-//      back over that socket for YOUR voice (this is `captionLines` being
-//      populated for your own speaker key).
-//   3. Saved to transcript — at least one of those captions reached
-//      `speech_final` and was written to the `transcripts` table, which is
-//      the same table the post-call summary / transcript panel reads from
-//      (this is a `!row.is_guest` row showing up in `rawTranscripts`).
-//
-// Step 1 can be true while 2 and 3 are still catching up (normal — takes a
-// beat after you start talking). If 1 stays anything other than
-// "Connected" for more than a few seconds, or 2 is true but 3 never
-// becomes true, that pinpoints exactly which half of the pipeline to look
-// at (the realtime socket vs. the DB write / RLS / RPC side).
-const SelfTestStep = memo(({ ok, pending, label, detail }: { ok: boolean; pending: boolean; label: string; detail: string }) => (
-  <div className="flex items-start gap-2.5 py-2">
-    <div className="mt-0.5 shrink-0">
-      {ok ? (
-        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-      ) : pending ? (
-        <Loader2 className="w-4 h-4 animate-spin" style={{ color: T.amber }} />
-      ) : (
-        <div className="w-4 h-4 rounded-full" style={{ border: `1.5px solid ${T.subtle}` }} />
-      )}
-    </div>
-    <div className="min-w-0">
-      <p className="text-xs font-semibold" style={{ color: ok ? "#6ee7b7" : pending ? T.amber : T.text }}>{label}</p>
-      <p className="text-[11px] mt-0.5 leading-snug" style={{ color: T.muted }}>{detail}</p>
-    </div>
-  </div>
-));
-
-const CaptionSelfTestPanel = memo(({
-  status, lastCaption, lastSavedText, lastSavedAgoSec, hostLineCount, onClose,
-}: {
-  status: string;
-  lastCaption: string | null;
-  lastSavedText: string | null;
-  lastSavedAgoSec: number | null;
-  hostLineCount: number;
-  onClose: () => void;
-}) => {
-  const socketOk = status === "connected";
-  const socketPending = status === "connecting" || status === "reconnecting";
-  const captionOk = !!lastCaption;
-  const savedOk = hostLineCount > 0;
-
-  return (
-    <div
-      className="absolute z-30 top-2 right-2 w-[290px] max-w-[calc(100vw-24px)] rounded-2xl overflow-hidden"
-      style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
-    >
-      <div className="flex items-center justify-between px-3.5 pt-3 pb-2 border-b" style={{ borderColor: T.border }}>
-        <div className="flex items-center gap-1.5">
-          <Activity className="w-3.5 h-3.5" style={{ color: "#a5b4fc" }} />
-          <span className="text-xs font-semibold text-white">Caption &amp; transcript check</span>
-        </div>
-        <button onClick={onClose} className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: T.card }}>
-          <X className="w-3.5 h-3.5" style={{ color: T.muted }} />
-        </button>
-      </div>
-
-      <div className="px-3.5 py-1 divide-y" style={{ borderColor: T.border }}>
-        <SelfTestStep
-          ok={socketOk}
-          pending={socketPending}
-          label={socketOk ? "Socket connected" : socketPending ? "Connecting…" : status === "failed" ? "Socket failed — using fallback" : "Not started yet"}
-          detail={socketOk ? "Live connection to the transcription relay is up." : socketPending ? "Opening the live-caption connection." : status === "failed" ? "Live captions couldn't connect; falling back to the slower chunked pipeline (~8-11s delay)." : "Waiting for your microphone track."}
-        />
-        <SelfTestStep
-          ok={captionOk}
-          pending={socketOk && !captionOk}
-          label={captionOk ? "Live caption received" : "Waiting for a live caption"}
-          detail={captionOk ? `Last heard: "${lastCaption!.slice(0, 60)}${lastCaption!.length > 60 ? "…" : ""}"` : "Say a sentence out loud — this should light up within about half a second."}
-        />
-        <SelfTestStep
-          ok={savedOk}
-          pending={captionOk && !savedOk}
-          label={savedOk ? `Saved to transcript (${hostLineCount} line${hostLineCount === 1 ? "" : "s"})` : "Waiting for a saved line"}
-          detail={
-            savedOk
-              ? `Last saved${lastSavedAgoSec != null ? ` ${lastSavedAgoSec}s ago` : ""}: "${(lastSavedText ?? "").slice(0, 60)}${(lastSavedText ?? "").length > 60 ? "…" : ""}"`
-              : "Finish a sentence and pause briefly — a short pause is what marks it \"final\" and writes it to the transcript."
-          }
-        />
-      </div>
-
-      <div className="px-3.5 pb-3 pt-1">
-        <p className="text-[10px] leading-snug" style={{ color: T.subtle }}>
-          This checks your own mic only — no one else needs to be in the call for these three to go green.
-        </p>
-      </div>
-    </div>
-  );
-});
-
-const TxLine = memo(({ speaker, speakerName, text, time, isHost, isPartial }: any) => (
-  <div className={cn("flex gap-2 sm:gap-2.5", isPartial && "opacity-60")}>
-    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5"
-      style={{ background: isHost ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "linear-gradient(135deg,#8b5cf6,#ec4899)" }}>
-      {(speakerName || speaker || "?")[0]?.toUpperCase()}
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2 mb-0.5">
-        <span className="text-[11px] font-semibold" style={{ color: isHost ? "#a5b4fc" : "#c4b5fd" }}>{speakerName || speaker}</span>
-        <span className="text-[10px]" style={{ color: T.subtle }}>{time}</span>
-        {isPartial && <span className="text-[9px]" style={{ color: T.subtle }}>…</span>}
-      </div>
-      <p className="text-xs leading-relaxed" style={{ color: T.text }}>{text}</p>
-    </div>
-  </div>
-));
-
-const InsightCard = memo(({ type, text, suggestion, time }: any) => {
-  const meta: any = {
-    objection:  { label: "Objection",    color: T.amber,   bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.2)",  icon: AlertTriangle },
-    signal:     { label: "Buying Signal",color: T.emerald, bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.2)",  icon: Zap },
-    coaching:   { label: "Coaching Tip", color: "#818cf8", bg: "rgba(99,102,241,0.08)",  border: "rgba(99,102,241,0.2)",  icon: BrainCircuit },
-    competitor: { label: "Competitor",   color: T.red,     bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.2)",   icon: AlertCircle },
-  }[type];
-  const Icon = meta.icon;
-  return (
-    <div className="rounded-xl p-3 border" style={{ background: meta.bg, borderColor: meta.border }}>
-      <div className="flex items-start gap-2">
-        <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: meta.color }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: meta.color }}>{meta.label}</span>
-            <span className="text-[10px]" style={{ color: T.subtle }}>{time}</span>
-          </div>
-          <p className="text-xs" style={{ color: T.text }}>{text}</p>
-          {suggestion && <p className="text-[11px] mt-1 italic" style={{ color: T.muted }}>{suggestion}</p>}
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // ─── Control button ─────────────────────────────────────────────────────────────
 const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, badge, disabled = false, compact = false, highlight = false, hideLabel = false, title }: any) => (
@@ -860,353 +689,6 @@ const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
   );
 });
 
-// Conversation-stage machine names -> short display labels for the live pill.
-const STAGE_LABELS: Record<string, string> = {
-  opening: "Opening", rapport_building: "Rapport Building", discovery: "Discovery",
-  demo_or_pitch: "Demo / Pitch", objection_handling: "Objection Handling",
-  negotiation: "Negotiation", closing: "Closing", wrap_up: "Wrap-up",
-};
-
-// Category -> visual treatment for the live AI Coaching feed (ai_coaching_suggestions).
-const COACHING_CATEGORY_META: Record<string, { icon: any; color: string; label: string }> = {
-  coaching:   { icon: Flame,          color: "#f59e0b", label: "Coaching" },
-  next_step:  { icon: Target,         color: "#60a5fa", label: "Next Step" },
-  objection:  { icon: Shield,         color: "#a78bfa", label: "Objection" },
-  risk:       { icon: AlertTriangle,  color: "#ef4444", label: "Risk" },
-};
-
-// ─── Right AI Panel ─────────────────────────────────────────────────────────────
-const RightPanel = memo(({
-  activeTab, onTab, transcripts, objections, topics,
-  sentimentScore, talkRatio, questionsCount, participantCount,
-  isStreaming, chunksSent, workspace, onDismissCoaching,
-}: any) => {
-  const txEndRef  = useRef<HTMLDivElement>(null);
-  const [autoscroll, setAutoscroll] = useState(true);
-  const sm = sentimentMeta(sentimentScore);
-  const SmIcon = sm.icon;
-
-  // Live AI Analysis snapshot — refreshed every few seconds server-side by
-  // live-meeting-ai and pushed here via Realtime (see useMeetingWorkspace).
-  const live = workspace?.live_analysis ?? null;
-  const coachingFeed = workspace?.coaching_suggestions ?? [];
-
-  useEffect(() => {
-    if (autoscroll && activeTab === "transcript") txEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcripts.length, autoscroll, activeTab]);
-
-  // Merge legacy per-detection key_topics rows with the deduped rolling list
-  // the live-analysis snapshot maintains, so nothing regresses if one path
-  // is quieter than the other, and nothing shows twice.
-  const mergedTopics = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const t of (topics ?? [])) {
-      const label = t.topic; const key = label?.trim().toLowerCase();
-      if (label && key && !seen.has(key)) { seen.add(key); out.push(label); }
-    }
-    for (const label of (live?.key_topics ?? [])) {
-      const key = label?.trim?.().toLowerCase();
-      if (label && key && !seen.has(key)) { seen.add(key); out.push(label); }
-    }
-    return out;
-  }, [topics, live?.key_topics]);
-
-  const allInsights = useMemo(() => {
-    const out: any[] = [];
-    objections.forEach((o: any) => out.push({
-      type: "objection", text: o.objection_type, suggestion: o.suggestion,
-      time: new Date(o.detected_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    }));
-    workspace?.signals?.forEach((s: any) => out.push({
-      type: s.signal_type === "buying_signal" ? "signal" : s.signal_type === "competitor_mention" ? "competitor" : "signal",
-      text: s.text, time: new Date(s.detected_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    }));
-    return out.sort((a: any, b: any) => b.time.localeCompare(a.time)).slice(0, MAX_INSIGHTS);
-  }, [objections, workspace?.signals]);
-
-  const tabs = [
-    { id: "transcript", label: "Transcript", icon: MessageSquare },
-    { id: "insights",   label: "Insights",   icon: Sparkles, badge: allInsights.length || undefined },
-    { id: "coaching",   label: "Coaching",   icon: BrainCircuit, badge: coachingFeed.length || undefined },
-  ];
-
-  return (
-    <div className="flex flex-col h-full" style={{ background: T.panel }}>
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 border-b shrink-0" style={{ borderColor: T.border }}>
-        <div className="flex items-center gap-2">
-          <BrainCircuit className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="text-xs font-semibold" style={{ color: T.text }}>AI Copilot</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {isStreaming && (
-            <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-emerald-400" />
-              <span className="text-[10px] font-semibold text-emerald-400">{chunksSent}</span>
-            </div>
-          )}
-          <Pill label="LIVE" color={T.emerald} bg="rgba(16,185,129,0.1)" border="rgba(16,185,129,0.2)" pulse />
-        </div>
-      </div>
-      <div className="flex border-b shrink-0" style={{ borderColor: T.border }}>
-        {tabs.map((tab: any) => {
-          const Icon = tab.icon;
-          return (
-            <button key={tab.id} onClick={() => onTab(tab.id)}
-              className="relative flex-1 flex items-center justify-center gap-1 sm:gap-1.5 py-2.5 text-[11px] sm:text-xs font-medium border-b-2 transition-all touch-manipulation min-h-[44px]"
-              style={{ borderColor: activeTab === tab.id ? T.accent : "transparent", color: activeTab === tab.id ? "#a5b4fc" : T.muted }}>
-              <Icon className="w-3 h-3" />{tab.label}
-              {tab.badge != null && <span className="w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-bold">{tab.badge > 9 ? "9+" : tab.badge}</span>}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === "transcript" && (
-          <>
-            <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 z-10"
-              style={{ background: T.panel, borderColor: T.border }}>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-medium text-emerald-400">{transcripts.length} lines</span>
-              </div>
-              <button onClick={() => setAutoscroll((v) => !v)} className="text-[10px] flex items-center gap-1 touch-manipulation min-h-[36px]"
-                style={{ color: autoscroll ? T.accent : T.muted }}>
-                {autoscroll ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                {autoscroll ? "Auto" : "Paused"}
-              </button>
-            </div>
-            <div className="p-3 space-y-3">
-              {transcripts.length === 0
-                ? <div className="py-8 text-center"><Mic className="w-7 h-7 mx-auto mb-2" style={{ color: T.subtle }} /><p className="text-xs" style={{ color: T.muted }}>Transcript appears as you speak</p></div>
-                : transcripts.map((line: any) => (
-                  <TxLine key={line.id} speaker={line.speaker} speakerName={line.speaker_name}
-                    text={line.text} isHost={line.speaker_role ? line.speaker_role !== "guest" : !line.is_guest}
-                    isPartial={line.is_partial}
-                    time={new Date(line.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} />
-                ))}
-              <div ref={txEndRef} />
-            </div>
-          </>
-        )}
-        {activeTab === "insights" && (
-          <div className="p-3 space-y-3">
-            <div className="p-3 rounded-xl border" style={{ background: T.card, borderColor: T.border }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold" style={{ color: T.muted }}>Sentiment</span>
-                <div className="flex items-center gap-1.5">
-                  <SmIcon className="w-3.5 h-3.5" style={{ color: sm.color }} />
-                  <span className="text-sm font-bold" style={{ color: sm.color }}>{sentimentScore}%</span>
-                </div>
-              </div>
-              <div className="h-1.5 rounded-full" style={{ background: T.subtle }}>
-                <div className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${sentimentScore}%`, background: `linear-gradient(90deg,${sm.color},${sm.color}99)` }} />
-              </div>
-            </div>
-            <div className="p-3 rounded-xl border" style={{ background: T.card, borderColor: T.border }}>
-              <div className="flex justify-between text-[11px] mb-2">
-                <span style={{ color: "#818cf8" }}>You {talkRatio.rep}%</span>
-                <span style={{ color: T.muted }}>Talk Ratio</span>
-                <span style={{ color: "#a78bfa" }}>Prospect {talkRatio.prospect}%</span>
-              </div>
-              <div className="h-2 rounded-full flex overflow-hidden" style={{ background: T.subtle }}>
-                <div style={{ width: `${talkRatio.rep}%`, background: "linear-gradient(90deg,#6366f1,#8b5cf6)" }} />
-                <div style={{ width: `${talkRatio.prospect}%`, background: "linear-gradient(90deg,#8b5cf6,#a78bfa)" }} />
-              </div>
-              {talkRatio.rep > 65 && <p className="text-[10px] mt-1.5" style={{ color: T.amber }}>⚠ Let them talk more</p>}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "Questions",  value: questionsCount,      icon: MessageCircle, color: "#818cf8" },
-                { label: "Topics",     value: mergedTopics.length,  icon: Hash,          color: "#2dd4bf" },
-                { label: "People",     value: participantCount,    icon: Users,         color: "#60a5fa" },
-                { label: "Objections", value: live ? live.objections_total : objections.length, icon: AlertTriangle, color: T.amber },
-              ].map(({ label, value, icon: Icon, color }) => (
-                <div key={label} className="p-2.5 rounded-xl border text-center" style={{ background: T.card, borderColor: T.border }}>
-                  <Icon className="w-3 h-3 mx-auto mb-0.5" style={{ color }} />
-                  <div className="text-base font-bold font-mono" style={{ color: T.text }}>{value}</div>
-                  <div className="text-[10px]" style={{ color: T.muted }}>{label}</div>
-                </div>
-              ))}
-            </div>
-
-            {live && (
-              <div className="p-3 rounded-xl border space-y-2.5" style={{ background: T.card, borderColor: T.border }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold" style={{ color: T.muted }}>Live AI Analysis</span>
-                  {live.conversation_stage && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: "rgba(99,102,241,0.14)", border: "1px solid rgba(99,102,241,0.25)", color: "#a5b4fc" }}>
-                      {STAGE_LABELS[live.conversation_stage] || live.conversation_stage}
-                    </span>
-                  )}
-                </div>
-                {[
-                  { label: "Engagement",       value: live.engagement_score,          icon: Activity,  color: "#2dd4bf" },
-                  { label: "Discovery Quality", value: live.discovery_quality_score,   icon: BarChart2, color: "#60a5fa" },
-                  { label: "Objective Progress", value: live.objective_progress,       icon: ArrowUpRight, color: T.emerald },
-                ].map(({ label, value, icon: Icon, color }) => (
-                  <div key={label}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] flex items-center gap-1" style={{ color: T.muted }}>
-                        <Icon className="w-3 h-3" style={{ color }} />{label}
-                      </span>
-                      <span className="text-[11px] font-bold" style={{ color }}>{value}%</span>
-                    </div>
-                    <div className="h-1 rounded-full" style={{ background: T.subtle }}>
-                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${value}%`, background: color }} />
-                    </div>
-                  </div>
-                ))}
-                {live.intent && (
-                  <p className="text-[11px] leading-relaxed pt-1" style={{ color: T.text }}>
-                    <span className="font-semibold" style={{ color: T.muted }}>Current intent: </span>{live.intent}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {mergedTopics.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Key Topics</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {mergedTopics.map((label: string) => (
-                    <span key={label} className="text-[11px] px-2 py-0.5 rounded-lg"
-                      style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", color: "#a5b4fc" }}>
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {live?.buying_signals?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.emerald }}>Buying Signals</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {live.buying_signals.map((s: string, i: number) => (
-                    <span key={i} className="text-[11px] px-2 py-0.5 rounded-lg"
-                      style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: T.emerald }}>
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {live?.questions?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Open Questions</p>
-                <div className="space-y-1.5">
-                  {live.questions.slice(-6).map((q: string, i: number) => (
-                    <div key={i} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.text }}>
-                      <MessageCircle className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#818cf8" }} />{q}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {live?.action_items?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>Action Items</p>
-                <div className="space-y-1.5">
-                  {live.action_items.slice(-6).map((a: string, i: number) => (
-                    <div key={i} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.text }}>
-                      <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: T.emerald }} />{a}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {allInsights.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: T.muted }}>AI Detections</p>
-                <div className="space-y-2">{allInsights.map((ins: any, i: number) => <InsightCard key={i} {...ins} />)}</div>
-              </div>
-            )}
-          </div>
-        )}
-        {activeTab === "coaching" && (
-          <div className="p-3 space-y-3">
-            <div className="p-4 rounded-xl border" style={{ background: "rgba(99,102,241,0.06)", borderColor: "rgba(99,102,241,0.18)" }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-medium mb-0.5" style={{ color: T.muted }}>Meeting Score</p>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-black text-white">{live ? live.meeting_score : "—"}</span>
-                    <span className="text-sm" style={{ color: T.muted }}>/100</span>
-                  </div>
-                </div>
-                <Trophy className="w-5 h-5 text-indigo-400" />
-              </div>
-              {live?.score_breakdown && (
-                <div className="grid grid-cols-3 gap-x-3 gap-y-1 mt-3 pt-3 border-t" style={{ borderColor: "rgba(99,102,241,0.15)" }}>
-                  {[
-                    ["Sentiment",  live.score_breakdown.sentiment],
-                    ["Engagement", live.score_breakdown.engagement],
-                    ["Objections", live.score_breakdown.objection_handling],
-                    ["Discovery",  live.score_breakdown.discovery_quality],
-                    ["Talk ratio", live.score_breakdown.talk_ratio_balance],
-                    ["Progress",   live.score_breakdown.objective_progress],
-                  ].map(([label, value]: any) => (
-                    <div key={label} className="text-[10px]" style={{ color: T.muted }}>
-                      {label}: <span className="font-semibold" style={{ color: T.text }}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!live && (
-                <p className="text-[10px] mt-2" style={{ color: T.muted }}>
-                  Building the score as the conversation unfolds…
-                </p>
-              )}
-            </div>
-
-            {coachingFeed.length === 0 && (
-              <div className="py-8 text-center">
-                <BrainCircuit className="w-7 h-7 mx-auto mb-2" style={{ color: T.subtle }} />
-                <p className="text-xs" style={{ color: T.muted }}>
-                  Context-aware coaching will appear here as the conversation develops
-                </p>
-              </div>
-            )}
-
-            {coachingFeed.map((c: any) => {
-              const meta = COACHING_CATEGORY_META[c.category] || COACHING_CATEGORY_META.coaching;
-              const Icon = meta.icon;
-              return (
-                <div key={c.id} className="flex items-start gap-2.5 p-3 rounded-xl border group"
-                  style={{ background: `${meta.color}0a`, borderColor: `${meta.color}22` }}>
-                  <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: meta.color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: meta.color }}>{meta.label}</span>
-                      {c.priority === "high" && (
-                        <span className="text-[9px] font-bold px-1.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: T.red }}>HIGH</span>
-                      )}
-                    </div>
-                    <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: T.text }}>{c.suggestion_text}</p>
-                  </div>
-                  {onDismissCoaching && (
-                    <button onClick={() => onDismissCoaching(c.id)}
-                      className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation"
-                      style={{ color: T.muted }} aria-label="Dismiss suggestion">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
 // ─── Left panel ─────────────────────────────────────────────────────────────────
 const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callId, userId }: any) => {
   const { workspace, addNote, uploadFile } = useMeetingWorkspace(callId);
@@ -1481,8 +963,7 @@ export default function LiveMeeting() {
   const hostName = useMemo(() => deriveHostName(profile, user?.email), [profile, user?.email]);
 
   const {
-    liveCall, isLive, isLoading, transcripts: rawTranscripts,
-    objections, topics, endCall, markCallStarted, markHostJoined, callId,
+    liveCall, isLive, isLoading, endCall, markCallStarted, markHostJoined, callId,
   } = useLiveCall({ onCallEnded: () => setStatus("available") });
 
   const roomName     = (liveCall as any)?.daily_room_name    ?? null;
@@ -1544,97 +1025,39 @@ export default function LiveMeeting() {
     }
   }, [audioStreaming.state.isReconnecting]);
 
-  // ── Live captions (sub-500ms, Zoom/Meet-style) ────────────────────────────
-  // Own mic only through the socket below — each participant's browser
-  // transcribes and broadcasts its own audio. The other side's (guest's)
-  // line is NOT pushed into this map by the socket; it has to be merged in
-  // separately from the full transcripts feed, same as GuestJoin.tsx does —
-  // see the merge effect further down. Without that merge this panel only
-  // ever showed the host's own captions, never the guest's, even though the
-  // guest's lines were already arriving fine in `rawTranscripts` / the
-  // transcript tab.
-  const [captionLines, setCaptionLines] = useState<Map<string, CaptionLine>>(new Map());
+  // ── Background live transcription (Deepgram, sub-500ms) ──────────────────
+  // This keeps recording the host's mic and feeding the transcription
+  // pipeline the entire meeting — it just no longer surfaces captions on
+  // screen. The transcript itself still lands in `transcripts` and, once
+  // the meeting ends, gets superseded by the authoritative Deepgram batch +
+  // diarization pass that powers Call Details.
   const liveSocket = useLiveTranscriptionSocket({
     callId: callId ?? null,
     role: "host",
     // FIX: pass the already-resolved session token from AuthContext instead
     // of letting the hook call supabase.auth.getSession() itself — see the
     // FIX v2 comment in useLiveTranscriptionSocket.ts for why that caused
-    // captions to silently never connect (gotrue lock contention with the
-    // half-dozen other auth-touching hooks this page mounts).
+    // transcription to silently never connect (gotrue lock contention with
+    // the half-dozen other auth-touching hooks this page mounts).
     accessToken: session?.access_token ?? null,
     onCaption: (evt) => {
-      setCaptionLines((prev) => {
-        const next = new Map(prev);
-        next.set(hostName, { speaker: hostName, text: evt.text, isFinal: evt.speechFinal, updatedAt: Date.now() });
-        return next;
-      });
       health.recordTranscriptReceived(evt.text.split(/\s+/).length);
     },
     onStatusChange: (s) => {
       if (s === "failed") {
-        toast.info("Live captions unavailable — falling back to standard transcription", { id: "live-caption-fallback" });
+        toast.info("Live transcription unavailable — falling back to standard transcription", { id: "live-caption-fallback" });
       }
     },
   });
 
-  // Merge finalized full-transcript lines (host + guest, from the same
-  // `transcripts` feed the right-hand panel uses) into the same caption map
-  // the live socket feeds — this is the actual fix: the socket above only
-  // ever carries the host's OWN mic, so without this merge the caption
-  // panel silently never showed the guest's side at all. Mirrors the
-  // identical effect in GuestJoin.tsx (which needs it for the reverse
-  // reason: RLS blocks a guest's direct reads, so guests rely on this same
-  // merge pattern against their own reconciliation feed instead).
-  useEffect(() => {
-    if (!rawTranscripts.length) return;
-    setCaptionLines((prev) => {
-      const next = new Map(prev);
-      for (const row of rawTranscripts as any[]) {
-        if (row.is_partial) continue; // only surface settled lines here
-        const speakerKey = row.speaker_name || (row.is_guest ? "Guest" : hostName);
-        const existing = next.get(speakerKey);
-        const rowTime = new Date(row.timestamp).getTime();
-        if (!existing || rowTime >= existing.updatedAt) {
-          next.set(speakerKey, {
-            speaker: speakerKey,
-            text: row.text,
-            isFinal: true,
-            updatedAt: rowTime,
-          });
-        }
-      }
-      return next;
-    });
-  }, [rawTranscripts, hostName]);
-
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
-  const { workspace, dismissCoachingSuggestion } = useMeetingWorkspace(callId);
+  const { workspace } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
 
-  // ── Caption & transcript self-test ──────────────────────────────────────
-  // Everything needed to verify the pipeline is already in scope above
-  // (liveSocket.status, captionLines, rawTranscripts) — this just derives
-  // the three checkpoints the panel displays. See CaptionSelfTestPanel's
-  // doc comment for what each one means. Deliberately does NOT filter on
-  // "another participant present" — the whole point is this works solo.
-  const [showSelfTest, setShowSelfTest] = useState(false);
-  const hostTranscriptLines = useMemo(
-    () => (rawTranscripts as any[]).filter((r) => !r.is_guest && !r.is_partial),
-    [rawTranscripts],
-  );
-  const lastHostTranscriptLine = hostTranscriptLines[hostTranscriptLines.length - 1] ?? null;
-  const lastHostCaptionText = captionLines.get(hostName)?.text ?? null;
-  const lastHostSavedAgoSec = lastHostTranscriptLine
-    ? Math.max(0, Math.round((Date.now() - new Date(lastHostTranscriptLine.timestamp).getTime()) / 1000))
-    : null;
-
   const [leftTab,         setLeftTab]         = useState<LeftTab>("people");
-  const [rightTab,        setRightTab]        = useState<RightTab>("transcript");
   const [isAudioOn,       setIsAudioOn]       = useState(true);
   const [isVideoOn,       setIsVideoOn]       = useState(true);
   const [leftCollapsed,   setLeftCollapsed]   = useState(false);
-  const [rightCollapsed,  setRightCollapsed]  = useState(false);
   const [reconnectCount,  setReconnectCount]  = useState(0);
   const [pinnedId,        setPinnedId]        = useState<string | null>(null);
   const [videoLayout,     setVideoLayout]     = useState<VideoLayout>("spotlight");
@@ -1643,10 +1066,8 @@ export default function LiveMeeting() {
   const [noiseCancelOn,   setNoiseCancelOn]   = useState(true);
 
   useEffect(() => {
-    if (isMobile) { setLeftCollapsed(true); setRightCollapsed(true); }
+    if (isMobile) { setLeftCollapsed(true); }
   }, [isMobile]);
-
-  const transcripts = useMemo(() => rawTranscripts.slice(-MAX_TRANSCRIPTS), [rawTranscripts]);
 
   // ── Join ────────────────────────────────────────────────────────────────────
   // FIX: Use conditional spread so `token` key is entirely absent when falsy.
@@ -1827,27 +1248,6 @@ export default function LiveMeeting() {
     setMicStream(null);
   }, []);
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
-  const talkRatio = useMemo(() => {
-    if (!transcripts.length) return { rep: 50, prospect: 50 };
-    const isHostLine = (t: any) => (t.speaker_role ? t.speaker_role !== "guest" : !t.is_guest);
-    const rw = transcripts.filter(isHostLine).reduce((s: number, t: any) => s + t.text.split(/\s+/).length, 0);
-    const pw = transcripts.filter((t: any) => !isHostLine(t)).reduce((s: number, t: any) => s + t.text.split(/\s+/).length, 0);
-    const total = rw + pw;
-    if (!total) return { rep: 50, prospect: 50 };
-    return { rep: Math.round((rw / total) * 100), prospect: Math.round((pw / total) * 100) };
-  }, [transcripts]);
-
-  const questionsCount = useMemo(() => transcripts.filter((t: any) => t.text.includes("?")).length, [transcripts]);
-  const sentimentScore = liveCall?.sentiment_score ?? 74;
-
-  // Async live AI analysis + coaching — runs server-side every few seconds.
-  // Never blocks audio/transcription; results stream in via Realtime through
-  // useMeetingWorkspace's `live_analysis` snapshot. Feeding it the live talk
-  // ratio lets the server-computed Meeting Score stay accurate instead of
-  // falling back to a 50/50 default.
-  useLiveMeetingAI(callId, Boolean(isLive && callId), talkRatio);
-
   const handleToggleMic = useCallback(async () => {
     await daily.setAudioEnabled(!isAudioOn);
     setIsAudioOn((v) => !v);
@@ -2027,23 +1427,7 @@ export default function LiveMeeting() {
               </div>
             )}
 
-            {/* Caption & transcript self-test toggle — visible on mobile
-                too (unlike the panel toggles below), since verifying your
-                own mic pipeline is exactly the thing you'd want to do
-                before/without a guest around. */}
-            <button
-              onClick={() => setShowSelfTest((v) => !v)}
-              title="Check that captions & transcript are working"
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-              style={{
-                background: showSelfTest ? "rgba(99,102,241,0.2)" : T.card,
-                border: `1px solid ${showSelfTest ? "rgba(99,102,241,0.4)" : T.border}`,
-              }}
-            >
-              <Activity className="w-3.5 h-3.5" style={{ color: showSelfTest ? "#a5b4fc" : T.muted }} />
-            </button>
-
-            {/* Panel toggles — desktop only */}
+            {/* Panel toggle — desktop only */}
             <div className="hidden md:flex items-center gap-1">
               <button
                 onClick={() => setLeftCollapsed((v) => !v)}
@@ -2051,13 +1435,6 @@ export default function LiveMeeting() {
                 style={{ background: T.card, border: `1px solid ${T.border}` }}
               >
                 <PanelLeft className="w-3.5 h-3.5" style={{ color: leftCollapsed ? T.muted : "#a5b4fc" }} />
-              </button>
-              <button
-                onClick={() => setRightCollapsed((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: T.card, border: `1px solid ${T.border}` }}
-              >
-                <PanelRight className="w-3.5 h-3.5" style={{ color: rightCollapsed ? T.muted : "#a5b4fc" }} />
               </button>
             </div>
           </div>
@@ -2101,42 +1478,7 @@ export default function LiveMeeting() {
                   layout={videoLayout} onLayoutChange={setVideoLayout}
                 />
               )}
-              <LiveCaptions lines={Array.from(captionLines.values())} />
-              {showSelfTest && (
-                <CaptionSelfTestPanel
-                  status={liveSocket.status}
-                  lastCaption={lastHostCaptionText}
-                  lastSavedText={lastHostTranscriptLine?.text ?? null}
-                  lastSavedAgoSec={lastHostSavedAgoSec}
-                  hostLineCount={hostTranscriptLines.length}
-                  onClose={() => setShowSelfTest(false)}
-                />
-              )}
             </div>
-
-            {/* AI status nudge — desktop */}
-            {daily.isConnected && !isMobile && (
-              <div
-                className="mx-3 mb-2 px-4 py-2 rounded-xl flex items-center justify-between shrink-0"
-                style={{ background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.12)" }}
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="text-xs" style={{ color: T.muted }}>AI analysing</span>
-                  {objections.length > 0 && (
-                    <span className="text-xs font-medium text-amber-400">
-                      · {objections.length} objection{objections.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-                <button
-                  className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
-                  onClick={() => { setRightCollapsed(false); setRightTab("insights"); }}
-                >
-                  View <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-            )}
 
             {/* ── Control bar ─────────────────────────────────────────────── */}
             <div
@@ -2144,7 +1486,7 @@ export default function LiveMeeting() {
               style={{ paddingBottom: isMobile ? "max(6px, env(safe-area-inset-bottom))" : undefined }}
             >
               {isMobile ? (
-                <div className="flex flex-col gap-1.5">                  {/* Primary pill — Mic / Cam / AI / Raise / Leave, mirrors the
+                <div className="flex flex-col gap-1.5">                  {/* Primary pill — Mic / Cam / People / Raise / Leave, mirrors the
                       reference mobile design: five clear circular actions,
                       nothing competing for thumb reach. */}
                   <div
@@ -2159,10 +1501,10 @@ export default function LiveMeeting() {
                     <RoundCtrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} />
                     <RoundCtrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} />
                     <RoundCtrl
-                      icon={Sparkles} label="AI" glow
-                      active={mobilePanel === "ai"}
-                      badge={(objections.length || 0) || undefined}
-                      onClick={() => setMobilePanel(mobilePanel === "ai" ? "none" : "ai")}
+                      icon={Users} label="People"
+                      active={mobilePanel === "people"}
+                      badge={guestRequests.length || undefined}
+                      onClick={() => setMobilePanel(mobilePanel === "people" ? "none" : "people")}
                     />
                     <RoundCtrl icon={Hand} label="Raise" active={isHandRaised} highlight={isHandRaised} onClick={handleHandRaise} />
                     <button
@@ -2178,9 +1520,9 @@ export default function LiveMeeting() {
                     </button>
                   </div>
 
-                  {/* Secondary quick-access row — Share Screen / Participants /
-                      Chat / Live Transcript / More, same set the reference
-                      design surfaces beneath the primary bar. */}
+                  {/* Secondary quick-access row — Share Screen / Chat /
+                      Notes / More. People has its own slot in the primary
+                      pill above, so it isn't repeated here. */}
                   <div
                     className="flex items-center justify-between px-3 py-1.5 rounded-2xl"
                     style={{ background: "rgba(13,15,24,0.7)", border: `1px solid ${T.border}` }}
@@ -2193,20 +1535,14 @@ export default function LiveMeeting() {
                       onClick={handleScreenShare}
                     />
                     <QuickAction
-                      icon={Users} label="People"
-                      badge={guestRequests.length || daily.participantCount || undefined}
-                      active={mobilePanel === "people"}
-                      onClick={() => setMobilePanel(mobilePanel === "people" ? "none" : "people")}
-                    />
-                    <QuickAction
                       icon={MessageSquare} label="Chat"
                       active={mobilePanel === "chat"}
                       onClick={() => setMobilePanel(mobilePanel === "chat" ? "none" : "chat")}
                     />
                     <QuickAction
-                      icon={FileText} label="Transcript"
-                      active={mobilePanel === "ai" && rightTab === "transcript"}
-                      onClick={() => { setRightTab("transcript"); setMobilePanel("ai"); }}
+                      icon={BookOpen} label="Notes"
+                      active={mobilePanel === "notes"}
+                      onClick={() => setMobilePanel(mobilePanel === "notes" ? "none" : "notes")}
                     />
                     <QuickAction
                       icon={MoreHorizontal} label="More"
@@ -2256,9 +1592,8 @@ export default function LiveMeeting() {
                 {/* Desktop: extra controls */}
                 <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                   <Ctrl
-                    icon={BrainCircuit} label="AI"
-                    onClick={() => setRightCollapsed((v) => !v)}
-                    badge={rightCollapsed && objections.length ? objections.length : undefined}
+                    icon={BookOpen} label="Notes"
+                    onClick={() => { setLeftCollapsed(false); setLeftTab("notes"); }}
                   />
                   <Ctrl
                     icon={CircleDot}
@@ -2294,36 +1629,12 @@ export default function LiveMeeting() {
             </div>
           </div>
 
-          {/* Right AI panel — desktop */}
-          {!rightCollapsed && !isMobile && (
-            <div className="w-72 xl:w-80 shrink-0 border-l flex flex-col" style={{ borderColor: T.border }}>
-              <RightPanel
-                activeTab={rightTab} onTab={setRightTab}
-                transcripts={transcripts} objections={objections} topics={topics}
-                sentimentScore={sentimentScore} talkRatio={talkRatio}
-                questionsCount={questionsCount} participantCount={daily.participantCount}
-                isStreaming={audioStreaming.state.isStreaming} chunksSent={audioStreaming.state.chunksSent}
-                workspace={workspace} onDismissCoaching={dismissCoachingSuggestion}
-              />
-            </div>
-          )}
         </div>
 
         {/* ── Mobile bottom sheets ────────────────────────────────────────── */}
         <MobileSheet open={mobilePanel === "people"} onClose={() => setMobilePanel("none")} title="Participants">
           <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
             activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
-        </MobileSheet>
-
-        <MobileSheet open={mobilePanel === "ai"} onClose={() => setMobilePanel("none")} title="AI Copilot">
-          <RightPanel
-            activeTab={rightTab} onTab={setRightTab}
-            transcripts={transcripts} objections={objections} topics={topics}
-            sentimentScore={sentimentScore} talkRatio={talkRatio}
-            questionsCount={questionsCount} participantCount={daily.participantCount}
-            isStreaming={audioStreaming.state.isStreaming} chunksSent={audioStreaming.state.chunksSent}
-            workspace={workspace} onDismissCoaching={dismissCoachingSuggestion}
-          />
         </MobileSheet>
 
         <MobileSheet open={mobilePanel === "more"} onClose={() => setMobilePanel("none")} title="More">
@@ -2361,6 +1672,11 @@ export default function LiveMeeting() {
 
         <MobileSheet open={mobilePanel === "chat"} onClose={() => setMobilePanel("none")} title="Team Chat">
           <LeftPanel activeTab="chat" onTab={setLeftTab} participants={daily.participants}
+            activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+        </MobileSheet>
+
+        <MobileSheet open={mobilePanel === "notes"} onClose={() => setMobilePanel("none")} title="Notes">
+          <LeftPanel activeTab="notes" onTab={setLeftTab} participants={daily.participants}
             activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
         </MobileSheet>
       </div>
