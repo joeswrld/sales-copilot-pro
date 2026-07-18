@@ -2,17 +2,18 @@
  * MeetingHealthBar.tsx
  *
  * Compact real-time health indicator bar for the LiveMeeting top nav.
- * Shows mic level, network, transcription latency, and AI status.
+ * Shows mic level and network quality — the two things that actually
+ * affect the live meeting experience. Transcription/AI analysis happen
+ * entirely post-call now, so there's no live latency to report here.
  */
 
 import { memo, useState } from "react";
-import { Mic, Wifi, Zap, Brain, ChevronDown, X } from "lucide-react";
+import { Mic, Wifi, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MeetingHealth, HealthStatus } from "@/hooks/useMeetingHealth";
 
 interface Props {
   health: MeetingHealth;
-  isStreaming: boolean;
 }
 
 const statusColor = (s: HealthStatus) => ({
@@ -47,13 +48,10 @@ const MicBar = memo(({ level, isSilent, isClipping }: { level: number; isSilent:
   );
 });
 
-export const MeetingHealthBar = memo(({ health, isStreaming }: Props) => {
+export const MeetingHealthBar = memo(({ health }: Props) => {
   const [expanded, setExpanded] = useState(false);
 
-  const netColor  = statusColor(health.network.status);
-  const txLatency = health.transcription.latencyMs;
-  const txColor   = txLatency === null ? "rgba(255,255,255,0.3)" : txLatency > 6000 ? "#ef4444" : txLatency > 3000 ? "#f59e0b" : "#10b981";
-  const aiColor   = health.ai.latencyMs === null ? "rgba(255,255,255,0.3)" : health.ai.latencyMs > 5000 ? "#f59e0b" : "#10b981";
+  const netColor = statusColor(health.network.status);
 
   return (
     <div className="relative">
@@ -73,21 +71,6 @@ export const MeetingHealthBar = memo(({ health, isStreaming }: Props) => {
             <span className="text-[9px] font-mono" style={{ color: netColor }}>{health.network.rttMs}ms</span>
           )}
         </div>
-
-        {/* Transcription */}
-        {isStreaming && (
-          <div className="flex items-center gap-1" title="Transcription latency">
-            <Zap className="w-3 h-3" style={{ color: txColor }} />
-            {txLatency !== null && (
-              <span className="text-[9px] font-mono" style={{ color: txColor }}>{(txLatency / 1000).toFixed(1)}s</span>
-            )}
-          </div>
-        )}
-
-        {/* AI */}
-        {health.ai.lastAnalysisAt && (
-          <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: aiColor }} />
-        )}
 
         <ChevronDown className={cn("w-2.5 h-2.5 transition-transform", expanded && "rotate-180")} style={{ color: "rgba(255,255,255,0.3)" }} />
       </button>
@@ -122,22 +105,6 @@ export const MeetingHealthBar = memo(({ health, isStreaming }: Props) => {
               {health.network.rttMs !== null && ` · ${health.network.rttMs}ms RTT`}
               {health.network.mbps !== null && ` · ${health.network.mbps.toFixed(1)} Mbps`}
               {health.network.packetLoss !== null && ` · ${(health.network.packetLoss * 100).toFixed(1)}% loss`}
-            </div>
-          </Row>
-
-          {/* Transcription */}
-          <Row label="Transcription" icon={Zap} color={txColor}>
-            <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {txLatency !== null ? `${(txLatency / 1000).toFixed(1)}s latency` : "Waiting…"}
-              {health.transcription.wordsPerMinute !== null && ` · ${health.transcription.wordsPerMinute} WPM`}
-            </div>
-          </Row>
-
-          {/* AI */}
-          <Row label="AI Analysis" icon={Brain} color={aiColor}>
-            <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {health.ai.latencyMs !== null ? `${(health.ai.latencyMs / 1000).toFixed(1)}s latency` : "Standby"}
-              {health.ai.objectionCount > 0 && ` · ${health.ai.objectionCount} objections`}
             </div>
           </Row>
 
