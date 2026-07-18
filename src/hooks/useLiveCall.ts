@@ -1,5 +1,5 @@
 /**
- * useLiveCall.ts — v5 (Stabilized)
+ * useLiveCall.ts — v6
  *
  * Fixes:
  *  - Realtime channel now keyed on callId to prevent duplicate subscriptions
@@ -7,6 +7,18 @@
  *    don't abort the whole end-call flow
  *  - Reduced liveCallQuery poll interval (5s → 10s) to reduce load
  *  - startCall now has try/finally to always clean up on error
+ *  - REMOVED: the live-transcripts / live-objections / live-topics queries
+ *    and their realtime + broadcast subscriptions. These backed the old
+ *    in-call Live Transcription / Live AI Analysis / Live AI Coaching
+ *    panels, which have been removed from the Live Meeting page — nothing
+ *    in the app renders this data anymore, and nothing writes it either
+ *    (transcribe-live / transcribe-stream, the only producers, are gone).
+ *    The full transcript is now built post-call by finalize-recording-transcript
+ *    from Daily's complete cloud recording, diarized via Deepgram batch —
+ *    see the pipeline documented in daily-webhook and generate-call-summary.
+ *  - endCall no longer calls generate-call-summary directly. It now calls
+ *    flush-and-finalize-call instead, same as the Daily "meeting.ended"
+ *    webhook does — see the FIX comment on that call below.
  */
 
 import { useEffect } from "react";
@@ -17,27 +29,6 @@ import { useTeamMinutePool } from "@/hooks/useTeamMinutePool";
 import { toast } from "sonner";
 import { stageFromCall } from "@/hooks/useDealRooms";
 import { useTeam } from "@/hooks/useTeam";
-
-export interface Transcript {
-  id: string; call_id: string; speaker: string; text: string; timestamp: string;
-  // These columns have always been returned by the `select("*")` below (see
-  // upsert_partial_transcript, which writes all of them) but were missing
-  // from this type — every caller that needed them was reaching for `as
-  // any`. Declaring them properly is what let LiveMeeting.tsx merge this
-  // feed into its live-captions map the same way GuestJoin.tsx already does.
-  speaker_name?: string;
-  speaker_role?: string | null;
-  is_guest?: boolean;
-  is_partial?: boolean;
-  client_chunk_id?: string | null;
-}
-export interface Objection {
-  id: string; call_id: string; objection_type: string;
-  suggestion: string | null; detected_at: string; confidence_score: number;
-}
-export interface KeyTopic {
-  id: string; call_id: string; topic: string; detected_at: string;
-}
 
 async function postSystemMessage(conversationId: string, text: string, userId: string) {
   try {
@@ -139,84 +130,17 @@ export function useLiveCall(options?: {
     }
   };
 
-  // ── Transcripts / objections / topics ───────────────────────────────────
-  const transcriptsQuery = useQuery({
-    queryKey: ["live-transcripts", callId],
-    queryFn: async () => {
-      if (!callId) return [];
-      const { data, error } = await supabase
-        .from("transcripts")
-        .select("*")
-        .eq("call_id", callId)
-        .order("timestamp", { ascending: true });
-      if (error) throw error;
-      return data as Transcript[];
-    },
-    enabled: !!callId,
-    staleTime: 3_000,
-  });
-
-  const objectionsQuery = useQuery({
-    queryKey: ["live-objections", callId],
-    queryFn: async () => {
-      if (!callId) return [];
-      const { data, error } = await supabase
-        .from("objections")
-        .select("*")
-        .eq("call_id", callId)
-        .order("detected_at", { ascending: true });
-      if (error) throw error;
-      return data as Objection[];
-    },
-    enabled: !!callId,
-    staleTime: 5_000,
-  });
-
-  const topicsQuery = useQuery({
-    queryKey: ["live-topics", callId],
-    queryFn: async () => {
-      if (!callId) return [];
-      const { data, error } = await supabase
-        .from("key_topics")
-        .select("*")
-        .eq("call_id", callId)
-        .order("detected_at", { ascending: true });
-      if (error) throw error;
-      return data as KeyTopic[];
-    },
-    enabled: !!callId,
-    staleTime: 5_000,
-  });
-
-  // ── Realtime subscriptions — keyed on callId ─────────────────────────────
+  // ── Realtime subscription — keyed on callId ─────────────────────────────
+  // Only listens for changes to the call row itself now (status, timers,
+  // final_transcript_status, etc). The old transcripts/objections/key_topics
+  // listeners were removed along with the in-call Live Transcription / Live
+  // AI Analysis / Live AI Coaching panels they fed — see the note at the top
+  // of this file.
   useEffect(() => {
     if (!callId || !user) return;
 
     const channel = supabase
       .channel(`live-call-data-${callId}`)
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "transcripts",
-        filter: `call_id=eq.${callId}`,
-      }, () => queryClient.invalidateQueries({ queryKey: ["live-transcripts", callId] }))
-      // FIX: live captions (transcribe-live) upsert the SAME row repeatedly
-      // as Deepgram refines an utterance (upsert_partial_transcript keyed on
-      // client_chunk_id) — those refinements land as UPDATE, not INSERT.
-      // Without this, only the first (early, inaccurate) interim guess ever
-      // showed up in the transcript panel for the OTHER participant; the
-      // refined/final text was silently missed. This is what makes a
-      // remote participant's near-real-time captions actually update.
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "transcripts",
-        filter: `call_id=eq.${callId}`,
-      }, () => queryClient.invalidateQueries({ queryKey: ["live-transcripts", callId] }))
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "objections",
-        filter: `call_id=eq.${callId}`,
-      }, () => queryClient.invalidateQueries({ queryKey: ["live-objections", callId] }))
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "key_topics",
-        filter: `call_id=eq.${callId}`,
-      }, () => queryClient.invalidateQueries({ queryKey: ["live-topics", callId] }))
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "calls",
         filter: `id=eq.${callId}`,
@@ -225,30 +149,8 @@ export function useLiveCall(options?: {
         console.log(`[useLiveCall][subscribe] postgres_changes channel status=${status} call=${callId}`);
       });
 
-    // Broadcast is a second, lower-latency path for the SAME transcript
-    // events (pushed directly by transcribe-live / transcribe-stream after
-    // every DB write on topic `call-transcripts-{callId}` — must be a
-    // SEPARATE channel/topic from the postgres_changes one above, since
-    // Realtime channels are matched by exact topic string) — it skips the
-    // Postgres WAL → replication round trip postgres_changes depends on.
-    // Purely additive: worst case invalidateQueries just runs a touch
-    // earlier than the postgres_changes listener would have. This is also
-    // the same topic the Guest Join page listens on (see
-    // useGuestTranscripts.ts), since RLS blocks guests from postgres_changes
-    // entirely.
-    const broadcastChannel = supabase
-      .channel(`call-transcripts-${callId}`)
-      .on("broadcast", { event: "transcript" }, (msg) => {
-        console.log(`[useLiveCall][broadcast] transcript event for call=${callId}`, msg.payload);
-        queryClient.invalidateQueries({ queryKey: ["live-transcripts", callId] });
-      })
-      .subscribe((status) => {
-        console.log(`[useLiveCall][subscribe] broadcast channel status=${status} call=${callId}`);
-      });
-
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(broadcastChannel);
     };
   }, [callId, user, queryClient]);
 
@@ -395,15 +297,36 @@ export function useLiveCall(options?: {
       // trg_log_usage_on_call_complete, which fires on the status update
       // above (status -> 'completed'). No edge function call needed for that.
 
-      // Generate AI summary (non-fatal)
+      // Mark the "Processing Meeting..." window as having begun. Call
+      // Details reads calls.final_transcript_status (alongside
+      // call_summaries.analysis_status) to show one continuous processing
+      // state from the moment the meeting ends until both the diarized
+      // transcript and the final AI analysis have landed.
+      await supabase.from("calls")
+        .update({ final_transcript_status: "pending" })
+        .eq("id", callId)
+        .is("final_transcript_status", null);
+
+      // FIX: this used to call generate-call-summary directly, the instant
+      // the host clicked "End call" — racing the tail of the transcription
+      // pipeline the exact same way the Daily "meeting.ended" webhook used
+      // to (see daily-webhook). A host who talks right up to the moment
+      // they click End could lose those last few seconds from the summary.
+      // flush-and-finalize-call waits (briefly, bounded) for in-flight
+      // transcript rows to settle before running the first-pass analysis —
+      // and this is still only the FIRST pass. finalize-recording-transcript
+      // re-runs it again once Daily's complete recording finishes
+      // processing, replacing this with an authoritative, Deepgram-diarized
+      // transcript and analysis a short while later. Call Details reflects
+      // both stages automatically via its existing realtime subscriptions.
       let summaryData: any = null;
       try {
-        const res = await supabase.functions.invoke("generate-call-summary", {
+        const res = await supabase.functions.invoke("flush-and-finalize-call", {
           body: { call_id: callId },
         });
         if (res.data) summaryData = res.data;
       } catch (e) {
-        console.warn("Summary generation non-fatal:", e);
+        console.warn("flush-and-finalize-call non-fatal:", e);
       }
 
       // Slack notification (fire-and-forget)
@@ -528,9 +451,6 @@ export function useLiveCall(options?: {
     liveCall:    liveCallQuery.data,
     isLive:      !!liveCallQuery.data,
     isLoading:   liveCallQuery.isLoading,
-    transcripts: transcriptsQuery.data ?? [],
-    objections:  objectionsQuery.data ?? [],
-    topics:      topicsQuery.data ?? [],
     startCall,
     endCall,
     markCallStarted,
