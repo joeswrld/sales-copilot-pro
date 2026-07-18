@@ -29,10 +29,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useGuestAudioStreaming } from "@/hooks/useGuestAudioStreaming";
-import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
-import { LiveCaptions, CaptionLine } from "@/components/LiveCaptions";
-import { useGuestTranscripts } from "@/hooks/useGuestTranscripts";
 import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { VideoTile } from "@/components/VideoTile";
@@ -846,30 +842,6 @@ export default function GuestJoin() {
   const guestDailyTokenRef = useRef<string | null>(null);
   const voluntaryLeaveRef = useRef(false);
 
-  // FIX: guest speech was never transcribed — GuestJoin had no MediaRecorder
-  // and never called transcribe-guest-stream. The raw guest_session_token
-  // (minted by guest-request-status on admission — distinct from the Daily
-  // meeting token exchanged from it above) is kept in state so it can be
-  // handed to useGuestAudioStreaming, which authorizes each chunk with it.
-  // transcribe-guest-stream resolves call_id server-side from this token, so
-  // this page never needs to know its own call_id.
-  const [guestAuthToken, setGuestAuthToken] = useState<string | null>(null);
-  // FIX: the real call UUID (returned as `call_id` by guest-request-status
-  // on admission — see the polling effect below). useGuestTranscripts
-  // subscribes to the Realtime broadcast topic `call-transcripts-{callId}`,
-  // which MUST be this real call id: it's the exact same topic
-  // transcribe-live / transcribe-stream / transcribe-guest-stream broadcast
-  // to server-side, and the exact same topic the host's LiveMeeting page
-  // (useLiveCall.ts) listens on. guestAuthToken (the raw
-  // guest_session_token) is a completely different value — it's only used
-  // to AUTHORIZE the get_guest_call_transcripts RPC, never as a channel
-  // name. Passing guestAuthToken as the channel id (as this used to do)
-  // meant this guest was subscribed to a channel nobody ever broadcasts
-  // on, so it silently missed every low-latency transcript push and fell
-  // back entirely on the 8s reconciliation poll — which is also why a
-  // guest's own live caption (fed directly by the low-latency socket) and
-  // the transcript panel could visibly drift out of sync with each other.
-  const [guestCallId, setGuestCallId] = useState<string | null>(null);
   // FIX: the call's real, DB-backed start_time (returned by
   // guest-request-status as `call_start_time` once admitted). Anchoring the
   // timer to this instead of this tab's own join instant is what keeps the
@@ -878,74 +850,7 @@ export default function GuestJoin() {
   const [callStartTime, setCallStartTime] = useState<string | null>(null);
   const [callMicStream, setCallMicStream] = useState<MediaStream | null>(null);
   const health = useMeetingHealth(null, callMicStream ?? localStream);
-  const guestAudio = useGuestAudioStreaming({
-    guestToken: guestAuthToken,
-    onTranscript: (text) => health.recordTranscriptReceived(text.split(/\s+/).length),
-  });
   const guestTrackStartedRef = useRef(false);
-  const guestLocalTrackRef = useRef<MediaStreamTrack | null>(null);
-
-  // ── Live captions (sub-500ms) — same relay the host uses, resolved via
-  // guest_session_token instead of a Supabase JWT. Falls back to the
-  // existing chunked guestAudio pipeline if the socket can't connect.
-  const [captionLines, setCaptionLines] = useState<Map<string, CaptionLine>>(new Map());
-  const liveSocket = useLiveTranscriptionSocket({
-    callId: guestAuthToken ? "guest" : null, // any truthy value — resolved server-side from guestToken
-    role: "guest",
-    guestToken: guestAuthToken,
-    onCaption: (evt) => {
-      setCaptionLines((prev) => {
-        const next = new Map(prev);
-        next.set(guestName.trim() || "Guest", {
-          speaker: guestName.trim() || "Guest", text: evt.text, isFinal: evt.speechFinal, updatedAt: Date.now(),
-        });
-        return next;
-      });
-      health.recordTranscriptReceived(evt.text.split(/\s+/).length);
-    },
-  });
-  useEffect(() => {
-    if (liveSocket.status === "failed" && guestLocalTrackRef.current) {
-      guestAudio.startTrackRecording(guestLocalTrackRef.current);
-    }
-  }, [liveSocket.status]); // eslint-disable-line
-
-  // ── Full transcript feed (host + guest lines), not just this tab's own
-  // mic — this was the actual gap: RLS blocks a guest's normal reads/
-  // postgres_changes on `transcripts` outright (see useGuestTranscripts.ts
-  // doc comment), so nothing from the host ever reached this page before.
-  // Only runs once the call has actually been admitted (guestAuthToken set)
-  // and stops when the component unmounts on leave/meeting-end — never on
-  // its own while the guest is still connected.
-  const { transcripts: fullTranscripts } = useGuestTranscripts({
-    callId: callStartTime ? guestCallId : null, // gate on "admitted & live", not just token presence
-    guestToken: guestAuthToken,
-    enabled: Boolean(guestAuthToken),
-  });
-
-  // Merge finalized full-transcript lines into the same caption map the
-  // live socket feeds, keyed by speaker name, so both this guest's own
-  // in-progress caption AND the host's (or another guest's) latest line are
-  // visible with correct speaker names — no separate UI surface needed.
-  useEffect(() => {
-    if (!fullTranscripts.length) return;
-    setCaptionLines((prev) => {
-      const next = new Map(prev);
-      for (const row of fullTranscripts) {
-        if (row.is_partial) continue; // only surface settled lines from the reconciliation feed
-        const existing = next.get(row.speaker_name);
-        if (!existing || row.timestamp >= new Date(existing.updatedAt).toISOString()) {
-          next.set(row.speaker_name, {
-            speaker: row.speaker_name,
-            text: row.text,
-            isFinal: true,
-            updatedAt: new Date(row.timestamp).getTime(),
-          });
-        }
-      }
-      return next;
-    });
-  }, [fullTranscripts]);
 
   // FIX: mirrors the host's auto-reconnect in LiveMeeting.tsx. useDailyCall
   // already self-heals brief transport blips internally, but once THAT is
@@ -1104,23 +1009,17 @@ export default function GuestJoin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // FIX: wire up guest transcription. Mirrors the host's tracksStartedRef
-  // pattern in LiveMeeting.tsx — attach the recorder to the guest's own
-  // local Daily audio track (so it reflects live mute state) as soon as it's
-  // available post-join, rather than a separate getUserMedia stream.
+  // Attach the guest's own local Daily audio track to the health/mic-level
+  // meter as soon as it's available post-join. Full call audio is captured
+  // by Daily.co's cloud recording and transcribed after the call ends via
+  // the Deepgram batch + diarization pipeline.
   useEffect(() => {
     if (step !== "admitted" || guestTrackStartedRef.current) return;
     const localP = daily.participants.find((p) => p.local);
     if (localP?.audioTrack) {
       guestTrackStartedRef.current = true;
-      guestLocalTrackRef.current = localP.audioTrack;
-      liveSocket.start(localP.audioTrack);
       setCallMicStream(new MediaStream([localP.audioTrack]));
     }
-    // guestAudio omitted intentionally: it's a fresh object every render, and
-    // startTrackRecording is idempotent per the ref guard above. useGuestAudioStreaming
-    // stops itself internally on unmount, so no separate cleanup effect is needed here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, daily.participants]);
 
   // ── Backgrounded-tab guard ───────────────────────────────────────────────────
@@ -1204,15 +1103,11 @@ export default function GuestJoin() {
           clearInterval(interval);
 
           if (data.call_start_time) setCallStartTime(data.call_start_time);
-          if (data.call_id) setGuestCallId(data.call_id);
 
           const displayName = guestName.trim() || "Guest";
           let dailyToken: string | null = null;
           if (data.guest_token) {
             dailyToken = await exchangeForDailyToken(data.guest_token, displayName);
-            // Keep the raw guest_session_token too — transcribe-guest-stream
-            // authorizes with this one, not the exchanged Daily token.
-            setGuestAuthToken(data.guest_token);
           }
           guestDailyTokenRef.current = dailyToken;
 
@@ -1260,18 +1155,10 @@ export default function GuestJoin() {
 
   const handleLeave = useCallback(async () => {
     voluntaryLeaveRef.current = true;
-    liveSocket.stop();
-    guestAudio.stopAll();
-    // Best-effort: give the last few seconds of speech a short window to
-    // upload before navigating away. Not required for correctness — the
-    // queue keeps draining in the background for a while after unmount
-    // regardless (see useGuestAudioStreaming.ts) — but this avoids relying
-    // on that fallback when it's cheap not to.
-    await guestAudio.flush(4_000);
     localStream?.getTracks().forEach((t) => t.stop());
     await daily.leaveCall();
     navigate("/");
-  }, [localStream, daily, navigate, guestAudio]);
+  }, [localStream, daily, navigate]);
 
   const handleToggleMic = useCallback(async () => {
     if (step === "admitted") {
@@ -1642,7 +1529,7 @@ export default function GuestJoin() {
               {fmt(daily.elapsedSeconds)}
             </span>
           </div>
-          <MeetingHealthBar health={health.health} isStreaming={guestAudio.state?.isStreaming ?? false} />
+          <MeetingHealthBar health={health.health} />
           {handRaiseCount > 0 && (
             <div
               className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg"
@@ -1695,7 +1582,6 @@ export default function GuestJoin() {
             onLayoutChange={setVideoLayout}
           />
         )}
-        <LiveCaptions lines={Array.from(captionLines.values())} />
       </div>
 
       {/* Control bar */}
