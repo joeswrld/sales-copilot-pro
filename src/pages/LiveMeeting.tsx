@@ -18,7 +18,6 @@
  * now use conditional spread: ...(meetingToken ? { token: meetingToken } : {})
  */
 
-import DashboardLayout from "@/components/DashboardLayout";
 import {
   useState, useEffect, useRef, useMemo, useCallback, memo,
 } from "react";
@@ -31,7 +30,7 @@ import {
   CircleDot, Upload, Plus,
   X, Hand,
   ArrowUpRight,
-  PanelLeft, PanelRight, RefreshCw,
+  PanelRight, RefreshCw,
   Maximize2, Minimize2, LayoutGrid, Pin, PinOff,
   Volume2, VolumeX, MonitorOff, MoreHorizontal,
 } from "lucide-react";
@@ -304,62 +303,6 @@ const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, 
     )}
     {badge != null && badge > 0 && (
       <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
-        {badge > 9 ? "9+" : badge}
-      </span>
-    )}
-  </button>
-));
-
-// ─── Primary mobile pill button — Mic / Cam / AI / Raise (Leave is separate) ────
-const RoundCtrl = memo(({ icon: Icon, label, onClick, active = true, highlight = false, glow = false, badge }: any) => (
-  <button
-    onClick={onClick}
-    aria-label={label}
-    className="relative flex flex-col items-center justify-center gap-1 shrink-0 touch-manipulation active:scale-95 transition-transform"
-  >
-    <span
-      className="w-11 h-11 rounded-full flex items-center justify-center transition-all"
-      style={{
-        background: glow && active
-          ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-          : highlight
-          ? "rgba(245,158,11,0.2)"
-          : active
-          ? "rgba(255,255,255,0.08)"
-          : "rgba(239,68,68,0.15)",
-        border: highlight
-          ? "1px solid rgba(245,158,11,0.4)"
-          : !active && !glow
-          ? "1px solid rgba(239,68,68,0.3)"
-          : "1px solid rgba(255,255,255,0.08)",
-        boxShadow: glow && active ? "0 0 0 4px rgba(99,102,241,0.18), 0 4px 16px rgba(99,102,241,0.4)" : undefined,
-      }}
-    >
-      <Icon
-        className="w-5 h-5"
-        style={{ color: glow && active ? "#fff" : highlight ? "#fbbf24" : active ? "#fff" : "#f87171" }}
-      />
-    </span>
-    {badge != null && badge > 0 && (
-      <span className="absolute -top-0.5 right-0 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center border-2" style={{ borderColor: T.bg }}>
-        {badge > 9 ? "9+" : badge}
-      </span>
-    )}
-  </button>
-));
-
-// ─── Secondary quick-access row item ────────────────────────────────────────────
-const QuickAction = memo(({ icon: Icon, label, onClick, active = false, badge, title }: any) => (
-  <button
-    onClick={onClick}
-    aria-label={label}
-    title={title}
-    className="relative flex flex-col items-center justify-center gap-1 touch-manipulation min-w-[52px]"
-  >
-    <Icon className="w-[18px] h-[18px]" style={{ color: active ? "#a5b4fc" : T.muted }} />
-    <span className="text-[10px] font-medium" style={{ color: active ? "#a5b4fc" : T.muted }}>{label}</span>
-    {badge != null && badge > 0 && (
-      <span className="absolute -top-1 right-1 w-3.5 h-3.5 rounded-full bg-indigo-500 text-white text-[8px] font-bold flex items-center justify-center">
         {badge > 9 ? "9+" : badge}
       </span>
     )}
@@ -861,6 +804,78 @@ const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callI
   );
 });
 
+// ─── "More" panel — Chat / Notes / Files / Notifications tabs plus the
+// host actions (Record, Noise cancellation, Switch camera) that used to
+// live in the always-visible left sidebar / mobile "More" sheet. Shown as
+// a desktop popover or a mobile bottom sheet from the top bar's More
+// button — nothing here was removed, only regrouped into one place instead
+// of a permanent sidebar column. ─────────────────────────────────────────
+const MorePanelBody = memo(({
+  daily, noiseCancelOn, onToggleNoiseCancellation, leftTab, onLeftTab, callId, userId, isMobile,
+}: {
+  daily: ReturnType<typeof useDailyCall>;
+  noiseCancelOn: boolean;
+  onToggleNoiseCancellation: () => void;
+  leftTab: LeftTab;
+  onLeftTab: (t: LeftTab) => void;
+  callId?: string;
+  userId?: string;
+  isMobile?: boolean;
+}) => {
+  const [tab, setTab] = useState<Exclude<LeftTab, "people">>(
+    leftTab === "people" ? "chat" : leftTab,
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Host actions — same controls previously in the mobile "More" sheet,
+          now shared by both desktop and mobile. */}
+      <div className="p-3 space-y-2 border-b shrink-0" style={{ borderColor: T.border }}>
+        {isMobile && (
+          <button
+            onClick={() => daily.switchCamera()}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation"
+            style={{ background: T.card, border: `1px solid ${T.border}` }}
+          >
+            <SwitchCamera className="w-4 h-4" style={{ color: T.text }} />
+            <span className="text-sm font-medium" style={{ color: T.text }}>Switch camera</span>
+          </button>
+        )}
+        <button
+          onClick={onToggleNoiseCancellation}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation"
+          style={{ background: T.card, border: `1px solid ${T.border}` }}
+        >
+          {noiseCancelOn ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" style={{ color: T.muted }} />}
+          <span className="text-sm font-medium" style={{ color: T.text }}>
+            Noise cancellation {noiseCancelOn ? "on" : "off"}
+          </span>
+        </button>
+        <button
+          onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation"
+          style={{ background: T.card, border: `1px solid ${T.border}` }}
+        >
+          <CircleDot className={cn("w-4 h-4", daily.isRecording ? "text-red-400" : "")} style={!daily.isRecording ? { color: T.text } : undefined} />
+          <span className="text-sm font-medium" style={{ color: T.text }}>
+            {daily.isRecording ? "Stop recording" : "Start recording"}
+          </span>
+        </button>
+      </div>
+
+      {/* Chat / Notes / Files / Notifications */}
+      <LeftPanel
+        activeTab={tab}
+        onTab={(t: LeftTab) => { setTab(t as Exclude<LeftTab, "people">); onLeftTab(t); }}
+        participants={daily.participants}
+        activeSpeakerId={daily.activeSpeakerId}
+        callId={callId}
+        userId={userId}
+      />
+    </div>
+  );
+});
+
 // ─── Mobile bottom sheet — real swipe-up / swipe-down-to-dismiss gesture ────────
 const MobileSheet = memo(({ open, onClose, title, children }: any) => {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -1013,17 +1028,16 @@ export default function LiveMeeting() {
   const [leftTab,         setLeftTab]         = useState<LeftTab>("people");
   const [isAudioOn,       setIsAudioOn]       = useState(true);
   const [isVideoOn,       setIsVideoOn]       = useState(true);
-  const [leftCollapsed,   setLeftCollapsed]   = useState(false);
+  // Desktop equivalent of mobilePanel: which on-demand popover (if any) is
+  // open, anchored over the video stage instead of a permanent sidebar —
+  // matches how Guest Join surfaces its People panel.
+  const [desktopPanel,    setDesktopPanel]    = useState<"none" | "people" | "more">("none");
   const [reconnectCount,  setReconnectCount]  = useState(0);
   const [pinnedId,        setPinnedId]        = useState<string | null>(null);
   const [videoLayout,     setVideoLayout]     = useState<VideoLayout>("spotlight");
   const [mobilePanel,     setMobilePanel]     = useState<MobilePanel>("none");
   const [isHandRaised,    setIsHandRaised]    = useState(false);
   const [noiseCancelOn,   setNoiseCancelOn]   = useState(true);
-
-  useEffect(() => {
-    if (isMobile) { setLeftCollapsed(true); }
-  }, [isMobile]);
 
   // ── Join ────────────────────────────────────────────────────────────────────
   // FIX: Use conditional spread so `token` key is entirely absent when falsy.
@@ -1212,341 +1226,247 @@ export default function LiveMeeting() {
   [daily.participants]);
 
   if (isLoading) return (
-    <DashboardLayout>
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: T.accent }} />
-      </div>
-    </DashboardLayout>
+    <div className="min-h-dvh flex items-center justify-center" style={{ background: T.bg }}>
+      <Loader2 className="w-6 h-6 animate-spin" style={{ color: T.accent }} />
+    </div>
   );
 
+  // ── Layout note ────────────────────────────────────────────────────────
+  // This page intentionally matches the Guest Join page's shell: a full-
+  // bleed 100dvh stage with a slim top bar, a single video area, and one
+  // floating control pill — no dashboard chrome, no permanent side panel.
+  // Every host control that used to live in the always-visible left panel
+  // (People / Chat / Notes / Files / Notifications, plus Record and Noise
+  // Cancellation) is still here, just surfaced the same way Guest Join
+  // surfaces People: as an on-demand popover on desktop and a swipeable
+  // bottom sheet on mobile, opened from the top bar or control pill. No
+  // meeting control was removed — only the always-on multi-column shell
+  // and the (already-unused) Live Transcription / Live AI Analysis / Live
+  // AI Coaching surfaces that used to anchor it.
   return (
-    <DashboardLayout>
+    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", background: T.bg }}>
       {endingPhase && <CallEndingOverlay phase={endingPhase} summaryFailed={summaryFailed} />}
-      <div
-        className="flex flex-col -mx-4 -mt-4 overflow-hidden"
-        style={{ height: "calc(100dvh - 56px)", background: T.bg }}
-      >
 
-        {/* ── Top bar ────────────────────────────────────────────────────── */}
-        <div
-          className="flex items-center justify-between px-2 sm:px-4 py-2 border-b shrink-0 gap-1.5 sm:gap-2"
-          style={{ borderColor: T.border, background: T.panel, backdropFilter: "blur(20px)" }}
-        >
-          {/* Left: live indicator + call name */}
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <div className="flex items-center gap-1 shrink-0">
-              <span
-                className="w-2 h-2 rounded-full bg-red-500 shrink-0"
-                style={{ boxShadow: "0 0 8px rgba(239,68,68,.9)" }}
-              />
-              <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest hidden sm:block">
-                Live
-              </span>
-            </div>
-            <div className="h-4 w-px shrink-0 hidden sm:block" style={{ background: T.border }} />
-            <span className="text-[12px] sm:text-sm font-semibold text-white truncate max-w-[100px] xs:max-w-[140px] sm:max-w-none">
-              {liveCall?.name || "Live Meeting"}
+      {/* ── Top bar ──────────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center justify-between px-2.5 sm:px-4 py-2 sm:py-2.5 border-b shrink-0 gap-1.5 sm:gap-2"
+        style={{ borderColor: T.border, background: T.panel, backdropFilter: "blur(20px)" }}
+      >
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-red-500" style={{ boxShadow: "0 0 8px rgba(239,68,68,.9)" }} />
+            <span className="text-[11px] font-bold text-red-400 uppercase tracking-widest hidden sm:block">Live</span>
+          </div>
+          <div className="h-4 w-px shrink-0 hidden sm:block" style={{ background: T.border }} />
+          <span className="text-xs sm:text-sm font-semibold text-white truncate max-w-[100px] xs:max-w-[160px] sm:max-w-none">
+            {liveCall?.name || "Live Meeting"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3" style={{ color: T.muted }} />
+            <span className="text-[11px] sm:text-xs font-mono font-semibold text-white tabular-nums">
+              {fmt(daily.elapsedSeconds)}
             </span>
           </div>
 
-          {/* Right: timer + indicators */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Timer */}
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3 shrink-0" style={{ color: T.muted }} />
-              <span className="text-[11px] sm:text-sm font-mono font-semibold text-white tabular-nums">
-                {fmt(daily.elapsedSeconds)}
-              </span>
-            </div>
-
-            {/* Health bar — hidden on mobile to save space */}
-            <div className="hidden md:block">
-              <MeetingHealthBar health={health.health} />
-            </div>
-
-            <NetDot quality={daily.networkQuality} />
-            {daily.isRecording && <RecBadge />}
-
-            {/* Hand raises badge */}
-            {handRaiseCount > 0 && (
-              <div
-                className="flex items-center gap-1 px-1.5 py-1 rounded-lg"
-                style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}
-              >
-                <span className="text-sm leading-none">✋</span>
-                <span className="text-[10px] font-bold text-amber-400">{handRaiseCount}</span>
-              </div>
-            )}
-
-            {/* Minutes warning */}
-            {usage && !usage.isUnlimited && usage.pct >= 80 && (
-              <div
-                className="flex items-center gap-1 px-1.5 py-1 rounded-lg"
-                style={{
-                  background: usage.pct >= 90 ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)",
-                  border: `1px solid ${usage.pct >= 90 ? "rgba(239,68,68,0.25)" : "rgba(245,158,11,0.25)"}`,
-                }}
-              >
-                <Clock className="w-3 h-3" style={{ color: usage.pct >= 90 ? T.red : T.amber }} />
-                <span className="text-[10px] font-semibold" style={{ color: usage.pct >= 90 ? T.red : T.amber }}>
-                  {usage.minutesRemaining}m
-                </span>
-              </div>
-            )}
-
-            {/* Panel toggle — desktop only */}
-            <div className="hidden md:flex items-center gap-1">
-              <button
-                onClick={() => setLeftCollapsed((v) => !v)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: T.card, border: `1px solid ${T.border}` }}
-              >
-                <PanelLeft className="w-3.5 h-3.5" style={{ color: leftCollapsed ? T.muted : "#a5b4fc" }} />
-              </button>
-            </div>
+          <div className="hidden md:block">
+            <MeetingHealthBar health={health.health} />
           </div>
-        </div>
 
-        {/* Guest approval banner */}
-        <GuestBanner requests={guestRequests} admit={admitGuest} deny={denyGuest} loading={isResponding} />
+          <NetDot quality={daily.networkQuality} />
+          {daily.isRecording && <RecBadge />}
 
-        {/* ── Body ───────────────────────────────────────────────────────── */}
-        <div className="flex flex-1 min-h-0 overflow-hidden relative">
-          {/* Left panel — desktop */}
-          {!leftCollapsed && !isMobile && (
-            <div className="w-56 xl:w-64 shrink-0 border-r flex flex-col" style={{ borderColor: T.border }}>
-              <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
-                activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+          {handRaiseCount > 0 && (
+            <div className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg"
+              style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}>
+              <span className="text-xs">✋</span>
+              <span className="text-[10px] font-bold text-amber-400">{handRaiseCount}</span>
             </div>
           )}
 
-          {/* Center: video + controls */}
-          <div className="flex-1 flex flex-col min-w-0 relative">
-            {/* Video — full-bleed stage with a small, draggable, resizable,
-                expandable self-view once a second participant joins on
-                mobile (matches the reference design); desktop and the
-                single-participant/connecting/error states keep VideoGrid. */}
-            <div className="flex-1 p-1 sm:p-3 min-h-0 relative">
-              {isMobile && daily.isConnected && !daily.error && daily.participants.length >= 2 ? (
-                <MobileVideoStage
-                  participants={daily.participants}
-                  activeSpeakerId={daily.activeSpeakerId}
-                  pinnedId={pinnedId}
-                  onPin={setPinnedId}
-                  onSwitchCamera={() => daily.switchCamera()}
-                  onStopShare={handleScreenShare}
-                />
-              ) : (
-                <VideoGrid
-                  participants={daily.participants} activeSpeakerId={daily.activeSpeakerId}
-                  isConnecting={daily.isConnecting} isConnected={daily.isConnected}
-                  error={daily.error} roomName={roomName} onRetry={handleRetryJoin}
-                  pinnedId={pinnedId} onPin={setPinnedId}
-                  layout={videoLayout} onLayoutChange={setVideoLayout}
-                />
-              )}
+          {usage && !usage.isUnlimited && usage.pct >= 80 && (
+            <div className="hidden sm:flex items-center gap-1 px-1.5 py-1 rounded-lg"
+              style={{
+                background: usage.pct >= 90 ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)",
+                border: `1px solid ${usage.pct >= 90 ? "rgba(239,68,68,0.25)" : "rgba(245,158,11,0.25)"}`,
+              }}>
+              <Clock className="w-3 h-3" style={{ color: usage.pct >= 90 ? T.red : T.amber }} />
+              <span className="text-[10px] font-semibold" style={{ color: usage.pct >= 90 ? T.red : T.amber }}>
+                {usage.minutesRemaining}m
+              </span>
             </div>
+          )}
 
-            {/* ── Control bar ─────────────────────────────────────────────── */}
-            <div
-              className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0"
-              style={{ paddingBottom: isMobile ? "max(6px, env(safe-area-inset-bottom))" : undefined }}
-            >
-              {isMobile ? (
-                <div className="flex flex-col gap-1.5">                  {/* Primary pill — Mic / Cam / People / Raise / Leave, mirrors the
-                      reference mobile design: five clear circular actions,
-                      nothing competing for thumb reach. */}
-                  <div
-                    className="flex items-center justify-between gap-1 px-2.5 py-2 rounded-full mx-auto w-full max-w-sm"
-                    style={{
-                      background: "rgba(13,15,24,0.96)",
-                      border: `1px solid ${T.border}`,
-                      backdropFilter: "blur(24px)",
-                      boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
-                    }}
-                  >
-                    <RoundCtrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} />
-                    <RoundCtrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} />
-                    <RoundCtrl
-                      icon={Users} label="People"
-                      active={mobilePanel === "people"}
-                      badge={guestRequests.length || undefined}
-                      onClick={() => setMobilePanel(mobilePanel === "people" ? "none" : "people")}
-                    />
-                    <RoundCtrl icon={Hand} label="Raise" active={isHandRaised} highlight={isHandRaised} onClick={handleHandRaise} />
-                    <button
-                      onClick={handleEnd}
-                      disabled={endCall.isPending}
-                      aria-label="Leave call"
-                      className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 touch-manipulation active:scale-95 transition-transform"
-                      style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", boxShadow: "0 4px 16px rgba(220,38,38,.4)" }}
-                    >
-                      {endCall.isPending
-                        ? <Loader2 className="w-5 h-5 text-white animate-spin" />
-                        : <PhoneOff className="w-5 h-5 text-white" />}
-                    </button>
-                  </div>
+          {/* People — same slot GuestJoin uses, with a badge for pending
+              guest requests instead of just participant count. */}
+          <button
+            onClick={() => (isMobile ? setMobilePanel(mobilePanel === "people" ? "none" : "people") : setDesktopPanel(desktopPanel === "people" ? "none" : "people"))}
+            className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
+            style={{
+              background: (isMobile ? mobilePanel === "people" : desktopPanel === "people") ? "rgba(99,102,241,0.2)" : T.card,
+              border: `1px solid ${T.border}`,
+            }}
+          >
+            <Users className="w-4 h-4 text-white" />
+            {(daily.participantCount > 0 || guestRequests.length > 0) && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {guestRequests.length || daily.participantCount}
+              </span>
+            )}
+          </button>
 
-                  {/* Secondary quick-access row — Share Screen / Chat /
-                      Notes / More. People has its own slot in the primary
-                      pill above, so it isn't repeated here. */}
-                  <div
-                    className="flex items-center justify-between px-3 py-1.5 rounded-2xl"
-                    style={{ background: "rgba(13,15,24,0.7)", border: `1px solid ${T.border}` }}
-                  >
-                    <QuickAction
-                      icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
-                      label={daily.isScreenSharing ? "Stop" : "Share"}
-                      title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
-                      active={daily.isScreenSharing}
-                      onClick={handleScreenShare}
-                    />
-                    <QuickAction
-                      icon={MessageSquare} label="Chat"
-                      active={mobilePanel === "chat"}
-                      onClick={() => setMobilePanel(mobilePanel === "chat" ? "none" : "chat")}
-                    />
-                    <QuickAction
-                      icon={BookOpen} label="Notes"
-                      active={mobilePanel === "notes"}
-                      onClick={() => setMobilePanel(mobilePanel === "notes" ? "none" : "notes")}
-                    />
-                    <QuickAction
-                      icon={MoreHorizontal} label="More"
-                      active={mobilePanel === "more"}
-                      onClick={() => setMobilePanel(mobilePanel === "more" ? "none" : "more")}
-                    />
-                  </div>
-                </div>
-              ) : (
-              <div
-                className="flex items-center justify-between gap-0.5 sm:gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-2xl"
-                style={{
-                  background: "rgba(13,15,24,0.95)",
-                  border: `1px solid ${T.border}`,
-                  backdropFilter: "blur(24px)",
-                }}
-              >
-                {/* Core media controls */}
-                <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                  <Ctrl icon={isAudioOn ? Mic : MicOff} label="Mic" active={isAudioOn} onClick={handleToggleMic} />
-                  <Ctrl icon={isVideoOn ? Video : VideoOff} label="Cam" active={isVideoOn} onClick={handleToggleCam} />
-                  {/* Screen share */}
-                  <Ctrl
-                    icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
-                    label={daily.isScreenSharing ? "Stop" : "Share"}
-                    title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
-                    active={!daily.isScreenSharing}
-                    highlight={daily.isScreenSharing}
-                    onClick={handleScreenShare}
-                  />
-                  {/* Hand raise */}
-                  <Ctrl
-                    icon={Hand}
-                    label={isHandRaised ? "Lower" : "Raise"}
-                    highlight={isHandRaised}
-                    onClick={handleHandRaise}
-                  />
-                  {/* Noise cancel — desktop only */}
-                  <Ctrl
-                    icon={noiseCancelOn ? Volume2 : VolumeX}
-                    label={noiseCancelOn ? "NC On" : "NC Off"}
-                    active={noiseCancelOn}
-                    onClick={handleNoiseCancellation}
-                  />
-                </div>
-
-                {/* Desktop: extra controls */}
-                <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                  <Ctrl
-                    icon={BookOpen} label="Notes"
-                    onClick={() => { setLeftCollapsed(false); setLeftTab("notes"); }}
-                  />
-                  <Ctrl
-                    icon={CircleDot}
-                    label={daily.isRecording ? "Stop" : "Record"}
-                    active={!daily.isRecording}
-                    badge={daily.isRecording ? 1 : undefined}
-                    onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
-                  />
-                  <Ctrl
-                    icon={Users} label="People"
-                    badge={guestRequests.length || undefined}
-                    onClick={() => { setLeftCollapsed(false); setLeftTab("people"); }}
-                  />
-                </div>
-
-                {/* End call */}
-                <button
-                  onClick={handleEnd}
-                  disabled={endCall.isPending}
-                  className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-5 rounded-xl font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation shrink-0 min-h-[44px] min-w-[44px]"
-                  style={{
-                    background: "linear-gradient(135deg,#dc2626,#b91c1c)",
-                    boxShadow: "0 4px 16px rgba(220,38,38,.35)",
-                  }}
-                >
-                  {endCall.isPending
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <PhoneOff className="w-4 h-4" />}
-                  <span className="text-xs sm:text-sm hidden sm:inline">End Call</span>
-                </button>
-              </div>
-              )}
-            </div>
-          </div>
-
+          {/* More — Chat / Notes / Files / Notifications / Record / Noise
+              cancellation / switch camera, in one popover (desktop) or
+              sheet (mobile), instead of a permanent side panel. */}
+          <button
+            onClick={() => (isMobile ? setMobilePanel(mobilePanel === "more" ? "none" : "more") : setDesktopPanel(desktopPanel === "more" ? "none" : "more"))}
+            className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
+            style={{
+              background: (isMobile ? mobilePanel === "more" : desktopPanel === "more") ? "rgba(99,102,241,0.2)" : T.card,
+              border: `1px solid ${T.border}`,
+            }}
+          >
+            <MoreHorizontal className="w-4 h-4 text-white" />
+          </button>
         </div>
-
-        {/* ── Mobile bottom sheets ────────────────────────────────────────── */}
-        <MobileSheet open={mobilePanel === "people"} onClose={() => setMobilePanel("none")} title="Participants">
-          <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
-            activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
-        </MobileSheet>
-
-        <MobileSheet open={mobilePanel === "more"} onClose={() => setMobilePanel("none")} title="More">
-          <div className="p-3 space-y-2">
-            <button
-              onClick={() => daily.switchCamera()}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
-              style={{ background: T.card, border: `1px solid ${T.border}` }}
-            >
-              <SwitchCamera className="w-4 h-4" style={{ color: T.text }} />
-              <span className="text-sm font-medium" style={{ color: T.text }}>Switch camera</span>
-            </button>
-            <button
-              onClick={handleNoiseCancellation}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
-              style={{ background: T.card, border: `1px solid ${T.border}` }}
-            >
-              {noiseCancelOn ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" style={{ color: T.muted }} />}
-              <span className="text-sm font-medium" style={{ color: T.text }}>
-                Noise cancellation {noiseCancelOn ? "on" : "off"}
-              </span>
-            </button>
-            <button
-              onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left touch-manipulation"
-              style={{ background: T.card, border: `1px solid ${T.border}` }}
-            >
-              <CircleDot className={cn("w-4 h-4", daily.isRecording ? "text-red-400" : "")} style={!daily.isRecording ? { color: T.text } : undefined} />
-              <span className="text-sm font-medium" style={{ color: T.text }}>
-                {daily.isRecording ? "Stop recording" : "Start recording"}
-              </span>
-            </button>
-          </div>
-        </MobileSheet>
-
-        <MobileSheet open={mobilePanel === "chat"} onClose={() => setMobilePanel("none")} title="Team Chat">
-          <LeftPanel activeTab="chat" onTab={setLeftTab} participants={daily.participants}
-            activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
-        </MobileSheet>
-
-        <MobileSheet open={mobilePanel === "notes"} onClose={() => setMobilePanel("none")} title="Notes">
-          <LeftPanel activeTab="notes" onTab={setLeftTab} participants={daily.participants}
-            activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
-        </MobileSheet>
       </div>
-    </DashboardLayout>
+
+      {/* Guest approval banner */}
+      <GuestBanner requests={guestRequests} admit={admitGuest} deny={denyGuest} loading={isResponding} />
+
+      {/* ── Video — full-bleed stage, same as Guest Join ────────────────── */}
+      <div className="flex-1 min-h-0 p-1 sm:p-3 relative">
+        {isMobile && daily.isConnected && !daily.error && daily.participants.length >= 2 ? (
+          <MobileVideoStage
+            participants={daily.participants}
+            activeSpeakerId={daily.activeSpeakerId}
+            pinnedId={pinnedId}
+            onPin={setPinnedId}
+            onSwitchCamera={() => daily.switchCamera()}
+            onStopShare={handleScreenShare}
+          />
+        ) : (
+          <VideoGrid
+            participants={daily.participants} activeSpeakerId={daily.activeSpeakerId}
+            isConnecting={daily.isConnecting} isConnected={daily.isConnected}
+            error={daily.error} roomName={roomName} onRetry={handleRetryJoin}
+            pinnedId={pinnedId} onPin={setPinnedId}
+            layout={videoLayout} onLayoutChange={setVideoLayout}
+          />
+        )}
+
+        {/* Desktop panel — anchored popover instead of a permanent sidebar */}
+        {!isMobile && desktopPanel !== "none" && (
+          <div
+            className="absolute top-2 right-2 w-80 rounded-2xl overflow-hidden flex flex-col z-30"
+            style={{ height: "min(560px, calc(100% - 16px))", background: T.panel, border: `1px solid ${T.border}`, boxShadow: "0 12px 40px rgba(0,0,0,0.45)" }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 border-b shrink-0" style={{ borderColor: T.border }}>
+              <span className="text-xs font-semibold text-white">
+                {desktopPanel === "people" ? "Participants" : "More"}
+              </span>
+              <button onClick={() => setDesktopPanel("none")} className="w-6 h-6 rounded-lg flex items-center justify-center"
+                style={{ background: T.card }}>
+                <X className="w-3.5 h-3.5" style={{ color: T.muted }} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {desktopPanel === "people" ? (
+                <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
+                  activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+              ) : (
+                <MorePanelBody
+                  daily={daily}
+                  noiseCancelOn={noiseCancelOn}
+                  onToggleNoiseCancellation={handleNoiseCancellation}
+                  leftTab={leftTab}
+                  onLeftTab={setLeftTab}
+                  callId={callId}
+                  userId={user?.id}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Control bar — one floating pill, same shape as Guest Join's ──── */}
+      <div className="px-1.5 sm:px-3 pb-1.5 sm:pb-3 shrink-0" style={{ paddingBottom: "max(6px, env(safe-area-inset-bottom))" }}>
+        <div
+          className="flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl flex-wrap"
+          style={{ background: "rgba(13,15,24,0.95)", border: `1px solid ${T.border}`, backdropFilter: "blur(24px)" }}
+        >
+          <Ctrl icon={isAudioOn ? Mic : MicOff} label={isAudioOn ? "Mic" : "Muted"} active={isAudioOn} onClick={handleToggleMic} />
+          <Ctrl icon={isVideoOn ? Video : VideoOff} label={isVideoOn ? "Cam" : "Off"} active={isVideoOn} onClick={handleToggleCam} />
+
+          {isMobile && (
+            <Ctrl icon={SwitchCamera} label="Flip" onClick={() => daily.switchCamera()} />
+          )}
+
+          <Ctrl
+            icon={daily.isScreenSharing ? MonitorOff : MonitorPlay}
+            label={daily.isScreenSharing ? "Stop" : "Share"}
+            title={!daily.isScreenSharing ? daily.screenShareUnavailableMessage ?? undefined : undefined}
+            active={!daily.isScreenSharing}
+            highlight={daily.isScreenSharing}
+            onClick={handleScreenShare}
+          />
+
+          <Ctrl icon={Hand} label={isHandRaised ? "Lower" : "Raise"} highlight={isHandRaised} onClick={handleHandRaise} />
+
+          {!isMobile && (
+            <Ctrl
+              icon={noiseCancelOn ? Volume2 : VolumeX}
+              label={noiseCancelOn ? "NC On" : "NC Off"}
+              active={noiseCancelOn}
+              onClick={handleNoiseCancellation}
+            />
+          )}
+
+          <Ctrl
+            icon={CircleDot}
+            label={daily.isRecording ? "Stop" : "Record"}
+            active={!daily.isRecording}
+            badge={daily.isRecording ? 1 : undefined}
+            onClick={() => daily.isRecording ? daily.stopRecording() : daily.startRecording()}
+          />
+
+          <button
+            onClick={handleEnd}
+            disabled={endCall.isPending}
+            className="h-10 sm:h-12 px-3 sm:px-8 rounded-xl text-xs sm:text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
+            style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", boxShadow: "0 4px 16px rgba(220,38,38,.35)" }}
+          >
+            {endCall.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin sm:hidden" />
+            ) : (
+              <PhoneOff className="w-4 h-4 sm:hidden" />
+            )}
+            <span className="hidden sm:inline">{endCall.isPending ? "Ending…" : "End Call"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile bottom sheets ─────────────────────────────────────────── */}
+      <MobileSheet open={mobilePanel === "people"} onClose={() => setMobilePanel("none")} title="Participants">
+        <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
+          activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+      </MobileSheet>
+
+      <MobileSheet open={mobilePanel === "more"} onClose={() => setMobilePanel("none")} title="More">
+        <MorePanelBody
+          daily={daily}
+          noiseCancelOn={noiseCancelOn}
+          onToggleNoiseCancellation={handleNoiseCancellation}
+          leftTab={leftTab}
+          onLeftTab={setLeftTab}
+          callId={callId}
+          userId={user?.id}
+          isMobile
+        />
+      </MobileSheet>
+    </div>
   );
 }
