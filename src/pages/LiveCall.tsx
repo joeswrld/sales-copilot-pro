@@ -37,7 +37,6 @@ import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useDailyCall } from "@/hooks/useDailyCall";
 import { useDailyRoom } from "@/hooks/useDailyRoom";
-import { useAudioStreaming } from "@/hooks/useAudioStreaming";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
@@ -636,9 +635,6 @@ export default function LiveCall() {
     },
   });
 
-  // Audio streaming
-  const audioStreaming = useAudioStreaming({ callId: callId ?? null });
-
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
 
   const [userTz] = useState<string>(() => {
@@ -884,8 +880,6 @@ export default function LiveCall() {
 
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
-    audioStreaming.stopAll();
-
     // Kick any remaining participants (e.g. a guest) out of the Daily room
     // first. Otherwise `daily.leaveCall()` below only disconnects the host —
     // the guest stays connected in a room the call record is about to be
@@ -916,7 +910,7 @@ export default function LiveCall() {
     } catch {
       toast.error("Failed to end call.");
     }
-  }, [endCall, callId, navigate, audioStreaming, daily]);
+  }, [endCall, callId, navigate, daily]);
 
   const openScheduleFromPopup = useCallback(() => {
     if (roomInfo) { setSchedulePrefilledLink(roomInfo.share_link); setSchedulePrefilledTitle(activeMeetingTitle); }
@@ -933,15 +927,6 @@ export default function LiveCall() {
   }) => {
     await createMeeting.mutateAsync({ ...params });
   }, [createMeeting]);
-
-  // Track Daily participant audio for transcription
-  useEffect(() => {
-    for (const p of daily.participants) {
-      if (p.audioTrack) {
-        audioStreaming.startTrackRecording(p.audioTrack, p.session_id, p.local);
-      }
-    }
-  }, [daily.participants, audioStreaming]);
 
   const hasActiveSession = isLive && !!callId;
 
@@ -1089,9 +1074,7 @@ export default function LiveCall() {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {audioStreaming.state.isStreaming
-                    ? `AI transcribing · ${audioStreaming.state.chunksSent} chunks sent`
-                    : "Waiting for audio…"}
+                  {daily.isRecording ? "Recording" : "Not recording"}
                   {daily.participantCount > 1 && ` · ${daily.participantCount} participants`}
                 </p>
               </div>
