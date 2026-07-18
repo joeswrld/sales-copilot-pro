@@ -38,8 +38,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
-import { useAudioStreaming } from "@/hooks/useAudioStreaming";
-import { useLiveTranscriptionSocket } from "@/hooks/useLiveTranscriptionSocket";
 import { useTeam } from "@/hooks/useTeam";
 import { useUserStatus } from "@/hooks/useUserStatus";
 import { useUserProfile } from "@/hooks/useSettings";
@@ -1008,48 +1006,6 @@ export default function LiveMeeting() {
     },
   });
 
-  const audioStreaming = useAudioStreaming({
-    callId: callId ?? null, speakerLabel: hostName,
-    onTranscript: (text) => health.recordTranscriptReceived(text.split(/\s+/).length),
-    onAIAnalysis: () => health.recordAIReceived(),
-  });
-
-  // Surface transcription connectivity trouble the same way we already do
-  // for Daily video quality — previously this failed silently in the
-  // console with no indication to the person running the meeting.
-  useEffect(() => {
-    if (audioStreaming.state.isReconnecting) {
-      toast.warning("Reconnecting transcription…", { id: "transcribe-reconnect" });
-    } else {
-      toast.dismiss("transcribe-reconnect");
-    }
-  }, [audioStreaming.state.isReconnecting]);
-
-  // ── Background live transcription (Deepgram, sub-500ms) ──────────────────
-  // This keeps recording the host's mic and feeding the transcription
-  // pipeline the entire meeting — it just no longer surfaces captions on
-  // screen. The transcript itself still lands in `transcripts` and, once
-  // the meeting ends, gets superseded by the authoritative Deepgram batch +
-  // diarization pass that powers Call Details.
-  const liveSocket = useLiveTranscriptionSocket({
-    callId: callId ?? null,
-    role: "host",
-    // FIX: pass the already-resolved session token from AuthContext instead
-    // of letting the hook call supabase.auth.getSession() itself — see the
-    // FIX v2 comment in useLiveTranscriptionSocket.ts for why that caused
-    // transcription to silently never connect (gotrue lock contention with
-    // the half-dozen other auth-touching hooks this page mounts).
-    accessToken: session?.access_token ?? null,
-    onCaption: (evt) => {
-      health.recordTranscriptReceived(evt.text.split(/\s+/).length);
-    },
-    onStatusChange: (s) => {
-      if (s === "failed") {
-        toast.info("Live transcription unavailable — falling back to standard transcription", { id: "live-caption-fallback" });
-      }
-    },
-  });
-
   const { requests: guestRequests, admit: admitGuest, deny: denyGuest, isResponding } = usePendingGuestRequests(callId);
   const { workspace } = useMeetingWorkspace(callId);
   const { usage }     = useMinuteUsage();
@@ -1096,105 +1052,24 @@ export default function LiveMeeting() {
     return () => clearTimeout(reconnectTimerRef.current);
   }, [daily.callState]); // eslint-disable-line
 
-  // ── Track recording ─────────────────────────────────────────────────────────
-  // Local mic goes to the live WS captioner first (sub-500ms). Only falls
-  // back to the older 8s-chunk pipeline if the socket can't connect or keeps
-  // dropping — never runs both at once (double STT cost + duplicate lines).
-  //
-  // FIX: previously keyed purely on session_id, and only ever attached once
-  // per session. After a real network drop (e.g. Daily's signaling socket
-  // closing with code 1005 and the send transport going to "failed" —
-  // exactly what happens on a flaky connection), Daily commonly keeps the
-  // SAME local session_id but swaps in a brand-new MediaStreamTrack once
-  // the transport recovers. Because we'd already marked that session_id as
-  // "started," we never noticed the track changed — live captions and the
-  // fallback recorder stayed attached to a dead track for the rest of the
-  // call, with nothing telling the user transcription had silently stopped.
-  // Now we key on (session_id + track.id) so a track swap is treated as a
-  // fresh attach: the old live socket / recorder is torn down and a new one
-  // is started against the live track, recovering automatically once the
-  // network comes back instead of requiring a full page reload.
+  // ── Mic level tracking ───────────────────────────────────────────────────────
+  // Just feeds the mic-level meter in the health bar — no transcription
+  // pipeline attached to this track anymore. The full call audio is captured
+  // by Daily.co's cloud recording and transcribed after the call ends via
+  // the Deepgram batch + diarization pipeline (see finalize-recording-transcript).
   const attachedTrackIdRef = useRef<string | null>(null);
-  const localTrackRef = useRef<MediaStreamTrack | null>(null);
   useEffect(() => {
     const localP = daily.participants.find((p) => p.local && p.audioTrack);
     if (!localP?.audioTrack) return;
-
-    const isNewTrack = localP.audioTrack.id !== attachedTrackIdRef.current;
-
-    // FIX: this effect used to fire liveSocket.start() exactly once per
-    // track id and never again. useLiveTranscriptionSocket's own retry loop
-    // re-reads accessTokenRef fresh on every attempt, so it WOULD recover
-    // on its own if session.access_token showed up mid-retry — but that
-    // loop only runs for ~7s (1s/2s/4s backoff, 3 attempts) before setting
-    // status 'failed' and stopping for good. AuthContext resolves
-    // session.access_token via supabase.auth.getSession() at mount, which
-    // this page's own handful of other auth-touching hooks can delay well
-    // past 7s under gotrue's navigator-lock contention (same class of bug
-    // documented at length in useLiveTranscriptionSocket.ts). Net effect:
-    // the token arrives eventually, but the retry loop that would have used
-    // it already gave up, and nothing here ever tried again — live captions
-    // silently dead for the rest of the call. The guest page never hits
-    // this because guestAuthToken comes from a plain REST poll
-    // (guest-request-status), not gotrue, so there's no lock to contend
-    // for. Re-firing this effect when the token itself changes, and
-    // restarting the socket if it previously gave up, gives the host the
-    // same "retry once the missing piece shows up" resilience the guest
-    // gets for free.
-    const shouldRetryForToken =
-      !isNewTrack && liveSocket.status === "failed" && !!session?.access_token;
-
-    if (!isNewTrack && !shouldRetryForToken) return;
-
-    // Tear down whatever was previously attached (old live socket
-    // connection + fallback chunked recorder) before attaching to the
-    // new track, so we never run two pipelines against two different
-    // tracks at once.
-    liveSocket.stop();
-    audioStreaming.stopAll();
-
+    if (localP.audioTrack.id === attachedTrackIdRef.current) return;
     attachedTrackIdRef.current = localP.audioTrack.id;
-    localTrackRef.current = localP.audioTrack;
-    liveSocket.start(localP.audioTrack);
-    health.recordChunkSent();
     setMicStream(new MediaStream([localP.audioTrack]));
-  }, [daily.participants, session?.access_token]); // eslint-disable-line
-
-  useEffect(() => {
-    if (liveSocket.status === "failed" && localTrackRef.current) {
-      audioStreaming.startTrackRecording(localTrackRef.current, "live-fallback", true);
-    }
-  }, [liveSocket.status]); // eslint-disable-line
+  }, [daily.participants]);
 
   // ── Backgrounded-tab guard ───────────────────────────────────────────────────
-  // FIX: this is the actual root cause behind "my own voice never gets
-  // captioned/transcribed" reports from hosts testing with a guest on the
-  // SAME physical device (e.g. one phone, host in Chrome + guest in a second
-  // browser app). A phone can only have one app/tab in the foreground at a
-  // time — switching to the guest browser necessarily backgrounds this host
-  // tab. Mobile browsers aggressively throttle backgrounded tabs (timers,
-  // the WebAudio graph feeding useLiveTranscriptionSocket's worklet, and the
-  // MediaRecorder behind the chunked fallback all get paused or heavily
-  // deprioritized), so the host's own mic audio stops reaching Deepgram
-  // entirely for as long as the tab is hidden — while the guest tab, being
-  // the one actually in view, keeps transcribing normally. Confirmed via the
-  // transcripts table and transcribe-live/transcribe-stream function logs:
-  // zero host-side audio frames or requests occur during the exact window
-  // the host was speaking from a backgrounded tab, even though nothing on
-  // the client throws an error.
-  //
-  // Two things this can't fully solve (browsers intentionally reserve the
-  // right to suspend a hidden tab's audio pipeline for battery reasons — no
-  // page-level API can force it to keep processing at full rate), but this
-  // makes the failure visible instead of silent, and reduces how often it
-  // happens:
-  //   1. A Screen Wake Lock, re-acquired on every visibility change, which
-  //      keeps the device awake and measurably reduces (though doesn't
-  //      eliminate) how aggressively some mobile browsers throttle a hidden
-  //      tab's audio processing.
-  //   2. A one-time-per-hide toast telling the host their mic/captions will
-  //      pause while this tab isn't in view, instead of the current
-  //      completely silent failure.
+  // Keeps the device awake (best-effort) while the host is on a call, and
+  // warns them once per background/foreground cycle that mic/video may be
+  // throttled by the OS while the tab isn't in view.
   const wakeLockRef = useRef<any>(null);
   const backgroundWarnedRef = useRef(false);
   useEffect(() => {
@@ -1217,7 +1092,7 @@ export default function LiveMeeting() {
         if (!backgroundWarnedRef.current) {
           backgroundWarnedRef.current = true;
           toast.warning(
-            "This tab is now in the background — your mic and live captions will pause on most phones until you switch back.",
+            "This tab is now in the background — your mic and camera may pause on most phones until you switch back.",
             { id: "bg-tab-warning", duration: 6000 },
           );
         }
@@ -1303,16 +1178,8 @@ export default function LiveMeeting() {
     const startedAt = Date.now();
     setEndingPhase("processing");
     setSummaryFailed(false);
-    liveSocket.stop();
-    audioStreaming.stopAll();
     await daily.leaveCall();
     try {
-      // Give any speech still sitting in the upload queue (the last few
-      // seconds of the call, or anything backed up from a rough patch of
-      // network) a real chance to reach the server before we generate the
-      // AI summary from the transcript — otherwise the summary could be
-      // built while the tail end of the conversation is still missing.
-      await audioStreaming.flush(8_000);
       const result = await endCall.mutateAsync();
       setSummaryFailed(!(result as any)?.summaryGenerated);
 
@@ -1338,7 +1205,7 @@ export default function LiveMeeting() {
       setEndingPhase(null);
       toast.error("Failed to end call");
     }
-  }, [endCall, callId, navigate, audioStreaming, daily]);
+  }, [endCall, callId, navigate, daily]);
 
   const handRaiseCount = useMemo(() =>
     daily.participants.filter((p) => p.handRaised).length,
@@ -1394,7 +1261,7 @@ export default function LiveMeeting() {
 
             {/* Health bar — hidden on mobile to save space */}
             <div className="hidden md:block">
-              <MeetingHealthBar health={health.health} isStreaming={audioStreaming.state.isStreaming} />
+              <MeetingHealthBar health={health.health} />
             </div>
 
             <NetDot quality={daily.networkQuality} />
