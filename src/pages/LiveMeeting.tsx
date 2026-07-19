@@ -1080,6 +1080,61 @@ export default function LiveMeeting() {
     setMicStream(new MediaStream([localP.audioTrack]));
   }, [daily.participants]);
 
+  // ── Auto-start recording once Host & Guest have both joined ────────────────
+  // The whole post-meeting pipeline (Deepgram batch transcription, speaker
+  // diarization, Host/Guest mapping, AI analysis) only has anything to work
+  // with once Daily has a finished cloud recording of the call — so this is
+  // the step that makes the rest of the pipeline possible at all. It used to
+  // be manual only (the host had to remember to click Record), which meant
+  // a meeting could run and end with nothing to transcribe. Auto-starting
+  // the instant a second (non-local) participant is present removes that
+  // failure mode entirely, while still leaving the manual Record/Stop
+  // control in the control bar for the host to stop early or restart if
+  // needed.
+  //
+  // Guarded so this only ever fires once per call (autoRecordAttemptedRef),
+  // and only once daily.isRecording is confirmed false, so a webhook-delayed
+  // recording_status or a race with a manual click doesn't trigger a second,
+  // redundant startRecording() call.
+  const autoRecordAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (autoRecordAttemptedRef.current) return;
+    if (!daily.isConnected) return;
+    if (daily.isRecording) { autoRecordAttemptedRef.current = true; return; }
+
+    const hasHost  = daily.participants.some((p) => p.local);
+    const hasGuest = daily.participants.some((p) => !p.local);
+    if (hasHost && hasGuest) {
+      autoRecordAttemptedRef.current = true;
+      daily.startRecording().catch((e) => {
+        console.warn("Auto-start recording failed, allowing manual retry:", e);
+        autoRecordAttemptedRef.current = false;
+      });
+    }
+  }, [daily.isConnected, daily.isRecording, daily.participants]);
+
+  // Fallback: if the host has been alone on the call for a while with no
+  // guest ever joining (solo practice run, guest never connects, guest
+  // admission never happens), still start recording rather than silently
+  // never capturing anything. 90s gives a real guest a fair chance to join
+  // first without meaningfully delaying the solo case.
+  useEffect(() => {
+    if (!daily.isConnected) return;
+    const hasGuest = daily.participants.some((p) => !p.local);
+    if (hasGuest) return; // the two-participant effect above already owns this case
+
+    const timer = setTimeout(() => {
+      if (autoRecordAttemptedRef.current || daily.isRecording) return;
+      autoRecordAttemptedRef.current = true;
+      daily.startRecording().catch((e) => {
+        console.warn("Solo-host auto-start recording failed, allowing manual retry:", e);
+        autoRecordAttemptedRef.current = false;
+      });
+    }, 90_000);
+
+    return () => clearTimeout(timer);
+  }, [daily.isConnected, daily.participants]);
+
   // ── Backgrounded-tab guard ───────────────────────────────────────────────────
   // Keeps the device awake (best-effort) while the host is on a call, and
   // warns them once per background/foreground cycle that mic/video may be
