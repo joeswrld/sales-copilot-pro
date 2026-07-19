@@ -152,6 +152,17 @@ export default function CallDetail() {
   const followUpSubject = summaryData?.follow_up_email_subject;
   const followUpBody    = summaryData?.follow_up_email_body;
   const analysisStatus  = summaryData?.analysis_status;
+  // finalTranscriptStatus covers the FULL post-meeting window — from the
+  // instant the meeting ends (daily-webhook / endCall stamp it "pending"
+  // immediately) through Deepgram batch transcription + diarization
+  // (finalize-recording-transcript sets "processing" then "completed" or
+  // "failed"). analysisStatus only ever covered the AI-analysis sub-step,
+  // which starts several seconds into that window at the earliest — so a
+  // call that just ended showed no processing indicator at all until the
+  // first-pass analysis actually kicked off. Combining both gives one
+  // continuous "Processing Meeting…" state with no gap.
+  const finalTranscriptStatus = (callData as any)?.final_transcript_status as
+    | "not_started" | "pending" | "processing" | "completed" | "failed" | null | undefined;
 
   const nextBestActions = useMemo(() => nextBestActionsRaw.map(normalizeNextBestAction), [nextBestActionsRaw]);
   const questionsAsked  = useMemo(() => questionsAskedRaw.map(normalizeQuestion), [questionsAskedRaw]);
@@ -174,12 +185,21 @@ export default function CallDetail() {
   // If the meeting is done but analysis never ran (or is stuck pending/
   // failed), kick it off automatically so this page is a reliable single
   // source of truth without the person needing to know a trigger exists.
+  //
+  // Guarded against firing while the server-side pipeline is already in
+  // flight: daily-webhook's "meeting.ended" handler (and endCall, for the
+  // client-initiated path) already calls flush-and-finalize-call the
+  // instant a call ends, which itself calls generate-call-summary once
+  // transcript rows settle. Auto-triggering here too, while
+  // final_transcript_status is still "pending" or "processing", would just
+  // race a duplicate analysis pass against the one already running.
   const autoTriggeredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!callData || !id) return;
     if (callData.status !== "completed") return;
     if (summary.isLoading) return;
     if (generateSummary.isPending) return;
+    if (finalTranscriptStatus === "pending" || finalTranscriptStatus === "processing") return;
     const status = summaryData?.analysis_status;
     const needsRun = !summaryData || status === "pending" || status === "failed";
     if (!needsRun) return;
@@ -187,9 +207,26 @@ export default function CallDetail() {
     autoTriggeredRef.current = id;
     generateSummary.mutate({ callId: id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callData?.status, id, summary.isLoading, summaryData?.analysis_status]);
+  }, [callData?.status, id, summary.isLoading, summaryData?.analysis_status, finalTranscriptStatus]);
 
-  const isProcessing = analysisStatus === "processing" || generateSummary.isPending;
+  // isProcessing covers the ENTIRE window from the moment the meeting ends
+  // to the moment a usable report exists — not just the AI-analysis
+  // sub-step. A call is "processing" if:
+  //   - the recording/transcript pipeline hasn't finished yet
+  //     (final_transcript_status is pending/processing/not_started AND we
+  //     don't already have a usable summary from the fast first pass), or
+  //   - the AI analysis step itself is actively running.
+  // Once either a completed summary exists OR both pipelines have
+  // conclusively finished (or failed), processing is over.
+  const hasUsableSummary = !!summaryData?.summary && analysisStatus === "completed";
+  const transcriptPipelineActive =
+    finalTranscriptStatus === "pending" ||
+    finalTranscriptStatus === "processing" ||
+    finalTranscriptStatus === "not_started";
+  const isProcessing =
+    analysisStatus === "processing" ||
+    generateSummary.isPending ||
+    (transcriptPipelineActive && !hasUsableSummary);
 
   if (call.isLoading) {
     return (
@@ -280,15 +317,23 @@ export default function CallDetail() {
         ) : null}
 
         {/* ── Processing banner ── */}
+        {/* "Processing Meeting..." spans the whole pipeline: it shows the
+            instant the meeting ends (final_transcript_status flips to
+            "pending" immediately, before any transcript work has started)
+            through Deepgram batch transcription + diarization, and the
+            final AI analysis pass — one continuous status, not just the
+            AI-analysis sub-step. */}
         {callData.status === "completed" && isProcessing && (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-2.5">
             <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
-              Analyzing the final transcript — Meeting Score, sentiment, and the rest of this hub will fill in automatically.
+              {transcriptPipelineActive && !hasUsableSummary
+                ? "Processing meeting… finalizing the recording and transcribing the full conversation. This page will fill in automatically — no need to refresh."
+                : "Analyzing the final transcript — Meeting Score, sentiment, and the rest of this hub will fill in automatically."}
             </p>
           </div>
         )}
-        {callData.status === "completed" && analysisStatus === "failed" && (
+        {callData.status === "completed" && !isProcessing && analysisStatus === "failed" && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
@@ -306,6 +351,14 @@ export default function CallDetail() {
             </Button>
           </div>
         )}
+        {callData.status === "completed" && !isProcessing && finalTranscriptStatus === "failed" && !hasUsableSummary && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              We couldn't finalize the recording for this call, so the full diarized transcript isn't available. Anything captured live is still shown below.
+            </p>
+          </div>
+        )}
 
         {/* ── Meta info cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -316,10 +369,10 @@ export default function CallDetail() {
           <MetaCard
             icon={<SentimentIcon className={`w-4 h-4 ${sentimentDisplay(sentiment).color}`} />}
             label="Sentiment"
-            value={sentiment ? `${sentimentDisplay(sentiment).label}${sentimentScore != null ? ` (${sentimentScore}%)` : ""}` : (isProcessing ? "Analyzing…" : "N/A")}
+            value={sentiment ? `${sentimentDisplay(sentiment).label}${sentimentScore != null ? ` (${sentimentScore}%)` : ""}` : (isProcessing ? "Processing…" : "N/A")}
           />
           <MetaCard icon={<Target className="w-4 h-4" />} label="Meeting Score"
-            value={meetingScore != null ? `${meetingScore}/100` : (isProcessing ? "Analyzing…" : "N/A")}
+            value={meetingScore != null ? `${meetingScore}/100` : (isProcessing ? "Processing…" : "N/A")}
             valueClassName={meetingScore != null ? scoreColor(meetingScore) : undefined}
           />
         </div>
