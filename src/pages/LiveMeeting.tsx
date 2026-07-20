@@ -1080,17 +1080,17 @@ export default function LiveMeeting() {
     setMicStream(new MediaStream([localP.audioTrack]));
   }, [daily.participants]);
 
-  // ── Auto-start recording once Host & Guest have both joined ────────────────
-  // The whole post-meeting pipeline (Deepgram batch transcription, speaker
-  // diarization, Host/Guest mapping, AI analysis) only has anything to work
-  // with once Daily has a finished cloud recording of the call — so this is
-  // the step that makes the rest of the pipeline possible at all. It used to
-  // be manual only (the host had to remember to click Record), which meant
-  // a meeting could run and end with nothing to transcribe. Auto-starting
-  // the instant a second (non-local) participant is present removes that
-  // failure mode entirely, while still leaving the manual Record/Stop
-  // control in the control bar for the host to stop early or restart if
-  // needed.
+  // ── Auto-start recording the instant the host joins ─────────────────────
+  // Recording-first pipeline: the entire post-meeting flow (Deepgram batch
+  // transcription, speaker diarization, Host/Guest mapping, AI analysis)
+  // only has anything to work with once Daily has a finished cloud
+  // recording of the call — so this is the step that makes the rest of the
+  // pipeline possible at all. It must not wait on a guest joining or any
+  // timer: the host may talk before a guest ever connects (prep notes,
+  // solo practice, waiting-room chatter), and none of that should be lost.
+  // Starts as soon as the local (host) participant is connected — leaving
+  // the manual Record/Stop control in the control bar for the host to stop
+  // early or restart if needed.
   //
   // Guarded so this only ever fires once per call (autoRecordAttemptedRef),
   // and only once daily.isRecording is confirmed false, so a webhook-delayed
@@ -1102,9 +1102,8 @@ export default function LiveMeeting() {
     if (!daily.isConnected) return;
     if (daily.isRecording) { autoRecordAttemptedRef.current = true; return; }
 
-    const hasHost  = daily.participants.some((p) => p.local);
-    const hasGuest = daily.participants.some((p) => !p.local);
-    if (hasHost && hasGuest) {
+    const hostConnected = daily.participants.some((p) => p.local);
+    if (hostConnected) {
       autoRecordAttemptedRef.current = true;
       daily.startRecording().catch((e) => {
         console.warn("Auto-start recording failed, allowing manual retry:", e);
@@ -1112,28 +1111,6 @@ export default function LiveMeeting() {
       });
     }
   }, [daily.isConnected, daily.isRecording, daily.participants]);
-
-  // Fallback: if the host has been alone on the call for a while with no
-  // guest ever joining (solo practice run, guest never connects, guest
-  // admission never happens), still start recording rather than silently
-  // never capturing anything. 90s gives a real guest a fair chance to join
-  // first without meaningfully delaying the solo case.
-  useEffect(() => {
-    if (!daily.isConnected) return;
-    const hasGuest = daily.participants.some((p) => !p.local);
-    if (hasGuest) return; // the two-participant effect above already owns this case
-
-    const timer = setTimeout(() => {
-      if (autoRecordAttemptedRef.current || daily.isRecording) return;
-      autoRecordAttemptedRef.current = true;
-      daily.startRecording().catch((e) => {
-        console.warn("Solo-host auto-start recording failed, allowing manual retry:", e);
-        autoRecordAttemptedRef.current = false;
-      });
-    }, 90_000);
-
-    return () => clearTimeout(timer);
-  }, [daily.isConnected, daily.participants]);
 
   // ── Backgrounded-tab guard ───────────────────────────────────────────────────
   // Keeps the device awake (best-effort) while the host is on a call, and
