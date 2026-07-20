@@ -187,12 +187,12 @@ export default function CallDetail() {
   // source of truth without the person needing to know a trigger exists.
   //
   // Guarded against firing while the server-side pipeline is already in
-  // flight: daily-webhook's "meeting.ended" handler (and endCall, for the
-  // client-initiated path) already calls flush-and-finalize-call the
-  // instant a call ends, which itself calls generate-call-summary once
-  // transcript rows settle. Auto-triggering here too, while
-  // final_transcript_status is still "pending" or "processing", would just
-  // race a duplicate analysis pass against the one already running.
+  // flight: daily-webhook's "recording.ready-to-download" handler calls
+  // finalize-recording-transcript once Daily's complete recording is ready,
+  // which itself invokes generate-call-summary (force:true) against the
+  // authoritative Deepgram-diarized transcript. Auto-triggering here too,
+  // while final_transcript_status is still "pending" or "processing", would
+  // just race a duplicate analysis pass against the one already running.
   const autoTriggeredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!callData || !id) return;
