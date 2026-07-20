@@ -1,5 +1,5 @@
 /**
- * useLiveCall.ts — v6
+ * useLiveCall.ts — v7
  *
  * Fixes:
  *  - Realtime channel now keyed on callId to prevent duplicate subscriptions
@@ -12,13 +12,17 @@
  *    in-call Live Transcription / Live AI Analysis / Live AI Coaching
  *    panels, which have been removed from the Live Meeting page — nothing
  *    in the app renders this data anymore, and nothing writes it either
- *    (transcribe-live / transcribe-stream, the only producers, are gone).
- *    The full transcript is now built post-call by finalize-recording-transcript
- *    from Daily's complete cloud recording, diarized via Deepgram batch —
- *    see the pipeline documented in daily-webhook and generate-call-summary.
- *  - endCall no longer calls generate-call-summary directly. It now calls
- *    flush-and-finalize-call instead, same as the Daily "meeting.ended"
- *    webhook does — see the FIX comment on that call below.
+ *    (transcribe-live / transcribe-stream / live-meeting-ai, the only
+ *    producers, are deleted).
+ *  - The pipeline is now fully recording-first: Daily auto-records from the
+ *    moment the host joins (see LiveMeeting.tsx / LiveCall.tsx), and the
+ *    complete recording is diarized by Deepgram batch transcription only
+ *    after the meeting ends — see finalize-recording-transcript and
+ *    generate-call-summary. There is no live transcript to "settle"
+ *    anymore, so endCall calls generate-call-summary directly (it's a
+ *    no-op fast-path skip if no final transcript exists yet, and
+ *    finalize-recording-transcript re-invokes it with force:true once the
+ *    diarized transcript lands).
  */
 
 import { useEffect } from "react";
@@ -307,26 +311,28 @@ export function useLiveCall(options?: {
         .eq("id", callId)
         .is("final_transcript_status", null);
 
-      // FIX: this used to call generate-call-summary directly, the instant
-      // the host clicked "End call" — racing the tail of the transcription
-      // pipeline the exact same way the Daily "meeting.ended" webhook used
-      // to (see daily-webhook). A host who talks right up to the moment
-      // they click End could lose those last few seconds from the summary.
-      // flush-and-finalize-call waits (briefly, bounded) for in-flight
-      // transcript rows to settle before running the first-pass analysis —
-      // and this is still only the FIRST pass. finalize-recording-transcript
-      // re-runs it again once Daily's complete recording finishes
-      // processing, replacing this with an authoritative, Deepgram-diarized
-      // transcript and analysis a short while later. Call Details reflects
-      // both stages automatically via its existing realtime subscriptions.
+      // Recording-first: there's no live transcript to race or wait on
+      // anymore — nothing writes to `transcripts` during the call. The
+      // authoritative transcript only exists once Daily finishes
+      // processing the complete cloud recording and
+      // finalize-recording-transcript runs Deepgram batch diarization on
+      // it (triggered by daily-webhook's "recording.ready-to-download"
+      // handler). This call to generate-call-summary is a harmless,
+      // cheap no-op ("skipped: no transcript") if that hasn't landed yet
+      // — it exists so a call that somehow already has a final transcript
+      // (e.g. a retry) gets its Call Details refreshed immediately on end.
+      // finalize-recording-transcript re-invokes generate-call-summary
+      // with force:true once the diarized transcript actually lands, and
+      // Call Details reflects that automatically via its existing
+      // realtime subscriptions — no polling needed here.
       let summaryData: any = null;
       try {
-        const res = await supabase.functions.invoke("flush-and-finalize-call", {
+        const res = await supabase.functions.invoke("generate-call-summary", {
           body: { call_id: callId },
         });
         if (res.data) summaryData = res.data;
       } catch (e) {
-        console.warn("flush-and-finalize-call non-fatal:", e);
+        console.warn("generate-call-summary non-fatal:", e);
       }
 
       // Slack notification (fire-and-forget)
