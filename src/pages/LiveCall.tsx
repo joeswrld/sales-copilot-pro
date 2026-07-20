@@ -635,6 +635,30 @@ export default function LiveCall() {
     },
   });
 
+  // ── Auto-start recording the instant the host joins ─────────────────────
+  // Recording-first pipeline: nothing downstream (Deepgram batch
+  // transcription, diarization, AI analysis) has anything to work with
+  // until Daily has a finished cloud recording of the call, so this can't
+  // wait on a guest joining or any timer — the host may speak before a
+  // guest ever connects. Manual Record/Stop remains available in the
+  // control bar. See the matching effect in LiveMeeting.tsx for the
+  // guest-join page.
+  const autoRecordAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (autoRecordAttemptedRef.current) return;
+    if (!daily.isConnected) return;
+    if (daily.isRecording) { autoRecordAttemptedRef.current = true; return; }
+
+    const hostConnected = daily.participants.some((p) => p.local);
+    if (hostConnected) {
+      autoRecordAttemptedRef.current = true;
+      daily.startRecording().catch((e) => {
+        console.warn("Auto-start recording failed, allowing manual retry:", e);
+        autoRecordAttemptedRef.current = false;
+      });
+    }
+  }, [daily.isConnected, daily.isRecording, daily.participants]);
+
   const { create: createMeeting, upcoming: upcomingMeetings } = useScheduledMeetings();
 
   const [userTz] = useState<string>(() => {
