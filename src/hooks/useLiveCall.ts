@@ -12,8 +12,9 @@
  *    in-call Live Transcription / Live AI Analysis / Live AI Coaching
  *    panels, which have been removed from the Live Meeting page — nothing
  *    in the app renders this data anymore, and nothing writes it either
- *    (transcribe-live / transcribe-stream / live-meeting-ai, the only
- *    producers, are deleted).
+ *    (transcribe-audio and live-meeting-ai, the only producers, are
+ *    deleted; useAudioCapture.ts, the client-side chunked-recording hook
+ *    that fed transcribe-audio, is deleted too).
  *  - The pipeline is now fully recording-first: Daily auto-records from the
  *    moment the host joins (see LiveMeeting.tsx / LiveCall.tsx), and the
  *    complete recording is diarized by Deepgram batch transcription only
