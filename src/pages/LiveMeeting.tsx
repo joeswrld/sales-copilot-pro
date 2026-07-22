@@ -884,7 +884,7 @@ export default function LiveMeeting() {
   const [desktopPanel,    setDesktopPanel]    = useState<"none" | "people" | "more">("none");
   const [reconnectCount,  setReconnectCount]  = useState(0);
   const [pinnedId,        setPinnedId]        = useState<string | null>(null);
-  const [videoLayout,     setVideoLayout]     = useState<VideoLayout>("focus");
+  const [videoLayout,     setVideoLayout]     = useState<VideoLayout>("grid");
   const [mobilePanel,     setMobilePanel]     = useState<MobilePanel>("none");
   const [isHandRaised,    setIsHandRaised]    = useState(false);
   const [noiseCancelOn,   setNoiseCancelOn]   = useState(true);
@@ -1220,7 +1220,19 @@ export default function LiveMeeting() {
 
       {/* ── Video — full-bleed stage, same as Guest Join ────────────────── */}
       <div className="flex-1 min-h-0 p-1 sm:p-3 relative">
-        {isMobile && daily.isConnected && !daily.error && daily.participants.length >= 2 ? (
+        {/* FIX: MobileVideoStage is a 1-on-1 "full-bleed main tile + small
+            self PiP" design — it only ever shows ONE other participant at
+            full size, no matter how many people are actually on the call.
+            It was being used for ANY mobile call with 2+ people, so at 3+
+            participants everyone except whoever was in the main slot got
+            squeezed into a ~72-104px thumbnail strip on the side — exactly
+            the "can't see the guest/host well" problem. Now it's reserved
+            for the true 1-on-1 case (exactly 2 people) or an active screen
+            share (which should still get a full-bleed spotlight); anything
+            else falls through to MeetingVideoGrid's "grid" layout, which
+            gives every participant an equally-sized, properly-shaped tile. */}
+        {isMobile && daily.isConnected && !daily.error &&
+        (daily.participants.length === 2 || daily.participants.some((p) => p.screen)) ? (
           <MobileVideoStage
             participants={daily.participants}
             activeSpeakerId={daily.activeSpeakerId}
