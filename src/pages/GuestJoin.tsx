@@ -556,7 +556,7 @@ export default function GuestJoin() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
-  const [videoLayout, setVideoLayout] = useState<VideoLayout>("focus");
+  const [videoLayout, setVideoLayout] = useState<VideoLayout>("grid");
   const [showPeople, setShowPeople] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
 
@@ -1280,9 +1280,15 @@ export default function GuestJoin() {
       </div>
 
       {/* Video — full-bleed stage with a draggable self-view on mobile once a
-          second participant is present, matching the host's LiveMeeting page */}
+          second participant is present, matching the host's LiveMeeting page.
+          FIX: MobileVideoStage only ever shows ONE other participant at full
+          size (everyone else was squeezed into a small thumbnail strip), so
+          it's now reserved for the true 1-on-1 case (exactly 2 people) or an
+          active screen share; 3+ participants fall through to
+          MeetingVideoGrid so the guest can see everyone clearly. */}
       <div className="flex-1 min-h-0 p-1 sm:p-3 relative">
-        {isMobile && !daily.isConnecting && !daily.error && daily.participants.length >= 2 ? (
+        {isMobile && !daily.isConnecting && !daily.error &&
+        (daily.participants.length === 2 || daily.participants.some((p) => p.screen)) ? (
           <MobileVideoStage
             participants={daily.participants}
             activeSpeakerId={daily.activeSpeakerId}
