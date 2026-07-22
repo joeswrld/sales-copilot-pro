@@ -23,8 +23,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Users,
   Loader2, WifiOff, RefreshCw, Monitor, MonitorOff,
-  Maximize2, Minimize2, PanelRight, X, Pin, PinOff,
-  AlertCircle, Clock, LayoutGrid, Hand, SwitchCamera,
+  Maximize2, Minimize2, X, Pin,
+  AlertCircle, Clock, Hand, SwitchCamera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDailyCall, DailyParticipant, CallQuality } from "@/hooks/useDailyCall";
@@ -32,11 +32,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useMeetingHealth } from "@/hooks/useMeetingHealth";
 import { MeetingHealthBar } from "@/components/MeetingHealthBar";
 import { VideoTile } from "@/components/VideoTile";
+import { MeetingVideoGrid, type VideoLayout } from "@/components/MeetingVideoGrid";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
-type VideoLayout = "spotlight" | "grid" | "sidebar";
+// VideoLayout ("focus" | "grid" | "sidebar") is imported from
+// MeetingVideoGrid.tsx so the guest page shares the same layout type — and the
+// same grid implementation — as the host page (LiveMeeting.tsx).
 type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied" | "disconnected";
 
 // ─── Design tokens ───────────────────────────────────────────────────────────────
@@ -165,291 +168,10 @@ const LocalPreview = memo(
   },
 );
 
-// ─── Pinnable tile ──────────────────────────────────────────────────────────────
-const PinnableTile = memo(
-  ({
-    participant,
-    activeSpeakerId,
-    isPinned,
-    onPin,
-    className,
-    isMain = false,
-  }: {
-    participant: DailyParticipant;
-    activeSpeakerId: string | null;
-    isPinned: boolean;
-    onPin: (id: string | null) => void;
-    className?: string;
-    isMain?: boolean;
-  }) => (
-    <div
-      className={cn(
-        "relative group cursor-pointer select-none rounded-xl overflow-hidden",
-        className,
-      )}
-      onClick={() => onPin(isPinned ? null : participant.session_id)}
-    >
-      <VideoTile
-        participant={participant}
-        isMain={isMain}
-        activeSpeakerId={activeSpeakerId}
-        className="w-full h-full"
-      />
-      {participant.handRaised && (
-        <div
-          className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg z-20"
-          style={{ background: "rgba(245,158,11,0.9)", backdropFilter: "blur(8px)" }}
-        >
-          <span className="text-sm">✋</span>
-        </div>
-      )}
-      <div
-        className={cn(
-          "absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold",
-          "transition-all duration-150 opacity-0 group-hover:opacity-100",
-          isPinned && "opacity-100",
-        )}
-        style={{
-          background: isPinned ? "rgba(99,102,241,0.85)" : "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(8px)",
-          color: "#fff",
-        }}
-      >
-        {isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
-        {isPinned ? "Unpin" : "Pin"}
-      </div>
-    </div>
-  ),
-);
-
-// ─── Video grid ─────────────────────────────────────────────────────────────────
-const VideoGrid = memo(
-  ({
-    participants,
-    activeSpeakerId,
-    isConnecting,
-    error,
-    onRetry,
-    pinnedId,
-    onPin,
-    layout,
-    onLayoutChange,
-  }: {
-    participants: DailyParticipant[];
-    activeSpeakerId: string | null;
-    isConnecting: boolean;
-    error: string | null;
-    onRetry: () => void;
-    pinnedId: string | null;
-    onPin: (id: string | null) => void;
-    layout: VideoLayout;
-    onLayoutChange: (l: VideoLayout) => void;
-  }) => {
-    if (error)
-      return (
-        <div className="h-full flex flex-col items-center justify-center gap-4 p-6 sm:p-8 text-center">
-          <WifiOff className="w-10 h-10 text-red-400" />
-          <div>
-            <p className="text-sm font-semibold text-red-400 mb-1">Connection failed</p>
-            <p className="text-xs max-w-xs" style={{ color: T.muted }}>
-              {error}
-            </p>
-          </div>
-          <button
-            onClick={onRetry}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white touch-manipulation"
-            style={{
-              background: "rgba(99,102,241,0.2)",
-              border: "1px solid rgba(99,102,241,0.3)",
-            }}
-          >
-            <RefreshCw className="w-4 h-4" /> Retry
-          </button>
-        </div>
-      );
-
-    if (isConnecting)
-      return (
-        <div className="h-full flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" style={{ color: T.accent }} />
-          <p className="text-sm" style={{ color: T.muted }}>
-            Joining meeting…
-          </p>
-        </div>
-      );
-
-    if (participants.length === 0)
-      return (
-        <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-6">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ background: T.card, border: `1px solid ${T.border}` }}
-          >
-            <Users className="w-8 h-8" style={{ color: T.subtle }} />
-          </div>
-          <p className="text-sm" style={{ color: T.muted }}>
-            Waiting for others to join…
-          </p>
-        </div>
-      );
-
-    const LayoutSwitcher = (
-      <div className="absolute top-2 sm:top-3 right-2 sm:right-3 z-20 flex items-center gap-1 sm:gap-1.5">
-        {(["spotlight", "grid", "sidebar"] as VideoLayout[]).map((l) => {
-          const icons = { spotlight: Maximize2, grid: LayoutGrid, sidebar: PanelRight };
-          const Icon = icons[l];
-          return (
-            <button
-              key={l}
-              onClick={(e) => { e.stopPropagation(); onLayoutChange(l); }}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all touch-manipulation"
-              style={{
-                background: layout === l ? "rgba(99,102,241,0.85)" : "rgba(0,0,0,0.45)",
-                backdropFilter: "blur(8px)",
-                border: `1px solid ${layout === l ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)"}`,
-              }}
-            >
-              <Icon className="w-3.5 h-3.5 text-white" />
-            </button>
-          );
-        })}
-      </div>
-    );
-
-    if (participants.length === 1)
-      return (
-        <div className="relative h-full">
-          {LayoutSwitcher}
-          <PinnableTile
-            participant={participants[0]}
-            activeSpeakerId={activeSpeakerId}
-            isPinned={false}
-            onPin={onPin}
-            isMain
-            className="h-full"
-          />
-        </div>
-      );
-
-    // FIX: previously this only ever followed a manual pin or the active
-    // speaker — someone starting a screen share had no effect on what showed
-    // in the main tile unless they also happened to be speaking or got
-    // pinned. A screen share should automatically become the focus the
-    // instant it starts (a manual pin still overrides it, same as before).
-    const screenSharer = participants.find((p) => p.screen);
-    const spotlightId =
-      pinnedId ?? screenSharer?.session_id ?? activeSpeakerId ?? participants[0]?.session_id;
-    const spotlight =
-      participants.find((p) => p.session_id === spotlightId) ?? participants[0];
-    const strip = participants.filter((p) => p.session_id !== spotlight.session_id);
-
-    if (layout === "spotlight")
-      return (
-        <div className="relative h-full flex flex-col gap-2">
-          {LayoutSwitcher}
-          <div className="flex-1 min-h-0">
-            <PinnableTile
-              participant={spotlight}
-              activeSpeakerId={activeSpeakerId}
-              isPinned={!!pinnedId}
-              onPin={onPin}
-              isMain
-              className="h-full"
-            />
-          </div>
-          {strip.length > 0 && (
-            <div
-              className="flex gap-2 shrink-0 overflow-x-auto pb-1"
-              style={{ height: "clamp(72px, 18%, 130px)" }}
-            >
-              {strip.map((p) => (
-                <div
-                  key={p.session_id}
-                  className="shrink-0 rounded-xl overflow-hidden"
-                  style={{ width: "clamp(100px, 150px, 200px)", height: "100%" }}
-                >
-                  <PinnableTile
-                    participant={p}
-                    activeSpeakerId={activeSpeakerId}
-                    isPinned={pinnedId === p.session_id}
-                    onPin={onPin}
-                    className="h-full w-full"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-
-    if (layout === "sidebar")
-      return (
-        <div className="relative h-full flex gap-2">
-          {LayoutSwitcher}
-          <div className="flex-1 min-w-0">
-            <PinnableTile
-              participant={spotlight}
-              activeSpeakerId={activeSpeakerId}
-              isPinned={!!pinnedId}
-              onPin={onPin}
-              isMain
-              className="h-full"
-            />
-          </div>
-          {strip.length > 0 && (
-            <div
-              className="flex flex-col gap-2 overflow-y-auto"
-              style={{ width: "clamp(90px, 22%, 180px)" }}
-            >
-              {strip.map((p) => (
-                <div
-                  key={p.session_id}
-                  className="shrink-0 rounded-xl overflow-hidden aspect-video"
-                >
-                  <PinnableTile
-                    participant={p}
-                    activeSpeakerId={activeSpeakerId}
-                    isPinned={pinnedId === p.session_id}
-                    onPin={onPin}
-                    className="h-full w-full"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-
-    // Grid
-    const count = participants.length;
-    const cols = count <= 2 ? 2 : count <= 4 ? 2 : count <= 6 ? 3 : 4;
-    const rows = Math.ceil(count / cols);
-    return (
-      <div className="relative h-full">
-        {LayoutSwitcher}
-        <div
-          className="h-full gap-2"
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            gridTemplateRows: `repeat(${rows}, 1fr)`,
-          }}
-        >
-          {participants.map((p) => (
-            <PinnableTile
-              key={p.session_id}
-              participant={p}
-              activeSpeakerId={activeSpeakerId}
-              isPinned={pinnedId === p.session_id}
-              onPin={onPin}
-              className="h-full"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  },
-);
+// PinnableTile + VideoGrid moved to src/components/MeetingVideoGrid.tsx (as
+// PinnableTile + MeetingVideoGrid) so this page shares one implementation
+// with the host page (LiveMeeting.tsx) instead of a second, stale copy with
+// its own fixed-column grid and "spotlight"-labelled layout.
 
 // ─── "Someone is presenting" banner with Stop control (matches host page) ───────
 const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
@@ -834,7 +556,7 @@ export default function GuestJoin() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
-  const [videoLayout, setVideoLayout] = useState<VideoLayout>("spotlight");
+  const [videoLayout, setVideoLayout] = useState<VideoLayout>("focus");
   const [showPeople, setShowPeople] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
 
@@ -1570,16 +1292,19 @@ export default function GuestJoin() {
             onStopShare={handleScreenShare}
           />
         ) : (
-          <VideoGrid
+          <MeetingVideoGrid
             participants={daily.participants}
             activeSpeakerId={daily.activeSpeakerId}
             isConnecting={daily.isConnecting}
+            isConnected={daily.isConnected}
             error={daily.error}
+            roomName={roomName ?? null}
             onRetry={handleRetryJoin}
             pinnedId={pinnedId}
             onPin={setPinnedId}
             layout={videoLayout}
             onLayoutChange={setVideoLayout}
+            connectingLabel="Joining meeting…"
           />
         )}
       </div>
