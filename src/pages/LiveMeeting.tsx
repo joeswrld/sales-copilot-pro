@@ -70,7 +70,9 @@ const T = {
 
 type MobilePanel = "none" | "people" | "chat" | "notes" | "more";
 type LeftTab     = "people" | "chat" | "notes" | "files" | "notifications";
-type VideoLayout = "spotlight" | "grid" | "sidebar";
+// VideoLayout is imported from MeetingVideoGrid.tsx ("focus" | "grid" | "sidebar")
+// — do not redeclare it here, it previously shadowed the import with a stale
+// "spotlight" | "grid" | "sidebar" type that no longer matches the component.
 
 function fmt(s: number) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
