@@ -28,6 +28,24 @@ export interface ServerBreakdown {
   amount_kobo: number;
 }
 
+/**
+ * FIX: paystack-upgrade-subscription's preview response now also carries
+ * these top-level proration fields alongside `breakdown`. When
+ * `is_prorated` is true, `breakdown.subtotal_usd` is intentionally NOT
+ * the flat monthly plan price — it's the prorated charge for the days
+ * remaining in the current billing cycle. The UI must label this so it
+ * never looks like a mismatch with the plan's sticker price.
+ */
+export interface PreviewMeta {
+  is_new_subscription?: boolean;
+  is_upgrade?: boolean;
+  is_downgrade?: boolean;
+  is_prorated?: boolean;
+  days_remaining?: number;
+  credit_usd?: number;
+  new_monthly_price_usd?: number;
+}
+
 export function formatUSD(amount: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(amount);
 }
