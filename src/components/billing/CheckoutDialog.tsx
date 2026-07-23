@@ -15,15 +15,12 @@
  * it actually charges Paystack. That guarantees this dialog can never
  * show a number that doesn't match what Paystack ends up charging.
  *
- * FIX: for an upgrade on an active subscription, the server prorates
- * the subtotal for the days remaining in the current billing cycle —
- * it will legitimately NOT equal the plan's flat monthly price shown
- * in the header above. Previously this dialog gave no indication of
- * that, so the subtotal looked like a bug/mismatch. We now read the
- * `is_prorated` / `days_remaining` fields the backend returns and show
- * an explicit "Prorated for N days remaining" label whenever proration
- * is in effect, and otherwise confirm the subtotal equals the full
- * monthly price.
+ * PRICING POLICY: plan changes are NOT prorated. Every subscribe,
+ * upgrade, and downgrade charges the full flat monthly price + VAT,
+ * collected in full today. An upgrade replaces the previous plan
+ * immediately — no credit is carried over for days remaining on the
+ * old plan — and the billing cycle restarts from today. The subtotal
+ * shown below always equals the plan's sticker price.
  */
 
 import { useEffect, useState } from "react";
@@ -37,7 +34,7 @@ import { Separator } from "@/components/ui/separator";
 import { Link } from "react-router-dom";
 import { Loader2, ShieldCheck, Lock, Info, Users, Timer, RefreshCw, Calendar, AlertTriangle } from "lucide-react";
 import { format, addMonths } from "date-fns";
-import { formatUSD, formatNGNAmount, type ServerBreakdown, type PreviewMeta } from "@/config/checkout";
+import { formatUSD, formatNGNAmount, type ServerBreakdown } from "@/config/checkout";
 import { getTeamMembersLimit, getMinuteQuota, formatMinutes } from "@/config/plans";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -58,7 +55,6 @@ interface CheckoutDialogProps {
 export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, isProcessing }: CheckoutDialogProps) {
   const [agreed, setAgreed] = useState(false);
   const [breakdown, setBreakdown] = useState<ServerBreakdown | null>(null);
-  const [previewMeta, setPreviewMeta] = useState<PreviewMeta | null>(null);
   const [isLoadingBreakdown, setIsLoadingBreakdown] = useState(false);
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
 
@@ -68,7 +64,6 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
   useEffect(() => {
     if (!open || !item) {
       setBreakdown(null);
-      setPreviewMeta(null);
       setBreakdownError(null);
       return;
     }
@@ -84,14 +79,13 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
 
         let result;
         if (item.kind === "plan") {
+          // Plan changes are never prorated — this always returns the
+          // full flat monthly price + VAT, whether it's a fresh
+          // subscribe, an upgrade, or a downgrade.
           result = await supabase.functions.invoke("paystack-upgrade-subscription", {
             body: { new_plan_key: item.planKey, preview_only: true },
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
-          // paystack-upgrade-subscription's preview also works for a
-          // brand-new subscription — the backend now returns
-          // `is_new_subscription: true` and charges the full monthly
-          // price (no proration) in that case.
         } else {
           result = await supabase.functions.invoke("purchase-minutes-bundle", {
             body: { action: "preview", minutes: item.minutes },
@@ -105,20 +99,7 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
         const serverBreakdown = (result.data as any)?.breakdown as ServerBreakdown | undefined;
         if (!serverBreakdown) throw new Error("Pricing unavailable");
 
-        const meta: PreviewMeta = {
-          is_new_subscription: (result.data as any)?.is_new_subscription,
-          is_upgrade: (result.data as any)?.is_upgrade,
-          is_downgrade: (result.data as any)?.is_downgrade,
-          is_prorated: (result.data as any)?.is_prorated,
-          days_remaining: (result.data as any)?.days_remaining,
-          credit_usd: (result.data as any)?.credit_usd,
-          new_monthly_price_usd: (result.data as any)?.new_monthly_price_usd,
-        };
-
-        if (!cancelled) {
-          setBreakdown(serverBreakdown);
-          setPreviewMeta(meta);
-        }
+        if (!cancelled) setBreakdown(serverBreakdown);
       } catch (err: any) {
         if (!cancelled) setBreakdownError(err.message || "Failed to load pricing");
       } finally {
@@ -133,7 +114,6 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
 
   const isPlan = item.kind === "plan";
   const nextBillingDate = addMonths(new Date(), 1);
-  const isProrated = isPlan && !!previewMeta?.is_prorated;
 
   const handleClose = (next: boolean) => {
     if (isProcessing) return; // don't let a stray click close it mid-redirect
@@ -170,10 +150,7 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
                 {isPlan ? "Monthly subscription plan" : "One-time extra minutes bundle"}
               </p>
             </div>
-            <div className="text-right shrink-0">
-              <p className="text-lg font-bold text-foreground tabular-nums">{formatUSD(item.priceUsd)}</p>
-              {isPlan && <p className="text-[11px] text-muted-foreground">/mo full price</p>}
-            </div>
+            <p className="text-lg font-bold text-foreground tabular-nums shrink-0">{formatUSD(item.priceUsd)}</p>
           </div>
 
           {/* Plan inclusions */}
@@ -198,21 +175,6 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
 
           <Separator />
 
-          {/* FIX: proration notice — shown whenever the subtotal below is NOT
-              the flat monthly price, so it's never mistaken for a bug. */}
-          {isProrated && breakdown && (
-            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-              <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                This is an upgrade partway through your billing cycle, so today's
-                charge is <strong className="text-foreground">prorated for the{" "}
-                {previewMeta?.days_remaining ?? 0} day{previewMeta?.days_remaining === 1 ? "" : "s"} remaining</strong>{" "}
-                — not the full {formatUSD(item.priceUsd)}/mo price. Your subscription
-                renews at the full plan price starting next cycle.
-              </p>
-            </div>
-          )}
-
           {/* Price breakdown — always read from the server, never computed here */}
           {isLoadingBreakdown ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -229,7 +191,7 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
           ) : breakdown ? (
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-muted-foreground">
-                <span>{isProrated ? "Prorated subtotal" : "Subtotal"}</span>
+                <span>Subtotal</span>
                 <span className="tabular-nums text-foreground">{formatUSD(breakdown.subtotal_usd)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
@@ -238,7 +200,7 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
               </div>
               <Separator />
               <div className="flex justify-between font-semibold text-foreground text-base">
-                <span>Total {isProrated ? "due today" : ""}</span>
+                <span>Total</span>
                 <span className="tabular-nums">{formatUSD(breakdown.total_usd)}</span>
               </div>
               <div className="flex justify-between text-xs text-muted-foreground pt-0.5">
@@ -259,12 +221,21 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
             {isPlan && (
               <div className="flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 shrink-0" />
-                {isProrated
-                  ? `Full price of ${formatUSD(item.priceUsd)} applies from your next renewal`
-                  : `First renewal on ${format(nextBillingDate, "MMMM d, yyyy")}`}
+                Next renewal on {format(nextBillingDate, "MMMM d, yyyy")}
               </div>
             )}
           </div>
+
+          {/* Immediate-replacement notice for plan changes */}
+          {isPlan && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-secondary/30 border border-border">
+              <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                This replaces your current plan immediately at the full price shown —
+                any remaining time on your current plan isn't credited.
+              </p>
+            </div>
+          )}
 
           {/* Currency notice */}
           {breakdown && (
