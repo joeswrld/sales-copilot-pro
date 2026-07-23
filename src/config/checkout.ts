@@ -1,46 +1,31 @@
 /**
- * checkout.ts — Shared checkout math for the billing UI.
+ * checkout.ts — Billing display helpers for the checkout UI.
  *
- * Single source of truth for how a USD price becomes an NGN charge:
- * Subtotal (USD) → convert to NGN → VAT (10%) → Total.
+ * IMPORTANT: This file does NOT compute VAT, subtotal, total, or the
+ * exchange rate. That used to happen here client-side and it drifted
+ * from what the backend actually charged Paystack (the backend never
+ * applied VAT; this file always did) — that mismatch is exactly the
+ * bug this refactor fixes.
  *
- * NOTE ON THE EXCHANGE RATE: Paystack settles in NGN using its own
- * rate at the moment of charge. USD_TO_NGN in src/config/plans.ts is
- * a fixed reference rate used for on-screen estimates only — it is
- * NOT fetched live. If/when a live-rate feed is wired in, swap the
- * constant read below for that source; every screen that shows a
- * converted amount already reads through getCheckoutBreakdown, so
- * they'll all update together.
+ * The server (paystack-create-subscription, paystack-upgrade-subscription,
+ * purchase-minutes-bundle — all via supabase/functions/_shared/billing.ts)
+ * is now the single source of truth for every number in the breakdown.
+ * The frontend only ever displays a `ServerBreakdown` object returned by
+ * one of those edge functions (via a `preview_only`/`preview` call before
+ * charging, or the response of the real charge). Nothing here recomputes
+ * VAT or converts currency.
  */
 
-import { USD_TO_NGN } from "@/config/plans";
-
-/** VAT rate applied to all Fixsense subscriptions and minute bundles. */
-export const VAT_RATE = 0.10;
-
-export interface CheckoutBreakdown {
-  subtotalUsd: number;
-  subtotalNgn: number;
-  vatUsd: number;
-  vatNgn: number;
-  totalUsd: number;
-  totalNgn: number;
-  exchangeRate: number;
-}
-
-/** Compute subtotal → VAT → total in both USD and NGN from a USD price. */
-export function getCheckoutBreakdown(subtotalUsd: number, exchangeRate: number = USD_TO_NGN): CheckoutBreakdown {
-  const vatUsd = subtotalUsd * VAT_RATE;
-  const totalUsd = subtotalUsd + vatUsd;
-  return {
-    subtotalUsd,
-    subtotalNgn: subtotalUsd * exchangeRate,
-    vatUsd,
-    vatNgn: vatUsd * exchangeRate,
-    totalUsd,
-    totalNgn: totalUsd * exchangeRate,
-    exchangeRate,
-  };
+/** Breakdown as returned by the server. Field names match the edge
+ *  function response's `breakdown` object exactly. */
+export interface ServerBreakdown {
+  subtotal_usd: number;
+  vat_usd: number;
+  total_usd: number;
+  exchange_rate: number;
+  vat_rate: number;
+  total_ngn: number;
+  amount_kobo: number;
 }
 
 export function formatUSD(amount: number): string {
