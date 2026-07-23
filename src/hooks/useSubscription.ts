@@ -49,6 +49,18 @@ export interface SubscriptionTransaction {
   currency: string;
   channel: string | null;
   gateway_response: string | null;
+  /**
+   * These come straight from the `payments` row the server wrote at
+   * checkout time (subtotal_usd/vat_usd/total_usd/exchange_rate/vat_rate).
+   * They are the SAME numbers that were sent to Paystack — never
+   * recomputed on the frontend. Null for older payments recorded before
+   * this breakdown was stored.
+   */
+  subtotal_usd: number | null;
+  vat_usd: number | null;
+  total_usd: number | null;
+  exchange_rate: number | null;
+  vat_rate: number | null;
 }
 
 export interface PlanChangePreview {
