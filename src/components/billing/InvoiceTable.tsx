@@ -1,6 +1,11 @@
 /**
  * InvoiceTable.tsx — replaces the old flat transaction list with a
  * proper invoice table (Stripe/Linear-style).
+ *
+ * VAT / subtotal / total shown here are read from the transaction's
+ * stored subtotal_usd/vat_usd/total_usd fields — the exact numbers the
+ * server computed and sent to Paystack at checkout time — never
+ * recomputed by backing VAT out of the raw NGN total client-side.
  */
 
 import { useState } from "react";
@@ -11,8 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Receipt, Loader2, FileText } from "lucide-react";
 import { format } from "date-fns";
 import type { SubscriptionTransaction } from "@/hooks/useSubscription";
-import { USD_TO_NGN } from "@/config/plans";
-import { VAT_RATE, formatUSD } from "@/config/checkout";
+import { formatUSD } from "@/config/checkout";
 import { cn } from "@/lib/utils";
 import InvoiceDialog from "./InvoiceDialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,8 +91,6 @@ export default function InvoiceTable({ transactions, isLoading }: InvoiceTablePr
                 </TableHeader>
                 <TableBody>
                   {transactions.slice(0, 25).map((tx) => {
-                    const totalUsd = tx.amount_ngn / USD_TO_NGN;
-                    const vatUsd = totalUsd - totalUsd / (1 + VAT_RATE);
                     const statusKey = tx.status === "success" ? "success" : tx.status;
                     return (
                       <TableRow
@@ -111,7 +113,7 @@ export default function InvoiceTable({ transactions, isLoading }: InvoiceTablePr
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
-                          {formatUSD(vatUsd)}
+                          {tx.vat_usd != null ? formatUSD(tx.vat_usd) : "—"}
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium text-foreground tabular-nums">
                           ₦{tx.amount_ngn.toLocaleString(undefined, { maximumFractionDigits: 0 })}
