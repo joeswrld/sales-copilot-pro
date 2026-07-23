@@ -14,6 +14,10 @@
  * one of those edge functions (via a `preview_only`/`preview` call before
  * charging, or the response of the real charge). Nothing here recomputes
  * VAT or converts currency.
+ *
+ * PRICING POLICY: plan changes are not prorated — subtotal_usd always
+ * equals the plan's flat monthly price, whether it's a new subscribe,
+ * upgrade, or downgrade.
  */
 
 /** Breakdown as returned by the server. Field names match the edge
@@ -26,24 +30,6 @@ export interface ServerBreakdown {
   vat_rate: number;
   total_ngn: number;
   amount_kobo: number;
-}
-
-/**
- * FIX: paystack-upgrade-subscription's preview response now also carries
- * these top-level proration fields alongside `breakdown`. When
- * `is_prorated` is true, `breakdown.subtotal_usd` is intentionally NOT
- * the flat monthly plan price — it's the prorated charge for the days
- * remaining in the current billing cycle. The UI must label this so it
- * never looks like a mismatch with the plan's sticker price.
- */
-export interface PreviewMeta {
-  is_new_subscription?: boolean;
-  is_upgrade?: boolean;
-  is_downgrade?: boolean;
-  is_prorated?: boolean;
-  days_remaining?: number;
-  credit_usd?: number;
-  new_monthly_price_usd?: number;
 }
 
 export function formatUSD(amount: number): string {
