@@ -1,7 +1,7 @@
 /**
- * BillingPage.tsx — v2 (Billing Downgrade Bug Fix)
+ * BillingPage.tsx — v3 (Modern SaaS billing experience)
  *
- * Key UX fixes:
+ * Key UX fixes carried over from v2:
  *  1. When a user cancels a Paystack popup, show "Payment cancelled — your
  *     current plan remains active." NEVER show "Retry to restore access"
  *     unless the subscription has actually expired.
@@ -10,6 +10,17 @@
  *  3. markAbandoned is only called when the user has no active subscription.
  *  4. All billing state is derived from the subscription row, not the
  *     payments table, so cancelled checkouts never look like downgrades.
+ *
+ * v3 additions:
+ *  - CheckoutDialog: every subscribe / upgrade / buy-minutes action opens a
+ *    transparent pre-payment confirmation (subtotal, VAT, total, currency
+ *    notice, ToS checkbox) before redirecting to Paystack.
+ *  - InvoiceTable + InvoiceDialog: proper invoice history with a detailed
+ *    receipt view (print / PDF via browser print).
+ *  - SubscriptionCard / UsageCard: redesigned, with an explicit 80% usage
+ *    warning state.
+ *  - ComplianceFooter: renewal disclosure, VAT notice, refund policy,
+ *    ToS/Privacy links, and security badges.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -23,15 +34,11 @@ import { TeamUsageBillingCard } from "@/components/TeamMinuteUsageComponents";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
-  CreditCard, Zap, CheckCircle2, AlertCircle, XCircle, Loader2,
-  RefreshCw, ArrowUp, ArrowDown, Receipt, Timer, TrendingUp,
-  Users, Calendar, Sparkles, AlertTriangle, RotateCcw, Clock,
-  Info,
+  CreditCard, Zap, Loader2, AlertTriangle, RotateCcw, Info,
+  ArrowUp, ArrowDown, Timer, Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -40,13 +47,11 @@ import { cn } from "@/lib/utils";
 import ExtraMinutesBundles from "@/components/ExtraMinutesBundles";
 import { useExtraMinutes } from "@/hooks/useExtraMinutes";
 
-const STATUS_CFG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle2 }> = {
-  active:    { label: "Active",    variant: "default",     icon: CheckCircle2 },
-  cancelled: { label: "Cancelled", variant: "secondary",   icon: XCircle },
-  past_due:  { label: "Past Due",  variant: "destructive", icon: AlertCircle },
-  pending:   { label: "Pending",   variant: "outline",     icon: Loader2 },
-  inactive:  { label: "Inactive",  variant: "secondary",   icon: XCircle },
-};
+import CheckoutDialog, { type CheckoutItem } from "@/components/billing/CheckoutDialog";
+import SubscriptionCard from "@/components/billing/SubscriptionCard";
+import UsageCard from "@/components/billing/UsageCard";
+import InvoiceTable from "@/components/billing/InvoiceTable";
+import ComplianceFooter from "@/components/billing/ComplianceFooter";
 
 export default function BillingPage() {
   const { user } = useAuth();
@@ -77,11 +82,35 @@ export default function BillingPage() {
     refetchInterval: 30_000,
   });
 
-  const { verify: verifyBundle } = useExtraMinutes();
+  const { verify: verifyBundle, purchase: purchaseBundle, isPurchasing: isPurchasingBundle } = useExtraMinutes();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [refreshing, setRefreshing]     = useState(false);
   const [paymentCancelledNotice, setPaymentCancelledNotice] = useState(false);
-  const handledRef                      = useRef<string | null>(null);
+  const handledRef = useRef<string | null>(null);
+
+  // ── Checkout dialog state ────────────────────────────────────────────────
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutItem, setCheckoutItem] = useState<CheckoutItem | null>(null);
+  const [checkoutAction, setCheckoutAction] = useState<null | (() => void)>(null);
+
+  const openPlanCheckout = (plan: (typeof PLANS_SIMPLE)[number], action: () => void) => {
+    setCheckoutItem({ kind: "plan", planKey: plan.key, planName: plan.name, priceUsd: plan.price_usd, badge: plan.badge });
+    setCheckoutAction(() => action);
+    setCheckoutOpen(true);
+  };
+
+  const openBundleCheckout = (bundle: { minutes: number; price_usd: number; label: string }) => {
+    setCheckoutItem({ kind: "bundle", minutes: bundle.minutes, label: bundle.label, priceUsd: bundle.price_usd });
+    setCheckoutAction(() => () => purchaseBundle.mutate(bundle.minutes));
+    setCheckoutOpen(true);
+  };
+
+  const isCheckoutProcessing =
+    (checkoutItem?.kind === "plan" && (subscribe.isPending || changePlan.isPending)) ||
+    (checkoutItem?.kind === "bundle" && isPurchasingBundle);
+
+  const handleCheckoutConfirm = () => {
+    checkoutAction?.();
+  };
 
   useEffect(() => {
     const ref = searchParams.get("reference") || searchParams.get("trxref");
@@ -147,41 +176,24 @@ export default function BillingPage() {
     }
   }, [subscription?.status, subscription?.next_payment_date]);
 
-  const doRefresh = async () => {
-    setRefreshing(true);
-    await verifyPayment.mutateAsync({ reference: null, includeTransactions: false });
-    await refetch();
-    setRefreshing(false);
-    toast.info("Payment status checked");
-  };
-
   const available   = PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey && p.key !== "free");
   const showActive  = billingState.billingStatus === "active";
-  // hasIncompleteCheckout is already safe — it won't be true when a subscription is active.
   const showPending = billingState.hasIncompleteCheckout;
-  const sc          = STATUS_CFG[subscription?.status || "inactive"] || STATUS_CFG.inactive;
-  const SI          = sc.icon;
   const priceUSD    = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN    = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
   const resolvedKey = effectivePlan?.planKey ?? currentPlanKey;
   const tmLimit     = getTeamMembersLimit(teamQuery.data?.adminPlanKey ?? resolvedKey);
   const tmUsed      = teamQuery.data?.count ?? 1;
   const tmUnlim     = tmLimit === -1;
-  const tmPct       = tmUnlim ? 0 : Math.min((tmUsed / tmLimit) * 100, 100);
 
-  const minutesUsed      = usage?.minutesUsed ?? 0;
-  const minuteLimit      = usage?.minuteLimit ?? 30;
   const minutesRemaining = usage && !usage.isUnlimited ? Math.max(0, (usage.minutesRemaining as number)) : null;
-  const usedLabel        = formatMinutes(minutesUsed);
-  const limitLabel       = usage?.isUnlimited ? "Unlimited" : formatMinutes(minuteLimit);
-  const remainingLabel   = minutesRemaining != null ? formatMinutes(minutesRemaining) : "Unlimited";
 
   return (
     <DashboardLayout>
       <div className="max-w-3xl mx-auto space-y-8">
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">Billing</h1>
-          <p className="text-muted-foreground mt-1">Manage your subscription and minute-based usage.</p>
+          <p className="text-muted-foreground mt-1">Manage your subscription, usage, and invoices.</p>
         </div>
 
         <PlanInheritanceBanner />
@@ -194,7 +206,7 @@ export default function BillingPage() {
           <>
             <TeamUsageBillingCard className="mb-2" />
 
-            {/* ── Payment cancelled notice (shown when user closes Paystack popup) ── */}
+            {/* ── Payment cancelled notice ── */}
             {paymentCancelledNotice && showActive && (
               <Card className="border-blue-500/40 bg-blue-500/5">
                 <CardContent className="pt-6">
@@ -207,12 +219,7 @@ export default function BillingPage() {
                         remains fully active. Nothing has changed.
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setPaymentCancelledNotice(false)}
-                      className="shrink-0"
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => setPaymentCancelledNotice(false)} className="shrink-0">
                       Dismiss
                     </Button>
                   </div>
@@ -220,7 +227,7 @@ export default function BillingPage() {
               </Card>
             )}
 
-            {/* ── Incomplete checkout banner — only when user has NO active plan ── */}
+            {/* ── Incomplete checkout banner ── */}
             {showPending && (
               <Card className="border-amber-500/40 bg-amber-500/5">
                 <CardContent className="pt-6">
@@ -240,25 +247,32 @@ export default function BillingPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        {billingState.pendingPlanKey && (
-                          <Button
-                            size="sm"
-                            onClick={() => subscribe.mutate(billingState.pendingPlanKey!)}
-                            disabled={subscribe.isPending}
-                          >
-                            {subscribe.isPending
-                              ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              : <RotateCcw className="w-4 h-4 mr-2" />}
-                            Retry Payment
-                          </Button>
-                        )}
+                        {billingState.pendingPlanKey && (() => {
+                          const plan = PLANS_SIMPLE.find((p) => p.key === billingState.pendingPlanKey);
+                          return (
+                            <Button
+                              size="sm"
+                              onClick={() => plan && openPlanCheckout(plan, () => subscribe.mutate(plan.key))}
+                              disabled={subscribe.isPending}
+                            >
+                              {subscribe.isPending
+                                ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                : <RotateCcw className="w-4 h-4 mr-2" />}
+                              Retry Payment
+                            </Button>
+                          );
+                        })()}
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={doRefresh}
-                          disabled={refreshing || verifyPayment.isPending}
+                          onClick={async () => {
+                            await verifyPayment.mutateAsync({ reference: null, includeTransactions: false });
+                            await refetch();
+                            toast.info("Payment status checked");
+                          }}
+                          disabled={verifyPayment.isPending}
                         >
-                          <RefreshCw className={cn("w-4 h-4 mr-2", (refreshing || isSyncingPending) && "animate-spin")} />
+                          <RotateCcw className={cn("w-4 h-4 mr-2", isSyncingPending && "animate-spin")} />
                           Check Status
                         </Button>
                       </div>
@@ -270,176 +284,58 @@ export default function BillingPage() {
 
             {showActive && subscription ? (
               <>
-                {/* Active plan card */}
-                <Card className="border-primary/20 bg-primary/5">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Zap className="w-5 h-5 text-primary" />
-                        {subscription.plan_name}
-                      </CardTitle>
-                      <CardDescription>Monthly subscription · billed in NGN</CardDescription>
-                    </div>
-                    <Badge variant={sc.variant} className="flex items-center gap-1.5 px-3 py-1">
-                      <SI className="w-3.5 h-3.5" />
-                      {sc.label}
-                    </Badge>
+                <SubscriptionCard
+                  planName={subscription.plan_name}
+                  status={subscription.status}
+                  priceUsd={priceUSD}
+                  priceNgn={priceNGN}
+                  nextBillingDate={subscription.next_payment_date}
+                  minuteQuota={usage?.minuteLimit ?? 0}
+                  minutesRemaining={minutesRemaining}
+                  isUnlimited={usage?.isUnlimited ?? false}
+                  teamSeatsUsed={tmUsed}
+                  teamSeatsLimit={tmLimit}
+                  onUpgrade={() => {
+                    const next = PLANS_SIMPLE[PLANS_SIMPLE.findIndex((p) => p.key === currentPlanKey) + 1];
+                    if (next) openPlanCheckout(next, () => changePlan.mutate(next.key));
+                    else document.getElementById("change-plan-section")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  onCancel={() => cancelSubscription.mutate()}
+                  isCancelling={cancelSubscription.isPending}
+                  canUpgrade={isActive && available.some((p) => PLANS_SIMPLE.findIndex((x) => x.key === p.key) > PLANS_SIMPLE.findIndex((x) => x.key === currentPlanKey))}
+                />
+
+                {usage && (
+                  <UsageCard
+                    minutesUsed={usage.minutesUsed}
+                    minutesRemaining={minutesRemaining}
+                    minuteLimit={usage.minuteLimit}
+                    isUnlimited={usage.isUnlimited}
+                    pct={usage.pct}
+                    isNearLimit={usage.isNearLimit}
+                    isAtLimit={usage.isAtLimit}
+                    resetDate={usage.resetDate}
+                    extraMinutes={usage.extraMinutes}
+                    extraMinutesExpiresAt={usage.extraMinutesExpiresAt}
+                  />
+                )}
+
+                {/* Team seats detail */}
+                <Card className="border-border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" />
+                      Team Seats
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Price</p>
-                        <p className="text-2xl font-bold text-foreground">
-                          ${priceUSD}
-                          <span className="text-sm font-normal text-muted-foreground">/month</span>
-                        </p>
-                        {priceNGN > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {formatNGN(priceNGN * 100)} billed monthly
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Next billing date</p>
-                        <p className="text-lg font-semibold text-foreground">
-                          {subscription.next_payment_date
-                            ? format(new Date(subscription.next_payment_date), "MMM d, yyyy")
-                            : "—"}
-                        </p>
-                      </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Members active on this plan</span>
+                      <span className="text-sm font-semibold text-foreground">{tmUsed} / {tmUnlim ? "∞" : tmLimit}</span>
                     </div>
-                  </CardContent>
-                </Card>
-
-                {/* Usage card */}
-                <Card className="border-border">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Timer className="w-5 h-5 text-primary" />
-                      Usage This Billing Cycle
-                    </CardTitle>
-                    <CardDescription>
-                      Minutes are your billing unit — each completed call's duration is tracked automatically.
-                      {effectivePlan?.isInherited && (
-                        <span className="ml-1 inline-flex items-center gap-1 text-primary">
-                          <Sparkles className="w-3 h-3" />
-                          Limits reflect your workspace's {effectivePlan.planName} plan.
-                        </span>
-                      )}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {usage && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-primary" />
-                            Call Minutes This Month
-                          </span>
-                          <span className={cn(
-                            "text-sm font-semibold tabular-nums",
-                            usage.isAtLimit ? "text-destructive" : usage.isNearLimit ? "text-amber-500" : "text-foreground"
-                          )}>
-                            {usage.isUnlimited
-                              ? `${usedLabel} used · Unlimited`
-                              : `${usedLabel} / ${limitLabel}`}
-                          </span>
-                        </div>
-                        {!usage.isUnlimited ? (
-                          <>
-                            <Progress
-                              value={usage.pct}
-                              className={cn(
-                                "h-3",
-                                usage.isAtLimit ? "[&>div]:bg-destructive"
-                                  : usage.isNearLimit ? "[&>div]:bg-amber-500"
-                                  : ""
-                              )}
-                            />
-                            <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                              <span>
-                                {usage.isAtLimit
-                                  ? <span className="text-destructive font-medium">Limit reached — upgrade to continue</span>
-                                  : `${remainingLabel} remaining · ${Math.round(usage.pct)}% used`}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                Resets {format(usage.resetDate, "MMM d, yyyy")}
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="h-3 rounded-full bg-primary/10 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-primary/50 to-primary"
-                              style={{ width: `${Math.min((usage.minutesUsed / 300) * 100, 100)}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
+                    {!tmUnlim && tmUsed >= tmLimit && (
+                      <p className="text-xs text-destructive font-medium">Seat limit reached — upgrade to add more team members.</p>
                     )}
-
-                    {usage && (
-                      <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-secondary/30 border border-border">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="w-4 h-4" />
-                          Meetings completed this month
-                        </div>
-                        <span className="font-semibold text-sm text-foreground">{usage.meetingsUsed}</span>
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                          <Users className="w-4 h-4 text-primary" />
-                          Team Members
-                        </span>
-                        <span className="text-sm font-semibold text-foreground">
-                          {tmUsed} / {tmUnlim ? "∞" : tmLimit}
-                        </span>
-                      </div>
-                      <Progress value={tmUnlim ? 0 : tmPct} className="h-3" />
-                      <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                        <span>{tmUnlim ? "Unlimited members" : `${Math.round(tmPct)}% of seat limit`}</span>
-                        {!tmUnlim && tmUsed >= tmLimit && (
-                          <span className="text-destructive font-medium">Seat limit reached</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {usage && !usage.isUnlimited && (usage.isNearLimit || usage.isAtLimit) && (() => {
-                      const ci   = PLANS_SIMPLE.findIndex((p) => p.key === currentPlanKey);
-                      const next = PLANS_SIMPLE[ci + 1];
-                      if (!next) return null;
-                      return (
-                        <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                          <div className="flex items-start gap-3">
-                            <TrendingUp className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium text-foreground">
-                                {usage.isAtLimit
-                                  ? "You've used all your call minutes this month"
-                                  : `${remainingLabel} of call minutes remaining`}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Upgrade to <strong>{next.name}</strong> for {formatMinutes(next.minute_quota)} at ${next.price_usd}/mo.
-                              </p>
-                              <Button
-                                size="sm"
-                                onClick={() => changePlan.mutate(next.key)}
-                                disabled={changePlan.isPending}
-                              >
-                                {changePlan.isPending
-                                  ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                                  : <ArrowUp className="w-3.5 h-3.5 mr-1.5" />}
-                                Upgrade to {next.name}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </CardContent>
                 </Card>
 
@@ -448,10 +344,11 @@ export default function BillingPage() {
                   currentPlanKey={currentPlanKey}
                   extraMinutes={usage?.extraMinutes}
                   extraMinutesExpiresAt={usage?.extraMinutesExpiresAt}
+                  onBuyClick={openBundleCheckout}
                 />
 
                 {isActive && available.length > 0 && (
-                  <Card className="border-primary/30">
+                  <Card id="change-plan-section" className="border-primary/30">
                     <CardHeader>
                       <CardTitle className="text-lg flex items-center gap-2">
                         <ArrowUp className="w-5 h-5 text-primary" />
@@ -496,7 +393,7 @@ export default function BillingPage() {
                                 size="sm"
                                 className="w-full"
                                 variant={up ? "default" : "outline"}
-                                onClick={() => changePlan.mutate(plan.key)}
+                                onClick={() => openPlanCheckout(plan, () => changePlan.mutate(plan.key))}
                                 disabled={changePlan.isPending}
                               >
                                 {changePlan.isPending
@@ -513,22 +410,6 @@ export default function BillingPage() {
                     </CardContent>
                   </Card>
                 )}
-
-                <Card>
-                  <CardHeader><CardTitle className="text-lg">Subscription Actions</CardTitle></CardHeader>
-                  <CardContent>
-                    {isActive && (
-                      <Button
-                        variant="destructive"
-                        onClick={() => cancelSubscription.mutate()}
-                        disabled={cancelSubscription.isPending}
-                      >
-                        {cancelSubscription.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        Cancel Subscription
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
               </>
             ) : !showPending ? (
               /* No active plan and no pending checkout */
@@ -571,7 +452,7 @@ export default function BillingPage() {
                         className="w-full"
                         variant={plan.key === "growth" ? "default" : "outline"}
                         size="sm"
-                        onClick={() => subscribe.mutate(plan.key)}
+                        onClick={() => openPlanCheckout(plan, () => subscribe.mutate(plan.key))}
                         disabled={subscribe.isPending}
                       >
                         {subscribe.isPending
@@ -593,59 +474,20 @@ export default function BillingPage() {
           </>
         )}
 
-        {/* Transactions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-muted-foreground" />
-              Transaction History
-            </CardTitle>
-            <CardDescription>Your recent Paystack transactions.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isTransactionsLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading transactions...
-              </div>
-            ) : transactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No transactions yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {transactions.slice(0, 10).map((tx) => (
-                  <div
-                    key={tx.reference}
-                    className="p-3 rounded-lg border border-border flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {formatNGN(tx.amount_ngn * 100)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {tx.paid_at
-                          ? format(new Date(tx.paid_at), "MMM d, yyyy • h:mm a")
-                          : format(new Date(tx.created_at), "MMM d, yyyy • h:mm a")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Ref: {tx.reference}</p>
-                    </div>
-                    <Badge
-                      variant={
-                        tx.status === "success"
-                          ? "default"
-                          : tx.status === "pending"
-                          ? "outline"
-                          : "secondary"
-                      }
-                    >
-                      {tx.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Invoices */}
+        <InvoiceTable transactions={transactions} isLoading={isTransactionsLoading} />
+
+        {/* Compliance & trust */}
+        <ComplianceFooter />
       </div>
+
+      <CheckoutDialog
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        item={checkoutItem}
+        isProcessing={isCheckoutProcessing}
+        onConfirm={handleCheckoutConfirm}
+      />
     </DashboardLayout>
   );
 }
