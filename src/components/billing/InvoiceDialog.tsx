@@ -1,12 +1,13 @@
 /**
  * InvoiceDialog.tsx
  *
- * Detailed receipt view for a single transaction. Paystack's API doesn't
- * return a VAT breakdown or invoice number, so we derive presentational
- * values from the stored total (VAT backed out at VAT_RATE) and generate
- * a stable invoice number from the transaction reference. These are
- * clearly labelled as such — nothing here is invented as if Paystack
- * returned it directly.
+ * Detailed receipt view for a single transaction. Subtotal, VAT, total,
+ * and the exchange rate shown here are read directly from the stored
+ * payment breakdown (subtotal_usd/vat_usd/total_usd/exchange_rate/
+ * vat_rate) that the server computed and sent to Paystack at checkout
+ * time — never backed out of the raw NGN total on the frontend. For
+ * older payments recorded before this breakdown was stored, those
+ * fields fall back to "—" rather than showing an invented number.
  */
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -16,8 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Download, Printer, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import type { SubscriptionTransaction } from "@/hooks/useSubscription";
-import { USD_TO_NGN } from "@/config/plans";
-import { VAT_RATE, formatUSD } from "@/config/checkout";
+import { formatUSD } from "@/config/checkout";
 import { cn } from "@/lib/utils";
 
 interface InvoiceDialogProps {
@@ -55,11 +55,14 @@ export default function InvoiceDialog({ open, onOpenChange, transaction, userEma
   if (!transaction) return null;
 
   const totalNgn = transaction.amount_ngn;
-  const totalUsd = totalNgn / USD_TO_NGN;
-  const subtotalUsd = totalUsd / (1 + VAT_RATE);
-  const vatUsd = totalUsd - subtotalUsd;
-  const subtotalNgn = subtotalUsd * USD_TO_NGN;
-  const vatNgn = vatUsd * USD_TO_NGN;
+  const hasStoredBreakdown =
+    transaction.subtotal_usd != null &&
+    transaction.vat_usd != null &&
+    transaction.total_usd != null &&
+    transaction.exchange_rate != null;
+
+  const subtotalNgn = hasStoredBreakdown ? transaction.subtotal_usd! * transaction.exchange_rate! : null;
+  const vatNgn = hasStoredBreakdown ? transaction.vat_usd! * transaction.exchange_rate! : null;
 
   const invoiceNumber = invoiceNumberFor(transaction.reference, transaction.created_at);
   const paidDate = transaction.paid_at ?? transaction.created_at;
@@ -124,24 +127,32 @@ export default function InvoiceDialog({ open, onOpenChange, transaction, userEma
 
           <Separator />
 
-          {/* Amounts */}
+          {/* Amounts — read straight from what the server stored at checkout */}
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between text-xs text-muted-foreground pb-1">
-              <span>Reference exchange rate</span>
-              <span className="tabular-nums">₦{USD_TO_NGN.toLocaleString()} / $1</span>
-            </div>
+            {hasStoredBreakdown && (
+              <div className="flex justify-between text-xs text-muted-foreground pb-1">
+                <span>Exchange rate at checkout</span>
+                <span className="tabular-nums">₦{transaction.exchange_rate!.toLocaleString()} / $1</span>
+              </div>
+            )}
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal (USD)</span>
-              <span className="tabular-nums text-foreground">{formatUSD(subtotalUsd)}</span>
+              <span className="tabular-nums text-foreground">
+                {hasStoredBreakdown ? formatUSD(transaction.subtotal_usd!) : "—"}
+              </span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal (NGN)</span>
-              <span className="tabular-nums text-foreground">₦{subtotalNgn.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="tabular-nums text-foreground">
+                {subtotalNgn != null ? `₦${subtotalNgn.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+              </span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>VAT (10%)</span>
+              <span>VAT{hasStoredBreakdown ? ` (${Math.round(transaction.vat_rate! * 100)}%)` : ""}</span>
               <span className="tabular-nums text-foreground">
-                {formatUSD(vatUsd)} · ₦{vatNgn.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {hasStoredBreakdown
+                  ? `${formatUSD(transaction.vat_usd!)} · ₦${vatNgn!.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : "—"}
               </span>
             </div>
             <Separator />
