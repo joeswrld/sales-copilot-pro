@@ -26,9 +26,12 @@ interface Props {
   currentPlanKey?: string;
   extraMinutes?: number;
   extraMinutesExpiresAt?: string | null;
+  /** When provided, buy clicks call this instead of purchasing immediately —
+   *  used to show a checkout confirmation dialog first. */
+  onBuyClick?: (bundle: { minutes: number; price_usd: number; label: string }) => void;
 }
 
-export default function ExtraMinutesBundles(_props: Props) {
+export default function ExtraMinutesBundles({ onBuyClick, ..._props }: Props) {
   const { purchase, purchasingBundle, isPurchasing } = useExtraMinutes();
   const { pool } = useTeamMinutePool();
 
@@ -141,7 +144,7 @@ export default function ExtraMinutesBundles(_props: Props) {
                   className="w-full"
                   variant={bundle.popular ? "default" : "outline"}
                   disabled={isPurchasing}
-                  onClick={() => purchase.mutate(bundle.minutes)}
+                  onClick={() => onBuyClick ? onBuyClick(bundle) : purchase.mutate(bundle.minutes)}
                 >
                   {isLoading ? (
                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
