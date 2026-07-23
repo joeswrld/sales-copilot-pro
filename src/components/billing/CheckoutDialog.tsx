@@ -1,4 +1,3 @@
-
 /**
  * CheckoutDialog.tsx
  *
@@ -7,9 +6,17 @@
  * inline popup) — see subscribe/changePlan/purchase mutations. This
  * dialog is the transparent "here's exactly what you're about to pay"
  * step that happens right before that redirect fires.
+ *
+ * BREAKDOWN SOURCE OF TRUTH: subtotal, VAT, total, and the NGN amount
+ * shown here are NEVER computed in this component. They come straight
+ * from the server (paystack-create-subscription / paystack-upgrade-
+ * subscription's preview_only mode, or purchase-minutes-bundle's
+ * "preview" action) — the exact same computation the server uses when
+ * it actually charges Paystack. That guarantees this dialog can never
+ * show a number that doesn't match what Paystack ends up charging.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -18,10 +25,11 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "react-router-dom";
-import { Loader2, ShieldCheck, Lock, Info, Users, Timer, RefreshCw, Calendar } from "lucide-react";
+import { Loader2, ShieldCheck, Lock, Info, Users, Timer, RefreshCw, Calendar, AlertTriangle } from "lucide-react";
 import { format, addMonths } from "date-fns";
-import { getCheckoutBreakdown, formatUSD, formatNGNAmount, VAT_RATE } from "@/config/checkout";
+import { formatUSD, formatNGNAmount, type ServerBreakdown } from "@/config/checkout";
 import { getTeamMembersLimit, getMinuteQuota, formatMinutes } from "@/config/plans";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 export type CheckoutItem =
@@ -39,10 +47,66 @@ interface CheckoutDialogProps {
 
 export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, isProcessing }: CheckoutDialogProps) {
   const [agreed, setAgreed] = useState(false);
+  const [breakdown, setBreakdown] = useState<ServerBreakdown | null>(null);
+  const [isLoadingBreakdown, setIsLoadingBreakdown] = useState(false);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
+
+  // Fetch the exact server-computed breakdown whenever the dialog opens
+  // for a new item. This is a read-only preview call — it never charges
+  // anything or touches Paystack.
+  useEffect(() => {
+    if (!open || !item) {
+      setBreakdown(null);
+      setBreakdownError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingBreakdown(true);
+    setBreakdownError(null);
+
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error("Session expired — please sign in again.");
+
+        let result;
+        if (item.kind === "plan") {
+          result = await supabase.functions.invoke("paystack-upgrade-subscription", {
+            body: { new_plan_key: item.planKey, preview_only: true },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          if (!result.error && !(result.data as any)?.error) {
+            // paystack-upgrade-subscription's preview also works for a
+            // brand-new subscription (proration collapses to full price
+            // when there's no current paid plan), so we can reuse it here.
+          }
+        } else {
+          result = await supabase.functions.invoke("purchase-minutes-bundle", {
+            body: { action: "preview", minutes: item.minutes },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        }
+
+        if (result.error) throw new Error(result.error.message ?? "Failed to load pricing");
+        if ((result.data as any)?.error) throw new Error((result.data as any).error);
+
+        const serverBreakdown = (result.data as any)?.breakdown as ServerBreakdown | undefined;
+        if (!serverBreakdown) throw new Error("Pricing unavailable");
+
+        if (!cancelled) setBreakdown(serverBreakdown);
+      } catch (err: any) {
+        if (!cancelled) setBreakdownError(err.message || "Failed to load pricing");
+      } finally {
+        if (!cancelled) setIsLoadingBreakdown(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, item]);
 
   if (!item) return null;
 
-  const breakdown = getCheckoutBreakdown(item.priceUsd);
   const isPlan = item.kind === "plan";
   const nextBillingDate = addMonths(new Date(), 1);
 
@@ -51,6 +115,8 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
     if (!next) setAgreed(false);
     onOpenChange(next);
   };
+
+  const canConfirm = agreed && !isProcessing && !!breakdown && !isLoadingBreakdown;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -104,26 +170,40 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
 
           <Separator />
 
-          {/* Price breakdown */}
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span className="tabular-nums text-foreground">{formatUSD(breakdown.subtotalUsd)}</span>
+          {/* Price breakdown — always read from the server, never computed here */}
+          {isLoadingBreakdown ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Calculating exact price…
             </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>VAT ({Math.round(VAT_RATE * 100)}%)</span>
-              <span className="tabular-nums text-foreground">{formatUSD(breakdown.vatUsd)}</span>
+          ) : breakdownError ? (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+              <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Couldn't load pricing: {breakdownError}. Please close this dialog and try again.
+              </p>
             </div>
-            <Separator />
-            <div className="flex justify-between font-semibold text-foreground text-base">
-              <span>Total</span>
-              <span className="tabular-nums">{formatUSD(breakdown.totalUsd)}</span>
+          ) : breakdown ? (
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span className="tabular-nums text-foreground">{formatUSD(breakdown.subtotal_usd)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>VAT ({Math.round(breakdown.vat_rate * 100)}%)</span>
+                <span className="tabular-nums text-foreground">{formatUSD(breakdown.vat_usd)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between font-semibold text-foreground text-base">
+                <span>Total</span>
+                <span className="tabular-nums">{formatUSD(breakdown.total_usd)}</span>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground pt-0.5">
+                <span>Charged in Naira at checkout</span>
+                <span className="tabular-nums">{formatNGNAmount(breakdown.total_ngn)}</span>
+              </div>
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground pt-0.5">
-              <span>Charged in Naira at checkout</span>
-              <span className="tabular-nums">≈ {formatNGNAmount(breakdown.totalNgn)}</span>
-            </div>
-          </div>
+          ) : null}
 
           {/* Frequency + renewal */}
           <div className="space-y-2 text-xs text-muted-foreground">
@@ -142,14 +222,16 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
           </div>
 
           {/* Currency notice */}
-          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-            <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              You are billed in USD. Your payment will be processed in NGN at the current exchange rate
-              (≈ ₦{breakdown.exchangeRate.toLocaleString()}/$1).
-              {isPlan && " Your subscription renews automatically each month until cancelled."}
-            </p>
-          </div>
+          {breakdown && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+              <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                You are billed in USD. Your payment will be processed in NGN at the current exchange rate
+                ({`₦${breakdown.exchange_rate.toLocaleString()}/$1`}).
+                {isPlan && " Your subscription renews automatically each month until cancelled."}
+              </p>
+            </div>
+          )}
 
           {/* Payment processor */}
           <div className="flex items-center justify-between p-3 rounded-lg border border-border">
@@ -178,7 +260,7 @@ export default function CheckoutDialog({ open, onOpenChange, item, onConfirm, is
           </Button>
           <Button
             onClick={onConfirm}
-            disabled={!agreed || isProcessing}
+            disabled={!canConfirm}
             className={cn("sm:order-2 w-full sm:w-auto", "gap-2")}
           >
             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
