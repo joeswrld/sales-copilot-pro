@@ -865,7 +865,7 @@ export default function LiveCall() {
         expMinutes: 1440, // 24h
       });
       setShowPopup(true);
-      toast.success(Fixsense room created! Share the link with your prospect.");
+      toast.success("Fixsense room created! Share the link with your prospect.");
     } catch (err: any) {
       if (callRow?.id) {
         await supabase.from("calls")
