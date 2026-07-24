@@ -78,7 +78,7 @@ export default function CallsList() {
                       </div>
                       <p className="text-xs text-muted-foreground">{format(new Date(call.date), "MMM d, yyyy")}</p>
                     </div>
-                    <span className="text-sm text-muted-foreground">{(call as any).platform || "—"}</span>
+                    <span className="text-sm text-muted-foreground">Fixsense</span>
                     <span className="text-sm text-muted-foreground">
                       {call.duration_minutes ? `${call.duration_minutes} min` : isLive ? "In progress" : isWaiting ? "Not started" : "—"}
                     </span>
