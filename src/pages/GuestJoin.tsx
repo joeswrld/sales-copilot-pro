@@ -1311,6 +1311,7 @@ export default function GuestJoin() {
             layout={videoLayout}
             onLayoutChange={setVideoLayout}
             connectingLabel="Joining meeting…"
+            localName={guestName.trim() || "Guest"}
           />
         )}
       </div>
