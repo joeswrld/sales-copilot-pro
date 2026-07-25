@@ -193,6 +193,7 @@ export const MeetingVideoGrid = memo(
     layout,
     onLayoutChange,
     connectingLabel = "Connecting…",
+    localName,
   }: {
     participants: DailyParticipant[];
     activeSpeakerId: string | null;
@@ -206,6 +207,11 @@ export const MeetingVideoGrid = memo(
     layout: VideoLayout;
     onLayoutChange: (l: VideoLayout) => void;
     connectingLabel?: string;
+    /** Display name of the local user (host or guest), shown while they're
+     * connected but everyone else's tile hasn't populated yet — so the
+     * local participant always sees their own name, the same way a guest
+     * always sees theirs once `participants` has entries. */
+    localName?: string;
   }) => {
     const { ref: stageRef, size: stageSize } = useElementSize<HTMLDivElement>();
 
@@ -257,6 +263,14 @@ export const MeetingVideoGrid = memo(
           >
             <Users className="w-7 h-7 sm:w-8 sm:h-8" style={{ color: T.subtle }} />
           </div>
+          {/* Show the local user's own name here too — otherwise the host
+             sees a nameless placeholder while a guest, once their tile
+             renders via PinnableTile below, always sees their own name. */}
+          {localName && (
+            <p className="text-sm font-medium text-white/90">
+              {localName} <span style={{ color: T.muted }}>(You)</span>
+            </p>
+          )}
           <p className="text-sm" style={{ color: T.muted }}>Waiting for others to join…</p>
         </div>
       );
