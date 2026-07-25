@@ -1,21 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { openCookiePreferences } from "@/components/CookieConsent";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type ScenarioKey = "cold_call" | "saas_demo" | "enterprise";
+// ─────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────
+type ScenarioKey = "client_call" | "interview" | "team_meeting";
 
 interface AnalysisResult {
   sentiment: number;
   sentimentLabel: string;
-  dealRisk: number;
-  objections: { timestamp: string; text: string; response: string }[];
-  opportunities: string[];
-  revenueAtRisk: string;
+  followThrough: number;
+  keyMoments: { timestamp: string; text: string; response: string }[];
+  highlights: string[];
+  actionItemCount: string;
   coachingTips: string[];
 }
 
-// ─── Scroll animation hook ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// Scroll animation hook
+// ─────────────────────────────────────────────────────────────────────────
 function useInView(threshold = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
@@ -31,20 +36,22 @@ function useInView(threshold = 0.12) {
   return { ref, inView };
 }
 
-function FadeIn({ children, delay = 0, y = 28 }: { children: React.ReactNode; delay?: number; y?: number }) {
+function FadeIn({ children, delay = 0, y = 24 }: { children: React.ReactNode; delay?: number; y?: number }) {
   const { ref, inView } = useInView();
   return (
     <div ref={ref} style={{
       opacity: inView ? 1 : 0,
       transform: inView ? "translateY(0)" : `translateY(${y}px)`,
-      transition: `opacity 0.75s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.75s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
+      transition: `opacity 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
     }}>
       {children}
     </div>
   );
 }
 
-// ─── Logo ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// Logo
+// ─────────────────────────────────────────────────────────────────────────
 function Logo({ size = 30 }: { size?: number }) {
   return (
     <img src="/fixsense_icon_logo (2).png" alt="Fixsense" width={size} height={size}
@@ -52,8 +59,10 @@ function Logo({ size = 30 }: { size?: number }) {
   );
 }
 
-// ─── Animated Counter ────────────────────────────────────────────────────────
-function AnimCounter({ target, prefix = "", suffix = "", duration = 1800 }: {
+// ─────────────────────────────────────────────────────────────────────────
+// Animated counter
+// ─────────────────────────────────────────────────────────────────────────
+function AnimCounter({ target, prefix = "", suffix = "", duration = 1600 }: {
   target: number; prefix?: string; suffix?: string; duration?: number;
 }) {
   const [val, setVal] = useState(0);
@@ -72,91 +81,98 @@ function AnimCounter({ target, prefix = "", suffix = "", duration = 1800 }: {
   return <span ref={ref}>{prefix}{val.toLocaleString()}{suffix}</span>;
 }
 
-// ─── LIVE DEMO ────────────────────────────────────────────────────────────────
-const SCENARIOS: Record<ScenarioKey, { label: string; emoji: string; transcript: string }> = {
-  cold_call: {
-    label: "Cold Call",
-    emoji: "📞",
-    transcript: `Rep: Hi Sarah, this is Marcus from Fixsense. I know you're busy — I'll be quick. We help sales teams like yours stop losing deals to objections they never saw coming. Is that something worth 2 minutes?
-Prospect: We already have a tool for call recording. I don't think we need another.
-Rep: Totally fair — most teams have recording. What they're missing is real-time intelligence. When a prospect says your pricing is too high, your reps find out in the debrief. We tell them in 3 seconds, with a counter-response ready.
-Prospect: How much does it cost? We're pretty budget-constrained right now.
-Rep: Less than losing one deal. Our Growth plan is $29/month. One recovered deal pays for 3 years. What's your average deal size?
-Prospect: Around $40k... ok that's a fair point. Can you send me more info?`
+// ─────────────────────────────────────────────────────────────────────────
+// Live demo data: three everyday meeting types, not just sales
+// ─────────────────────────────────────────────────────────────────────────
+const SCENARIOS: Record<ScenarioKey, { label: string; icon: string; transcript: string }> = {
+  client_call: {
+    label: "Client Call",
+    icon: "briefcase",
+    transcript: `Alex: Thanks for hopping on. Quick recap before we dive in: last time we agreed on the new homepage layout and a mid-March launch.
+Jordan: Right, and we've since had some pushback internally on the color direction. Marketing wants something warmer.
+Alex: Got it. Can you send over their reference examples so our designer can adjust the palette this week?
+Jordan: Yes, I will email those today. Also, is the March 15 date still realistic given the change?
+Alex: Should be fine as long as we lock the palette by Friday. I will also loop in our dev lead so nothing slips on the build side.
+Jordan: Perfect. Let us regroup next Tuesday to review the updated mockups.`
   },
-  saas_demo: {
-    label: "SaaS Demo",
-    emoji: "🎯",
-    transcript: `Rep: Today I'll show you how Fixsense works inside a real call. Before I do — what's your biggest pain point with your current sales process?
-Prospect: Honestly? Our reps wing it on objection handling. We lose deals we should win because they freeze on pricing questions.
-Rep: That's exactly what we fix. Let me show you what your rep would see in real-time...
-Prospect: This looks interesting but we tried Gong and our team hated the bots joining calls. Prospects always got uncomfortable.
-Rep: That's a fair concern — and it's why we built natively. No bot joins your calls. Fixsense IS your meeting room. Zero friction for the prospect.
-Prospect: Okay that's actually a differentiator. What about our CRM? We're on Salesforce.
-Rep: One-click sync. Call score, sentiment, objections, next steps — pushed automatically the moment the call ends.
-Prospect: I want to run this by our VP of Sales. Can you set up a trial?`
+  interview: {
+    label: "Job Interview",
+    icon: "user",
+    transcript: `Interviewer: Tell me about a project where you had to work with a tight deadline and shifting requirements.
+Candidate: Sure. At my last role, we had a client change scope two weeks before launch. I restructured the sprint, cut non-essential features, and we still shipped on time.
+Interviewer: How did you communicate that to the client?
+Candidate: I sent a short written summary of tradeoffs the same day, with three options ranked by risk. They picked the middle option within an hour.
+Interviewer: That's a great example of clear communication under pressure. What about a time something did not go well?
+Candidate: Early in my career I underestimated a database migration. We had two hours of downtime. I now always build a rollback plan before any migration, no exceptions.
+Interviewer: Good. Let's talk about how you approach code reviews.`
   },
-  enterprise: {
-    label: "Enterprise",
-    emoji: "🏢",
-    transcript: `Rep: Thank you for the time today. I understand your team has 60 reps across 4 regions and you're looking to standardize your sales methodology.
-Prospect: That's right. Our biggest problem is consistency. Top reps close at 34%, bottom at 8%. We need to close that gap.
-Rep: We've seen that exact gap at teams your size. Fixsense gives every rep the same AI co-pilot as your top performers — live objection handling, real-time sentiment, guided responses.
-Prospect: We've had concerns about security. Our legal team will have questions about where call data is stored.
-Rep: Understood. We're SOC2 certified, GDPR compliant, AES-256 encryption at rest. All data stays in your region. I can send our security whitepaper today.
-Prospect: What's the implementation timeline? We can't afford disruption.
-Rep: Most enterprise teams are live in 48 hours. No new hardware, no IT involvement. Reps download nothing — they join through a link.
-Prospect: The price will be a sticking point. We're locked into our current tool through Q2.
-Rep: Perfect timing — we offer a phased migration with no overlap billing. And our enterprise contracts include a 90-day performance guarantee.`
+  team_meeting: {
+    label: "Team Standup",
+    icon: "users",
+    transcript: `Priya: Yesterday I finished the onboarding flow redesign and started on the billing page. Today I will keep working on billing.
+Sam: I am blocked on the API keys for the payments integration. Can someone from platform help today?
+Priya: I can pair with you after lunch.
+Devon: No blockers here. Wrapped up the mobile bug fixes, moving to the notification settings work next.
+Sam: One more thing, we should decide on the release date this week. Current plan is still next Thursday.
+Priya: Agreed, Thursday works. Let us confirm in writing by end of day so support can prep the changelog.`
   }
 };
 
 const SCENARIO_ANALYSIS: Record<ScenarioKey, AnalysisResult> = {
-  cold_call: {
-    sentiment: 62, sentimentLabel: "Warming",
-    dealRisk: 44,
-    objections: [
-      { timestamp: "0:18", text: "We already have a call recording tool", response: "Reframe: recording ≠ intelligence. Ask what they do with the data post-call." },
-      { timestamp: "0:47", text: "Budget constraint flagged", response: "ROI anchor: link cost to average deal value. Calculate payback period live." },
+  client_call: {
+    sentiment: 81, sentimentLabel: "Positive",
+    followThrough: 92,
+    keyMoments: [
+      { timestamp: "0:14", text: "Internal pushback on color direction flagged", response: "Suggested action: request reference examples before the design pass continues." },
+      { timestamp: "0:41", text: "Timeline dependency raised on palette approval", response: "Risk flagged: March 15 date depends on Friday sign-off. Added as a tracked deadline." },
     ],
-    opportunities: ["High curiosity signal: asked for more info", "Disclosed $40k ACV — qualify budget authority", "Meeting request = strong buying intent"],
-    revenueAtRisk: "$40,000",
-    coachingTips: ["Lock in a specific next step — 'send info' is a soft close", "Ask who else needs to be in the next call", "Share ROI calculator before follow-up email"],
+    highlights: ["Client confirmed the overall layout is approved", "Clear next step assigned to both sides with owners", "Follow-up meeting already scheduled for next Tuesday"],
+    actionItemCount: "4 action items",
+    coachingTips: ["Send a written recap within the hour while details are fresh", "Confirm the Friday deadline in writing with both stakeholders", "Add the color reference request to your task tracker now"],
   },
-  saas_demo: {
-    sentiment: 78, sentimentLabel: "Engaged",
-    dealRisk: 28,
-    objections: [
-      { timestamp: "1:02", text: "Bot join experience ruined Gong adoption", response: "Native room is a hard differentiator. Demo the prospect join flow live." },
-      { timestamp: "1:34", text: "Salesforce CRM compatibility question", response: "Confirm integration → remove technical blocker, accelerate timeline." },
+  interview: {
+    sentiment: 88, sentimentLabel: "Strong",
+    followThrough: 74,
+    keyMoments: [
+      { timestamp: "0:22", text: "Strong example of stakeholder communication under pressure", response: "Candidate signal: structured decision-making, quantifiable outcome, fast turnaround." },
+      { timestamp: "0:58", text: "Honest account of a past mistake with a concrete fix", response: "Candidate signal: accountability and process improvement, not just a good outcome story." },
     ],
-    opportunities: ["VP of Sales involvement = champion identified", "Trial request = 85% close probability signal", "CRM question shows technical evaluation stage"],
-    revenueAtRisk: "$0 — deal is moving",
-    coachingTips: ["Propose trial with success metrics defined upfront", "Get VP of Sales on the next call", "Send Salesforce integration doc within 1 hour"],
+    highlights: ["Two strong behavioral examples with measurable results", "Candidate proactively explained how they changed their process", "Consistent, specific answers rather than vague generalities"],
+    actionItemCount: "3 follow-up questions",
+    coachingTips: ["Ask a follow-up on how the rollback plan is tested today", "Note the communication example for the hiring panel summary", "Confirm timeline expectations before the next round"],
   },
-  enterprise: {
-    sentiment: 55, sentimentLabel: "Evaluating",
-    dealRisk: 61,
-    objections: [
-      { timestamp: "1:15", text: "Security/legal concerns raised", response: "Proactively send SOC2 report. Offer security review call with CISO." },
-      { timestamp: "2:08", text: "Implementation disruption risk", response: "Confirm 48-hour onboarding → reduce perceived switching cost." },
-      { timestamp: "2:41", text: "Locked into current tool until Q2", response: "Phased migration + overlap billing removal. Start pilot in Q1 with 5 reps." },
+  team_meeting: {
+    sentiment: 76, sentimentLabel: "On track",
+    followThrough: 85,
+    keyMoments: [
+      { timestamp: "0:19", text: "Blocker identified on payments API keys", response: "Owner assigned same call. Pairing session scheduled for this afternoon." },
+      { timestamp: "0:47", text: "Release date needs written confirmation", response: "Action item created: confirm Thursday release date in writing by end of day." },
     ],
-    opportunities: ["Performance gap (34% vs 8%) = clear ROI case to build", "60-rep team = $58k+ ARR opportunity", "Q2 contract end = natural window for full switch"],
-    revenueAtRisk: "$58,000",
-    coachingTips: ["Send security whitepaper before EOD", "Propose 5-rep pilot starting Q1", "Build ROI model showing cost of 26-point close rate gap"],
+    highlights: ["All three updates delivered with no open questions", "Blocker resolved within the meeting, not left hanging", "Release date reconfirmed with a clear owner for the changelog"],
+    actionItemCount: "3 action items",
+    coachingTips: ["Send the written release confirmation before end of day", "Track the pairing session outcome in tomorrow's standup", "Flag the changelog prep task to support ahead of Thursday"],
   }
 };
 
+
+function ScenarioIcon({ name }: { name: string }) {
+  const common = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (name === "briefcase") return <svg {...common}><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><path d="M2 13h20" /></svg>;
+  if (name === "user") return <svg {...common}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" /></svg>;
+  if (name === "users") return <svg {...common}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 21c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" /><circle cx="17.5" cy="8.5" r="2.5" /><path d="M15.5 14.5c2.9.3 5.2 2.7 5.2 5.7" /></svg>;
+  if (name === "edit") return <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>;
+  return null;
+}
+
 function LiveDemo() {
-  const [activeScenario, setActiveScenario] = useState<ScenarioKey>("saas_demo");
+  const [activeScenario, setActiveScenario] = useState<ScenarioKey>("client_call");
   const [customTranscript, setCustomTranscript] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [streamedLines, setStreamedLines] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"analysis" | "transcript">("analysis");
+  const [activeTab, setActiveTab] = useState<"analysis" | "coaching">("analysis");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runAnalysis = useCallback(() => {
@@ -177,40 +193,40 @@ function LiveDemo() {
         setStreamedLines(p => [...p, lines[li]]);
         li++;
       }
-    }, 180);
+    }, 190);
 
     setTimeout(() => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setProgress(100);
       setRunning(false);
       setResult(useCustom ? {
-        sentiment: 68, sentimentLabel: "Mixed",
-        dealRisk: 52,
-        objections: [{ timestamp: "custom", text: "Detected from your transcript", response: "Analyze the resistance point and reframe around ROI." }],
-        opportunities: ["Custom transcript analyzed", "Review objection timestamps for coaching moments"],
-        revenueAtRisk: "Calculating...",
-        coachingTips: ["Review detected objections", "Build ROI anchor for next call", "Confirm next steps before close"],
+        sentiment: 74, sentimentLabel: "Balanced",
+        followThrough: 70,
+        keyMoments: [{ timestamp: "custom", text: "Detected from your transcript", response: "Fixsense highlights the moment and suggests a next step automatically." }],
+        highlights: ["Custom transcript analyzed", "Review the timestamps for key discussion points"],
+        actionItemCount: "Calculating",
+        coachingTips: ["Review the detected key moments", "Confirm ownership for any open items", "Send a recap before the next meeting"],
       } : SCENARIO_ANALYSIS[activeScenario]);
       setActiveTab("analysis");
-    }, 3200);
+    }, 3000);
   }, [activeScenario, customTranscript, useCustom]);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-  const sentColor = result ? (result.sentiment >= 70 ? "#22c55e" : result.sentiment >= 50 ? "#f59e0b" : "#ef4444") : "#60a5fa";
-  const riskColor = result ? (result.dealRisk <= 35 ? "#22c55e" : result.dealRisk <= 60 ? "#f59e0b" : "#ef4444") : "#60a5fa";
+  const sentColor = result ? (result.sentiment >= 75 ? "#22c55e" : result.sentiment >= 55 ? "#f59e0b" : "#ef4444") : "#60a5fa";
+  const ftColor = result ? (result.followThrough >= 75 ? "#22c55e" : result.followThrough >= 50 ? "#f59e0b" : "#ef4444") : "#60a5fa";
 
   return (
     <div className="demo-shell">
       <div className="demo-header">
         <div className="demo-header-left">
           <div className="demo-live-dot" />
-          <span className="demo-title">Try Fixsense Live</span>
-          <span className="demo-subtitle">Real-time AI analysis engine</span>
+          <span className="demo-title">Try Fixsense live</span>
+          <span className="demo-subtitle">Real transcript, real AI output</span>
         </div>
         {result && (
           <button className="demo-reset" onClick={() => { setResult(null); setStreamedLines([]); setProgress(0); }}>
-            ↺ Reset
+            Reset
           </button>
         )}
       </div>
@@ -219,25 +235,25 @@ function LiveDemo() {
         {(Object.keys(SCENARIOS) as ScenarioKey[]).map(k => (
           <button key={k} onClick={() => { setActiveScenario(k); setUseCustom(false); setResult(null); setStreamedLines([]); }}
             className={`demo-scenario-btn ${activeScenario === k && !useCustom ? "active" : ""}`}>
-            <span>{SCENARIOS[k].emoji}</span>
+            <ScenarioIcon name={SCENARIOS[k].icon} />
             <span>{SCENARIOS[k].label}</span>
           </button>
         ))}
         <button onClick={() => { setUseCustom(true); setResult(null); setStreamedLines([]); }}
           className={`demo-scenario-btn ${useCustom ? "active" : ""}`}>
-          <span>✏️</span><span>Paste</span>
+          <ScenarioIcon name="edit" /><span>Paste your own</span>
         </button>
       </div>
 
       <div className="demo-content">
         <div className="demo-input-panel">
           <div className="demo-panel-label">
-            {useCustom ? "Your Transcript" : `${SCENARIOS[activeScenario].emoji} ${SCENARIOS[activeScenario].label} Script`}
+            {useCustom ? "Your transcript" : `${SCENARIOS[activeScenario].label} transcript`}
           </div>
           {useCustom ? (
             <textarea
               className="demo-textarea"
-              placeholder="Paste your sales call transcript here..."
+              placeholder="Paste any meeting transcript here"
               value={customTranscript}
               onChange={e => setCustomTranscript(e.target.value)}
               rows={8}
@@ -245,12 +261,14 @@ function LiveDemo() {
           ) : (
             <div className="demo-transcript-preview">
               {SCENARIOS[activeScenario].transcript.split("\n").filter(l => l.trim()).map((line, i) => {
-                const isRep = line.startsWith("Rep:");
+                const speakerMatch = line.match(/^([^:]+):/);
+                const speaker = speakerMatch ? speakerMatch[1] : "Speaker";
+                const speakerIdx = i % 2 === 0 ? 0 : 1;
                 const isActive = running && streamedLines.length > i;
                 return (
-                  <div key={i} className={`demo-transcript-line ${isRep ? "rep" : "prospect"} ${isActive ? "active" : ""}`}>
-                    <span className="demo-speaker">{isRep ? "Rep" : "Prospect"}</span>
-                    <span className="demo-line-text">{line.replace(/^(Rep|Prospect):/, "").trim()}</span>
+                  <div key={i} className={`demo-transcript-line ${speakerIdx === 0 ? "rep" : "prospect"} ${isActive ? "active" : ""}`}>
+                    <span className="demo-speaker">{speaker}</span>
+                    <span className="demo-line-text">{line.replace(/^[^:]+:/, "").trim()}</span>
                   </div>
                 );
               })}
@@ -259,8 +277,8 @@ function LiveDemo() {
 
           {running && (
             <div className="demo-progress-wrap">
-              <div className="demo-progress-bar" style={{ width: `${progress}%` }} />
-              <span className="demo-progress-label">Analyzing… {Math.round(progress)}%</span>
+              <div className="demo-progress-bar-track"><div className="demo-progress-bar" style={{ width: `${progress}%` }} /></div>
+              <span className="demo-progress-label">Analyzing, {Math.round(progress)}%</span>
             </div>
           )}
 
@@ -270,9 +288,9 @@ function LiveDemo() {
             disabled={running || (useCustom && !customTranscript.trim())}
           >
             {running ? (
-              <><span className="demo-spinner" />Analyzing in real time…</>
+              <><span className="demo-spinner" />Analyzing in real time</>
             ) : (
-              <><span>⚡</span>Run Analysis</>
+              <>Run analysis</>
             )}
           </button>
         </div>
@@ -280,13 +298,15 @@ function LiveDemo() {
         <div className="demo-output-panel">
           {!result && !running ? (
             <div className="demo-empty">
-              <div className="demo-empty-icon">🎯</div>
-              <p className="demo-empty-title">Select a scenario and run analysis</p>
-              <p className="demo-empty-sub">See live objection detection, sentiment tracking, deal risk scoring, and AI coaching in seconds</p>
+              <div className="demo-empty-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" /><circle cx="12" cy="12" r="3" /></svg>
+              </div>
+              <p className="demo-empty-title">Select a meeting type and run analysis</p>
+              <p className="demo-empty-sub">See live speaker identification, sentiment tracking, and AI action items in seconds</p>
             </div>
           ) : running ? (
             <div className="demo-loading">
-              {["Parsing conversation…", "Detecting objections…", "Scoring sentiment…", "Calculating deal risk…", "Generating coaching…"].map((step, i) => (
+              {["Identifying speakers", "Transcribing conversation", "Scoring sentiment", "Extracting action items", "Generating summary"].map((step, i) => (
                 <div key={i} className={`demo-loading-step ${progress > i * 20 ? "done" : progress > (i - 1) * 20 ? "current" : ""}`}>
                   <span className="demo-loading-dot" />
                   {step}
@@ -305,56 +325,56 @@ function LiveDemo() {
                 </div>
                 <div className="demo-kpi-divider" />
                 <div className="demo-kpi">
-                  <div className="demo-kpi-value" style={{ color: riskColor }}>{result.dealRisk}</div>
-                  <div className="demo-kpi-label">Deal Risk</div>
-                  <div className="demo-kpi-badge" style={{ background: `${riskColor}18`, color: riskColor, border: `1px solid ${riskColor}30` }}>
-                    {result.dealRisk <= 35 ? "Low" : result.dealRisk <= 60 ? "Medium" : "High"}
+                  <div className="demo-kpi-value" style={{ color: ftColor }}>{result.followThrough}%</div>
+                  <div className="demo-kpi-label">Clarity Score</div>
+                  <div className="demo-kpi-badge" style={{ background: `${ftColor}18`, color: ftColor, border: `1px solid ${ftColor}30` }}>
+                    {result.followThrough >= 75 ? "High" : result.followThrough >= 50 ? "Medium" : "Low"}
                   </div>
                 </div>
                 <div className="demo-kpi-divider" />
                 <div className="demo-kpi">
-                  <div className="demo-kpi-value" style={{ color: "#a78bfa", fontSize: 13, marginTop: 4 }}>{result.revenueAtRisk}</div>
-                  <div className="demo-kpi-label">Rev at Risk</div>
+                  <div className="demo-kpi-value" style={{ color: "#a78bfa", fontSize: 13, marginTop: 4 }}>{result.actionItemCount}</div>
+                  <div className="demo-kpi-label">Extracted</div>
                   <div className="demo-kpi-badge" style={{ background: "rgba(167,139,250,.12)", color: "#a78bfa", border: "1px solid rgba(167,139,250,.25)" }}>
-                    Monitored
+                    Tracked
                   </div>
                 </div>
               </div>
 
               <div className="demo-result-tabs">
                 <button className={`demo-result-tab ${activeTab === "analysis" ? "active" : ""}`} onClick={() => setActiveTab("analysis")}>
-                  AI Analysis
+                  AI summary
                 </button>
-                <button className={`demo-result-tab ${activeTab === "transcript" ? "active" : ""}`} onClick={() => setActiveTab("transcript")}>
-                  Coaching
+                <button className={`demo-result-tab ${activeTab === "coaching" ? "active" : ""}`} onClick={() => setActiveTab("coaching")}>
+                  Suggested next steps
                 </button>
               </div>
 
               {activeTab === "analysis" ? (
                 <div className="demo-analysis">
-                  <div className="demo-section-label">⚠ Objections ({result.objections.length})</div>
-                  {result.objections.map((obj, i) => (
+                  <div className="demo-section-label">Key moments ({result.keyMoments.length})</div>
+                  {result.keyMoments.map((obj, i) => (
                     <div key={i} className="demo-objection">
                       <div className="demo-obj-header">
                         <span className="demo-obj-timestamp">{obj.timestamp}</span>
                         <span className="demo-obj-text">{obj.text}</span>
                       </div>
                       <div className="demo-obj-response">
-                        <span style={{ color: "#0ef5d4" }}>💡</span> {obj.response}
+                        {obj.response}
                       </div>
                     </div>
                   ))}
-                  <div className="demo-section-label" style={{ marginTop: 8 }}>✓ Opportunities</div>
-                  {result.opportunities.map((opp, i) => (
+                  <div className="demo-section-label" style={{ marginTop: 8 }}>Highlights</div>
+                  {result.highlights.map((opp, i) => (
                     <div key={i} className="demo-opportunity">
-                      <span style={{ color: "#22c55e", flexShrink: 0 }}>→</span>
+                      <span style={{ color: "#22c55e", flexShrink: 0 }}>+</span>
                       <span>{opp}</span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="demo-analysis">
-                  <div className="demo-section-label">🎯 AI Coaching Tips</div>
+                  <div className="demo-section-label">Suggested next steps</div>
                   {result.coachingTips.map((tip, i) => (
                     <div key={i} className="demo-coaching-tip">
                       <span className="demo-tip-num">{i + 1}</span>
@@ -371,7 +391,46 @@ function LiveDemo() {
   );
 }
 
-// ─── MAIN LANDING PAGE ────────────────────────────────────────────────────────
+const NAV_LINKS = [
+  { label: "Why Fixsense", href: "#problem" },
+  { label: "Live demo", href: "#demo" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Testimonials", href: "/testimonials" },
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// Small inline icon set (keeps the page dependency-free and on-brand)
+// ─────────────────────────────────────────────────────────────────────────
+function Icon({ name, size = 18 }: { name: string; size?: number }) {
+  const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  switch (name) {
+    case "mic": return <svg {...p}><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /><path d="M12 19v3M8 22h8" /></svg>;
+    case "type": return <svg {...p}><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>;
+    case "users": return <svg {...p}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 21c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" /><circle cx="17.5" cy="8.5" r="2.5" /><path d="M15.5 14.5c2.9.3 5.2 2.7 5.2 5.7" /></svg>;
+    case "check-square": return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M8 12l3 3 5-6" /></svg>;
+    case "trending": return <svg {...p}><polyline points="3 17 9 11 13 15 21 6" /><polyline points="15 6 21 6 21 12" /></svg>;
+    case "briefcase": return <svg {...p}><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><path d="M2 13h20" /></svg>;
+    case "user-check": return <svg {...p}><circle cx="9" cy="8" r="4" /><path d="M2 21c0-4 3.1-7 7-7s7 3 7 7" /><path d="M17 11l2 2 4-4" /></svg>;
+    case "book": return <svg {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>;
+    case "phone": return <svg {...p}><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .6 2.9a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.5 2.9.6a2 2 0 0 1 1.8 2.1z" /></svg>;
+    case "coffee": return <svg {...p}><path d="M17 8h1a4 4 0 0 1 0 8h-1" /><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" /><line x1="6" y1="2" x2="6" y2="4" /><line x1="10" y1="2" x2="10" y2="4" /><line x1="14" y1="2" x2="14" y2="4" /></svg>;
+    case "shield": return <svg {...p}><path d="M12 2l8 3.5v6c0 5-3.4 8.8-8 10.5-4.6-1.7-8-5.5-8-10.5v-6L12 2z" /><path d="M9 12l2 2 4-4" /></svg>;
+    case "lock": return <svg {...p}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>;
+    case "globe": return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" /></svg>;
+    case "eye-off": return <svg {...p}><path d="M17.9 17.9A9.6 9.6 0 0 1 12 20c-5 0-9-4-10-8a11.6 11.6 0 0 1 3.1-4.9M9.9 5.1A9.6 9.6 0 0 1 12 4c5 0 9 4 10 8a11.6 11.6 0 0 1-1.6 3" /><line x1="2" y1="2" x2="22" y2="22" /></svg>;
+    case "arrow-right": return <svg {...p}><path d="M5 12h14M13 5l7 7-7 7" /></svg>;
+    case "check": return <svg {...p} strokeWidth={2.2}><polyline points="20 6 9 17 4 12" /></svg>;
+    case "clock": return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>;
+    case "message": return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
+    case "search": return <svg {...p}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
+    case "download": return <svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
+    default: return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MAIN LANDING PAGE
+// ─────────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const { user } = useAuth();
   const [scrolled, setScrolled] = useState(false);
@@ -384,21 +443,12 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", fn);
   }, []);
 
-  // Close mobile menu on route change / scroll
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  // Close mobile menu when user clicks a link
   const closeMobile = useCallback(() => setMobileOpen(false), []);
-
-  const FAQS = [
-    { q: "Why not just use a recording bot?", a: "Bots announce themselves to the call, delay 60–90 seconds before capturing audio, and cause 31% of enterprise prospects to disengage. Fixsense is natively built — your meeting room IS Fixsense. No bot. Zero friction. Transcription starts at call second zero." },
-    { q: "How is this different from Gong or Chorus?", a: "Gong analyzes calls after the fact. Fixsense gives you real-time objection detection, live sentiment scoring, and coaching suggestions during the call — when you can still act on them. Same call. Completely different outcome." },
-    { q: "What does 'no CRM updates' mean for my reps?", a: "After every call, Fixsense automatically pushes the summary, sentiment score, action items, and deal stage to your CRM. Your reps spend 0 minutes on post-call admin. That's 4 hours per rep, per week, back in pipeline." },
-    { q: "How quickly can we get started?", a: "Most teams are live in 48 hours. No hardware. No IT. No downloads. Reps join calls through a link. Your first AI summary lands in your inbox 2 minutes after your first call ends." },
-  ];
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
@@ -416,25 +466,30 @@ export default function LandingPage() {
     }
 
     html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
+    @media (prefers-reduced-motion: reduce){
+      html{scroll-behavior:auto;}
+      .lp *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
+    }
     .lp{background:var(--bg);color:var(--ink);font-family:var(--fb);-webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh;}
+    .lp :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:4px;}
 
     /* ══════════════════════════════════════════
        NAV
     ══════════════════════════════════════════ */
-    .nav{position:fixed;top:0;left:0;right:0;z-index:200;height:60px;display:flex;align-items:center;padding:0 20px;transition:all .3s;}
+    .nav{position:fixed;top:0;left:0;right:0;z-index:200;height:64px;display:flex;align-items:center;padding:0 20px;transition:all .3s;}
     .nav.scrolled{background:rgba(3,5,13,0.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
     .nav-inner{max-width:1180px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;}
     .nav-brand{display:flex;align-items:center;gap:9px;text-decoration:none;min-height:var(--touch-target);align-self:center;}
     .nav-brandname{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.02em;}
-    .nav-links{display:flex;align-items:center;gap:22px;}
-    .nav-link{font-size:13px;font-weight:500;color:var(--muted);text-decoration:none;transition:color .18s;padding:4px 0;min-height:var(--touch-target);display:inline-flex;align-items:center;}
+    .nav-links{display:flex;align-items:center;gap:24px;}
+    .nav-link{font-size:13.5px;font-weight:500;color:var(--muted);text-decoration:none;transition:color .18s;padding:4px 0;min-height:var(--touch-target);display:inline-flex;align-items:center;}
     .nav-link:hover{color:var(--ink);}
     .nav-actions{display:flex;align-items:center;gap:8px;}
-    .btn-ghost{font-size:13px;font-weight:500;color:var(--muted);background:none;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;text-decoration:none;transition:color .15s;font-family:var(--fb);min-height:var(--touch-target);display:inline-flex;align-items:center;}
+    .btn-ghost{font-size:13.5px;font-weight:500;color:var(--muted);background:none;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;text-decoration:none;transition:color .15s;font-family:var(--fb);min-height:var(--touch-target);display:inline-flex;align-items:center;}
     .btn-ghost:hover{color:var(--ink);}
-    .btn-primary{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:#03050d;background:var(--cyan);border:none;padding:10px 20px;border-radius:9px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .15s;white-space:nowrap;min-height:var(--touch-target);}
+    .btn-primary{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;color:#03050d;background:var(--cyan);border:none;padding:10px 20px;border-radius:9px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .15s;white-space:nowrap;min-height:var(--touch-target);}
     .btn-primary:hover{opacity:.88;transform:translateY(-1px);}
-    .btn-outline{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink2);background:rgba(255,255,255,.05);border:1px solid var(--border);padding:10px 20px;border-radius:9px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .15s;min-height:var(--touch-target);}
+    .btn-outline{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;color:var(--ink2);background:rgba(255,255,255,.05);border:1px solid var(--border);padding:10px 20px;border-radius:9px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .15s;min-height:var(--touch-target);}
     .btn-outline:hover{border-color:rgba(255,255,255,.18);color:var(--ink);}
 
     /* Hamburger */
@@ -444,15 +499,13 @@ export default function LandingPage() {
     .hamburger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
     .hamburger.open span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg);}
 
-    /* Mobile menu overlay */
-    .mobile-menu{display:none;position:fixed;inset:0;top:60px;z-index:199;background:rgba(3,5,13,.99);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);flex-direction:column;padding:24px 20px 40px;border-top:1px solid var(--border);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .mobile-menu{display:none;position:fixed;inset:0;top:64px;z-index:199;background:rgba(3,5,13,.99);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);flex-direction:column;padding:24px 20px 40px;border-top:1px solid var(--border);overflow-y:auto;-webkit-overflow-scrolling:touch;}
     .mobile-menu.open{display:flex;animation:mobilein .22s ease;}
     @keyframes mobilein{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
     .mobile-link{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--muted);text-decoration:none;padding:16px 0;border-bottom:1px solid var(--border2);display:flex;align-items:center;transition:color .15s;min-height:56px;}
     .mobile-link:active,.mobile-link:hover{color:var(--ink);}
     .mobile-ctas{margin-top:24px;display:flex;flex-direction:column;gap:10px;}
 
-    /* Desktop: hide hamburger, show links */
     @media(min-width:821px){
       .hamburger{display:none!important;}
       .mobile-menu{display:none!important;}
@@ -466,142 +519,154 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        HERO
     ══════════════════════════════════════════ */
-    .hero{min-height:100vh;display:flex;align-items:center;padding:80px 20px 60px;position:relative;overflow:hidden;}
+    .hero{min-height:100vh;display:flex;align-items:center;padding:112px 20px 60px;position:relative;overflow:hidden;}
     .hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(14,245,212,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(14,245,212,.025) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(ellipse 100% 80% at 50% 0,black 0,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 100% 80% at 50% 0,black 0,transparent 100%);}
     .hero-glow{position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:min(900px,130vw);height:700px;background:radial-gradient(ellipse,rgba(14,245,212,.055) 0,transparent 65%);pointer-events:none;}
     .hero-inner{max-width:1180px;margin:0 auto;width:100%;position:relative;z-index:1;}
     @keyframes hpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
     @keyframes cpulse{0%,100%{box-shadow:0 0 0 0 rgba(14,245,212,.5)}50%{box-shadow:0 0 0 6px rgba(14,245,212,0)}}
     @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-    .hero-h{font-family:var(--fd);font-size:clamp(32px,7vw,82px);font-weight:800;line-height:1.04;letter-spacing:-.04em;color:var(--ink);max-width:960px;margin-bottom:22px;word-break:break-word;}
-    .hero-h .loss{color:#ef4444;}
-    .hero-h .gain{color:var(--cyan);}
-    .hero-sub{font-size:clamp(14px,2vw,18px);color:var(--ink2);line-height:1.72;max-width:540px;margin-bottom:36px;}
-    .hero-ctas{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:32px;}
+    .hero-h{font-family:var(--fd);font-size:clamp(34px,6.6vw,76px);font-weight:800;line-height:1.05;letter-spacing:-.04em;color:var(--ink);max-width:920px;margin-bottom:22px;word-break:break-word;}
+    .hero-h .accent{color:var(--cyan);}
+    .hero-sub{font-size:clamp(15px,2vw,18.5px);color:var(--ink2);line-height:1.72;max-width:580px;margin-bottom:32px;}
+    .hero-ctas{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:30px;}
     .btn-hero{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:700;color:#03050d;background:var(--cyan);border:none;padding:14px 28px;border-radius:10px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .2s;box-shadow:0 0 40px rgba(14,245,212,.2);min-height:50px;}
     .btn-hero:hover{opacity:.88;transform:translateY(-2px);box-shadow:0 4px 40px rgba(14,245,212,.35);}
     .btn-hero-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;color:var(--ink2);background:transparent;border:1px solid var(--border);padding:14px 26px;border-radius:10px;cursor:pointer;text-decoration:none;font-family:var(--fb);transition:all .2s;min-height:50px;}
     .btn-hero-outline:hover{border-color:rgba(255,255,255,.2);color:var(--ink);}
-    .hero-trust{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:8px;}
-    .trust-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:500;}
-    .trust-check{width:17px;height:17px;border-radius:50%;background:rgba(14,245,212,.1);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--cyan);flex-shrink:0;}
+    .hero-trust{display:flex;align-items:center;gap:14px;flex-wrap:wrap;row-gap:9px;}
+    .trust-pill{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);font-weight:500;}
+    .trust-check{width:17px;height:17px;border-radius:50%;background:rgba(14,245,212,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--cyan);}
 
-    /* Eyebrow — repositions the old unused red "urgency" badge as a calm,
-       cyan "this is live AI" signal that matches the rest of the brand
-       rather than an alarm. */
-    .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(14,245,212,.07);border:1px solid rgba(14,245,212,.22);border-radius:100px;padding:6px 14px 6px 10px;font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:20px;font-family:'DM Sans',monospace;letter-spacing:.05em;text-transform:uppercase;}
-    .hero-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);flex-shrink:0;animation:cpulse 2s ease-in-out infinite;}
-
-    /* "Who is it for" — answered as a scannable strip, not a sentence
-       buried in the subheadline. */
-    .hero-audience{margin-bottom:28px;}
-    .hero-audience-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px;}
+    /* Audience strip sits quietly under the subheadline as a scannable
+       line rather than a badge or announcement. */
+    .hero-audience{margin-bottom:30px;}
+    .hero-audience-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:11px;}
     .hero-audience-list{display:flex;flex-wrap:wrap;gap:8px;}
-    .hero-audience-pill{font-size:12px;font-weight:600;color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:100px;padding:6px 13px;white-space:nowrap;}
+    .hero-audience-pill{font-size:12.5px;font-weight:600;color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:100px;padding:6px 13px;white-space:nowrap;}
 
-    /* Live-caption cursor for the mockup's in-progress transcript line */
     .hero-caption-cursor{display:inline-block;width:2px;height:11px;background:var(--cyan);margin-left:2px;vertical-align:-1px;animation:blink 1s step-end infinite;}
     .hero-caption-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
 
-    /* Signal tags — buying signals / risks / action items, distinct from
-       the red objection tag so all three read at a glance. */
     .hero-signal-row{padding:0 16px 14px;display:flex;flex-wrap:wrap;gap:6px;}
-    .hero-signal-tag{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;border-radius:5px;padding:4px 9px;border:1px solid;white-space:nowrap;}
+    .hero-signal-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;border-radius:5px;padding:4px 9px;border:1px solid;white-space:nowrap;}
 
-    /* Hero dashboard preview */
+    /* Screenshot-style hero mockup */
     .hero-dashboard{margin-top:52px;}
     .hero-dashboard-frame{background:linear-gradient(145deg,rgba(11,14,26,0.98),rgba(6,9,18,0.98));border:1px solid rgba(255,255,255,.09);border-radius:16px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.7),0 0 0 1px rgba(14,245,212,.04);}
-    .hero-db-bar{padding:10px 16px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:6px;}
+    .hero-db-bar{padding:11px 16px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:6px;}
     .db-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-    .hero-db-bar-label{margin-left:4px;font-size:11px;color:rgba(255,255,255,.25);font-family:monospace;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .hero-db-bar-live{display:flex;align-items:center;gap:5px;font-size:10px;color:#ef4444;font-weight:700;flex-shrink:0;}
+    .hero-db-bar-label{margin-left:4px;font-size:11.5px;color:rgba(255,255,255,.3);font-family:monospace;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .hero-db-bar-live{display:flex;align-items:center;gap:5px;font-size:10.5px;color:#ef4444;font-weight:700;flex-shrink:0;}
     .hero-db-bar-live-dot{width:6px;height:6px;border-radius:50%;background:#ef4444;animation:hpulse 1.4s ease infinite;}
     .hero-db-content{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border2);}
-    .hero-db-kpi{padding:14px 16px;border-right:1px solid var(--border2);}
+    .hero-db-kpi{padding:15px 16px;border-right:1px solid var(--border2);}
     .hero-db-kpi:last-child{border-right:none;}
     .hero-kpi-val{font-family:var(--fd);font-size:clamp(18px,3vw,26px);font-weight:800;line-height:1;margin-bottom:4px;}
-    .hero-kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
-    .hero-db-transcript{padding:12px 16px;display:flex;flex-direction:column;gap:8px;}
+    .hero-kpi-label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
+    .hero-db-transcript{padding:13px 16px;display:flex;flex-direction:column;gap:9px;}
     .hero-tline{display:flex;gap:8px;align-items:flex-start;}
-    .hero-tspeaker{font-size:10px;font-weight:700;min-width:52px;padding-top:1px;flex-shrink:0;}
-    .hero-ttext{font-size:12px;color:rgba(255,255,255,.55);line-height:1.5;}
-    .hero-objection-tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#f87171;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:4px;padding:1px 7px;margin-top:4px;}
-    .hero-insight-bar{padding:10px 16px;background:rgba(14,245,212,.04);border-top:1px solid rgba(14,245,212,.1);display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;}
-    .hero-insight-label{font-size:10px;font-weight:700;color:rgba(14,245,212,.7);text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;padding-top:1px;}
-    .hero-insight-text{font-size:12px;color:rgba(255,255,255,.55);flex:1;min-width:120px;line-height:1.5;}
-    .hero-insight-badge{font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:4px;padding:2px 8px;flex-shrink:0;}
+    .hero-tspeaker{font-size:10.5px;font-weight:700;min-width:68px;padding-top:1px;flex-shrink:0;}
+    .hero-ttext{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.55;}
+    .hero-objection-tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:#0ef5d4;background:rgba(14,245,212,.08);border:1px solid rgba(14,245,212,.2);border-radius:4px;padding:1px 7px;margin-top:5px;}
+    .hero-insight-bar{padding:11px 16px;background:rgba(14,245,212,.04);border-top:1px solid rgba(14,245,212,.1);display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+    .hero-insight-label{font-size:10.5px;font-weight:700;color:rgba(14,245,212,.7);text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;padding-top:1px;}
+    .hero-insight-text{font-size:12.5px;color:rgba(255,255,255,.6);flex:1;min-width:120px;line-height:1.55;}
+    .hero-insight-badge{font-size:10.5px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:4px;padding:2px 8px;flex-shrink:0;}
 
-    /* Hero mobile adjustments */
     @media(max-width:640px){
-      .hero{padding:76px 16px 48px;min-height:auto;}
+      .hero{padding:100px 16px 48px;min-height:auto;}
       .hero-ctas{flex-direction:column;align-items:stretch;}
       .hero-db-content{grid-template-columns:repeat(2,1fr);}
-      .hero-db-kpi{padding:10px 12px;}
+      .hero-db-kpi{padding:11px 12px;}
     }
     @media(max-width:380px){
-      .hero-h{font-size:28px;letter-spacing:-.03em;}
-      .hero-trust{gap:8px;}
-      .trust-pill{font-size:11px;}
+      .hero-h{font-size:29px;letter-spacing:-.03em;}
+      .hero-trust{gap:9px;}
+      .trust-pill{font-size:11.5px;}
       .hero-audience-list{gap:6px;}
-      .hero-audience-pill{font-size:11px;padding:5px 11px;}
+      .hero-audience-pill{font-size:11.5px;padding:5px 11px;}
     }
+
+    /* ══════════════════════════════════════════
+       LOGO STRIP (trust)
+    ══════════════════════════════════════════ */
+    .logostrip{padding:36px 20px;border-top:1px solid var(--border2);border-bottom:1px solid var(--border2);background:var(--bg2);}
+    .logostrip-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:28px;flex-wrap:wrap;justify-content:space-between;}
+    .logostrip-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;white-space:nowrap;}
+    .logostrip-marks{display:flex;align-items:center;gap:34px;flex-wrap:wrap;opacity:.6;}
+    .logostrip-mark{font-family:var(--fd);font-size:16px;font-weight:700;color:rgba(255,255,255,.4);letter-spacing:-.02em;white-space:nowrap;}
+    @media(max-width:700px){.logostrip-inner{justify-content:center;text-align:center;}.logostrip-marks{justify-content:center;gap:22px;}}
 
     /* ══════════════════════════════════════════
        SHARED SECTION STYLES
     ══════════════════════════════════════════ */
-    .section{padding:72px 20px;}
+    .section{padding:80px 20px;}
     .section-inner{max-width:1180px;margin:0 auto;}
-    .kicker{font-family:monospace;font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.16em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+    .kicker{font-family:monospace;font-size:10.5px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.16em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
     .kicker::before{content:'';display:inline-block;width:20px;height:1px;background:var(--cyan);}
-    .section-h{font-family:var(--fd);font-size:clamp(26px,5vw,54px);font-weight:800;color:var(--ink);letter-spacing:-.04em;line-height:1.08;margin-bottom:14px;}
-    .section-sub{font-size:clamp(14px,2vw,16px);color:var(--ink2);line-height:1.72;max-width:520px;}
-    @media(max-width:640px){.section{padding:56px 16px;}}
+    .section-h{font-family:var(--fd);font-size:clamp(27px,4.6vw,50px);font-weight:800;color:var(--ink);letter-spacing:-.035em;line-height:1.1;margin-bottom:14px;}
+    .section-sub{font-size:clamp(14.5px,2vw,16.5px);color:var(--ink2);line-height:1.72;max-width:540px;}
+    @media(max-width:640px){.section{padding:60px 16px;}}
 
     /* ══════════════════════════════════════════
-       KPI CARDS
+       KPI CARDS (why it matters)
     ══════════════════════════════════════════ */
-    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:40px;}
-    .kpi-card{background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12);border-radius:14px;padding:20px;}
-    .kpi-icon{font-size:22px;margin-bottom:10px;}
-    .kpi-num{font-family:var(--fd);font-size:clamp(22px,3.5vw,38px);font-weight:800;color:#f87171;letter-spacing:-.04em;line-height:1;margin-bottom:6px;}
-    .kpi-desc{font-size:11.5px;color:rgba(239,68,68,.55);line-height:1.55;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:44px;}
+    .kpi-card{background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:14px;padding:22px;transition:border-color .18s,transform .18s;}
+    .kpi-card:hover{border-color:rgba(14,245,212,.2);transform:translateY(-2px);}
+    .kpi-icon{width:34px;height:34px;border-radius:9px;background:rgba(14,245,212,.08);border:1px solid rgba(14,245,212,.18);display:flex;align-items:center;justify-content:center;color:var(--cyan);margin-bottom:14px;}
+    .kpi-num{font-family:var(--fd);font-size:clamp(22px,3.5vw,36px);font-weight:800;color:var(--ink);letter-spacing:-.04em;line-height:1;margin-bottom:8px;}
+    .kpi-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
     @media(max-width:860px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
-    @media(max-width:440px){.kpi-grid{gap:8px;}.kpi-card{padding:14px;}.kpi-icon{font-size:18px;}}
+    @media(max-width:440px){.kpi-grid{gap:8px;}.kpi-card{padding:16px;}}
+
+    /* ══════════════════════════════════════════
+       USE CASES
+    ══════════════════════════════════════════ */
+    .usecase-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px;}
+    .usecase-card{border-radius:16px;padding:24px;border:1px solid var(--border);background:rgba(255,255,255,.02);transition:border-color .18s,transform .18s;}
+    .usecase-card:hover{border-color:rgba(255,255,255,.16);transform:translateY(-2px);}
+    .usecase-icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
+    .usecase-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+    .usecase-desc{font-size:13px;color:var(--ink2);line-height:1.65;}
+    @media(max-width:900px){.usecase-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:560px){.usecase-grid{grid-template-columns:1fr;gap:10px;}}
 
     /* ══════════════════════════════════════════
        DEMO SECTION
     ══════════════════════════════════════════ */
-    .demo-section{padding:72px 20px;background:var(--bg2);}
+    .demo-section{padding:80px 20px;background:var(--bg2);}
     .demo-shell{background:rgba(11,14,26,.98);border:1px solid rgba(255,255,255,.09);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);}
     .demo-header{padding:12px 16px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;gap:8px;}
     .demo-header-left{display:flex;align-items:center;gap:8px;min-width:0;}
-    .demo-live-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;animation:livepulse 1.4s ease-out infinite;flex-shrink:0;}
-    @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}70%{box-shadow:0 0 0 6px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+    .demo-live-dot{width:7px;height:7px;border-radius:50%;background:#0ef5d4;animation:livepulse 1.4s ease-out infinite;flex-shrink:0;}
+    @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(14,245,212,.6)}70%{box-shadow:0 0 0 6px rgba(14,245,212,0)}100%{box-shadow:0 0 0 0 rgba(14,245,212,0)}}
     .demo-title{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;}
-    .demo-subtitle{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .demo-subtitle{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .demo-reset{font-size:12px;color:var(--muted);background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:7px;padding:6px 12px;cursor:pointer;font-family:var(--fb);transition:.13s;white-space:nowrap;flex-shrink:0;min-height:32px;}
     .demo-reset:hover{color:var(--ink);}
 
     .demo-scenarios{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border2);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
     .demo-scenarios::-webkit-scrollbar{display:none;}
-    .demo-scenario-btn{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--fb);transition:all .13s;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;min-height:36px;}
+    .demo-scenario-btn{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--fb);transition:all .13s;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;min-height:38px;}
     .demo-scenario-btn:hover{border-color:rgba(14,245,212,.3);color:var(--ink2);}
     .demo-scenario-btn.active{border-color:rgba(14,245,212,.4);background:rgba(14,245,212,.07);color:var(--cyan);}
 
     .demo-content{display:grid;grid-template-columns:1fr 1fr;min-height:420px;}
     .demo-input-panel{border-right:1px solid var(--border2);padding:14px;display:flex;flex-direction:column;gap:10px;}
     .demo-output-panel{padding:14px;display:flex;flex-direction:column;overflow:hidden;}
-    .demo-panel-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;flex-shrink:0;}
+    .demo-panel-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;flex-shrink:0;}
 
     .demo-transcript-preview{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px;max-height:280px;-webkit-overflow-scrolling:touch;}
     .demo-transcript-line{display:flex;gap:8px;padding:5px 7px;border-radius:7px;border-left:2px solid transparent;transition:all .15s;}
     .demo-transcript-line.rep{border-left-color:rgba(96,165,250,.35);}
     .demo-transcript-line.prospect{border-left-color:rgba(45,212,191,.25);}
     .demo-transcript-line.active{background:rgba(14,245,212,.05);}
-    .demo-speaker{font-size:9px;font-weight:700;min-width:40px;padding-top:2px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;}
+    .demo-speaker{font-size:9.5px;font-weight:700;min-width:64px;padding-top:2px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;}
     .demo-transcript-line.rep .demo-speaker{color:#818cf8;}
     .demo-transcript-line.prospect .demo-speaker{color:#2dd4bf;}
-    .demo-line-text{font-size:11px;color:rgba(255,255,255,.55);line-height:1.5;}
+    .demo-line-text{font-size:11.5px;color:rgba(255,255,255,.55);line-height:1.5;}
 
     .demo-textarea{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--ink);font-size:13px;font-family:var(--fb);resize:none;outline:none;min-height:200px;transition:border-color .13s;}
     .demo-textarea:focus{border-color:rgba(14,245,212,.3);}
@@ -610,7 +675,7 @@ export default function LandingPage() {
     .demo-progress-wrap{position:relative;}
     .demo-progress-bar-track{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;}
     .demo-progress-bar{height:100%;background:linear-gradient(90deg,var(--cyan),#3b82f6);border-radius:2px;transition:width .3s ease;}
-    .demo-progress-label{font-size:10px;color:var(--muted);margin-top:4px;display:block;}
+    .demo-progress-label{font-size:10.5px;color:var(--muted);margin-top:4px;display:block;}
 
     .demo-run-btn{padding:13px 20px;border-radius:10px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--fd);display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;min-height:46px;flex-shrink:0;}
     .demo-run-btn:not(.running){background:linear-gradient(135deg,var(--cyan),#0891b2);color:#03050d;}
@@ -621,7 +686,7 @@ export default function LandingPage() {
     @keyframes spin{to{transform:rotate(360deg)}}
 
     .demo-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 16px;}
-    .demo-empty-icon{font-size:32px;margin-bottom:10px;}
+    .demo-empty-icon{color:var(--cyan);opacity:.5;margin-bottom:12px;}
     .demo-empty-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.4);margin-bottom:6px;}
     .demo-empty-sub{font-size:11.5px;color:var(--muted);line-height:1.6;max-width:240px;}
 
@@ -645,9 +710,9 @@ export default function LandingPage() {
 
     .demo-analysis{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch;}
     .demo-section-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;flex-shrink:0;}
-    .demo-objection{padding:8px 10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.14);border-radius:9px;}
+    .demo-objection{padding:8px 10px;background:rgba(14,245,212,.04);border:1px solid rgba(14,245,212,.14);border-radius:9px;}
     .demo-obj-header{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;}
-    .demo-obj-timestamp{font-size:9px;font-weight:700;color:#f87171;background:rgba(239,68,68,.12);border-radius:4px;padding:1px 6px;flex-shrink:0;}
+    .demo-obj-timestamp{font-size:9px;font-weight:700;color:#0ef5d4;background:rgba(14,245,212,.12);border-radius:4px;padding:1px 6px;flex-shrink:0;}
     .demo-obj-text{font-size:11px;color:rgba(255,255,255,.7);line-height:1.4;}
     .demo-obj-response{font-size:10.5px;color:rgba(255,255,255,.45);line-height:1.5;padding-left:2px;}
     .demo-opportunity{display:flex;gap:7px;font-size:11px;color:rgba(255,255,255,.6);line-height:1.45;padding:3px 0;}
@@ -672,82 +737,130 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        OUTPUTS / FEATURES
     ══════════════════════════════════════════ */
-    .outputs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px;}
-    .output-card{border-radius:16px;padding:22px;border:1px solid var(--border);background:rgba(255,255,255,.025);position:relative;overflow:hidden;transition:border-color .18s,transform .18s;}
+    .outputs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px;}
+    .output-card{border-radius:16px;padding:24px;border:1px solid var(--border);background:rgba(255,255,255,.025);position:relative;overflow:hidden;transition:border-color .18s,transform .18s;}
     .output-card:hover{border-color:rgba(255,255,255,.14);transform:translateY(-2px);}
     .output-card-accent{position:absolute;top:0;left:0;right:0;height:2px;}
-    .output-card-icon{font-size:24px;margin-bottom:14px;}
+    .output-card-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
     .output-card-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px;}
-    .output-card-desc{font-size:13px;color:var(--ink2);line-height:1.65;margin-bottom:14px;}
-    .output-feature-list{display:flex;flex-direction:column;gap:7px;}
-    .output-feature{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+    .output-card-desc{font-size:13px;color:var(--ink2);line-height:1.65;margin-bottom:16px;}
+    .output-feature-list{display:flex;flex-direction:column;gap:8px;}
+    .output-feature{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);}
     .output-feature-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
     @media(max-width:900px){.outputs-grid{grid-template-columns:1fr 1fr;}}
-    @media(max-width:540px){.outputs-grid{grid-template-columns:1fr;gap:10px;}.output-card{padding:18px;}}
+    @media(max-width:540px){.outputs-grid{grid-template-columns:1fr;gap:10px;}.output-card{padding:20px;}}
+
+    /* ══════════════════════════════════════════
+       PRODUCT SHOWCASE (screenshots)
+    ══════════════════════════════════════════ */
+    .showcase-wrap{display:flex;flex-direction:column;gap:64px;margin-top:48px;}
+    .showcase-row{display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:center;}
+    .showcase-row.reverse .showcase-copy{order:2;}
+    .showcase-row.reverse .showcase-visual{order:1;}
+    .showcase-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;}
+    .showcase-title{font-family:var(--fd);font-size:clamp(20px,2.6vw,28px);font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:12px;line-height:1.2;}
+    .showcase-desc{font-size:14px;color:var(--ink2);line-height:1.75;margin-bottom:18px;}
+    .showcase-list{display:flex;flex-direction:column;gap:10px;}
+    .showcase-list-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--ink2);line-height:1.5;}
+    .showcase-check{width:18px;height:18px;border-radius:50%;background:rgba(14,245,212,.1);border:1px solid rgba(14,245,212,.25);display:flex;align-items:center;justify-content:center;color:var(--cyan);flex-shrink:0;margin-top:1px;}
+    .showcase-frame{background:linear-gradient(150deg,rgba(11,14,26,0.98),rgba(6,9,18,0.98));border:1px solid rgba(255,255,255,.09);border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.55);}
+    .showcase-frame-bar{padding:9px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:7px;}
+    .showcase-frame-dot{width:8px;height:8px;border-radius:50%;}
+    .showcase-frame-label{margin-left:6px;font-size:10.5px;color:rgba(255,255,255,.3);font-family:monospace;}
+    .showcase-frame-body{padding:16px;}
+    @media(max-width:900px){
+      .showcase-row,.showcase-row.reverse{grid-template-columns:1fr;gap:26px;}
+      .showcase-row.reverse .showcase-copy,.showcase-row.reverse .showcase-visual{order:initial;}
+    }
+
+    /* Transcript screenshot mock */
+    .mock-transcript-line{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2);}
+    .mock-transcript-line:last-child{border-bottom:none;}
+    .mock-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:var(--fd);flex-shrink:0;}
+    .mock-transcript-body{flex:1;min-width:0;}
+    .mock-transcript-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;}
+    .mock-transcript-name{font-size:12px;font-weight:700;color:var(--ink);}
+    .mock-transcript-time{font-size:10px;color:var(--muted);font-family:monospace;}
+    .mock-transcript-text{font-size:12.5px;color:var(--ink2);line-height:1.55;}
+
+    /* Summary card mock */
+    .mock-summary-section{margin-bottom:16px;}
+    .mock-summary-section:last-child{margin-bottom:0;}
+    .mock-summary-label{font-size:10px;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;}
+    .mock-summary-text{font-size:12.5px;color:var(--ink2);line-height:1.65;}
+    .mock-action-item{display:flex;align-items:flex-start;gap:9px;padding:8px 0;}
+    .mock-action-check{width:16px;height:16px;border-radius:5px;border:1.5px solid rgba(14,245,212,.4);flex-shrink:0;margin-top:1px;}
+    .mock-action-text{font-size:12.5px;color:var(--ink2);line-height:1.5;}
+    .mock-action-owner{font-size:10.5px;color:var(--muted);margin-top:2px;}
+
+    /* Speaker id mock */
+    .mock-speaker-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2);}
+    .mock-speaker-row:last-child{border-bottom:none;}
+    .mock-speaker-bar-track{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden;}
+    .mock-speaker-bar{height:100%;border-radius:4px;}
+    .mock-speaker-pct{font-size:11px;font-weight:700;color:var(--ink2);width:34px;text-align:right;flex-shrink:0;}
 
     /* ══════════════════════════════════════════
        BEFORE / AFTER
     ══════════════════════════════════════════ */
-    .ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:40px;}
-    .ba-card{border-radius:16px;padding:24px;border:1px solid var(--border);}
-    .ba-card.before{background:rgba(239,68,68,.03);border-color:rgba(239,68,68,.15);}
+    .ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:44px;}
+    .ba-card{border-radius:16px;padding:26px;border:1px solid var(--border);}
+    .ba-card.before{background:rgba(255,255,255,.02);border-color:var(--border);}
     .ba-card.after{background:rgba(14,245,212,.03);border-color:rgba(14,245,212,.15);}
     .ba-header{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
-    .ba-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+    .ba-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
     .ba-title{font-family:var(--fd);font-size:16px;font-weight:700;}
-    .ba-items{display:flex;flex-direction:column;gap:12px;}
-    .ba-item{display:flex;gap:10px;align-items:flex-start;}
-    .ba-item-icon{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px;}
+    .ba-items{display:flex;flex-direction:column;gap:14px;}
+    .ba-item{display:flex;gap:12px;align-items:flex-start;}
+    .ba-item-icon{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
     .ba-item-text{font-size:13px;color:var(--ink2);line-height:1.55;}
-    .ba-item-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.7);margin-bottom:3px;}
-    @media(max-width:700px){.ba-grid{grid-template-columns:1fr;}.ba-card{padding:18px;}}
+    .ba-item-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.75);margin-bottom:3px;}
+    @media(max-width:700px){.ba-grid{grid-template-columns:1fr;}.ba-card{padding:20px;}}
 
     /* ══════════════════════════════════════════
        PROOF / TESTIMONIALS
     ══════════════════════════════════════════ */
-    .proof-section{padding:72px 20px;background:var(--bg2);}
-    .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:36px;}
-    .testi-card{background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;transition:border-color .18s,transform .18s;}
+    .proof-section{padding:80px 20px;background:var(--bg2);}
+    .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px;}
+    .testi-card{background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:16px;padding:22px;display:flex;flex-direction:column;transition:border-color .18s,transform .18s;}
     .testi-card:hover{border-color:rgba(14,245,212,.18);transform:translateY(-2px);}
-    .testi-metric{display:inline-block;background:var(--cyan2);color:var(--cyan);border:1px solid rgba(14,245,212,.2);border-radius:6px;padding:3px 11px;font-size:10px;font-weight:700;margin-bottom:14px;font-family:monospace;letter-spacing:.04em;}
-    .testi-quote{font-size:13px;color:var(--ink2);line-height:1.72;flex:1;margin-bottom:18px;}
+    .testi-metric{display:inline-block;background:var(--cyan2);color:var(--cyan);border:1px solid rgba(14,245,212,.2);border-radius:6px;padding:3px 11px;font-size:10px;font-weight:700;margin-bottom:16px;font-family:monospace;letter-spacing:.04em;}
+    .testi-quote{font-size:13.5px;color:var(--ink2);line-height:1.72;flex:1;margin-bottom:18px;}
     .testi-author{display:flex;align-items:center;gap:10px;border-top:1px solid var(--border2);padding-top:14px;}
     .testi-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,rgba(14,245,212,.1),rgba(59,130,246,.1));border:1px solid rgba(14,245,212,.2);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:12px;font-weight:700;color:var(--cyan);flex-shrink:0;}
     .testi-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--ink);}
     .testi-role{font-size:11px;color:var(--muted);}
 
-    .case-study{margin-top:32px;background:rgba(14,245,212,.03);border:1px solid rgba(14,245,212,.12);border-radius:16px;padding:24px;display:grid;grid-template-columns:repeat(3,1fr);gap:0;}
-    .case-step{padding:0 24px;position:relative;}
-    .case-step:first-child{padding-left:0;}
-    .case-step:last-child{padding-right:0;}
-    .case-step:not(:last-child)::after{content:'→';position:absolute;right:-10px;top:50%;transform:translateY(-50%);font-size:18px;color:rgba(14,245,212,.4);pointer-events:none;}
-    .case-step-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;}
-    .case-step-text{font-size:13px;color:var(--ink2);line-height:1.6;}
-    .case-step-result{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--cyan);margin-top:6px;}
-
     @media(max-width:900px){
       .testi-grid{grid-template-columns:1fr 1fr;}
-      .proof-section{padding:56px 16px;}
+      .proof-section{padding:60px 16px;}
     }
     @media(max-width:640px){
       .testi-grid{grid-template-columns:1fr;}
-      .case-study{grid-template-columns:1fr;gap:20px;padding:20px;}
-      .case-step:not(:last-child)::after{display:none;}
-      .case-step{padding:0!important;border-bottom:1px solid var(--border2);padding-bottom:20px!important;}
-      .case-step:last-child{border-bottom:none;padding-bottom:0!important;}
     }
+
+    /* ══════════════════════════════════════════
+       SECURITY / TRUST
+    ══════════════════════════════════════════ */
+    .trust-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:44px;}
+    .trust-card{border:1px solid var(--border);border-radius:14px;padding:20px;background:rgba(255,255,255,.02);text-align:center;}
+    .trust-card-icon{width:40px;height:40px;border-radius:11px;background:rgba(14,245,212,.08);border:1px solid rgba(14,245,212,.18);display:flex;align-items:center;justify-content:center;color:var(--cyan);margin:0 auto 12px;}
+    .trust-card-title{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:6px;}
+    .trust-card-desc{font-size:11.5px;color:var(--muted);line-height:1.55;}
+    @media(max-width:860px){.trust-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:480px){.trust-grid{grid-template-columns:1fr;}}
 
     /* ══════════════════════════════════════════
        HOW IT WORKS
     ══════════════════════════════════════════ */
-    .how-steps{display:flex;gap:0;margin-top:40px;position:relative;}
+    .how-steps{display:flex;gap:0;margin-top:44px;position:relative;}
     .how-steps::before{content:'';position:absolute;top:20px;left:20px;right:20px;height:1px;background:linear-gradient(90deg,transparent,rgba(14,245,212,.3),transparent);}
     .how-step{flex:1;text-align:center;padding:0 16px;position:relative;}
     .how-step-num{width:40px;height:40px;border-radius:12px;background:rgba(14,245,212,.07);border:1px solid rgba(14,245,212,.2);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:16px;font-weight:800;color:var(--cyan);margin:0 auto 14px;position:relative;z-index:1;}
-    .how-step-title{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+    .how-step-title{font-family:var(--fd);font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:8px;}
     .how-step-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
     @media(max-width:640px){
-      .how-steps{flex-direction:column;gap:20px;}
+      .how-steps{flex-direction:column;gap:22px;}
       .how-steps::before{display:none;}
       .how-step{text-align:left;padding:0;display:flex;gap:16px;align-items:flex-start;}
       .how-step-num{margin:0;flex-shrink:0;}
@@ -755,30 +868,13 @@ export default function LandingPage() {
     }
 
     /* ══════════════════════════════════════════
-       POSITIONING / COMPARISON
-    ══════════════════════════════════════════ */
-    .pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;margin-top:40px;}
-    .pos-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
-    .pos-table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-width:300px;}
-    .pos-th{padding:10px 14px;font-size:11px;font-weight:700;background:rgba(255,255,255,.03);border-bottom:1px solid var(--border);text-align:center;color:var(--muted);}
-    .pos-th:first-child{text-align:left;color:rgba(255,255,255,.4);}
-    .pos-th.hl{color:var(--cyan);background:rgba(14,245,212,.04);position:relative;}
-    .pos-th.hl::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--cyan);}
-    .pos-tr{border-bottom:1px solid rgba(255,255,255,.04);}
-    .pos-td{padding:9px 14px;font-size:12px;text-align:center;color:rgba(255,255,255,.45);}
-    .pos-td:first-child{text-align:left;font-weight:500;}
-    .pos-td.hl{background:rgba(14,245,212,.025);}
-    .pos-note{font-size:11px;color:var(--muted);margin-top:10px;text-align:right;}
-    @media(max-width:860px){.pos-grid{grid-template-columns:1fr;gap:28px;}}
-
-    /* ══════════════════════════════════════════
        FAQ
     ══════════════════════════════════════════ */
-    .faq-items{max-width:720px;margin:40px auto 0;}
+    .faq-items{max-width:720px;margin:44px auto 0;}
     .faq-item{border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;}
     .faq-q{width:100%;display:flex;align-items:center;justify-content:space-between;padding:18px 20px;background:transparent;border:none;cursor:pointer;text-align:left;font-size:13.5px;font-weight:600;color:var(--ink);font-family:var(--fb);gap:12px;min-height:56px;transition:background .13s;-webkit-tap-highlight-color:transparent;}
     .faq-q:hover{background:rgba(255,255,255,.02);}
-    .faq-chev{font-size:14px;color:var(--muted);transition:transform .22s;flex-shrink:0;}
+    .faq-chev{color:var(--muted);transition:transform .22s;flex-shrink:0;display:flex;}
     .faq-chev.open{transform:rotate(180deg);}
     .faq-a{max-height:0;overflow:hidden;transition:max-height .32s ease,padding .28s ease;padding:0 20px;}
     .faq-a.open{max-height:400px;padding:0 20px 20px;}
@@ -791,15 +887,15 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        FINAL CTA
     ══════════════════════════════════════════ */
-    .final{padding:100px 20px;text-align:center;position:relative;overflow:hidden;}
+    .final{padding:110px 20px;text-align:center;position:relative;overflow:hidden;}
     .final-orb{position:absolute;inset:0;background:radial-gradient(ellipse 65% 65% at 50% 50%,rgba(14,245,212,.04) 0,transparent 65%);pointer-events:none;}
-    .final-inner{position:relative;z-index:1;max-width:620px;margin:0 auto;}
-    .final-h{font-family:var(--fd);font-size:clamp(28px,6vw,64px);font-weight:800;color:var(--ink);letter-spacing:-.05em;line-height:1.05;margin-bottom:16px;}
+    .final-inner{position:relative;z-index:1;max-width:640px;margin:0 auto;}
+    .final-h{font-family:var(--fd);font-size:clamp(28px,5.6vw,58px);font-weight:800;color:var(--ink);letter-spacing:-.045em;line-height:1.08;margin-bottom:16px;}
     .final-sub{font-size:clamp(15px,2vw,17px);color:var(--ink2);line-height:1.7;margin-bottom:32px;}
     .final-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:18px;}
     .final-footnote{font-size:12px;color:var(--muted);}
     @media(max-width:500px){
-      .final{padding:72px 16px;}
+      .final{padding:76px 16px;}
       .final-ctas{flex-direction:column;align-items:stretch;}
       .final-ctas a,.final-ctas button{justify-content:center;width:100%;}
     }
@@ -811,14 +907,14 @@ export default function LandingPage() {
     .footer-inner{max-width:1180px;margin:0 auto;}
     .footer-top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;margin-bottom:32px;padding-bottom:32px;border-bottom:1px solid var(--border2);}
     .footer-brand-name{font-family:var(--fd);font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
-    .footer-brand-desc{font-size:13px;color:var(--muted);line-height:1.65;max-width:220px;}
+    .footer-brand-desc{font-size:13px;color:var(--muted);line-height:1.65;max-width:230px;}
     .footer-col-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;font-family:monospace;}
-    .footer-link{display:block;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:10px;transition:color .18s;min-height:var(--touch-target);display:flex;align-items:center;}
+    .footer-link{display:block;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:10px;transition:color .18s;min-height:var(--touch-target);display:flex;align-items:center;background:none;border:none;padding:0;cursor:pointer;font-family:var(--fb);text-align:left;}
     .footer-link:hover{color:var(--ink);}
     .footer-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
     .footer-copy{font-size:12px;color:rgba(255,255,255,.2);}
     .footer-legal-links{display:flex;gap:16px;flex-wrap:wrap;}
-    .footer-legal-link{font-size:12px;color:rgba(255,255,255,.2);text-decoration:none;transition:color .18s;min-height:36px;display:inline-flex;align-items:center;}
+    .footer-legal-link{font-size:12px;color:rgba(255,255,255,.2);text-decoration:none;transition:color .18s;min-height:36px;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer;font-family:var(--fb);}
     .footer-legal-link:hover{color:var(--muted);}
     @media(max-width:960px){
       .footer{padding:40px 16px 20px;}
@@ -838,18 +934,20 @@ export default function LandingPage() {
     @keyframes slidein{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
   `;
 
-  const NAV_LINKS = [
-    { label: "Problem", href: "#problem" },
-    { label: "Live Demo", href: "#demo" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Testimonials", href: "/testimonials" },
+
+  const FAQS = [
+    { q: "Do I need to invite a bot to my meeting?", a: "No. Fixsense works natively inside the meeting room instead of sending a visible bot to join on your behalf. There is nothing extra for other participants to notice or approve before you can start recording and transcribing." },
+    { q: "Who is Fixsense actually built for?", a: "Anyone who spends time in meetings. Sales and customer success teams use it for client calls, but so do founders running investor updates, recruiters conducting interviews, teachers recording lectures, consultants documenting client work, and teams that simply want a reliable record of what was said and agreed." },
+    { q: "How accurate is the transcription and speaker identification?", a: "Fixsense uses automatic speech recognition tuned for real conversations, including overlapping speech and accents, and separates each speaker automatically so you always know who said what without manual tagging." },
+    { q: "What happens to my recordings and transcripts?", a: "Your recordings and transcripts are encrypted, stored under your account, and never used to train shared AI models without your explicit consent. You can export or delete your data at any time from your account settings." },
+    { q: "How quickly can my team get started?", a: "Most people are recording their first meeting within minutes of signing up. There is no hardware to install and no IT approval required. You join your normal meeting link and Fixsense handles the rest." },
   ];
 
   return (
     <div className="lp">
       <style>{css}</style>
 
-      {/* ── NAV ── */}
+      {/* NAV */}
       <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
         <div className="nav-inner">
           <Link to="/" className="nav-brand" onClick={closeMobile}>
@@ -864,11 +962,17 @@ export default function LandingPage() {
           </div>
           <div className="nav-actions">
             {user ? (
-              <Link to="/dashboard" className="btn-primary">Dashboard →</Link>
+              <Link to="/dashboard" className="btn-primary">
+                Dashboard
+                <Icon name="arrow-right" size={13} />
+              </Link>
             ) : (
               <>
                 <Link to="/login" className="btn-ghost">Sign in</Link>
-                <Link to="/login" className="btn-primary">Start Free →</Link>
+                <Link to="/login" className="btn-primary">
+                  Start free
+                  <Icon name="arrow-right" size={13} />
+                </Link>
               </>
             )}
             <button
@@ -883,7 +987,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── MOBILE MENU ── */}
+      {/* MOBILE MENU */}
       <div className={`mobile-menu ${mobileOpen ? "open" : ""}`} role="navigation" aria-label="Mobile navigation">
         {NAV_LINKS.map(l => l.href.startsWith("#")
           ? <a key={l.label} href={l.href} className="mobile-link" onClick={closeMobile}>{l.label}</a>
@@ -891,46 +995,39 @@ export default function LandingPage() {
         )}
         <div className="mobile-ctas">
           {user ? (
-            <Link to="/dashboard" className="btn-hero" onClick={closeMobile}>Dashboard →</Link>
+            <Link to="/dashboard" className="btn-hero" onClick={closeMobile}>Dashboard</Link>
           ) : (
             <>
               <Link to="/login" className="btn-hero-outline" onClick={closeMobile}>Sign in</Link>
-              <Link to="/login" className="btn-hero" onClick={closeMobile}>Start Free — No Card →</Link>
+              <Link to="/login" className="btn-hero" onClick={closeMobile}>Start free, no card needed</Link>
             </>
           )}
         </div>
       </div>
 
-      {/* ── HERO ── */}
+      {/* HERO */}
       <section className="hero">
         <div className="hero-grid" />
         <div className="hero-glow" />
         <div className="hero-inner">
-          <div style={{ opacity: 0, animation: "slidein .6s ease .1s forwards" }}>
-            <div className="hero-eyebrow">
-              <span className="hero-eyebrow-dot" />
-              AI Meeting Intelligence · Live On Every Call
-            </div>
-          </div>
-
-          <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
+          <div style={{ opacity: 0, animation: "slidein .7s ease .1s forwards" }}>
             <h1 className="hero-h">
-              Stop <span className="loss">guessing</span> what happened in your meetings.{" "}
-              <span className="gain">Start knowing.</span>
+              Every meeting, remembered.<br />
+              <span className="accent">Every follow-up, handled.</span>
             </h1>
           </div>
 
-          <div style={{ opacity: 0, animation: "slidein .7s ease .3s forwards" }}>
+          <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
             <p className="hero-sub">
-              Fixsense automatically joins, records, and transcribes your meetings — then uses AI to surface sentiment, objections, buying signals, risks, and action items in real time, for any team that lives in calls.
+              Fixsense joins, records, and transcribes your meetings automatically, then uses AI to identify speakers, summarize what happened, and extract action items, so you can stay present in the conversation instead of scrambling to write everything down.
             </p>
           </div>
 
-          <div style={{ opacity: 0, animation: "slidein .7s ease .35s forwards" }}>
+          <div style={{ opacity: 0, animation: "slidein .7s ease .3s forwards" }}>
             <div className="hero-audience">
-              <div className="hero-audience-label">Built for every team that meets</div>
+              <div className="hero-audience-label">Built for anyone who sits in meetings</div>
               <div className="hero-audience-list">
-                {["Sales Teams", "Founders", "Agencies", "Recruiters", "Consultants", "Customer Success"].map((t, i) => (
+                {["Business meetings", "Client calls", "Interviews", "Online classes", "Team standups", "One-on-ones"].map((t, i) => (
                   <span key={i} className="hero-audience-pill">{t}</span>
                 ))}
               </div>
@@ -940,29 +1037,25 @@ export default function LandingPage() {
           <div style={{ opacity: 0, animation: "slidein .7s ease .4s forwards" }}>
             <div className="hero-ctas">
               <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
-                Analyze Your Next Meeting Free
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                Start your free trial
+                <Icon name="arrow-right" size={14} />
               </Link>
-              <a href="#demo" className="btn-hero-outline">Try Live Demo</a>
+              <a href="#demo" className="btn-hero-outline">See it in action</a>
             </div>
             <div className="hero-trust">
-              {["No Google Meet or Zoom Bot", "Live AI Analysis", "Instant Transcripts", "AI Meeting Reports", "Free Trial", "No Credit Card Required"].map((t, i) => (
+              {["No credit card required", "No visible bot joins your call", "Live in minutes", "Cancel anytime"].map((t, i) => (
                 <div key={i} className="trust-pill">
-                  <div className="trust-check">✓</div>
+                  <div className="trust-check"><Icon name="check" size={10} /></div>
                   {t}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Dashboard preview — deliberately dense: a first-time visitor
-              should be able to identify every core capability (live
-              captions, AI coaching, sentiment, meeting score, talk ratio,
-              objections, buying signals, risks, action items, next-best-
-              action) within a five-second glance, without reading a word
-              of surrounding copy. */}
+          {/* Hero product mockup: a realistic in-meeting view showing live
+              captions, speaker identification, sentiment, and AI-detected
+              highlights, so a first-time visitor understands the product
+              within seconds of landing. */}
           <div style={{ opacity: 0, animation: "slidein .8s ease .5s forwards" }}>
             <div className="hero-dashboard">
               <div className="hero-dashboard-frame">
@@ -970,18 +1063,18 @@ export default function LandingPage() {
                   <div className="db-dot" style={{ background: "#ef4444" }} />
                   <div className="db-dot" style={{ background: "#f59e0b" }} />
                   <div className="db-dot" style={{ background: "#22c55e" }} />
-                  <span className="hero-db-bar-label">Weekly Client Sync — Acme Corp · LIVE</span>
+                  <span className="hero-db-bar-label">Weekly Product Sync, Recording in progress</span>
                   <div className="hero-db-bar-live">
                     <span className="hero-db-bar-live-dot" />
-                    LIVE · 00:14:32
+                    LIVE 00:18:04
                   </div>
                 </div>
                 <div className="hero-db-content">
                   {[
-                    { val: "84", label: "Meeting Score", color: "#0ef5d4" },
-                    { val: "46 / 54", label: "Talk Ratio", color: "#3b82f6" },
-                    { val: "↑ 78%", label: "Sentiment", color: "#22c55e" },
-                    { val: "3", label: "Buying Signals", color: "#a78bfa" },
+                    { val: "4", label: "Speakers detected", color: "#0ef5d4" },
+                    { val: "38 / 62", label: "Talk ratio", color: "#3b82f6" },
+                    { val: "82%", label: "Sentiment", color: "#22c55e" },
+                    { val: "5", label: "Action items", color: "#a78bfa" },
                   ].map((k, i) => (
                     <div key={i} className="hero-db-kpi">
                       <div className="hero-kpi-val" style={{ color: k.color }}>{k.val}</div>
@@ -991,38 +1084,34 @@ export default function LandingPage() {
                 </div>
                 <div className="hero-db-transcript">
                   {[
-                    { speaker: "Prospect", text: "Honestly the price feels steep for where we are budget-wise right now.", obj: true, color: "#2dd4bf" },
-                    { speaker: "AI Coach", text: "💡 Pricing objection detected — Reframe: ask what one lost $85k deal costs them annually.", color: "#0ef5d4", isCoach: true },
-                    { speaker: "Rep", text: "What does a deal like this typically cost you when it slips? Let me frame the math", color: "#818cf8", live: true },
+                    { speaker: "Maria Chen", text: "Let's confirm the launch date before we wrap up. Are we still good for the 14th?", color: "#2dd4bf" },
+                    { speaker: "AI Summary", text: "Deadline confirmation requested. Flagging as an open action item for follow-up.", color: "#0ef5d4", isCoach: true },
+                    { speaker: "Daniel Osei", text: "Yes, the 14th still works on our end. I will send the final assets by Friday", color: "#818cf8", live: true },
                   ].map((line, i) => (
                     <div key={i} className="hero-tline">
                       <span className="hero-tspeaker" style={{ color: line.color }}>{line.speaker}</span>
                       <div>
-                        <span className="hero-ttext" style={line.isCoach ? { color: "rgba(14,245,212,.8)", fontStyle: "italic" } : undefined}>
+                        <span className="hero-ttext" style={line.isCoach ? { color: "rgba(14,245,212,.85)", fontStyle: "italic" } : undefined}>
                           {line.text}
                           {line.live && <span className="hero-caption-cursor" />}
                         </span>
-                        {line.obj && <div className="hero-objection-tag">⚠ Pricing Objection · 94% confidence</div>}
-                        {line.live && <div className="hero-caption-badge">● Live caption</div>}
+                        {line.live && <div className="hero-caption-badge">Live caption</div>}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="hero-signal-row">
                   <span className="hero-signal-tag" style={{ color: "#4ade80", background: "rgba(34,197,94,.08)", borderColor: "rgba(34,197,94,.25)" }}>
-                    🟢 Buying Signal · Budget confirmed
-                  </span>
-                  <span className="hero-signal-tag" style={{ color: "#fbbf24", background: "rgba(245,158,11,.08)", borderColor: "rgba(245,158,11,.25)" }}>
-                    ⚠ Risk · Champion quiet 4 min
+                    Decision made, launch date confirmed
                   </span>
                   <span className="hero-signal-tag" style={{ color: "#a5b4fc", background: "rgba(129,140,248,.08)", borderColor: "rgba(129,140,248,.25)" }}>
-                    ✓ Action Item · Send case study by Friday
+                    Action item, send final assets by Friday
                   </span>
                 </div>
                 <div className="hero-insight-bar">
-                  <span className="hero-insight-label">Next Action</span>
-                  <span className="hero-insight-text">Ask about their average deal value to anchor ROI before discussing pricing</span>
-                  <span className="hero-insight-badge">Opportunity</span>
+                  <span className="hero-insight-label">AI summary</span>
+                  <span className="hero-insight-text">Team confirmed the March 14 launch date. Daniel to deliver final assets by Friday. No open blockers reported.</span>
+                  <span className="hero-insight-badge">Ready</span>
                 </div>
               </div>
             </div>
@@ -1030,24 +1119,36 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PROBLEM / KPIs ── */}
+      {/* TRUST STRIP */}
+      <div className="logostrip">
+        <div className="logostrip-inner">
+          <span className="logostrip-label">Trusted by people who run meetings every day</span>
+          <div className="logostrip-marks">
+            {["Founders", "Consultants", "Recruiters", "Educators", "Agencies", "Support teams"].map((m, i) => (
+              <span key={i} className="logostrip-mark">{m}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* PROBLEM / KPIs */}
       <section className="section" id="problem" style={{ background: "var(--bg2)" }}>
         <div className="section-inner">
           <FadeIn>
-            <div className="kicker">The Revenue Leak</div>
-            <h2 className="section-h">Every unhandled objection is<br />a wire transfer to your competitor.</h2>
-            <p className="section-sub">This isn't a rep performance problem. It's a visibility problem. Your team walks into calls blind and walks out with gut feelings instead of data.</p>
+            <div className="kicker">The problem</div>
+            <h2 className="section-h">Good meetings still get<br />lost the moment they end.</h2>
+            <p className="section-sub">Most of what is said in a meeting is forgotten within a day. Notes are incomplete, action items live in someone's memory, and nobody has time to write a proper recap.</p>
           </FadeIn>
           <div className="kpi-grid">
             {[
-              { num: 1200000, prefix: "$", suffix: "", label: "Average annual revenue lost to untracked objections in a 20-rep team", icon: "💸" },
-              { num: 67, prefix: "", suffix: "%", label: "Of deals lost without a clear diagnosis of what went wrong", icon: "🤷" },
-              { num: 4, prefix: "", suffix: "hrs/wk", label: "Per rep wasted on CRM updates and call notes instead of selling", icon: "⏰" },
-              { num: 31, prefix: "", suffix: "%", label: "Prospect drop-off when a visible bot joins the call and destroys trust", icon: "🚪" },
+              { num: 60, prefix: "", suffix: "%", label: "Of meeting details are forgotten within 24 hours without a written record", icon: "clock" },
+              { num: 23, prefix: "", suffix: " hrs/wk", label: "Spent in meetings by the average knowledge worker, much of it unrecorded", icon: "users" },
+              { num: 5, prefix: "", suffix: " min", label: "It takes Fixsense to turn a one-hour meeting into a shareable summary", icon: "trending" },
+              { num: 100, prefix: "", suffix: "%", label: "Of speakers automatically identified and labeled in your transcript", icon: "user-check" },
             ].map((k, i) => (
               <FadeIn key={i} delay={i * 80}>
                 <div className="kpi-card">
-                  <div className="kpi-icon">{k.icon}</div>
+                  <div className="kpi-icon"><Icon name={k.icon} size={17} /></div>
                   <div className="kpi-num">
                     <AnimCounter target={k.num} prefix={k.prefix} suffix={k.suffix} />
                   </div>
@@ -1059,17 +1160,48 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── LIVE DEMO ── */}
+      {/* USE CASES */}
+      <section className="section" style={{ background: "var(--bg)" }}>
+        <div className="section-inner">
+          <FadeIn>
+            <div className="kicker">Where Fixsense fits</div>
+            <h2 className="section-h">One AI meeting assistant.<br />Every kind of conversation.</h2>
+            <p className="section-sub">Fixsense was built for the meetings that make up a normal week, not just sales calls.</p>
+          </FadeIn>
+          <div className="usecase-grid">
+            {[
+              { icon: "briefcase", color: "#0ef5d4", title: "Business meetings", desc: "Capture decisions, owners, and deadlines automatically so nothing gets lost between the meeting and the follow-up email." },
+              { icon: "user-check", color: "#3b82f6", title: "Interviews", desc: "Focus on the candidate instead of typing notes. Get a clean transcript and summary to share with your hiring panel." },
+              { icon: "book", color: "#a78bfa", title: "Online classes", desc: "Turn every lecture or training session into a searchable transcript students and teammates can revisit anytime." },
+              { icon: "phone", color: "#22c55e", title: "Client calls", desc: "Know exactly what was promised, asked, and agreed on every call, with a summary ready to send before you even hang up." },
+              { icon: "users", color: "#f59e0b", title: "Team meetings", desc: "Standups, planning sessions, and retros documented automatically, with action items assigned to the right person." },
+              { icon: "coffee", color: "#ec4899", title: "Everyday conversations", desc: "One-on-ones, brainstorms, and casual check-ins captured just as reliably as your most important calls." },
+            ].map((c, i) => (
+              <FadeIn key={i} delay={(i % 3) * 90}>
+                <div className="usecase-card">
+                  <div className="usecase-icon" style={{ background: `${c.color}14`, border: `1px solid ${c.color}30`, color: c.color }}>
+                    <Icon name={c.icon} size={19} />
+                  </div>
+                  <div className="usecase-title">{c.title}</div>
+                  <div className="usecase-desc">{c.desc}</div>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* LIVE DEMO */}
       <section className="demo-section" id="demo">
         <div className="section-inner">
           <FadeIn>
             <div style={{ textAlign: "center", marginBottom: 36 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>Interactive Live Demo</div>
+              <div className="kicker" style={{ justifyContent: "center" }}>Interactive demo</div>
               <h2 className="section-h" style={{ textAlign: "center", maxWidth: 680, margin: "0 auto 14px" }}>
-                Select a scenario. Run analysis.<br />See exactly what your reps see.
+                Pick a meeting type. Run the analysis.<br />See exactly what Fixsense produces.
               </h2>
-              <p style={{ fontSize: "clamp(13px,2vw,15px)", color: "var(--ink2)", textAlign: "center", maxWidth: 500, margin: "0 auto" }}>
-                This is a real simulation of the Fixsense AI engine — objection detection, sentiment scoring, deal risk, all running live.
+              <p style={{ fontSize: "clamp(13.5px,2vw,15px)", color: "var(--ink2)", textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
+                This is a real simulation of the Fixsense AI engine: speaker identification, sentiment, and action item extraction, running on real example transcripts.
               </p>
             </div>
           </FadeIn>
@@ -1079,35 +1211,213 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PRODUCT OUTPUTS ── */}
+      {/* PRODUCT SHOWCASE, realistic screenshots of core outputs */}
       <section className="section" style={{ background: "var(--bg)" }}>
         <div className="section-inner">
           <FadeIn>
-            <div className="kicker">What Fixsense Produces</div>
-            <h2 className="section-h">Three intelligence layers.<br />One revenue outcome.</h2>
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <div className="kicker" style={{ justifyContent: "center" }}>Inside the product</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 640, margin: "0 auto" }}>What you actually get after every meeting.</h2>
+            </div>
+          </FadeIn>
+
+          <div className="showcase-wrap">
+            {/* Row 1: transcript with speaker ID */}
+            <div className="showcase-row">
+              <FadeIn>
+                <div className="showcase-copy">
+                  <div className="showcase-tag">
+                    <Icon name="mic" size={13} />
+                    Transcription
+                  </div>
+                  <h3 className="showcase-title">A transcript that knows who said what.</h3>
+                  <p className="showcase-desc">Fixsense separates each voice automatically, so your transcript reads like a real conversation instead of a wall of unattributed text.</p>
+                  <div className="showcase-list">
+                    {["Speaker labels applied automatically, no manual tagging", "Accurate timestamps down to the second", "Searchable across every past meeting"].map((t, i) => (
+                      <div key={i} className="showcase-list-item">
+                        <span className="showcase-check"><Icon name="check" size={10} /></span>
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </FadeIn>
+              <FadeIn delay={80}>
+                <div className="showcase-visual">
+                  <div className="showcase-frame">
+                    <div className="showcase-frame-bar">
+                      <div className="showcase-frame-dot" style={{ background: "#ef4444" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#f59e0b" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#22c55e" }} />
+                      <span className="showcase-frame-label">transcript.fixsense.app</span>
+                    </div>
+                    <div className="showcase-frame-body">
+                      {[
+                        { name: "Maria Chen", time: "00:12:04", text: "So the main blocker right now is getting sign-off from legal on the new terms.", color: "#0ef5d4" },
+                        { name: "Daniel Osei", time: "00:12:19", text: "I can follow up with them this afternoon and get a timeline.", color: "#818cf8" },
+                        { name: "Priya Nair", time: "00:12:31", text: "Great, let's revisit this in Thursday's sync once you hear back.", color: "#f59e0b" },
+                      ].map((l, i) => (
+                        <div key={i} className="mock-transcript-line">
+                          <div className="mock-avatar" style={{ background: `${l.color}20`, color: l.color, border: `1px solid ${l.color}40` }}>
+                            {l.name.split(" ").map(n => n[0]).join("")}
+                          </div>
+                          <div className="mock-transcript-body">
+                            <div className="mock-transcript-meta">
+                              <span className="mock-transcript-name">{l.name}</span>
+                              <span className="mock-transcript-time">{l.time}</span>
+                            </div>
+                            <div className="mock-transcript-text">{l.text}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </FadeIn>
+            </div>
+
+            {/* Row 2: AI summary + action items */}
+            <div className="showcase-row reverse">
+              <FadeIn>
+                <div className="showcase-copy">
+                  <div className="showcase-tag">
+                    <Icon name="check-square" size={13} />
+                    AI summary and action items
+                  </div>
+                  <h3 className="showcase-title">A summary you would actually want to read.</h3>
+                  <p className="showcase-desc">No generic bullet points. Fixsense writes a clear recap of what was discussed and pulls out concrete action items with an owner attached whenever one is mentioned.</p>
+                  <div className="showcase-list">
+                    {["Plain-language summary of the whole meeting", "Action items extracted with owners and deadlines", "One click to copy, export, or share with your team"].map((t, i) => (
+                      <div key={i} className="showcase-list-item">
+                        <span className="showcase-check"><Icon name="check" size={10} /></span>
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </FadeIn>
+              <FadeIn delay={80}>
+                <div className="showcase-visual">
+                  <div className="showcase-frame">
+                    <div className="showcase-frame-bar">
+                      <div className="showcase-frame-dot" style={{ background: "#ef4444" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#f59e0b" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#22c55e" }} />
+                      <span className="showcase-frame-label">summary.fixsense.app</span>
+                    </div>
+                    <div className="showcase-frame-body">
+                      <div className="mock-summary-section">
+                        <div className="mock-summary-label">Summary</div>
+                        <div className="mock-summary-text">The team reviewed the legal sign-off blocker on the new contract terms and agreed on next steps. Daniel will follow up with legal today. The topic will be revisited in Thursday's sync.</div>
+                      </div>
+                      <div className="mock-summary-section">
+                        <div className="mock-summary-label">Action items</div>
+                        {[
+                          ["Follow up with legal for a sign-off timeline", "Daniel Osei · Due today"],
+                          ["Revisit contract status in Thursday's sync", "Priya Nair · Due Thursday"],
+                          ["Share updated terms with the client once approved", "Maria Chen · No date set"],
+                        ].map(([text, owner], i) => (
+                          <div key={i} className="mock-action-item">
+                            <span className="mock-action-check" />
+                            <div>
+                              <div className="mock-action-text">{text}</div>
+                              <div className="mock-action-owner">{owner}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </FadeIn>
+            </div>
+
+            {/* Row 3: speaker breakdown / insights */}
+            <div className="showcase-row">
+              <FadeIn>
+                <div className="showcase-copy">
+                  <div className="showcase-tag">
+                    <Icon name="trending" size={13} />
+                    Meeting insights
+                  </div>
+                  <h3 className="showcase-title">See how the conversation actually went.</h3>
+                  <p className="showcase-desc">Talk-time balance, sentiment over time, and key moments are all calculated automatically, giving you a clear picture of the meeting without rewatching the recording.</p>
+                  <div className="showcase-list">
+                    {["Talk-time breakdown for every participant", "Sentiment tracked across the full conversation", "Key moments flagged with timestamps for quick review"].map((t, i) => (
+                      <div key={i} className="showcase-list-item">
+                        <span className="showcase-check"><Icon name="check" size={10} /></span>
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </FadeIn>
+              <FadeIn delay={80}>
+                <div className="showcase-visual">
+                  <div className="showcase-frame">
+                    <div className="showcase-frame-bar">
+                      <div className="showcase-frame-dot" style={{ background: "#ef4444" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#f59e0b" }} />
+                      <div className="showcase-frame-dot" style={{ background: "#22c55e" }} />
+                      <span className="showcase-frame-label">insights.fixsense.app</span>
+                    </div>
+                    <div className="showcase-frame-body">
+                      <div className="mock-summary-label" style={{ marginBottom: 12 }}>Talk-time balance</div>
+                      {[
+                        { name: "Maria Chen", pct: 42, color: "#0ef5d4" },
+                        { name: "Daniel Osei", pct: 33, color: "#818cf8" },
+                        { name: "Priya Nair", pct: 25, color: "#f59e0b" },
+                      ].map((s, i) => (
+                        <div key={i} className="mock-speaker-row">
+                          <div className="mock-avatar" style={{ background: `${s.color}20`, color: s.color, border: `1px solid ${s.color}40`, width: 22, height: 22, fontSize: 9 }}>
+                            {s.name.split(" ").map(n => n[0]).join("")}
+                          </div>
+                          <div className="mock-speaker-bar-track">
+                            <div className="mock-speaker-bar" style={{ width: `${s.pct}%`, background: s.color }} />
+                          </div>
+                          <span className="mock-speaker-pct">{s.pct}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </FadeIn>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PRODUCT OUTPUTS */}
+      <section className="section" style={{ background: "var(--bg2)" }}>
+        <div className="section-inner">
+          <FadeIn>
+            <div className="kicker">What Fixsense produces</div>
+            <h2 className="section-h">Three outputs.<br />One reliable record.</h2>
           </FadeIn>
           <div className="outputs-grid">
             {[
               {
-                icon: "📈", title: "Revenue Intelligence", color: "#ef4444",
-                desc: "Know exactly how much revenue is at risk on every active call. Deal risk score, lost revenue detection, and close probability — updated every 3 seconds.",
-                features: ["Deal risk score (0–100)", "Revenue at risk estimate", "Win probability tracking", "Lost deal root cause analysis"],
+                icon: "type", color: "#0ef5d4", title: "Accurate transcripts",
+                desc: "Every word captured and attributed to the right speaker, ready to search, quote, or export the moment your meeting ends.",
+                features: ["Automatic speaker identification", "Searchable across every meeting", "Timestamped for quick navigation", "Export to text, PDF, or your notes app"],
               },
               {
-                icon: "🎯", title: "Conversation Intelligence", color: "#0ef5d4",
-                desc: "Every word analyzed in real time. Objection timestamps, sentiment pulse, talk ratio tracking, and opportunity signals — captured as they happen.",
-                features: ["Live sentiment tracking", "Objection detection + timestamps", "Talk ratio analysis", "Buying signal detection"],
+                icon: "check-square", color: "#3b82f6", title: "Summaries and action items",
+                desc: "A clear recap of what was discussed and decided, plus action items extracted automatically with an owner attached whenever one is mentioned.",
+                features: ["Plain-language meeting summary", "Action items with owners and dates", "One-click share with your team", "Consistent format, every time"],
               },
               {
-                icon: "🏆", title: "Performance Intelligence", color: "#a78bfa",
-                desc: "Coach every rep, every call. AI coaching responses, follow-up generators, rep improvement scores, and team leaderboards — no manager required.",
-                features: ["Mid-call AI coaching tips", "Post-call follow-up drafts", "CRM auto-sync", "Rep performance leaderboard"],
+                icon: "trending", color: "#a78bfa", title: "AI-powered insights",
+                desc: "Sentiment, talk-time balance, and key moments calculated automatically, so you understand how the meeting actually went, not just what was said.",
+                features: ["Sentiment tracked through the meeting", "Talk-time breakdown per participant", "Key moments flagged automatically", "Trends across meetings over time"],
               },
             ].map((card, i) => (
               <FadeIn key={i} delay={i * 100}>
                 <div className="output-card">
                   <div className="output-card-accent" style={{ background: `linear-gradient(90deg, ${card.color}, transparent)` }} />
-                  <div className="output-card-icon">{card.icon}</div>
+                  <div className="output-card-icon" style={{ background: `${card.color}14`, border: `1px solid ${card.color}30`, color: card.color }}>
+                    <Icon name={card.icon} size={19} />
+                  </div>
                   <div className="output-card-title">{card.title}</div>
                   <div className="output-card-desc">{card.desc}</div>
                   <div className="output-feature-list">
@@ -1125,29 +1435,29 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── BEFORE / AFTER ── */}
-      <section className="section" style={{ background: "var(--bg2)" }}>
+      {/* BEFORE / AFTER */}
+      <section className="section" style={{ background: "var(--bg)" }}>
         <div className="section-inner">
           <FadeIn>
-            <div className="kicker">The Before / After</div>
-            <h2 className="section-h">The difference between<br />a tool and a weapon.</h2>
+            <div className="kicker">Before and after</div>
+            <h2 className="section-h">The difference a reliable<br />record makes.</h2>
           </FadeIn>
           <div className="ba-grid">
             <FadeIn delay={60}>
               <div className="ba-card before">
                 <div className="ba-header">
-                  <div className="ba-icon" style={{ background: "rgba(239,68,68,.1)" }}>🚫</div>
-                  <div className="ba-title" style={{ color: "#f87171" }}>Without Fixsense</div>
+                  <div className="ba-icon" style={{ background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.5)" }}><Icon name="eye-off" size={17} /></div>
+                  <div className="ba-title" style={{ color: "rgba(255,255,255,.6)" }}>Without Fixsense</div>
                 </div>
                 <div className="ba-items">
                   {[
-                    ["😤", "Gut-based decisions", "Reps debrief with feelings, not data. No one knows why they lost."],
-                    ["🤦", "Missed objections", "Pricing challenges land like surprises. Reps freeze. Deals soften."],
-                    ["🌫", "Unclear deal status", "CRM says 'In Progress'. Reality: the prospect went dark 2 weeks ago."],
-                    ["🐢", "Delayed follow-ups", "4 hours of CRM admin before the follow-up email even gets drafted."],
+                    ["message", "Half-remembered conversations", "You leave the meeting relying on memory and scattered notes for what was actually agreed."],
+                    ["search", "Details you can never find again", "Something important was said twenty minutes in, but there is no way to search for it later."],
+                    ["users", "Unclear ownership", "Action items live in someone's head instead of being written down with a clear owner."],
+                    ["clock", "Time lost to manual notes", "You spend the meeting typing instead of actually listening and contributing."],
                   ].map(([icon, title, desc], i) => (
                     <div key={i} className="ba-item">
-                      <div className="ba-item-icon" style={{ background: "rgba(239,68,68,.08)" }}>{icon}</div>
+                      <div className="ba-item-icon" style={{ background: "rgba(255,255,255,.05)", color: "rgba(255,255,255,.4)" }}><Icon name={icon as string} size={14} /></div>
                       <div>
                         <div className="ba-item-title">{title}</div>
                         <div className="ba-item-text">{desc}</div>
@@ -1160,20 +1470,20 @@ export default function LandingPage() {
             <FadeIn delay={120}>
               <div className="ba-card after">
                 <div className="ba-header">
-                  <div className="ba-icon" style={{ background: "rgba(14,245,212,.1)" }}>⚡</div>
+                  <div className="ba-icon" style={{ background: "rgba(14,245,212,.1)", color: "#0ef5d4" }}><Icon name="check-square" size={17} /></div>
                   <div className="ba-title" style={{ color: "#0ef5d4" }}>With Fixsense</div>
                 </div>
                 <div className="ba-items">
                   {[
-                    ["📊", "Real-time insights", "Sentiment score, deal risk, and objection map — updated every 3 seconds during the call."],
-                    ["🎯", "Guided responses", "Objection flagged in 3 seconds. Counter-response ready before the rep pauses."],
-                    ["🔍", "Deal visibility", "Every call scored. Every deal tracked. Know before the prospect ghosts."],
-                    ["⚡", "Instant close loop", "AI summary + CRM push + follow-up draft — done 2 minutes after the call ends."],
+                    ["type", "A complete, accurate record", "Every word transcribed and attributed to the right speaker, automatically."],
+                    ["search", "Everything searchable", "Find any detail from any past meeting in seconds, not by scrolling through notes."],
+                    ["check-square", "Clear ownership", "Action items extracted automatically with an owner and a deadline attached."],
+                    ["trending", "Full presence, every time", "You focus on the conversation while Fixsense handles the documentation."],
                   ].map(([icon, title, desc], i) => (
                     <div key={i} className="ba-item">
-                      <div className="ba-item-icon" style={{ background: "rgba(14,245,212,.08)" }}>{icon}</div>
+                      <div className="ba-item-icon" style={{ background: "rgba(14,245,212,.08)", color: "#0ef5d4" }}><Icon name={icon as string} size={14} /></div>
                       <div>
-                        <div className="ba-item-title" style={{ color: "rgba(255,255,255,.8)" }}>{title}</div>
+                        <div className="ba-item-title" style={{ color: "rgba(255,255,255,.85)" }}>{title}</div>
                         <div className="ba-item-text">{desc}</div>
                       </div>
                     </div>
@@ -1185,25 +1495,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PROOF ── */}
+      {/* PROOF */}
       <section className="proof-section">
         <div className="section-inner">
           <FadeIn>
             <div style={{ textAlign: "center", marginBottom: 14 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>Real Results</div>
-              <h2 className="section-h" style={{ textAlign: "center" }}>Teams that switched from gut to data.</h2>
+              <div className="kicker" style={{ justifyContent: "center" }}>What people say</div>
+              <h2 className="section-h" style={{ textAlign: "center" }}>Real feedback from real meetings.</h2>
             </div>
           </FadeIn>
           <div className="testi-grid">
             {[
-              { metric: "+30% close rate", name: "Sarah M.", role: "Head of Sales, Vantex Technologies", initials: "SM", quote: "We ran Gong for 18 months. Reps hated the bot. Prospects noticed. Fixsense is completely invisible — and the real-time objection alerts are a different category of product entirely." },
-              { metric: "90 → 45 day ramp", name: "Priya N.", role: "CRO, Cloudpath", initials: "PN", quote: "New reps review their own AI-analyzed calls the same day. No waiting for a manager to schedule a debrief. The AI tells them exactly what to fix. Ramp time dropped in half." },
-              { metric: "3× win rate lift", name: "James O.", role: "Founder, Launchflow", initials: "JO", quote: "The deal timeline AI is what nobody talks about. Watching sentiment shift across 4 calls with the same prospect — you understand that relationship in a way that feels genuinely unfair to competitors." },
+              { metric: "Saves 3 hrs a week", name: "Sarah Mitchell", role: "Operations Lead, small agency", initials: "SM", quote: "I used to spend Friday afternoons rebuilding notes from memory. Now the summary is ready before I have even closed my laptop." },
+              { metric: "Zero missed action items", name: "Priya Nair", role: "Program Manager", initials: "PN", quote: "Nothing falls through the cracks anymore. Every action item has an owner and a date, and I can search any past meeting in seconds." },
+              { metric: "Better interview notes", name: "James Ortiz", role: "Talent Recruiter", initials: "JO", quote: "I can actually focus on the candidate instead of typing. The transcript and summary are ready for the hiring panel right after the call." },
             ].map((t, i) => (
               <FadeIn key={i} delay={i * 80}>
                 <div className="testi-card">
                   <div className="testi-metric">{t.metric}</div>
-                  <p className="testi-quote">"{t.quote}"</p>
+                  <p className="testi-quote">{t.quote}</p>
                   <div className="testi-author">
                     <div className="testi-av">{t.initials}</div>
                     <div>
@@ -1215,96 +1525,52 @@ export default function LandingPage() {
               </FadeIn>
             ))}
           </div>
-
-          <FadeIn delay={100}>
-            <div className="case-study">
-              <div className="case-step">
-                <div className="case-step-label">Problem</div>
-                <div className="case-step-text">Cloudpath's 15 reps were closing at 12%. Pricing objections killed 40% of late-stage deals. Zero visibility into why.</div>
-              </div>
-              <div className="case-step">
-                <div className="case-step-label">Fixsense Usage</div>
-                <div className="case-step-text">Real-time objection detection + AI counter-responses deployed to all reps. CRM auto-sync eliminated 4hrs/week of admin.</div>
-              </div>
-              <div className="case-step">
-                <div className="case-step-label">Measurable Outcome</div>
-                <div className="case-step-result">+28% close rate</div>
-                <div className="case-step-text">in 60 days. $1.2M in additional closed revenue. Ramp time cut from 90 to 42 days.</div>
-              </div>
-            </div>
-          </FadeIn>
         </div>
       </section>
 
-      {/* ── WHY NATIVE / NO BOT ── */}
+      {/* SECURITY / TRUST */}
       <section className="section" style={{ background: "var(--bg)" }}>
         <div className="section-inner">
-          <div className="pos-grid">
-            <FadeIn>
-              <div>
-                <div className="kicker">Why Not Just Use a Bot?</div>
-                <h2 className="section-h" style={{ fontSize: "clamp(22px,4vw,44px)" }}>Bots poison the call before your rep says a word.</h2>
-                <p style={{ fontSize: "clamp(13px,2vw,15px)", color: "var(--ink2)", lineHeight: 1.72, marginBottom: 20 }}>
-                  Every competitor relies on a third-party bot joining your Zoom call. The moment that bot appears, 31% of enterprise prospects disengage. Trust is broken before value is established.
-                </p>
-                <p style={{ fontSize: "clamp(13px,2vw,15px)", color: "var(--ink2)", lineHeight: 1.72 }}>
-                  Fixsense doesn't join your call. <strong style={{ color: "var(--ink)" }}>Fixsense IS your call.</strong> Native meeting infrastructure — zero bot, zero friction, zero missed seconds.
-                </p>
-              </div>
-            </FadeIn>
-            <FadeIn delay={80}>
-              <div>
-                <div className="pos-table-wrap">
-                  <table className="pos-table">
-                    <thead>
-                      <tr>
-                        <th className="pos-th" style={{ textAlign: "left" }}>Capability</th>
-                        <th className="pos-th hl">Fixsense</th>
-                        <th className="pos-th">Gong</th>
-                        <th className="pos-th">Bots</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        ["Real-time objections", "✓", "✗", "✗"],
-                        ["No bot joins call", "✓", "✗", "✗"],
-                        ["Native meeting room", "✓", "✗", "✗"],
-                        ["Live sentiment", "✓", "After call", "✗"],
-                        ["Mid-call AI coaching", "✓", "✗", "✗"],
-                        ["Transparent pricing", "✓", "✗", "✓"],
-                      ].map(([feat, fix, gong, bot], i) => (
-                        <tr key={i} className="pos-tr">
-                          <td className="pos-td" style={{ textAlign: "left" }}>{feat}</td>
-                          <td className="pos-td hl"><span style={{ color: "#22c55e", fontSize: 15 }}>{fix}</span></td>
-                          <td className="pos-td"><span style={{ color: gong === "✗" ? "rgba(255,255,255,.18)" : "#f59e0b", fontSize: gong === "✓" ? 15 : 12 }}>{gong}</span></td>
-                          <td className="pos-td"><span style={{ color: bot === "✗" ? "rgba(255,255,255,.18)" : "#22c55e", fontSize: 15 }}>{bot}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          <FadeIn>
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <div className="kicker" style={{ justifyContent: "center" }}>Built to be trusted</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}>Your meetings and data, protected by default.</h2>
+            </div>
+          </FadeIn>
+          <div className="trust-grid">
+            {[
+              { icon: "lock", title: "Encrypted end to end", desc: "Recordings and transcripts are encrypted in transit and at rest." },
+              { icon: "shield", title: "GDPR compliant", desc: "Built around data minimization, consent, and your right to be forgotten." },
+              { icon: "eye-off", title: "No visible bot", desc: "Fixsense works natively in your meeting room instead of joining as a bot." },
+              { icon: "download", title: "Full data control", desc: "Export or permanently delete your recordings and transcripts anytime." },
+            ].map((c, i) => (
+              <FadeIn key={i} delay={i * 80}>
+                <div className="trust-card">
+                  <div className="trust-card-icon"><Icon name={c.icon} size={18} /></div>
+                  <div className="trust-card-title">{c.title}</div>
+                  <div className="trust-card-desc">{c.desc}</div>
                 </div>
-                <p className="pos-note">Gong starts at $100k/year. Fixsense starts at $18/month.</p>
-              </div>
-            </FadeIn>
+              </FadeIn>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ── */}
+      {/* HOW IT WORKS */}
       <section className="section" style={{ background: "var(--bg2)" }}>
         <div className="section-inner">
           <FadeIn>
             <div style={{ textAlign: "center", marginBottom: 10 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>How It Works</div>
-              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 560, margin: "0 auto" }}>Up in 48 hours. Results in the first call.</h2>
+              <div className="kicker" style={{ justifyContent: "center" }}>How it works</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 560, margin: "0 auto" }}>Live in minutes. Useful from your first meeting.</h2>
             </div>
           </FadeIn>
           <FadeIn delay={60}>
             <div className="how-steps">
               {[
-                { num: "1", title: "Start or join a call", desc: "Share a Fixsense link. Prospect joins in one click. No downloads, no bots, no friction." },
-                { num: "2", title: "AI analyzes in real time", desc: "Sentiment, objections, deal risk, and coaching suggestions — updated every 3 seconds." },
-                { num: "3", title: "Insights land instantly", desc: "Live alerts mid-call. Full AI summary + CRM push 2 minutes after you hang up." },
+                { num: "1", title: "Join or start a meeting", desc: "Use your normal meeting link. Fixsense works natively, with no separate bot for anyone to notice or approve." },
+                { num: "2", title: "AI listens and analyzes", desc: "Speakers are identified automatically while sentiment, key moments, and action items are captured as the conversation happens." },
+                { num: "3", title: "Your summary lands instantly", desc: "A clear transcript, summary, and action item list are ready within minutes of the meeting ending, ready to share." },
               ].map((step, i) => (
                 <div key={i} className="how-step">
                   <div className="how-step-num">{step.num}</div>
@@ -1319,13 +1585,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FAQ ── */}
+      {/* FAQ */}
       <section className="section" style={{ background: "var(--bg)" }}>
         <div className="section-inner">
           <FadeIn>
             <div style={{ textAlign: "center", marginBottom: 10 }}>
               <div className="kicker" style={{ justifyContent: "center" }}>Questions</div>
-              <h2 className="section-h" style={{ textAlign: "center", fontSize: "clamp(22px,4vw,44px)" }}>The ones we get every day.</h2>
+              <h2 className="section-h" style={{ textAlign: "center", fontSize: "clamp(22px,4vw,42px)" }}>The ones we get every day.</h2>
             </div>
           </FadeIn>
           <div className="faq-items">
@@ -1334,7 +1600,7 @@ export default function LandingPage() {
                 <div className="faq-item">
                   <button className="faq-q" onClick={() => setActiveFaq(activeFaq === i ? null : i)} aria-expanded={activeFaq === i}>
                     {f.q}
-                    <span className={`faq-chev ${activeFaq === i ? "open" : ""}`}>▾</span>
+                    <span className={`faq-chev ${activeFaq === i ? "open" : ""}`}><Icon name="arrow-right" size={13} /></span>
                   </button>
                   <div className={`faq-a ${activeFaq === i ? "open" : ""}`} aria-hidden={activeFaq !== i}>
                     <p>{f.a}</p>
@@ -1346,49 +1612,50 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FINAL CTA ── */}
+      {/* FINAL CTA */}
       <section className="final">
         <div className="final-orb" />
         <div className="final-inner">
           <FadeIn>
-            <h2 className="final-h">Every missed objection<br />is lost revenue.</h2>
-            <p className="final-sub">Fix it in real time. Start with 30 free minutes — no card required, no bot joining your calls, live in 48 hours.</p>
+            <h2 className="final-h">Stop taking notes.<br />Start having the meeting.</h2>
+            <p className="final-sub">Try Fixsense free on your next meeting. No credit card required, no bot for anyone to notice, and your first summary ready in minutes.</p>
             <div className="final-ctas">
               <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
-                Start Free Trial
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                Start free trial
+                <Icon name="arrow-right" size={14} />
               </Link>
-              <a href="#demo" className="btn-hero-outline">Try Live Demo</a>
+              <a href="#demo" className="btn-hero-outline">Try the live demo</a>
             </div>
-            <p className="final-footnote">30 min free · No credit card · No bot · Native room included</p>
+            <p className="final-footnote">Free trial · No credit card required · No bot joins your call</p>
           </FadeIn>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
+      {/* FOOTER */}
       <footer className="footer">
         <div className="footer-inner">
           <div className="footer-top">
             <div>
               <div className="footer-brand-name"><Logo size={20} />Fixsense</div>
-              <p className="footer-brand-desc">Real-time AI sales intelligence. Revenue recovered during the call, not after it.</p>
+              <p className="footer-brand-desc">The AI meeting assistant that remembers everything, so you don't have to.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[["#demo", "Live Demo"], ["#problem", "The Problem"], ["/pricing", "Pricing"], ["/changelog", "Changelog"]].map(([h, l]) => (
+              {[["#demo", "Live demo"], ["#problem", "Why Fixsense"], ["/pricing", "Pricing"], ["/changelog", "Changelog"]].map(([h, l]) => (
                 h.startsWith("#")
                   ? <a key={h} href={h} className="footer-link">{l}</a>
                   : <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
             </div>
-            
+
             <div>
               <div className="footer-col-title">Legal</div>
               {[["/privacy", "Privacy"], ["/terms", "Terms"], ["/security", "Security"], ["/contact", "Contact"]].map(([h, l]) => (
                 <Link key={h} to={h} className="footer-link">{l}</Link>
               ))}
+              <button className="footer-link" onClick={() => openCookiePreferences()}>
+                Cookie preferences
+              </button>
             </div>
           </div>
           <div className="footer-bottom">
@@ -1397,6 +1664,7 @@ export default function LandingPage() {
               <Link to="/privacy" className="footer-legal-link">Privacy</Link>
               <Link to="/terms" className="footer-legal-link">Terms</Link>
               <Link to="/security" className="footer-legal-link">Security</Link>
+              <button className="footer-legal-link" onClick={() => openCookiePreferences()}>Cookie preferences</button>
             </div>
           </div>
         </div>
