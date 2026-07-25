@@ -1248,6 +1248,7 @@ export default function LiveMeeting() {
             error={daily.error} roomName={roomName} onRetry={handleRetryJoin}
             pinnedId={pinnedId} onPin={setPinnedId}
             layout={videoLayout} onLayoutChange={setVideoLayout}
+            localName={hostName}
           />
         )}
 
