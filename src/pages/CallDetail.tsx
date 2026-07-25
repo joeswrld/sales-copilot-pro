@@ -152,6 +152,32 @@ export default function CallDetail() {
   const summaryText    = summaryData?.summary || "";
   const meetingScore   = summaryData?.meeting_score;
   const talkRatio      = summaryData?.talk_ratio as Record<string, number> | null;
+  // Older analyzed calls stored talk_ratio keyed by generic role labels
+  // ("rep"/"prospect") before this was switched to real participant names.
+  // Remap those legacy keys to the names we already have from the
+  // transcript (same speaker_name values the backend now uses directly)
+  // so old calls don't show literal "rep"/"prospect" in the UI. New rows
+  // are already keyed by name and pass through untouched.
+  const displayTalkRatio = useMemo(() => {
+    if (!talkRatio) return null;
+    const isLegacyRoleKeyed = Object.prototype.hasOwnProperty.call(talkRatio, "rep")
+      || Object.prototype.hasOwnProperty.call(talkRatio, "prospect");
+    if (!isLegacyRoleKeyed) return talkRatio;
+
+    const hostLine = rawTranscript.find((l) => l.speaker === "You" && l.speaker_name);
+    const guestLine = rawTranscript.find((l) => l.speaker === "Guest" && l.speaker_name);
+    const hostLabel = hostLine?.speaker_name || "Host";
+    const guestLabel = guestLine?.speaker_name || "Guest";
+
+    const remapped: Record<string, number> = {};
+    if (talkRatio.rep != null) remapped[hostLabel] = talkRatio.rep;
+    if (talkRatio.prospect != null) remapped[guestLabel] = talkRatio.prospect;
+    // Carry over any other keys unchanged (defensive — shouldn't normally happen)
+    for (const [k, v] of Object.entries(talkRatio)) {
+      if (k !== "rep" && k !== "prospect") remapped[k] = v;
+    }
+    return remapped;
+  }, [talkRatio, rawTranscript]);
   const sentiment      = summaryData?.sentiment;
   const sentimentScore = summaryData?.sentiment_score;
   const engagementScore = summaryData?.engagement_score;
@@ -530,7 +556,7 @@ export default function CallDetail() {
         )}
 
         {/* ── Engagement + Talk ratio ── */}
-        {(engagementScore != null || (talkRatio && Object.keys(talkRatio).length > 0)) && (
+        {(engagementScore != null || (displayTalkRatio && Object.keys(displayTalkRatio).length > 0)) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {engagementScore != null && (
               <div className="rounded-xl border border-border bg-card p-4">
@@ -549,13 +575,13 @@ export default function CallDetail() {
               </div>
             )}
 
-            {talkRatio && Object.keys(talkRatio).length > 0 && (
+            {displayTalkRatio && Object.keys(displayTalkRatio).length > 0 && (
               <div className="rounded-xl border border-border bg-card p-4">
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-primary" /> Talk Ratio
                 </h3>
                 <div className="space-y-2">
-                  {Object.entries(talkRatio).map(([speaker, pct]) => (
+                  {Object.entries(displayTalkRatio).map(([speaker, pct]) => (
                     <div key={speaker} className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground w-20 truncate" title={speaker}>{speaker}</span>
                       <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
