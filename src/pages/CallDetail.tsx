@@ -514,16 +514,22 @@ export default function CallDetail() {
                     </Badge>
                   ) : (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1.5"
-                        onClick={() => markCrmPushed.mutate({ actionId: action.id, provider: "hubspot" })}
-                        disabled={markCrmPushed.isPending}
-                      >
-                        {markCrmPushed.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                        Push to HubSpot
-                      </Button>
+                      <div className="relative group">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled
+                          className="h-7 text-xs gap-1.5 opacity-50 cursor-not-allowed border-dashed select-none"
+                        >
+                          HubSpot
+                          <span className="inline-flex items-center text-[9px] font-bold text-violet-400 bg-violet-400/10 border border-violet-400/25 rounded-full px-1.5 py-0.5 leading-none">
+                            Soon
+                          </span>
+                        </Button>
+                        <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center gap-1.5 whitespace-nowrap bg-popover border border-border rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg z-20">
+                          🚧 HubSpot sync is coming soon
+                        </div>
+                      </div>
 
                       <div className="relative group">
                         <Button
