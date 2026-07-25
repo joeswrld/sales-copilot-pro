@@ -41,6 +41,7 @@ import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import GuestJoin from "@/pages/GuestJoin";  // ✅ NEW: guest join page
 import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from "@/components/PWABanner";
+import CookieConsent from "@/components/CookieConsent";
 import DealsPage from "@/pages/DealsPage";
 import IntegrationsDashboardPage from "./pages/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
@@ -88,6 +89,7 @@ function AppRoutes() {
         <UpgradeModal />
         <DebugInspector />
         <PWABanner />
+        <CookieConsent />
 
         <Routes>
           {/* Public */}
