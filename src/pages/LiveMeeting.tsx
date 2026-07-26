@@ -1061,23 +1061,30 @@ export default function LiveMeeting() {
   // end-call mutation is in flight, "ready" for a brief celebratory beat
   // right before navigating to the summary.
   const [endingPhase, setEndingPhase] = useState<"processing" | "ready" | null>(null);
-  const [summaryFailed, setSummaryFailed] = useState(false);
+  // FIX: endCall's mutation now resolves as soon as the call is marked
+  // completed — it no longer waits for generate-call-summary, deal-room
+  // creation, or the recording-URL fallback to finish (see useLiveCall.ts /
+  // runPostEndTasks). Those always continue in the background past this
+  // point now, so "summaryFailed" (previously toggled off only when the
+  // summary happened to finish before the overlay closed) is replaced with
+  // a straightforward "still finishing in the background" flag that's
+  // always true — Call Details shows the real-time processing state once
+  // we get there.
+  const summaryStillProcessing = true;
 
   // Minimum time to hold each phase so the overlay reads as steady,
   // deliberate progress rather than a flash — especially on a fast
   // connection where the underlying work could otherwise finish in under a
   // second and make the whole thing feel abrupt.
-  const MIN_PROCESSING_MS = 4_500;
-  const READY_HOLD_MS     = 2_200;
+  const MIN_PROCESSING_MS = 2_000;
+  const READY_HOLD_MS     = 1_200;
 
   const handleEnd = useCallback(async () => {
     const startedAt = Date.now();
     setEndingPhase("processing");
-    setSummaryFailed(false);
     await daily.leaveCall();
     try {
-      const result = await endCall.mutateAsync();
-      setSummaryFailed(!(result as any)?.summaryGenerated);
+      await endCall.mutateAsync();
 
       const elapsed = Date.now() - startedAt;
       if (elapsed < MIN_PROCESSING_MS) {
@@ -1127,7 +1134,7 @@ export default function LiveMeeting() {
   // AI Coaching surfaces that used to anchor it.
   return (
     <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", background: T.bg }}>
-      {endingPhase && <CallEndingOverlay phase={endingPhase} summaryFailed={summaryFailed} />}
+      {endingPhase && <CallEndingOverlay phase={endingPhase} summaryFailed={summaryStillProcessing} />}
 
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div
