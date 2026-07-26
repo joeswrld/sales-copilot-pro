@@ -36,10 +36,13 @@ export type CallEndingPhase = "processing" | "ready";
 
 interface CallEndingOverlayProps {
   phase: CallEndingPhase;
-  /** True if we confirmed the AI summary generation actually failed —
-   * softens the "ready" messaging instead of claiming a summary exists
-   * when it doesn't. Call Details will still show a "processing"/retry
-   * state and pick it up via Realtime if it finishes shortly after. */
+  /** True when the AI summary (and recording finalization) is still
+   * running in the background as we navigate — which, since endCall no
+   * longer blocks on it, is effectively always. Softens the "ready"
+   * messaging instead of claiming a finished summary exists yet. Call
+   * Details shows its own "processing"/retry state and picks this up via
+   * Realtime the moment it lands. Kept as an optional prop named
+   * summaryFailed for backwards compatibility with existing call sites. */
   summaryFailed?: boolean;
 }
 
