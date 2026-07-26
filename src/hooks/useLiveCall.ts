@@ -1,5 +1,5 @@
 /**
- * useLiveCall.ts — v7
+ * useLiveCall.ts — v8
  *
  * Fixes:
  *  - Realtime channel now keyed on callId to prevent duplicate subscriptions
@@ -24,6 +24,16 @@
  *    no-op fast-path skip if no final transcript exists yet, and
  *    finalize-recording-transcript re-invokes it with force:true once the
  *    diarized transcript lands).
+ *  - FIX: endCall's mutationFn no longer awaits generate-call-summary,
+ *    deal-room creation, or the recording-URL polling fallback — those
+ *    were run sequentially in-line and could add 10-20+ seconds on top of
+ *    the DB status update, which is what made "processing the
+ *    meeting"/"finalizing the recording"/"transcribing" feel like it hung
+ *    on the Call Details handoff. They now run in the background via
+ *    runPostEndTasks() and the mutation resolves as soon as the call row
+ *    is marked completed. Call Details already has realtime subscriptions
+ *    and its own "Processing Meeting…" state for this exact window, so
+ *    nothing is lost — it just isn't gating navigation anymore.
  */
 
 import { useEffect } from "react";
@@ -44,6 +54,145 @@ async function postSystemMessage(conversationId: string, text: string, userId: s
     });
   } catch (e) {
     console.warn("postSystemMessage failed (non-fatal):", e);
+  }
+}
+
+/**
+ * Everything that used to run *awaited* inside endCall's mutationFn after
+ * the call was marked "completed" — generate-call-summary, Slack notify,
+ * deal-room creation, and the recording-URL polling fallback. None of this
+ * needs to finish before the person is handed off to Call Details, so it's
+ * called fire-and-forget (`.catch()`, never awaited) from endCall instead.
+ *
+ * This is the main fix for "processing/finalizing/transcribing takes too
+ * long": previously the up-to-12-second recording-URL poll loop alone sat
+ * in front of the navigation to Call Details, on top of a full LLM round
+ * trip for generate-call-summary and a couple more DB round trips for the
+ * deal room. Call Details already has realtime subscriptions + its own
+ * "Processing Meeting…" state for exactly this window (see useCallDetail
+ * and CallDetail.tsx's isProcessing/finalTranscriptStatus handling), so
+ * none of it has to block the client leaving the live-meeting screen.
+ */
+async function runPostEndTasks(
+  callId: string,
+  userId: string,
+  teamId: string | undefined,
+  callData: any,
+): Promise<void> {
+  // Recording-first: there's no live transcript to race or wait on anymore
+  // — nothing writes to `transcripts` during the call. The authoritative
+  // transcript only exists once Daily finishes processing the complete
+  // cloud recording and finalize-recording-transcript runs Deepgram batch
+  // diarization on it (triggered by daily-webhook's
+  // "recording.ready-to-download" handler, which itself invokes
+  // finalize-recording-transcript via EdgeRuntime.waitUntil — that chain
+  // runs server-side regardless of this function). This call to
+  // generate-call-summary is a harmless, cheap no-op ("skipped: no
+  // transcript") if that hasn't landed yet — it exists so a call that
+  // somehow already has a final transcript (e.g. a retry) gets its Call
+  // Details refreshed promptly. finalize-recording-transcript re-invokes
+  // generate-call-summary with force:true once the diarized transcript
+  // actually lands, and Call Details reflects that automatically via its
+  // existing realtime subscriptions.
+  let summaryData: any = null;
+  try {
+    const res = await supabase.functions.invoke("generate-call-summary", {
+      body: { call_id: callId },
+    });
+    if (res.data) summaryData = res.data;
+  } catch (e) {
+    console.warn("generate-call-summary non-fatal:", e);
+  }
+
+  // Slack notification (fire-and-forget)
+  supabase.functions.invoke("slack-notify", {
+    body: { call_id: callId, user_id: userId },
+  }).catch(() => {});
+
+  // Auto-create Deal Room if in a team (non-fatal)
+  if (teamId) {
+    try {
+      const stage = stageFromCall({
+        status: callData?.status,
+        meeting_type: callData?.meeting_type,
+        sentiment_score: callData?.sentiment_score,
+      });
+
+      const { data: dealRoomId, error: drErr } = await (supabase as any).rpc(
+        "create_deal_room_for_call",
+        {
+          p_call_id:         callId,
+          p_team_id:         teamId,
+          p_deal_name:       callData?.name ?? "Untitled Deal",
+          p_company:         callData?.participants?.[0] ?? null,
+          p_stage:           stage,
+          p_sentiment_score: callData?.sentiment_score ?? null,
+          p_last_call_score: summaryData?.meetingScore ?? null,
+          p_next_step:       summaryData?.nextSteps?.[0] ?? null,
+        }
+      );
+
+      if (!drErr && dealRoomId) {
+        const { data: dr } = await (supabase as any)
+          .from("deal_rooms")
+          .select("conversation_id")
+          .eq("id", dealRoomId)
+          .maybeSingle();
+
+        if (dr?.conversation_id) {
+          const summary = summaryData?.summary
+            ? `📊 **Call Summary**\n${summaryData.summary}`
+            : `📊 **Call Completed** — ${callData?.name ?? "Untitled"}`;
+
+          const details: string[] = [];
+          if (callData?.sentiment_score != null) details.push(`Sentiment: ${callData.sentiment_score}%`);
+          if (summaryData?.meetingScore != null) details.push(`Score: ${summaryData.meetingScore}/10`);
+          if (summaryData?.nextSteps?.[0]) details.push(`Next step: ${summaryData.nextSteps[0]}`);
+
+          await postSystemMessage(
+            dr.conversation_id,
+            details.length ? `${summary}\n\n${details.join(" · ")}` : summary,
+            userId
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("Deal room creation non-fatal:", e);
+    }
+  }
+
+  // Fallback: if a Daily recording was requested, wait briefly for the
+  // webhook to store the URL, then copy it onto the call row so Call
+  // Details always shows a recording link when one exists. This still
+  // polls for up to ~12s, but it now happens entirely in the background
+  // after navigation — the person is already looking at Call Details
+  // (which shows its own "Processing Meeting…" state and updates live via
+  // realtime the moment recording_url actually lands), not staring at a
+  // full-screen "Ending call…" overlay while it runs.
+  try {
+    const { data: cd } = await supabase
+      .from("calls")
+      .select("daily_recording_id, recording_url")
+      .eq("id", callId)
+      .maybeSingle();
+    if (cd?.daily_recording_id && !cd?.recording_url) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: dr } = await (supabase as any)
+          .from("daily_rooms")
+          .select("recording_url")
+          .eq("recording_id", cd.daily_recording_id)
+          .maybeSingle();
+        if (dr?.recording_url) {
+          await supabase.from("calls")
+            .update({ recording_url: dr.recording_url })
+            .eq("id", callId);
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("recording URL fallback non-fatal:", e);
   }
 }
 
@@ -312,124 +461,29 @@ export function useLiveCall(options?: {
         .eq("id", callId)
         .is("final_transcript_status", null);
 
-      // Recording-first: there's no live transcript to race or wait on
-      // anymore — nothing writes to `transcripts` during the call. The
-      // authoritative transcript only exists once Daily finishes
-      // processing the complete cloud recording and
-      // finalize-recording-transcript runs Deepgram batch diarization on
-      // it (triggered by daily-webhook's "recording.ready-to-download"
-      // handler). This call to generate-call-summary is a harmless,
-      // cheap no-op ("skipped: no transcript") if that hasn't landed yet
-      // — it exists so a call that somehow already has a final transcript
-      // (e.g. a retry) gets its Call Details refreshed immediately on end.
-      // finalize-recording-transcript re-invokes generate-call-summary
-      // with force:true once the diarized transcript actually lands, and
-      // Call Details reflects that automatically via its existing
-      // realtime subscriptions — no polling needed here.
-      let summaryData: any = null;
-      try {
-        const res = await supabase.functions.invoke("generate-call-summary", {
-          body: { call_id: callId },
-        });
-        if (res.data) summaryData = res.data;
-      } catch (e) {
-        console.warn("generate-call-summary non-fatal:", e);
-      }
+      // FIX: everything below this point used to be awaited in-line, which
+      // meant the "Ending call..." overlay (and the navigation to Call
+      // Details underneath it) stayed up for however long generate-call-
+      // summary + deal-room creation + up to 12s of recording-URL polling
+      // took to resolve — often 10-20+ seconds, even though none of it
+      // needs to finish before the person can be handed off to Call
+      // Details. That page already has its own realtime subscriptions
+      // (useCallDetail) and a proper "Processing Meeting…" state driven by
+      // final_transcript_status / analysis_status, specifically so slow
+      // backend work can keep running after navigation instead of blocking
+      // it. Recording-first pipeline reminder: daily-webhook's
+      // "recording.ready-to-download" handler already invokes
+      // finalize-recording-transcript via EdgeRuntime.waitUntil, which
+      // itself kicks off generate-call-summary(force:true) the same way —
+      // that server-side chain runs regardless of what the client does
+      // here. So endCall's job is just to make sure that chain gets
+      // started and to leave a same-call fallback for the recording URL;
+      // none of it needs to hold up the mutation's return.
+      runPostEndTasks(callId, user!.id, team?.id, liveCallQuery.data).catch((e) => {
+        console.warn("runPostEndTasks non-fatal:", e);
+      });
 
-      // Slack notification (fire-and-forget)
-      supabase.functions.invoke("slack-notify", {
-        body: { call_id: callId, user_id: user!.id },
-      }).catch(() => {});
-
-      // Auto-create Deal Room if in a team (non-fatal)
-      if (team?.id) {
-        try {
-          const callData = liveCallQuery.data;
-          const stage = stageFromCall({
-            status: callData?.status,
-            meeting_type: (callData as any)?.meeting_type,
-            sentiment_score: callData?.sentiment_score,
-          });
-
-          const { data: dealRoomId, error: drErr } = await (supabase as any).rpc(
-            "create_deal_room_for_call",
-            {
-              p_call_id:         callId,
-              p_team_id:         team.id,
-              p_deal_name:       callData?.name ?? "Untitled Deal",
-              p_company:         callData?.participants?.[0] ?? null,
-              p_stage:           stage,
-              p_sentiment_score: callData?.sentiment_score ?? null,
-              p_last_call_score: summaryData?.meetingScore ?? null,
-              p_next_step:       summaryData?.nextSteps?.[0] ?? null,
-            }
-          );
-
-          if (!drErr && dealRoomId) {
-            const { data: dr } = await (supabase as any)
-              .from("deal_rooms")
-              .select("conversation_id")
-              .eq("id", dealRoomId)
-              .maybeSingle();
-
-            if (dr?.conversation_id) {
-              const summary = summaryData?.summary
-                ? `📊 **Call Summary**\n${summaryData.summary}`
-                : `📊 **Call Completed** — ${callData?.name ?? "Untitled"}`;
-
-              const details: string[] = [];
-              if (callData?.sentiment_score != null) details.push(`Sentiment: ${callData.sentiment_score}%`);
-              if (summaryData?.meetingScore != null) details.push(`Score: ${summaryData.meetingScore}/10`);
-              if (summaryData?.nextSteps?.[0]) details.push(`Next step: ${summaryData.nextSteps[0]}`);
-
-              await postSystemMessage(
-                dr.conversation_id,
-                details.length ? `${summary}\n\n${details.join(" · ")}` : summary,
-                user!.id
-              );
-            }
-          }
-        } catch (e) {
-          console.warn("Deal room creation non-fatal:", e);
-        }
-      }
-
-      // Fallback: if a Daily recording was requested, wait briefly for the
-      // webhook to store the URL, then copy it onto the call row so Call
-      // Details always shows a recording link when one exists.
-      try {
-        const { data: cd } = await supabase
-          .from("calls")
-          .select("daily_recording_id, recording_url")
-          .eq("id", callId)
-          .maybeSingle();
-        if (cd?.daily_recording_id && !cd?.recording_url) {
-          for (let i = 0; i < 6; i++) {
-            await new Promise((r) => setTimeout(r, 2000));
-            const { data: dr } = await (supabase as any)
-              .from("daily_rooms")
-              .select("recording_url")
-              .eq("recording_id", cd.daily_recording_id)
-              .maybeSingle();
-            if (dr?.recording_url) {
-              await supabase.from("calls")
-                .update({ recording_url: dr.recording_url })
-                .eq("id", callId);
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("recording URL fallback non-fatal:", e);
-      }
-
-      // FIX: this used to fall off the end of the function returning
-      // undefined, so the caller (LiveMeeting's handleEnd) had no way to
-      // know whether generate-call-summary above actually succeeded or
-      // failed silently (it's caught non-fatally on purpose, so a failure
-      // here never throws). Surfacing it lets the post-call overlay show an
-      // honest "ready" state instead of always claiming success.
-      return { neverStarted: false, summaryGenerated: !!summaryData };
+      return { neverStarted: false, summaryGenerated: false };
     },
 
     onSuccess: () => {
