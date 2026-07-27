@@ -1,10 +1,16 @@
 /**
  * plans.ts — Fixsense minute-based billing config
  *
- * Free:    30 min  · $0
- * Starter: 300 min · $18
- * Growth:  1500 min · $60  (Most Popular)
- * Scale:   5000 min · $120
+ * Free:    30 min   · $0
+ * Starter: 300 min  · $24
+ * Growth:  1500 min · $89  (Most Popular)
+ * Scale:   5000 min · $299
+ *
+ * This is the frontend's fast-render cache of the same numbers stored in
+ * the `plans` Supabase table (see supabase/functions/_shared/pricing.ts,
+ * which is the backend's copy of the same source of truth). If you change
+ * pricing, update the `plans` table via a migration AND this file so the
+ * two never drift apart again.
  */
 
 export const USD_TO_NGN = 1500;
@@ -39,7 +45,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
   starter: {
     key: "starter",
     name: "Starter",
-    price_usd: 18,
+    price_usd: 24,
     minute_quota: 300,
     team_members_limit: 3,
     calls_limit: 50,
@@ -55,7 +61,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
   growth: {
     key: "growth",
     name: "Growth",
-    price_usd: 60,
+    price_usd: 89,
     minute_quota: 1500,
     team_members_limit: 10,
     calls_limit: 300,
@@ -74,7 +80,7 @@ export const PLAN_CONFIG: Record<string, PlanConfig> = {
   scale: {
     key: "scale",
     name: "Scale",
-    price_usd: 120,
+    price_usd: 299,
     minute_quota: 5000,
     team_members_limit: -1,
     calls_limit: -1,
