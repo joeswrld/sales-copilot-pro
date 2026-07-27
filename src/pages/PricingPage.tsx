@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUserProfile } from "@/hooks/useSettings";
-import { PLANS_SIMPLE, formatMinutes } from "@/config/plans";
+import { PLANS_SIMPLE, PLAN_CONFIG, formatMinutes } from "@/config/plans";
 
 function useInView(threshold = 0.08) {
   const ref = useRef<HTMLDivElement>(null);
@@ -277,31 +277,42 @@ export default function PricingPage() {
     );
   }
 
+  // Display-only shape (badges, CTA copy, styling classes, feature bullets)
+  // lives here; every price and minute quota is pulled from PLAN_CONFIG
+  // (src/config/plans.ts) so this page can never drift from the shared
+  // pricing source of truth again.
+  const planHours: Record<string, string> = {
+    free: "",
+    starter: " (5h)",
+    growth: " (25h)",
+    scale: " (83h)",
+  };
+
   const PLANS_CONFIG = [
     {
-      key: "free", name: "Free", price: "$0", badge: null, badgeClass: "badge-plain",
-      mins: "30 min of AI-Powered calls/month", tagline: "Try without a card",
+      key: "free", name: PLAN_CONFIG.free.name, price: `$${PLAN_CONFIG.free.price_usd}`, badge: null, badgeClass: "badge-plain",
+      mins: `${formatMinutes(PLAN_CONFIG.free.minute_quota)} of AI-Powered calls/month`, tagline: "Try without a card",
       ctaText: "Start Free", ctaClass: "cta-ghost",
       cardClass: "", priceClass: "", minsClass: "",
       feats: ["Live call rooms", "Basic transcription", " AI summary", "Solo use"],
     },
     {
-      key: "starter", name: "Starter", price: "$18", badge: null, badgeClass: "badge-plain",
-      mins: "300 min of AI-Powered calls/month (5h)", tagline: "Individual reps",
+      key: "starter", name: PLAN_CONFIG.starter.name, price: `$${PLAN_CONFIG.starter.price_usd}`, badge: null, badgeClass: "badge-plain",
+      mins: `${formatMinutes(PLAN_CONFIG.starter.minute_quota)} of AI-Powered calls/month${planHours.starter}`, tagline: "Individual reps",
       ctaText: "Get Starter", ctaClass: "cta-out",
       cardClass: "", priceClass: "", minsClass: "",
       feats: ["Everything in Free", "Full AI summaries", "Objection detection", "Up to 3 members"],
     },
     {
-      key: "growth", name: "Growth", price: "$60", badge: "Most Popular", badgeClass: "badge-growth",
-      mins: "1,500 min of AI-Powered calls/month (25h)", tagline: "Best for growing teams",
+      key: "growth", name: PLAN_CONFIG.growth.name, price: `$${PLAN_CONFIG.growth.price_usd}`, badge: "Most Popular", badgeClass: "badge-growth",
+      mins: `${formatMinutes(PLAN_CONFIG.growth.minute_quota)} of AI-Powered calls/month${planHours.growth}`, tagline: "Best for growing teams",
       ctaText: "Start Free Trial", ctaClass: "cta-fill",
       cardClass: "plan-card-growth", priceClass: "plan-price-growth", minsClass: "",
       feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"],
     },
     {
-      key: "scale", name: "Scale", price: "$120", badge: "Enterprise", badgeClass: "badge-scale",
-      mins: "5,000 min of AI-Powered calls/month (83h)", tagline: "Enterprise sales orgs",
+      key: "scale", name: PLAN_CONFIG.scale.name, price: `$${PLAN_CONFIG.scale.price_usd}`, badge: "Enterprise", badgeClass: "badge-scale",
+      mins: `${formatMinutes(PLAN_CONFIG.scale.minute_quota)} of AI-Powered calls/month${planHours.scale}`, tagline: "Enterprise sales orgs",
       ctaText: "Get Scale", ctaClass: "cta-purple",
       cardClass: "plan-card-scale", priceClass: "", minsClass: "plan-mins-scale",
       feats: ["Everything in Growth", "Advanced analytics", "Rep leaderboards", "Action Layer + CRM push", "Unlimited members"],
@@ -461,10 +472,10 @@ export default function PricingPage() {
                       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--mu)" }}>Feature</div>
                     </th>
                     {[
-                      { n: "Free", p: "$0/mo", g: false },
-                      { n: "Starter", p: "$18/mo", g: false },
-                      { n: "Growth", p: "$60/mo", g: true },
-                      { n: "Scale", p: "$160/mo", g: false },
+                      { n: "Free", p: `$${PLAN_CONFIG.free.price_usd}/mo`, g: false },
+                      { n: "Starter", p: `$${PLAN_CONFIG.starter.price_usd}/mo`, g: false },
+                      { n: "Growth", p: `$${PLAN_CONFIG.growth.price_usd}/mo`, g: true },
+                      { n: "Scale", p: `$${PLAN_CONFIG.scale.price_usd}/mo`, g: false },
                     ].map(col => (
                       <th key={col.n} className={`mth ${col.g ? "mtd-gbg" : ""}`}>
                         {col.g && <div className="mth-top" />}
