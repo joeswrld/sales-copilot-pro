@@ -14,7 +14,7 @@ import { PLAN_CONFIG, PLAN_ORDER } from "@/config/plans";
 const UPGRADE_COPY: Record<string, { headline: string; sub: string; color: string; gradient: string }> = {
   starter: {
     headline: "Unlock Starter Features",
-    sub: "Get AI insights, objection detection, and team tools for $18/month.",
+    sub: `Get AI insights, objection detection, and team tools for $${PLAN_CONFIG.starter.price_usd}/month.`,
     color: "#60a5fa",
     gradient: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
   },
@@ -47,7 +47,7 @@ const PLAN_FEATURES_PREVIEW: Record<string, string[]> = {
     "Up to 10 team members",
   ],
   scale: [
-    "5,000 min/month",
+    `${PLAN_CONFIG.scale.minute_quota.toLocaleString()} min/month`,
     "Unlimited team members",
     "Dedicated CSM",
     "All Growth features",
