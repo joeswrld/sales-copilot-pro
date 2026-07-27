@@ -34,14 +34,18 @@ import {
   Send, Plus, Bell, ChevronLeft, Hash, Users, MessageSquare,
   Search, CheckCheck, Check, Smile, Edit2, Trash2, Copy,
   MoreHorizontal, X, CornerUpLeft, Settings, Pin, PinOff,
- Paperclip, MessageCircle, AtSign,
+ Paperclip, MessageCircle, AtSign, Video,
 } from "lucide-react";
 import { uploadMessageFile, isImageType, isAudioType } from "@/lib/messageAttachments";
 
+import { useNavigate } from "react-router-dom";
 import AttachmentRender from "@/components/messages/AttachmentRender";
 import MentionTextarea, { renderWithMentions, type MentionMember } from "@/components/messages/MentionTextarea";
 import ThreadPanel from "@/components/messages/ThreadPanel";
 import PinnedDrawer from "@/components/messages/PinnedDrawer";
+import MeetingCard from "@/components/messages/MeetingCard";
+import StartMeetingModal from "@/components/messages/StartMeetingModal";
+import { useLiveCall } from "@/hooks/useLiveCall";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -412,6 +416,30 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onThread,
   if (!text && !msg.file_url) return null;
 
   if (msg.type === "system") {
+    if (msg.metadata?.kind === "call_recap" && msg.metadata?.call_id) {
+      return (
+        <div style={{ display: "flex", justifyContent: isOwn ? "flex-end" : "flex-start", padding: "6px 0" }}>
+          <MeetingCard
+            isOwn={isOwn}
+            meta={{
+              call_id: msg.metadata.call_id,
+              deal_id: msg.metadata.deal_id ?? null,
+              call_name: msg.metadata.call_name ?? null,
+              platform: msg.metadata.platform ?? null,
+              duration_minutes: msg.metadata.duration_minutes ?? null,
+              recording_url: msg.metadata.recording_url ?? null,
+              summary: msg.metadata.summary ?? null,
+              meeting_score: msg.metadata.meeting_score ?? null,
+              action_items: msg.metadata.action_items ?? [],
+              key_decisions: msg.metadata.key_decisions ?? [],
+              next_steps: msg.metadata.next_steps ?? [],
+              buying_signals: msg.metadata.buying_signals ?? [],
+              transcript_preview: msg.metadata.transcript_preview ?? [],
+            }}
+          />
+        </div>
+      );
+    }
     return (
       <div style={{ textAlign: "center", padding: "4px 0" }}>
         <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", background: "rgba(255,255,255,.05)", borderRadius: 20, padding: "3px 12px" }}>{text}</span>
@@ -604,6 +632,9 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   const [threadRoot, setThreadRoot] = useState<Msg | null>(null);
   const [msgSearch, setMsgSearch] = useState("");
   const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [showStartMeeting, setShowStartMeeting] = useState(false);
+  const navigate = useNavigate();
+  const { liveCall, isLive } = useLiveCall();
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mentionRef = useRef<{ focus: () => void }>(null);
@@ -830,6 +861,15 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
         <PinnedDrawer isDM={isDM} channelId={activeChannel.id} conversationId={activeChannel.conversationId}
           onClose={() => setShowPinned(false)} />
       )}
+      {showStartMeeting && (
+        <StartMeetingModal
+          defaultDealId={activeChannel.type === "deal" ? activeChannel.deal_id : null}
+          defaultDealName={activeChannel.deal_name}
+          lockDeal={activeChannel.type === "deal"}
+          suggestedName={activeChannel.type === "deal" && activeChannel.deal_name ? `${activeChannel.deal_name} call` : undefined}
+          onClose={() => setShowStartMeeting(false)}
+        />
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, height: "100%" }}>
         {/* Header */}
@@ -844,7 +884,19 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
-            {activeChannel.deal_stage && <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>}
+            {activeChannel.deal_stage && activeChannel.deal_id ? (
+              <p
+                onClick={() => navigate(`/deals/${activeChannel.deal_id}`)}
+                title="Open this deal"
+                style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0, cursor: "pointer", width: "fit-content" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "#0ef5d4")}
+                onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.3)")}
+              >
+                {getStage(activeChannel.deal_stage).label} · View Deal
+              </p>
+            ) : activeChannel.deal_stage && (
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>
+            )}
           </div>
           <button onClick={() => setShowMsgSearch(v => !v)} title="Search messages" style={{ width: 32, height: 32, borderRadius: 8, background: showMsgSearch ? "rgba(14,245,212,.1)" : "rgba(255,255,255,.05)", border: `1px solid ${showMsgSearch ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.08)"}`, color: showMsgSearch ? "#0ef5d4" : "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Search size={13} />
@@ -852,6 +904,29 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
           <button onClick={() => setShowPinned(true)} title="Pinned messages" style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Pin size={13} />
           </button>
+          {(() => {
+            const isOwnLiveCall = isLive && liveCall?.user_id === currentUserId;
+            const isRelevantDealCall = isLive && !!activeChannel.deal_id && liveCall?.deal_id === activeChannel.deal_id;
+            const canJoin = isRelevantDealCall || isOwnLiveCall;
+            return canJoin ? (
+              <button
+                onClick={() => navigate(`/live/${liveCall!.id}`)}
+                title="Join the meeting in progress"
+                style={{ display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(34,197,94,.14)", border: "1px solid rgba(34,197,94,.3)", color: "#22c55e", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e" }} className="animate-pulse" />
+                Join Meeting
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowStartMeeting(true)}
+                title={activeChannel.type === "deal" ? "Start a meeting for this deal" : "Start a team meeting"}
+                style={{ display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.25)", color: "#0ef5d4", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+              >
+                <Video size={12} /> Start Meeting
+              </button>
+            );
+          })()}
         </div>
 
         {showMsgSearch && (
