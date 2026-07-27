@@ -43,8 +43,8 @@ import AttachmentRender from "@/components/messages/AttachmentRender";
 import MentionTextarea, { renderWithMentions, type MentionMember } from "@/components/messages/MentionTextarea";
 import ThreadPanel from "@/components/messages/ThreadPanel";
 import PinnedDrawer from "@/components/messages/PinnedDrawer";
-import MeetingCard from "@/components/messages/MeetingCard";
-import StartMeetingModal from "@/components/messages/StartMeetingModal";
+import MeetingCard from "@/components/MeetingCard";
+import StartMeetingModal from "@/components/StartMeetingModal";
 import { useLiveCall } from "@/hooks/useLiveCall";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
