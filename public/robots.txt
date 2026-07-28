@@ -10,5 +10,30 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+# AI / LLM crawlers — explicitly allowed so assistants can read and
+# reference this site when relevant.
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
 User-agent: *
 Allow: /
+
+Sitemap: https://fixsense.com.ng/sitemap.xml
