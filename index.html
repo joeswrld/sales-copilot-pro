@@ -7,8 +7,11 @@
     <!-- CSP enforced via server headers in vercel.json -->
 
     <!-- ── PWA / App identity ─────────────────────────────────────────── -->
-    <title>Fixsense — AI Sales Call Intelligence</title>
-    <meta name="description" content="Record, analyze, and improve every sales conversation with AI-powered real-time insights." />
+    <title>Fixsense — AI Sales Call Intelligence & Coaching Platform</title>
+    <meta name="description" content="Fixsense records, transcribes, and analyzes every sales call in real time, then coaches reps with AI-driven insights on sentiment, objections, talk ratio, and next best actions to close more deals." />
+    <meta name="keywords" content="AI sales intelligence, sales call analytics, conversation intelligence, sales coaching software, call transcription, pipeline health, sales enablement AI" />
+    <meta name="author" content="Fixsense" />
+    <link rel="canonical" href="https://fixsense.com.ng/" />
     <link rel="manifest" href="/manifest.json" />
 
     <!-- iOS PWA support -->
@@ -23,9 +26,18 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Fixsense — AI Sales Intelligence" />
-    <meta property="og:description" content="Every sales call analyzed. Every insight surfaced. Close more deals." />
-    <meta property="og:image" content="/fixsense_icon_logo (2).png" />
+    <meta property="og:url" content="https://fixsense.com.ng/" />
+    <meta property="og:site_name" content="Fixsense" />
+    <meta property="og:title" content="Fixsense — AI Sales Intelligence & Coaching" />
+    <meta property="og:description" content="Every sales call recorded, transcribed, and analyzed by AI in real time. Surface objections, sentiment, and next best actions automatically — and close more deals." />
+    <meta property="og:image" content="https://fixsense.com.ng/fixsense_icon_logo (2).png" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Fixsense — AI Sales Intelligence & Coaching" />
+    <meta name="twitter:description" content="Live call transcription, real-time AI analysis, and pipeline health scoring for sales teams." />
+    <meta name="twitter:image" content="https://fixsense.com.ng/fixsense_icon_logo (2).png" />
 
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -48,9 +60,66 @@
       }
     </style>
     <meta name="google-site-verification" content="UPBexEgF85-pWfJWJifDwvno5O0v4SyFbNb3VnzE9ow" />
+
+    <!-- ── Structured data (schema.org) — helps search engines and AI
+         systems parse what Fixsense actually is and does. Keep this in
+         sync with reality; do not add ratings/review counts here unless
+         they are real and verifiable — fake ones hurt trust signals and
+         can get the site penalized. ── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Fixsense",
+      "url": "https://fixsense.com.ng/",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "AI-powered sales intelligence and coaching platform. Fixsense hosts live sales calls, transcribes them in real time, and runs AI analysis to surface sentiment, objections, talk ratio, deal risk, and next-best-action recommendations for sales teams.",
+      "featureList": [
+        "Live video/audio sales calls",
+        "Real-time call transcription",
+        "Post-call AI analysis (sentiment, objections, talk ratio)",
+        "Team collaboration and shared call review",
+        "Pipeline health scoring",
+        "Automated follow-up email drafting"
+      ],
+      "publisher": {
+        "@type": "Organization",
+        "name": "Fixsense",
+        "url": "https://fixsense.com.ng/"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Fallback content for crawlers and AI agents that do not execute
+         JavaScript (this app is a client-rendered SPA). Keep this
+         description accurate and in sync with the live product — this
+         is what most AI/LLM crawlers will actually "read". -->
+    <noscript>
+      <main style="max-width:720px;margin:2rem auto;padding:0 1.5rem;font-family:system-ui,sans-serif;line-height:1.6;">
+        <h1>Fixsense — AI Sales Call Intelligence & Coaching</h1>
+        <p>
+          Fixsense is a sales intelligence platform that hosts live sales
+          calls, transcribes them in real time, and uses AI to analyze
+          every conversation. It surfaces sentiment, objections, talk
+          ratio, deal risk, and next-best-action recommendations, and
+          gives sales teams a pipeline health score so they can see where
+          deals are strong or at risk.
+        </p>
+        <h2>What it does</h2>
+        <ul>
+          <li>Live video and audio sales calls with real-time transcription</li>
+          <li>Automatic post-call AI analysis: sentiment, objections, talk ratio, engagement score</li>
+          <li>Team collaboration on call review and shared feedback</li>
+          <li>Pipeline health scoring across win rate, sentiment, activity, and call quality</li>
+          <li>AI-drafted follow-up emails based on call content</li>
+        </ul>
+        <p>Learn more at <a href="https://fixsense.com.ng/">fixsense.com.ng</a>.</p>
+      </main>
+    </noscript>
 
     <script type="module" src="/src/main.tsx"></script>
 
