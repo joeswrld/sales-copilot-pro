@@ -56,7 +56,7 @@ const FAQS = [
   { q: "What happens when I hit my limit?", a: "New live calls are blocked until your cycle resets or you upgrade. All completed calls, summaries, and recordings remain fully accessible." },
   { q: "When does my quota reset?", a: "Your minute quota resets at the start of each billing cycle, anchored to your subscription renewal date. The exact reset date is visible on your billing page." },
   { q: "Why minute-based billing?", a: "Per-call pricing punished short discovery calls and rewarded long rambling ones. Per-minute pricing is proportional to the compute cost of transcription and AI analysis — you pay for what you actually use." },
-  { q: "Can I change plans mid-cycle?", a: "Yes. Upgrades take effect immediately with prorated billing. Downgrades take effect at the next cycle. No locked contracts — cancel anytime." },
+  { q: "Can I change plans mid-cycle?", a: "Yes. Upgrades and downgrades both take effect immediately at the new plan's full price — no proration, no credit for unused time on your old plan. Your billing cycle restarts from the day you switch. No locked contracts — cancel anytime." },
   { q: "Which features unlock at Growth?", a: "Growth unlocks objection detection, sentiment analysis, engagement scoring, deal rooms, deal intelligence AI, coaching clips, and team collaboration features. Free and Starter get transcription and AI summaries only." },
   { q: "Why am I billed in NGN?", a: "We use Paystack for payments, which processes in Nigerian Naira. All prices in USD are converted at a fixed rate of ₦1,500 per $1 for full transparency." },
 ];
