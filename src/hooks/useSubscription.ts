@@ -70,9 +70,6 @@ export interface PlanChangePreview {
   is_downgrade: boolean;
   current_price_ngn: number;
   new_price_ngn: number;
-  prorated_amount_ngn: number;
-  credit_ngn: number;
-  days_remaining: number;
   new_monthly_price_ngn: number;
   new_monthly_price_usd: number;
   /**
