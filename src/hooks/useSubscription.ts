@@ -75,6 +75,21 @@ export interface PlanChangePreview {
   days_remaining: number;
   new_monthly_price_ngn: number;
   new_monthly_price_usd: number;
+  /**
+   * The exact breakdown the checkout dialog renders (subtotal/VAT/total in
+   * USD, plus the NGN total actually charged to Paystack). Computed
+   * server-side from whichever amount is really being charged — the full
+   * price, or the prorated net amount for upgrades/downgrades.
+   */
+  breakdown: {
+    subtotal_usd: number;
+    vat_usd: number;
+    total_usd: number;
+    exchange_rate: number;
+    vat_rate: number;
+    total_ngn: number;
+    amount_kobo: number;
+  };
 }
 
 export interface PaymentRecord {
