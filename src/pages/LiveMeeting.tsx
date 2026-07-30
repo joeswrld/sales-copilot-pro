@@ -32,6 +32,7 @@ import {
   ArrowUpRight,
   Maximize2, Minimize2,
   Volume2, VolumeX, MonitorOff, MoreHorizontal,
+  Lock, Unlock, Settings, Link2, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
@@ -68,7 +69,7 @@ const T = {
   red:     "#ef4444",
 };
 
-type MobilePanel = "none" | "people" | "chat" | "notes" | "more";
+type MobilePanel = "none" | "people" | "chat" | "notes" | "more" | "settings";
 type LeftTab     = "people" | "chat" | "notes" | "files" | "notifications";
 // VideoLayout is imported from MeetingVideoGrid.tsx ("focus" | "grid" | "sidebar")
 // — do not redeclare it here, it previously shadowed the import with a stale
@@ -481,12 +482,16 @@ const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
 });
 
 // ─── Left panel ─────────────────────────────────────────────────────────────────
-const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callId, userId }: any) => {
+const LeftPanel = memo(({
+  activeTab, onTab, participants, activeSpeakerId, callId, userId,
+  isHost, onMuteParticipant, onRemoveParticipant, onMuteAll,
+}: any) => {
   const { workspace, addNote, uploadFile } = useMeetingWorkspace(callId);
   const { comments, addComment }           = useCoaching(callId);
   const { notifications, markRead, unreadCount } = useNotifications();
   const [chatInput, setChatInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef   = useRef<HTMLDivElement>(null);
 
@@ -504,6 +509,8 @@ const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callI
     { id: "files",         icon: Paperclip,     label: "Files",         badge: workspace.files.length || undefined },
     { id: "notifications", icon: Bell,          label: "Alerts",        badge: unreadCount || undefined },
   ];
+
+  const remoteCount = participants.filter((p: DailyParticipant) => !p.local).length;
 
   return (
     <div className="flex flex-col h-full" style={{ background: T.panel }}>
@@ -525,13 +532,22 @@ const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callI
           );
         })}
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onClick={() => openMenuFor && setOpenMenuFor(null)}>
         {activeTab === "people" && (
           <div className="p-2 space-y-0.5">
+            {isHost && remoteCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onMuteAll?.(); }}
+                className="w-full flex items-center justify-center gap-2 mb-1 py-2 rounded-xl text-xs font-medium touch-manipulation min-h-[36px]"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.text }}
+              >
+                <MicOff className="w-3.5 h-3.5" /> Mute all
+              </button>
+            )}
             {participants.length === 0
               ? <div className="py-8 text-center"><Users className="w-8 h-8 mx-auto mb-2" style={{ color: T.subtle }} /><p className="text-xs" style={{ color: T.muted }}>No participants yet</p></div>
               : participants.map((p: DailyParticipant) => (
-                  <div key={p.session_id} className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                  <div key={p.session_id} className="relative flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-colors">
                     <div className="relative shrink-0">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                         style={{ background: p.session_id === activeSpeakerId ? "linear-gradient(135deg,#10b981,#059669)" : "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
@@ -554,7 +570,41 @@ const LeftPanel = memo(({ activeTab, onTab, participants, activeSpeakerId, callI
                     <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                       {!p.audio && <MicOff className="w-3 h-3 text-red-400" />}
                       {!p.video && <VideoOff className="w-3 h-3" style={{ color: T.muted }} />}
+                      {isHost && !p.local && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenMenuFor(openMenuFor === p.session_id ? null : p.session_id); }}
+                          className="w-6 h-6 rounded-lg flex items-center justify-center touch-manipulation"
+                          style={{ background: openMenuFor === p.session_id ? T.card : "transparent" }}
+                          aria-label={`Host actions for ${p.user_name || "participant"}`}
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" style={{ color: T.muted }} />
+                        </button>
+                      )}
                     </div>
+
+                    {isHost && openMenuFor === p.session_id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-2 top-11 z-40 w-40 rounded-xl overflow-hidden py-1"
+                        style={{ background: "#14161f", border: `1px solid ${T.border}`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}
+                      >
+                        <button
+                          onClick={() => { onMuteParticipant?.(p.session_id); setOpenMenuFor(null); }}
+                          disabled={!p.audio}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+                          style={{ color: T.text }}
+                        >
+                          <MicOff className="w-3.5 h-3.5" /> Mute
+                        </button>
+                        <button
+                          onClick={() => { onRemoveParticipant?.(p.session_id, p.user_name); setOpenMenuFor(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs touch-manipulation"
+                          style={{ color: "#f87171" }}
+                        >
+                          <UserX className="w-3.5 h-3.5" /> Remove from meeting
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
           </div>
@@ -726,6 +776,122 @@ const MorePanelBody = memo(({
   );
 });
 
+// ─── Meeting settings panel — host-only. Covers "before/during the meeting"
+// controls that live on the `calls` row itself rather than the Daily call
+// object: lock the meeting, choose who can join, allow/block guest screen
+// share. Shown as a desktop popover or mobile bottom sheet, same pattern as
+// the People / More panels above. ───────────────────────────────────────────
+const MeetingSettingsPanel = memo(({
+  isLocked, whoCanJoin, allowGuestScreenshare, onUpdate, isPending, participantCount, elapsedLabel,
+}: {
+  isLocked: boolean;
+  whoCanJoin: "anyone_with_link" | "invited_only";
+  allowGuestScreenshare: boolean;
+  onUpdate: (patch: { is_locked?: boolean; who_can_join?: "anyone_with_link" | "invited_only"; allow_guest_screenshare?: boolean }) => void;
+  isPending?: boolean;
+  participantCount: number;
+  elapsedLabel: string;
+}) => {
+  return (
+    <div className="p-3 space-y-3">
+      {/* Quick glance: duration + participant count, so the host can see
+          these without switching to the People tab. */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+          <Clock className="w-3.5 h-3.5" style={{ color: T.muted }} />
+          <div>
+            <p className="text-[10px]" style={{ color: T.muted }}>Duration</p>
+            <p className="text-xs font-semibold tabular-nums" style={{ color: T.text }}>{elapsedLabel}</p>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: T.card, border: `1px solid ${T.border}` }}>
+          <Users className="w-3.5 h-3.5" style={{ color: T.muted }} />
+          <div>
+            <p className="text-[10px]" style={{ color: T.muted }}>Participants</p>
+            <p className="text-xs font-semibold tabular-nums" style={{ color: T.text }}>{participantCount}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Lock meeting */}
+      <button
+        onClick={() => onUpdate({ is_locked: !isLocked })}
+        disabled={isPending}
+        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation disabled:opacity-60"
+        style={{ background: isLocked ? "rgba(239,68,68,0.1)" : T.card, border: `1px solid ${isLocked ? "rgba(239,68,68,0.3)" : T.border}` }}
+      >
+        {isLocked ? <Lock className="w-4 h-4 text-red-400" /> : <Unlock className="w-4 h-4" style={{ color: T.text }} />}
+        <div className="flex-1">
+          <p className="text-sm font-medium" style={{ color: isLocked ? "#f87171" : T.text }}>
+            {isLocked ? "Meeting locked" : "Lock meeting"}
+          </p>
+          <p className="text-[11px]" style={{ color: T.muted }}>
+            {isLocked ? "No new participants can join" : "Prevent anyone new from joining"}
+          </p>
+        </div>
+      </button>
+
+      {/* Who can join */}
+      <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}` }}>
+        <div className="px-4 py-2.5 border-b" style={{ borderColor: T.border, background: T.card }}>
+          <p className="text-xs font-semibold" style={{ color: T.text }}>Who can join</p>
+        </div>
+        <button
+          onClick={() => onUpdate({ who_can_join: "anyone_with_link" })}
+          disabled={isPending}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation disabled:opacity-60"
+          style={{ background: whoCanJoin === "anyone_with_link" ? "rgba(99,102,241,0.1)" : "transparent" }}
+        >
+          <Link2 className="w-4 h-4" style={{ color: whoCanJoin === "anyone_with_link" ? "#a5b4fc" : T.muted }} />
+          <div className="flex-1">
+            <p className="text-sm font-medium" style={{ color: T.text }}>Anyone with the link</p>
+            <p className="text-[11px]" style={{ color: T.muted }}>Guests join instantly, no approval needed</p>
+          </div>
+          {whoCanJoin === "anyone_with_link" && <div className="w-2 h-2 rounded-full shrink-0" style={{ background: T.accent }} />}
+        </button>
+        <button
+          onClick={() => onUpdate({ who_can_join: "invited_only" })}
+          disabled={isPending}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation disabled:opacity-60 border-t"
+          style={{ borderColor: T.border, background: whoCanJoin === "invited_only" ? "rgba(99,102,241,0.1)" : "transparent" }}
+        >
+          <ShieldCheck className="w-4 h-4" style={{ color: whoCanJoin === "invited_only" ? "#a5b4fc" : T.muted }} />
+          <div className="flex-1">
+            <p className="text-sm font-medium" style={{ color: T.text }}>Require approval</p>
+            <p className="text-[11px]" style={{ color: T.muted }}>Guests knock and you admit them one by one</p>
+          </div>
+          {whoCanJoin === "invited_only" && <div className="w-2 h-2 rounded-full shrink-0" style={{ background: T.accent }} />}
+        </button>
+      </div>
+
+      {/* Allow guest screen share */}
+      <button
+        onClick={() => onUpdate({ allow_guest_screenshare: !allowGuestScreenshare })}
+        disabled={isPending}
+        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation disabled:opacity-60"
+        style={{ background: T.card, border: `1px solid ${T.border}` }}
+      >
+        <MonitorPlay className="w-4 h-4" style={{ color: allowGuestScreenshare ? "#34d399" : T.muted }} />
+        <div className="flex-1">
+          <p className="text-sm font-medium" style={{ color: T.text }}>Guest screen sharing</p>
+          <p className="text-[11px]" style={{ color: T.muted }}>
+            {allowGuestScreenshare ? "Guests can share their screen" : "Guests can't share their screen"}
+          </p>
+        </div>
+        <div
+          className="w-9 h-5 rounded-full shrink-0 relative transition-colors"
+          style={{ background: allowGuestScreenshare ? T.accent : "rgba(255,255,255,0.15)" }}
+        >
+          <div
+            className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+            style={{ transform: allowGuestScreenshare ? "translateX(18px)" : "translateX(2px)" }}
+          />
+        </div>
+      </button>
+    </div>
+  );
+});
+
 // ─── Mobile bottom sheet — real swipe-up / swipe-down-to-dismiss gesture ────────
 const MobileSheet = memo(({ open, onClose, title, children }: any) => {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -827,6 +993,7 @@ export default function LiveMeeting() {
 
   const {
     liveCall, isLive, isLoading, endCall, markCallStarted, markHostJoined, callId,
+    updateMeetingSettings, isLocked, whoCanJoin, allowGuestScreenshare,
   } = useLiveCall({ onCallEnded: () => setStatus("available") });
 
   const roomName     = (liveCall as any)?.daily_room_name    ?? null;
@@ -881,7 +1048,7 @@ export default function LiveMeeting() {
   // Desktop equivalent of mobilePanel: which on-demand popover (if any) is
   // open, anchored over the video stage instead of a permanent sidebar —
   // matches how Guest Join surfaces its People panel.
-  const [desktopPanel,    setDesktopPanel]    = useState<"none" | "people" | "more">("none");
+  const [desktopPanel,    setDesktopPanel]    = useState<"none" | "people" | "more" | "settings">("none");
   const [reconnectCount,  setReconnectCount]  = useState(0);
   const [pinnedId,        setPinnedId]        = useState<string | null>(null);
   const [videoLayout,     setVideoLayout]     = useState<VideoLayout>("grid");
@@ -1206,6 +1373,22 @@ export default function LiveMeeting() {
             )}
           </button>
 
+          {/* Meeting settings — lock, who can join, guest screen share.
+              Host-only: guests never see this button. */}
+          {daily.isOwner && (
+            <button
+              onClick={() => (isMobile ? setMobilePanel(mobilePanel === "settings" ? "none" : "settings") : setDesktopPanel(desktopPanel === "settings" ? "none" : "settings"))}
+              className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
+              style={{
+                background: (isMobile ? mobilePanel === "settings" : desktopPanel === "settings") ? "rgba(99,102,241,0.2)" : T.card,
+                border: `1px solid ${isLocked ? "rgba(239,68,68,0.4)" : T.border}`,
+              }}
+              aria-label="Meeting settings"
+            >
+              {isLocked ? <Lock className="w-4 h-4 text-red-400" /> : <Settings className="w-4 h-4 text-white" />}
+            </button>
+          )}
+
           {/* More — Chat / Notes / Files / Notifications / Record / Noise
               cancellation / switch camera, in one popover (desktop) or
               sheet (mobile), instead of a permanent side panel. */}
@@ -1267,7 +1450,7 @@ export default function LiveMeeting() {
           >
             <div className="flex items-center justify-between px-3 py-2 border-b shrink-0" style={{ borderColor: T.border }}>
               <span className="text-xs font-semibold text-white">
-                {desktopPanel === "people" ? "Participants" : "More"}
+                {desktopPanel === "people" ? "Participants" : desktopPanel === "settings" ? "Meeting settings" : "More"}
               </span>
               <button onClick={() => setDesktopPanel("none")} className="w-6 h-6 rounded-lg flex items-center justify-center"
                 style={{ background: T.card }}>
@@ -1277,7 +1460,22 @@ export default function LiveMeeting() {
             <div className="flex-1 overflow-y-auto">
               {desktopPanel === "people" ? (
                 <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
-                  activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+                  activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id}
+                  isHost={daily.isOwner}
+                  onMuteParticipant={daily.muteParticipant}
+                  onRemoveParticipant={daily.removeParticipant}
+                  onMuteAll={daily.muteAllRemote}
+                />
+              ) : desktopPanel === "settings" ? (
+                <MeetingSettingsPanel
+                  isLocked={isLocked}
+                  whoCanJoin={whoCanJoin}
+                  allowGuestScreenshare={allowGuestScreenshare}
+                  onUpdate={(patch) => updateMeetingSettings.mutate(patch)}
+                  isPending={updateMeetingSettings.isPending}
+                  participantCount={daily.participantCount}
+                  elapsedLabel={fmt(daily.elapsedSeconds)}
+                />
               ) : (
                 <MorePanelBody
                   daily={daily}
@@ -1354,7 +1552,24 @@ export default function LiveMeeting() {
       {/* ── Mobile bottom sheets ─────────────────────────────────────────── */}
       <MobileSheet open={mobilePanel === "people"} onClose={() => setMobilePanel("none")} title="Participants">
         <LeftPanel activeTab={leftTab} onTab={setLeftTab} participants={daily.participants}
-          activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id} />
+          activeSpeakerId={daily.activeSpeakerId} callId={callId} userId={user?.id}
+          isHost={daily.isOwner}
+          onMuteParticipant={daily.muteParticipant}
+          onRemoveParticipant={daily.removeParticipant}
+          onMuteAll={daily.muteAllRemote}
+        />
+      </MobileSheet>
+
+      <MobileSheet open={mobilePanel === "settings"} onClose={() => setMobilePanel("none")} title="Meeting settings">
+        <MeetingSettingsPanel
+          isLocked={isLocked}
+          whoCanJoin={whoCanJoin}
+          allowGuestScreenshare={allowGuestScreenshare}
+          onUpdate={(patch) => updateMeetingSettings.mutate(patch)}
+          isPending={updateMeetingSettings.isPending}
+          participantCount={daily.participantCount}
+          elapsedLabel={fmt(daily.elapsedSeconds)}
+        />
       </MobileSheet>
 
       <MobileSheet open={mobilePanel === "more"} onClose={() => setMobilePanel("none")} title="More">
