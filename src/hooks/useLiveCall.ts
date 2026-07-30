@@ -325,6 +325,15 @@ export function useLiveCall(options?: {
        * (e.g. internal test calls); the UI should otherwise always supply
        * a real deal id before calling startCall. */
       deal_id: string | null;
+      /** Who can join this meeting, chosen in the pre-call "Anyone with the
+       * link" vs "Require approval" dialog. Defaults to "anyone_with_link"
+       * (matching the calls table's column default) when omitted, so
+       * existing callers that don't pass this keep working unchanged. This
+       * is the same field the in-call Meeting Settings panel edits via
+       * updateMeetingSettings — setting it here just seeds the same value
+       * before the host ever joins, instead of leaving it to be changed
+       * mid-call. */
+      who_can_join?: "anyone_with_link" | "invited_only";
     }) => {
       if (!user) throw new Error("Not authenticated");
       if (input.deal_id === undefined) {
@@ -365,6 +374,10 @@ export function useLiveCall(options?: {
         date: new Date().toISOString(),
         // Linked at creation time, not guessed after the call ends.
         deal_id: input.deal_id,
+        // Seeded from the pre-call "Anyone with the link" / "Require
+        // approval" dialog. Falls back to the column's own default
+        // ('anyone_with_link') when the caller doesn't pass one.
+        ...(input.who_can_join ? { who_can_join: input.who_can_join } : {}),
       } as any).select().single();
 
       if (error) throw error;
