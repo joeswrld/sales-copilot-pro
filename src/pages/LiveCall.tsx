@@ -28,11 +28,14 @@ import {
   Plus, ChevronRight, Radio, Eye, Link2, Mic,
   Video, VideoOff, PhoneOff, Users, AlertTriangle,
   RefreshCw, WifiOff, CheckCircle2,
-  X, CalendarPlus, Sparkles, Shield,
+  X, CalendarPlus, Sparkles, Shield, ShieldCheck,
   ArrowRight, Tag, FileText, Zap, Wifi,
   Trash2, UserCheck, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useLiveCall } from "@/hooks/useLiveCall";
 import { useDailyCall } from "@/hooks/useDailyCall";
@@ -658,6 +661,13 @@ export default function LiveCall() {
   const [meetingTitleInput,      setMeetingTitleInput]      = useState("");
   const [meetingNotes,           setMeetingNotes]           = useState("");
 
+  // Pre-call access dialog — same "Anyone with the link" vs "Require
+  // approval" choice as the in-call Meeting Settings panel (who_can_join
+  // on the calls row), just asked up front before the room is created
+  // instead of only being changeable after the meeting has started.
+  const [showAccessDialog,       setShowAccessDialog]       = useState(false);
+  const [pendingWhoCanJoin,      setPendingWhoCanJoin]      = useState<"anyone_with_link" | "invited_only">("anyone_with_link");
+
   // ── Deal linking (required before a meeting can start) ──────────────────
   const [searchParams] = useSearchParams();
   const { deals } = useDeals();
@@ -830,8 +840,11 @@ export default function LiveCall() {
   }, [linkCheck]);
 
   // ── Create meeting ─────────────────────────────────────────────────────────
-  const handleCreateMeeting = useCallback(async () => {
-    const title = meetingTitleInput.trim() || "Fixsense Meeting";
+  // Validates the form, then hands off to the "Anyone with the link" /
+  // "Require approval" dialog instead of creating the room immediately —
+  // the actual creation happens in confirmCreateMeeting once the host picks
+  // an access level.
+  const handleCreateMeeting = useCallback(() => {
     if (!checkLimit()) return;
 
     if (!selectedDealId) {
@@ -845,6 +858,18 @@ export default function LiveCall() {
       return;
     }
 
+    // Default the dialog to "Anyone with the link" each time it's opened —
+    // matches the calls table's own default so a host who just hits
+    // Continue gets the same behavior as before this dialog existed.
+    setPendingWhoCanJoin("anyone_with_link");
+    setShowAccessDialog(true);
+  }, [selectedDealId, checkLimit, isLive]);
+
+  // ── Confirm access level, then actually create the room ────────────────────
+  const confirmCreateMeeting = useCallback(async (whoCanJoin: "anyone_with_link" | "invited_only") => {
+    setShowAccessDialog(false);
+
+    const title = meetingTitleInput.trim() || "Fixsense Meeting";
     setIsStarting(true);
     setActiveMeetingTitle(title);
     let callRow: any = null;
@@ -856,6 +881,7 @@ export default function LiveCall() {
         participants: [],
         description:  meetingNotes,
         deal_id:      selectedDealId,
+        who_can_join: whoCanJoin,
       } as any);
       setJoinState("creating_room");
       await createRoom({
@@ -863,9 +889,14 @@ export default function LiveCall() {
         title,
         meetingType,
         expMinutes: 1440, // 24h
+        privacy:    whoCanJoin === "invited_only" ? "private" : "public",
       });
       setShowPopup(true);
-      toast.success("Fixsense room created! Share the link with your prospect.");
+      toast.success(
+        whoCanJoin === "invited_only"
+          ? "Fixsense room created! Guests will need to be admitted before joining."
+          : "Fixsense room created! Share the link with your prospect."
+      );
     } catch (err: any) {
       if (callRow?.id) {
         await supabase.from("calls")
@@ -882,7 +913,7 @@ export default function LiveCall() {
       setIsStarting(false);
       setJoinState("idle");
     }
-  }, [meetingTitleInput, meetingNotes, meetingType, selectedDealId, checkLimit, isLive, startCall, createRoom]);
+  }, [meetingTitleInput, meetingNotes, meetingType, selectedDealId, startCall, createRoom]);
 
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
@@ -981,6 +1012,58 @@ export default function LiveCall() {
           onClose={() => setShowScheduleModal(false)}
         />
       )}
+
+      {/* Pre-call access dialog — same "Anyone with the link" vs "Require
+          approval" choice as the in-call Meeting Settings panel, asked once
+          up front before the room is created. */}
+      <Dialog open={showAccessDialog} onOpenChange={(open) => { if (!isStarting) setShowAccessDialog(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Who can join this meeting?</DialogTitle>
+            <DialogDescription>
+              You can change this later from Meeting Settings once the call starts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl overflow-hidden border border-border">
+            <button
+              onClick={() => setPendingWhoCanJoin("anyone_with_link")}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation"
+              style={{ background: pendingWhoCanJoin === "anyone_with_link" ? "rgba(99,102,241,0.1)" : "transparent" }}
+            >
+              <Link2 className={cn("w-4 h-4", pendingWhoCanJoin === "anyone_with_link" ? "text-primary" : "text-muted-foreground")} />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Anyone with the link</p>
+                <p className="text-[11px] text-muted-foreground">Guests join instantly, no approval needed</p>
+              </div>
+              {pendingWhoCanJoin === "anyone_with_link" && <div className="w-2 h-2 rounded-full shrink-0 bg-primary" />}
+            </button>
+            <button
+              onClick={() => setPendingWhoCanJoin("invited_only")}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation border-t border-border"
+              style={{ background: pendingWhoCanJoin === "invited_only" ? "rgba(99,102,241,0.1)" : "transparent" }}
+            >
+              <ShieldCheck className={cn("w-4 h-4", pendingWhoCanJoin === "invited_only" ? "text-primary" : "text-muted-foreground")} />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Require approval</p>
+                <p className="text-[11px] text-muted-foreground">Guests knock and you admit them one by one</p>
+              </div>
+              {pendingWhoCanJoin === "invited_only" && <div className="w-2 h-2 rounded-full shrink-0 bg-primary" />}
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="w-full gap-2"
+              onClick={() => confirmCreateMeeting(pendingWhoCanJoin)}
+              disabled={isStarting}
+            >
+              {isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              {isStarting ? "Creating…" : "Create Meeting"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="space-y-5 pb-10">
         {/* Header */}
