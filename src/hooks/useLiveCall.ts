@@ -508,6 +508,41 @@ export function useLiveCall(options?: {
     },
   });
 
+  // ── Meeting settings (host controls) ────────────────────────────────────────
+  // Covers "lock the meeting", "who can join" (anyone-with-link vs
+  // knock-to-join/approval-required), and "allow guest screen share" — all
+  // plain columns on `calls` that RLS already lets the host (auth.uid() =
+  // user_id) update directly. No edge function needed: the enforcement of
+  // these settings happens where it matters (guest-join-request checks
+  // is_locked/who_can_join before creating a request; get-guest-daily-token
+  // reads allow_guest_screenshare when minting the guest's Daily token).
+  const updateMeetingSettings = useMutation({
+    mutationFn: async (patch: {
+      is_locked?: boolean;
+      who_can_join?: "anyone_with_link" | "invited_only";
+      allow_guest_screenshare?: boolean;
+    }) => {
+      if (!callId) throw new Error("No active call");
+      const { error } = await supabase.from("calls").update(patch).eq("id", callId);
+      if (error) throw error;
+      return patch;
+    },
+    onMutate: async (patch) => {
+      // Optimistic update so the toggle feels instant instead of waiting on
+      // the next 10s poll tick.
+      await queryClient.cancelQueries({ queryKey: ["live-call"] });
+      const previous = queryClient.getQueryData(["live-call"]);
+      queryClient.setQueryData(["live-call"], (old: any) => old ? { ...old, ...patch } : old);
+      return { previous };
+    },
+    onError: (err: any, _patch, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(["live-call"], ctx.previous);
+      console.error("updateMeetingSettings error:", err);
+      toast.error("Couldn't update that setting. Please try again.");
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["live-call"] }); },
+  });
+
   return {
     liveCall:    liveCallQuery.data,
     isLive:      !!liveCallQuery.data,
@@ -516,11 +551,17 @@ export function useLiveCall(options?: {
     endCall,
     markCallStarted,
     markHostJoined,
+    updateMeetingSettings,
     // Has the host ever actually joined the Daily room for this live call
     // (as opposed to merely having created it)? Drives auto-reconnect on
     // /live: a value of `true` means it's safe to skip the Create/Host
     // Meeting screen and restore the host straight into the meeting.
     hostJoinedAt: (liveCallQuery.data as any)?.host_joined_at ?? null,
+    // Current meeting settings, defaulted for calls created before these
+    // columns existed / before create-daily-room started setting them.
+    isLocked:            (liveCallQuery.data as any)?.is_locked ?? false,
+    whoCanJoin:          (liveCallQuery.data as any)?.who_can_join ?? "anyone_with_link",
+    allowGuestScreenshare: (liveCallQuery.data as any)?.allow_guest_screenshare ?? true,
     callId,
   };
 }
