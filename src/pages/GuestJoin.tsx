@@ -40,7 +40,7 @@ import { toast } from "sonner";
 // VideoLayout ("focus" | "grid" | "sidebar") is imported from
 // MeetingVideoGrid.tsx so the guest page shares the same layout type — and the
 // same grid implementation — as the host page (LiveMeeting.tsx).
-type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied" | "disconnected";
+type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied" | "locked" | "disconnected";
 
 // ─── Design tokens ───────────────────────────────────────────────────────────────
 const T = {
@@ -866,6 +866,13 @@ export default function GuestJoin() {
       const { data, error } = await supabase.functions.invoke("guest-join-request", {
         body: { room_name: roomName, guest_name: name },
       });
+      // The host has locked the meeting — guest-join-request returns 200 OK
+      // with status: 'locked' in the body (a normal, expected outcome, not
+      // an error), so it's always readable straight off `data`.
+      if (data?.status === "locked") {
+        setStep("locked");
+        return;
+      }
       if (error) throw error;
       setRequestId(data?.request_id ?? null);
       setStep("waiting");
@@ -1110,7 +1117,7 @@ export default function GuestJoin() {
             </div>
 
             {/* Name input */}
-            {step !== "denied" && (
+            {step !== "denied" && step !== "locked" && (
               <div>
                 <label
                   className="block text-xs font-medium mb-1.5"
@@ -1173,8 +1180,26 @@ export default function GuestJoin() {
               </div>
             )}
 
+            {step === "locked" && (
+              <div
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                style={{
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                }}
+              >
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-red-400">Meeting is locked</p>
+                  <p className="text-[11px]" style={{ color: T.muted }}>
+                    The host isn't admitting new participants right now
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* CTA */}
-            {step !== "denied" ? (
+            {step !== "denied" && step !== "locked" ? (
               <button
                 onClick={handleRequestJoin}
                 disabled={
