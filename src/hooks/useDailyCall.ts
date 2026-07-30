@@ -1266,6 +1266,50 @@ export function useDailyCall({
     await requestNoiseCancellation(_activeCallObject, enabled);
   }, [requestNoiseCancellation]);
 
+  // ── Host controls: mute / remove participants ──────────────────────────────
+  // These require the local participant to hold Daily "owner" permissions,
+  // which is set server-side in get-daily-token (is_owner: true for hosts).
+  // Calling them as a non-owner is a silent no-op from Daily's perspective, so
+  // callers (UI) should gate the buttons on `isOwner` themselves — this hook
+  // still guards defensively in case that check is ever bypassed.
+  const muteParticipant = useCallback(async (sessionId: string) => {
+    if (!_activeCallObject || !isOwnerRef.current) return;
+    try {
+      await _activeCallObject.updateParticipant(sessionId, { setAudio: false });
+    } catch (err) {
+      console.error("[Daily] muteParticipant failed", err);
+      toast.error("Couldn't mute that participant.");
+    }
+  }, []);
+
+  const muteAllRemote = useCallback(async () => {
+    if (!_activeCallObject || !isOwnerRef.current) return;
+    try {
+      const all = _activeCallObject.participants?.() ?? {};
+      const updates: Record<string, { setAudio: boolean }> = {};
+      Object.values(all).forEach((p: any) => {
+        if (p?.session_id && !p.local) updates[p.session_id] = { setAudio: false };
+      });
+      if (Object.keys(updates).length === 0) return;
+      await _activeCallObject.updateParticipants(updates);
+      toast.success("Muted all participants");
+    } catch (err) {
+      console.error("[Daily] muteAllRemote failed", err);
+      toast.error("Couldn't mute everyone.");
+    }
+  }, []);
+
+  const removeParticipant = useCallback(async (sessionId: string, name?: string) => {
+    if (!_activeCallObject || !isOwnerRef.current) return;
+    try {
+      await _activeCallObject.updateParticipant(sessionId, { eject: true });
+      toast.success(name ? `Removed ${name} from the meeting` : "Participant removed");
+    } catch (err) {
+      console.error("[Daily] removeParticipant failed", err);
+      toast.error("Couldn't remove that participant.");
+    }
+  }, []);
+
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -1304,6 +1348,8 @@ export function useDailyCall({
     startRecording, stopRecording,
     raiseHand, isHandRaised,
     setNoiseCancellation,
+    isOwner: isOwnerRef.current,
+    muteParticipant, muteAllRemote, removeParticipant,
     callObject: _activeCallObject,
   };
 }
