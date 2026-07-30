@@ -812,7 +812,48 @@ export default function GuestJoin() {
     }
   }, []);
 
-  // Poll for admission status
+  /**
+   * Shared "admit this guest into the call" logic — exchanges the guest
+   * token for a real Daily token, stops the local preview stream, flips
+   * step to "admitted", and calls daily.joinCall(). Used both by the
+   * immediate-admit path (who_can_join === 'anyone_with_link', where
+   * guest-join-request itself returns status: 'admitted' with no polling
+   * needed) and by the polling path below (who_can_join === 'invited_only',
+   * where guest-request-status eventually reports 'admitted' after the
+   * host approves).
+   */
+  const admitGuest = useCallback(async (admitData: {
+    call_start_time?: string | null;
+    guest_token?: string | null;
+    room_name?: string | null;
+  }) => {
+    if (admitData.call_start_time) setCallStartTime(admitData.call_start_time);
+
+    const displayName = guestName.trim() || "Guest";
+    let dailyToken: string | null = null;
+    if (admitData.guest_token) {
+      dailyToken = await exchangeForDailyToken(admitData.guest_token, displayName);
+    }
+    guestDailyTokenRef.current = dailyToken;
+
+    if (!dailyToken) {
+      console.warn("[GuestJoin] Joining without a Daily token — connection may be unstable.");
+    }
+
+    // Stop local preview stream before Daily takes over
+    localStream?.getTracks().forEach((t) => t.stop());
+    setLocalStream(null);
+    setStep("admitted");
+    daily.joinCall({
+      rName: admitData.room_name || roomName!,
+      token: dailyToken ?? undefined,
+      displayName,
+    });
+  }, [guestName, localStream, daily, roomName, exchangeForDailyToken]);
+
+  // Poll for admission status (only relevant once host approval is actually
+  // required — see handleRequestJoin, which sends already-admitted guests
+  // straight into admitGuest() and never reaches "waiting" at all)
   useEffect(() => {
     if (step !== "waiting" || !requestId) return;
     const interval = setInterval(async () => {
@@ -823,28 +864,10 @@ export default function GuestJoin() {
 
         if (data?.status === "admitted") {
           clearInterval(interval);
-
-          if (data.call_start_time) setCallStartTime(data.call_start_time);
-
-          const displayName = guestName.trim() || "Guest";
-          let dailyToken: string | null = null;
-          if (data.guest_token) {
-            dailyToken = await exchangeForDailyToken(data.guest_token, displayName);
-          }
-          guestDailyTokenRef.current = dailyToken;
-
-          if (!dailyToken) {
-            console.warn("[GuestJoin] Joining without a Daily token — connection may be unstable.");
-          }
-
-          // Stop local preview stream before Daily takes over
-          localStream?.getTracks().forEach((t) => t.stop());
-          setLocalStream(null);
-          setStep("admitted");
-          daily.joinCall({
-            rName: data.room_name || roomName!,
-            token: dailyToken ?? undefined,
-            displayName,
+          await admitGuest({
+            call_start_time: data.call_start_time,
+            guest_token: data.guest_token,
+            room_name: data.room_name,
           });
         } else if (data?.status === "denied" || data?.status === "expired") {
           clearInterval(interval);
@@ -856,7 +879,7 @@ export default function GuestJoin() {
     }, 2000); // Poll every 2s for faster admission detection
 
     return () => clearInterval(interval);
-  }, [step, requestId, roomName, guestName, localStream, daily, exchangeForDailyToken]);
+  }, [step, requestId, admitGuest]);
 
   const handleRequestJoin = useCallback(async () => {
     const name = guestName.trim();
@@ -874,13 +897,30 @@ export default function GuestJoin() {
         return;
       }
       if (error) throw error;
+
+      // FIX: guest-join-request returns status: 'admitted' immediately when
+      // the host's meeting is set to "Anyone with the link" (no approval
+      // needed) — previously this branch was never checked, so every guest
+      // was dropped into the "waiting" step and stuck on "Waiting for the
+      // host" regardless of who_can_join, only escaping it once the 2s
+      // poll happened to line up. Now an already-admitted guest is joined
+      // to the call immediately, with no waiting screen at all.
+      if (data?.status === "admitted") {
+        await admitGuest({
+          call_start_time: data.call_start_time,
+          guest_token: data.guest_token,
+          room_name: data.room_name ?? roomName,
+        });
+        return;
+      }
+
       setRequestId(data?.request_id ?? null);
       setStep("waiting");
     } catch (err: any) {
       toast.error(err?.message || "Couldn't send join request. Check the meeting link.");
       setStep("lobby");
     }
-  }, [guestName, roomName]);
+  }, [guestName, roomName, admitGuest]);
 
   const handleLeave = useCallback(async () => {
     voluntaryLeaveRef.current = true;
