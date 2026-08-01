@@ -48,7 +48,7 @@ import ExtraMinutesBundles from "@/components/ExtraMinutesBundles";
 import { useExtraMinutes } from "@/hooks/useExtraMinutes";
 
 import CheckoutDialog, { type CheckoutItem } from "@/components/billing/CheckoutDialog";
-import SubscriptionCard from "@/components/SubscriptionCard";
+import SubscriptionCard from "@/components/billing/SubscriptionCard";
 import UsageCard from "@/components/billing/UsageCard";
 import InvoiceTable from "@/components/billing/InvoiceTable";
 import ComplianceFooter from "@/components/billing/ComplianceFooter";
