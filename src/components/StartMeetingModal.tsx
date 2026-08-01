@@ -10,8 +10,12 @@
  *  - Deal-based meetings: when launched from a deal channel, the deal is
  *    pre-selected and locked in (matches the "before/during/after any deal
  *    meeting" requirement).
- *  - General team meetings: launched from a team channel or DM, deal_id is
- *    explicitly passed as `null` — a path useLiveCall already supports.
+ *  - General team meetings: launched from a team channel or DM. deal_id is
+ *    optional here — startCall/useLiveCall already accepts a deal_id
+ *    regardless of meeting_type, so a Team Meeting can still be tied to a
+ *    deal (e.g. an internal prep sync ahead of a deal call) without being
+ *    locked into "Deal Meeting" mode. Pass explicit `null` only when the
+ *    user leaves the deal picker unset.
  *
  * Before the room is actually created, the host is asked "Who can join this
  * meeting?" — the same "Anyone with the link" vs "Require approval" choice
@@ -47,6 +51,10 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
   const { deals } = useDeals();
   const [mode, setMode] = useState<"deal" | "general">(defaultDealId ? "deal" : "general");
   const [dealId, setDealId] = useState<string | null>(defaultDealId);
+  // Team-meeting-mode deal link — separate from `dealId` (which is required
+  // in "deal" mode) so switching between modes doesn't clobber a deal the
+  // user already picked while on "general".
+  const [teamMeetingDealId, setTeamMeetingDealId] = useState<string | null>(null);
   const [name, setName] = useState(suggestedName || "");
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,7 +82,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
         platform: "daily",
         name: meetingName,
         meeting_type: mode === "deal" ? "sales_call" : "team_meeting",
-        deal_id: mode === "deal" ? dealId : null,
+        deal_id: mode === "deal" ? dealId : teamMeetingDealId,
         who_can_join: whoCanJoin,
       });
 
@@ -171,6 +179,23 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
                     {deals.map(d => <option key={d.id} value={d.id}>{d.name}{d.company ? ` — ${d.company}` : ""}</option>)}
                   </select>
                 )}
+              </div>
+            )}
+
+            {mode === "general" && (
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Link to a deal (optional)</label>
+                <select
+                  value={teamMeetingDealId ?? ""}
+                  onChange={e => setTeamMeetingDealId(e.target.value || null)}
+                  style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#f0f6fc", fontSize: 13 }}
+                >
+                  <option value="">No deal — general team meeting</option>
+                  {deals.map(d => <option key={d.id} value={d.id}>{d.name}{d.company ? ` — ${d.company}` : ""}</option>)}
+                </select>
+                <p style={{ margin: "5px 0 0", fontSize: 11, color: "rgba(255,255,255,.3)" }}>
+                  Ties this meeting to a deal's timeline, even though it's not a dedicated deal call.
+                </p>
               </div>
             )}
 
