@@ -303,6 +303,8 @@ export default function BillingPage() {
                   onCancel={() => cancelSubscription.mutate()}
                   isCancelling={cancelSubscription.isPending}
                   canUpgrade={isActive && available.some((p) => PLANS_SIMPLE.findIndex((x) => x.key === p.key) > PLANS_SIMPLE.findIndex((x) => x.key === currentPlanKey))}
+                  cancelAtPeriodEnd={billingState.cancelAtPeriodEnd}
+                  cancelDate={billingState.cancelDate}
                 />
 
                 {usage && (
