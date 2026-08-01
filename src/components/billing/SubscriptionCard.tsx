@@ -2,10 +2,15 @@
  * SubscriptionCard.tsx — the "what am I paying for, and when" card.
  */
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Zap, Calendar, RefreshCw, Timer, Users, ArrowUp, Loader2, CheckCircle2, XCircle, AlertCircle,
 } from "lucide-react";
@@ -36,17 +41,29 @@ interface SubscriptionCardProps {
   onCancel: () => void;
   isCancelling: boolean;
   canUpgrade: boolean;
+  /** True once the user has already cancelled — access continues until cancelDate */
+  cancelAtPeriodEnd?: boolean;
+  /** End of the current billing period, when cancelAtPeriodEnd is true */
+  cancelDate?: string | null;
 }
 
 export default function SubscriptionCard({
   planName, status, priceUsd, priceNgn, nextBillingDate, minuteQuota,
   minutesRemaining, isUnlimited, teamSeatsUsed, teamSeatsLimit,
   onUpgrade, onCancel, isCancelling, canUpgrade,
+  cancelAtPeriodEnd, cancelDate,
 }: SubscriptionCardProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const sc = STATUS_CFG[status] ?? STATUS_CFG.inactive;
   const SI = sc.icon;
-  const isAutoRenewing = status === "active";
+  const isAutoRenewing = status === "active" && !cancelAtPeriodEnd;
   const daysToRenewal = nextBillingDate ? differenceInCalendarDays(new Date(nextBillingDate), new Date()) : null;
+  const cancelDaysLeft = cancelDate ? differenceInCalendarDays(new Date(cancelDate), new Date()) : null;
+
+  const handleConfirmCancel = () => {
+    setConfirmOpen(false);
+    onCancel();
+  };
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent overflow-hidden">
@@ -65,6 +82,24 @@ export default function SubscriptionCard({
       </CardHeader>
 
       <CardContent className="space-y-5">
+        {cancelAtPeriodEnd && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-foreground">
+              Your subscription is cancelled and won't renew.{" "}
+              {cancelDate && (
+                <>
+                  You'll keep full access until{" "}
+                  <strong>{format(new Date(cancelDate), "MMM d, yyyy")}</strong>
+                  {cancelDaysLeft != null && cancelDaysLeft >= 0 && (
+                    <> ({cancelDaysLeft === 0 ? "today" : `${cancelDaysLeft} day${cancelDaysLeft === 1 ? "" : "s"} left`})</>
+                  )}.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Monthly cost</p>
@@ -77,10 +112,14 @@ export default function SubscriptionCard({
             )}
           </div>
           <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Next billing date</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              {cancelAtPeriodEnd ? "Access ends" : "Next billing date"}
+            </p>
             <p className="text-lg font-semibold text-foreground flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              {nextBillingDate ? format(new Date(nextBillingDate), "MMM d, yyyy") : "—"}
+              {(cancelAtPeriodEnd ? cancelDate : nextBillingDate)
+                ? format(new Date((cancelAtPeriodEnd ? cancelDate : nextBillingDate)!), "MMM d, yyyy")
+                : "—"}
             </p>
             {daysToRenewal != null && daysToRenewal >= 0 && isAutoRenewing && (
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -131,13 +170,33 @@ export default function SubscriptionCard({
             </Button>
           )}
           {isAutoRenewing && (
-            <Button size="sm" variant="outline" onClick={onCancel} disabled={isCancelling} className="gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)} disabled={isCancelling} className="gap-1.5">
               {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Cancel Subscription
             </Button>
           )}
         </div>
       </CardContent>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your {planName} plan won't renew{nextBillingDate ? ` on ${format(new Date(nextBillingDate), "MMM d, yyyy")}` : ""}.
+              {" "}Cancellation takes effect at the end of your current billing period — you'll keep full access
+              and all your minutes until then. You won't be charged again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Keep Subscription</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCancel} disabled={isCancelling} className="gap-1.5">
+              {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Yes, Cancel Subscription
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
