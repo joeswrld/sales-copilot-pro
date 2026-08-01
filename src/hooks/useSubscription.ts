@@ -37,6 +37,8 @@ export interface Subscription {
   payment_status?: string | null;
   /** When the subscription access actually expires */
   expires_at?: string | null;
+  /** True once the user has cancelled — access continues until expires_at */
+  cancel_at_period_end?: boolean | null;
 }
 
 export interface SubscriptionTransaction {
@@ -117,6 +119,10 @@ export interface BillingState {
   pendingPlanKey: string | null;
   /** Was the last payment attempt explicitly cancelled by the user? */
   paymentCancelled: boolean;
+  /** True when the user has cancelled but still has access until cancelDate */
+  cancelAtPeriodEnd: boolean;
+  /** End of the current billing period — when access actually stops, if cancelAtPeriodEnd */
+  cancelDate: string | null;
 }
 
 // ── Serialized session refresh ────────────────────────────────────────────────
@@ -290,6 +296,11 @@ export function useSubscription() {
     // "Active" means the subscription row is active AND not expired
     const isReallyActive = isSubscriptionCurrentlyActive(sub);
 
+    // Cancelled-but-still-in-period: status is still "active" (access continues),
+    // cancel_at_period_end is set, and we haven't passed expires_at yet.
+    const cancelAtPeriodEnd = isReallyActive && !!sub?.cancel_at_period_end;
+    const cancelDate = cancelAtPeriodEnd ? (sub?.expires_at ?? null) : null;
+
     const billingStatus: BillingState["billingStatus"] = isReallyActive
       ? "active"
       : profileBillingStatus === "past_due"
@@ -329,6 +340,8 @@ export function useSubscription() {
       hasIncompleteCheckout,
       pendingPlanKey: hasIncompleteCheckout ? latestPayment?.plan_selected ?? null : null,
       paymentCancelled,
+      cancelAtPeriodEnd,
+      cancelDate,
     };
   })();
 
@@ -373,6 +386,9 @@ export function useSubscription() {
       if (!currentSub || currentSub.status === "cancelled") {
         throw new Error("No active subscription to cancel");
       }
+      if (currentSub.cancel_at_period_end) {
+        throw new Error("Subscription is already set to cancel at the end of the billing period");
+      }
 
       const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
       if (refreshErr || !refreshData.session?.access_token) {
@@ -392,8 +408,9 @@ export function useSubscription() {
       if ((result.data as any)?.error) throw new Error((result.data as any).error);
       return result.data;
     },
-    onSuccess: () => {
-      toast.success("Subscription cancelled successfully");
+    onSuccess: (data: any) => {
+      const until = data?.expires_at ? new Date(data.expires_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
+      toast.success(until ? `Subscription cancelled. You'll keep access until ${until}.` : "Subscription cancelled. You'll keep access until the end of your current billing period.");
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
       queryClient.invalidateQueries({ queryKey: ["billing-profile"] });
       queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
