@@ -395,8 +395,9 @@ function ReactionRow({ reactions, onToggle }: { reactions: Reaction[]; onToggle:
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onThread, onPin, onEdit, onDelete, onCopy }: {
+function MsgBubble({ msg, isOwn, isMobile, isOnline, isUnread, onSeen, onReact, onReply, onThread, onPin, onEdit, onDelete, onCopy }: {
   msg: Msg; isOwn: boolean; isMobile: boolean; isOnline: boolean;
+  isUnread?: boolean; onSeen?: () => void;
   onReact: (e: string) => void; onReply: () => void; onThread: () => void; onPin: () => void;
   onEdit: () => void; onDelete: () => void; onCopy: () => void;
 }) {
@@ -449,13 +450,18 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onThread,
 
   return (
     <div className="msg-in" style={{ display: "flex", flexDirection: isOwn ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, marginBottom: 4 }}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}>
-      <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={msg.sender_avatar_url} />
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setShowEmoji(false); }}
+      onClick={() => { if (isUnread) onSeen?.(); }}>
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={msg.sender_avatar_url} />
+        {isUnread && <div title="Unread" style={{ position: "absolute", top: -2, [isOwn ? "left" : "right"]: -2, width: 9, height: 9, borderRadius: "50%", background: "#0ef5d4", border: "2px solid #08090f" }} />}
+      </div>
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 3, flexDirection: isOwn ? "row-reverse" : "row" }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Geist',system-ui,sans-serif" }}>{isOwn ? "You" : name}</span>
           <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)" }}>{fmtTime(msg.created_at)}</span>
           {!isOwn && isOnline && <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 600 }}>● online</span>}
+          {isUnread && <span style={{ fontSize: 9, fontWeight: 800, color: "#0ef5d4", background: "rgba(14,245,212,.12)", border: "1px solid rgba(14,245,212,.25)", borderRadius: 6, padding: "1px 5px", letterSpacing: ".04em" }}>NEW</span>}
         </div>
         <div style={{ position: "relative" }}>
           {msg.reply_to_text && (
@@ -468,7 +474,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, onReact, onReply, onThread,
             onContextMenu={e => { if (!isMobile) { e.preventDefault(); openCtx(e.clientX, e.clientY); } }}
             onTouchStart={() => { if (isMobile) longRef.current = setTimeout(() => openCtx(0, 0), 500); }}
             onTouchEnd={() => { if (longRef.current) clearTimeout(longRef.current); }}
-            style={{ padding: msg.file_url && (isImageType(msg.file_type) || isAudioType(msg.file_type)) ? 6 : "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : "rgba(255,255,255,.08)", border: isOwn ? "none" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: "default" }}>
+            style={{ padding: msg.file_url && (isImageType(msg.file_type) || isAudioType(msg.file_type)) ? 6 : "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : isUnread ? "rgba(14,245,212,.09)" : "rgba(255,255,255,.08)", border: isOwn ? "none" : isUnread ? "1px solid rgba(14,245,212,.3)" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: isUnread ? "pointer" : "default", fontWeight: isUnread ? 600 : 400 }}>
             {msg.is_pinned && <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#fbbf24", marginRight: 6, opacity: .85 }}><Pin size={10} /> Pinned</div>}
             {msg.file_url ? (
               <AttachmentRender url={msg.file_url} name={msg.file_name} type={msg.file_type} isOwn={isOwn} />
@@ -643,9 +649,29 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
   const onMarkReadRef = useRef(onMarkRead);
   useEffect(() => { onMarkReadRef.current = onMarkRead; }, [onMarkRead]);
 
+  // ── Per-message "unread until clicked" tracking ──────────────────────────
+  // Channel-level unread badges (Sidebar) are driven by mark_channel_read /
+  // last_read_at and already work. This is a separate, finer-grained layer:
+  // an individual incoming message bubble should render as unread (bold +
+  // highlighted) until the person actually clicks on it — not just until
+  // the channel happens to reload. seenMsgIds holds every message id the
+  // user has explicitly acknowledged (by click) in this channel session;
+  // anything from someone else that isn't in this set renders as unread.
+  const [seenMsgIds, setSeenMsgIds] = useState<Set<string>>(new Set());
+  // Messages present the FIRST time this channel's history loads are
+  // treated as already seen (nothing should look unread just because you
+  // switched into a channel) — only messages that arrive AFTER that initial
+  // load, via realtime, start out unread.
+  const initialLoadDoneRef = useRef(false);
+
+  const markMsgSeen = useCallback((id: string) => {
+    setSeenMsgIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+
   const isDM = activeChannel.type === "dm" && !!activeChannel.conversationId;
 
   const load = useCallback(async () => {
+    let loaded: Msg[] = [];
     if (isDM && activeChannel.conversationId) {
       const { data, error } = await (supabase as any).rpc("get_team_messages_with_senders", {
         p_conversation_id: activeChannel.conversationId, p_limit: 100,
@@ -654,30 +680,45 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
         const { data: raw } = await supabase.from("team_messages").select("*")
           .eq("conversation_id", activeChannel.conversationId)
           .order("created_at", { ascending: true }).limit(100);
-        setMessages(((raw || []) as any[]).map((m: any) => ({ ...m, user_id: m.sender_id, reactions: [] })));
+        loaded = ((raw || []) as any[]).map((m: any) => ({ ...m, user_id: m.sender_id, reactions: [] }));
       } else {
-        setMessages(((data || []) as any[]).map((m: any) => ({
+        loaded = ((data || []) as any[]).map((m: any) => ({
           ...m, user_id: m.sender_id,
           reactions: Array.isArray(m.reactions) ? m.reactions : [],
           read_by: Array.isArray(m.read_by) ? m.read_by : [],
-        })));
+        }));
       }
     } else {
       const { data, error } = await (supabase as any).rpc("get_channel_messages_v2", { p_channel_id: activeChannel.id, p_limit: 100 });
       if (error) {
         const { data: raw } = await (supabase as any).from("deal_channel_messages").select("*").eq("channel_id", activeChannel.id).order("created_at", { ascending: true }).limit(100);
-        setMessages(((raw || []) as any[]).map((m: any) => ({ ...m, reactions: [] })));
+        loaded = ((raw || []) as any[]).map((m: any) => ({ ...m, reactions: [] }));
       } else {
-        setMessages(((data || []) as any[]).map((m: any) => ({ ...m, reactions: Array.isArray(m.reactions) ? m.reactions : [] })));
+        loaded = ((data || []) as any[]).map((m: any) => ({ ...m, reactions: Array.isArray(m.reactions) ? m.reactions : [] }));
       }
     }
+    setMessages(loaded);
     setLoading(false);
-    onMarkReadRef.current();
+
+    if (!initialLoadDoneRef.current) {
+      // First load of this channel: everything already here counts as seen,
+      // and this is the one point where we auto-mark-read (matches prior
+      // behavior of "opening a channel clears its badge").
+      initialLoadDoneRef.current = true;
+      setSeenMsgIds(new Set(loaded.map(m => m.id)));
+      onMarkReadRef.current();
+    }
+    // Note: we deliberately do NOT call onMarkReadRef.current() again on
+    // subsequent (realtime-triggered) loads — a message arriving while
+    // you're sitting in the channel should still show as unread until you
+    // click it, not be silently marked read the instant it's fetched.
   }, [isDM, activeChannel.id, activeChannel.conversationId]);
 
   useEffect(() => {
     setLoading(true); setMessages([]); setReplyTo(null); setEditingId(null);
     setText(""); setThreadRoot(null); setMsgSearch(""); setShowMsgSearch(false);
+    setSeenMsgIds(new Set());
+    initialLoadDoneRef.current = false;
     load();
   }, [activeChannel.id]);
 
@@ -982,6 +1023,8 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
                     ) : (
                       <div style={{ marginBottom: 6 }}>
                         <MsgBubble msg={msg} isOwn={isOwn} isMobile={isMobile} isOnline={!isOwn && senderOnline}
+                          isUnread={!isOwn && !seenMsgIds.has(msg.id)}
+                          onSeen={() => markMsgSeen(msg.id)}
                           onReact={e => handleReact(msg.id, e)} onReply={() => startReply(msg)}
                           onThread={() => setThreadRoot(msg)}
                           onPin={() => handlePin(msg)}
