@@ -11,8 +11,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Zap, Calendar, RefreshCw, Timer, Users, ArrowUp, Loader2, CheckCircle2, XCircle, AlertCircle,
+  Zap, Calendar, RefreshCw, Timer, Users, ArrowUp, Loader2, CheckCircle2, XCircle, AlertCircle, Gift,
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { formatNGN, formatMinutes } from "@/config/plans";
@@ -38,7 +40,7 @@ interface SubscriptionCardProps {
   teamSeatsUsed: number;
   teamSeatsLimit: number;
   onUpgrade: () => void;
-  onCancel: () => void;
+  onCancel: (reason?: string, feedback?: string) => void;
   isCancelling: boolean;
   canUpgrade: boolean;
   /** True once the user has already cancelled — access continues until cancelDate */
@@ -47,6 +49,47 @@ interface SubscriptionCardProps {
   cancelDate?: string | null;
 }
 
+const CANCEL_REASONS = [
+  { value: "too_expensive",   label: "It's too expensive" },
+  { value: "not_using",       label: "I'm not using it enough" },
+  { value: "missing_feature", label: "Missing a feature I need" },
+  { value: "switching",       label: "Switching to another tool" },
+  { value: "technical",       label: "Technical issues or bugs" },
+  { value: "temporary",       label: "Just pausing for now" },
+  { value: "other",           label: "Other" },
+];
+
+const RETENTION_OFFERS: Record<string, { title: string; body: string }> = {
+  too_expensive: {
+    title: "Would a smaller plan work better?",
+    body: "Instead of cancelling, you can switch to a lower tier and keep your calls, transcripts and AI summaries — at a lower monthly cost.",
+  },
+  not_using: {
+    title: "Let's make it worth it",
+    body: "Turn on auto-join so Fixsense records and summarises every meeting for you automatically — most low-usage teams double their usage within a week.",
+  },
+  missing_feature: {
+    title: "Tell us what's missing",
+    body: "Share the feature you need below. Our team reviews every request weekly and prioritises what paying customers ask for.",
+  },
+  switching: {
+    title: "Before you go",
+    body: "Fixsense keeps your full call history, deal intelligence and coaching clips. Staying on a lower plan preserves all of it instead of losing access.",
+  },
+  technical: {
+    title: "Let us fix it first",
+    body: "Describe the issue below and we'll investigate right away — most reported issues are resolved within 48 hours.",
+  },
+  temporary: {
+    title: "Pausing? Keep your data",
+    body: "Downgrading instead of cancelling keeps your recordings, transcripts and deal history intact and ready for when you're back.",
+  },
+  other: {
+    title: "Anything we can do?",
+    body: "Tell us a little more below — it genuinely shapes what we build next. You can still continue with cancellation.",
+  },
+};
+
 export default function SubscriptionCard({
   planName, status, priceUsd, priceNgn, nextBillingDate, minuteQuota,
   minutesRemaining, isUnlimited, teamSeatsUsed, teamSeatsLimit,
@@ -54,16 +97,31 @@ export default function SubscriptionCard({
   cancelAtPeriodEnd, cancelDate,
 }: SubscriptionCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [step, setStep] = useState<"reason" | "offer" | "confirm">("reason");
+  const [reason, setReason] = useState<string>("");
+  const [feedback, setFeedback] = useState("");
   const sc = STATUS_CFG[status] ?? STATUS_CFG.inactive;
   const SI = sc.icon;
   const isAutoRenewing = status === "active" && !cancelAtPeriodEnd;
   const daysToRenewal = nextBillingDate ? differenceInCalendarDays(new Date(nextBillingDate), new Date()) : null;
   const cancelDaysLeft = cancelDate ? differenceInCalendarDays(new Date(cancelDate), new Date()) : null;
 
+  const openCancelFlow = () => {
+    setStep("reason");
+    setReason("");
+    setFeedback("");
+    setConfirmOpen(true);
+  };
+
   const handleConfirmCancel = () => {
     setConfirmOpen(false);
-    onCancel();
+    onCancel(
+      CANCEL_REASONS.find((r) => r.value === reason)?.label ?? reason ?? undefined,
+      feedback.trim() || undefined,
+    );
   };
+
+  const offer = RETENTION_OFFERS[reason] ?? RETENTION_OFFERS.other;
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent overflow-hidden">
@@ -170,7 +228,7 @@ export default function SubscriptionCard({
             </Button>
           )}
           {isAutoRenewing && (
-            <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)} disabled={isCancelling} className="gap-1.5">
+            <Button size="sm" variant="outline" onClick={openCancelFlow} disabled={isCancelling} className="gap-1.5">
               {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Cancel Subscription
             </Button>
@@ -179,22 +237,92 @@ export default function SubscriptionCard({
       </CardContent>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your {planName} plan won't renew{nextBillingDate ? ` on ${format(new Date(nextBillingDate), "MMM d, yyyy")}` : ""}.
-              {" "}Cancellation takes effect at the end of your current billing period — you'll keep full access
-              and all your minutes until then. You won't be charged again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isCancelling}>Keep Subscription</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmCancel} disabled={isCancelling} className="gap-1.5">
-              {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Yes, Cancel Subscription
-            </AlertDialogAction>
-          </AlertDialogFooter>
+        <AlertDialogContent className="max-w-lg">
+          {step === "reason" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Why are you cancelling?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This takes one tap and helps us improve Fixsense. Your {planName} plan stays active until the
+                  end of your current billing period.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <RadioGroup value={reason} onValueChange={setReason} className="grid gap-2 py-1">
+                {CANCEL_REASONS.map((r) => (
+                  <label
+                    key={r.value}
+                    htmlFor={`cancel-reason-${r.value}`}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm cursor-pointer transition-colors",
+                      reason === r.value ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <RadioGroupItem value={r.value} id={`cancel-reason-${r.value}`} />
+                    <span className="text-foreground">{r.label}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+                <Button disabled={!reason} onClick={() => setStep("offer")}>Continue</Button>
+              </AlertDialogFooter>
+            </>
+          )}
+
+          {step === "offer" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-primary" />
+                  {offer.title}
+                </AlertDialogTitle>
+                <AlertDialogDescription>{offer.body}</AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-1">
+                <p className="text-sm font-semibold text-foreground">Stay and get 30% off your next 2 months</p>
+                <p className="text-xs text-muted-foreground">
+                  Keep every feature on {planName} at a reduced rate. Reply to your billing email or contact
+                  support and we'll apply the discount to your next invoice.
+                </p>
+              </div>
+
+              <Textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Optional: tell us more (what would have made you stay?)"
+                rows={3}
+                className="resize-none"
+              />
+
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep My Plan</AlertDialogCancel>
+                <Button variant="outline" onClick={() => setStep("confirm")}>Continue Cancelling</Button>
+              </AlertDialogFooter>
+            </>
+          )}
+
+          {step === "confirm" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Your {planName} plan won't renew{nextBillingDate ? ` on ${format(new Date(nextBillingDate), "MMM d, yyyy")}` : ""}.
+                  {" "}Cancellation takes effect at the end of your current billing period — you'll keep full access
+                  and all your minutes until then. You won't be charged again.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isCancelling}>Keep Subscription</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmCancel} disabled={isCancelling} className="gap-1.5">
+                  {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Yes, Cancel Subscription
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </Card>
