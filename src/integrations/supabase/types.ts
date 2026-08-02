@@ -5998,6 +5998,9 @@ export type Database = {
           billing_cycle_end: string | null
           billing_cycle_start: string | null
           cancel_at_period_end: boolean
+          cancellation_feedback: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
           card_brand: string | null
           card_last4: string | null
           created_at: string
@@ -6035,6 +6038,9 @@ export type Database = {
           billing_cycle_end?: string | null
           billing_cycle_start?: string | null
           cancel_at_period_end?: boolean
+          cancellation_feedback?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           card_brand?: string | null
           card_last4?: string | null
           created_at?: string
@@ -6072,6 +6078,9 @@ export type Database = {
           billing_cycle_end?: string | null
           billing_cycle_start?: string | null
           cancel_at_period_end?: boolean
+          cancellation_feedback?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           card_brand?: string | null
           card_last4?: string | null
           created_at?: string
@@ -8092,6 +8101,9 @@ export type Database = {
           billing_cycle_end: string | null
           billing_cycle_start: string | null
           cancel_at_period_end: boolean
+          cancellation_feedback: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
           card_brand: string | null
           card_last4: string | null
           created_at: string
