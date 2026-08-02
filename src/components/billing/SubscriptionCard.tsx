@@ -226,7 +226,7 @@ export default function SubscriptionCard({
             </Button>
           )}
           {isAutoRenewing && (
-            <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)} disabled={isCancelling} className="gap-1.5">
+            <Button size="sm" variant="outline" onClick={openCancelFlow} disabled={isCancelling} className="gap-1.5">
               {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Cancel Subscription
             </Button>
@@ -235,22 +235,92 @@ export default function SubscriptionCard({
       </CardContent>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your {planName} plan won't renew{nextBillingDate ? ` on ${format(new Date(nextBillingDate), "MMM d, yyyy")}` : ""}.
-              {" "}Cancellation takes effect at the end of your current billing period — you'll keep full access
-              and all your minutes until then. You won't be charged again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isCancelling}>Keep Subscription</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmCancel} disabled={isCancelling} className="gap-1.5">
-              {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Yes, Cancel Subscription
-            </AlertDialogAction>
-          </AlertDialogFooter>
+        <AlertDialogContent className="max-w-lg">
+          {step === "reason" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Why are you cancelling?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This takes one tap and helps us improve Fixsense. Your {planName} plan stays active until the
+                  end of your current billing period.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <RadioGroup value={reason} onValueChange={setReason} className="grid gap-2 py-1">
+                {CANCEL_REASONS.map((r) => (
+                  <label
+                    key={r.value}
+                    htmlFor={`cancel-reason-${r.value}`}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm cursor-pointer transition-colors",
+                      reason === r.value ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <RadioGroupItem value={r.value} id={`cancel-reason-${r.value}`} />
+                    <span className="text-foreground">{r.label}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+                <Button disabled={!reason} onClick={() => setStep("offer")}>Continue</Button>
+              </AlertDialogFooter>
+            </>
+          )}
+
+          {step === "offer" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-primary" />
+                  {offer.title}
+                </AlertDialogTitle>
+                <AlertDialogDescription>{offer.body}</AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-1">
+                <p className="text-sm font-semibold text-foreground">Stay and get 30% off your next 2 months</p>
+                <p className="text-xs text-muted-foreground">
+                  Keep every feature on {planName} at a reduced rate. Reply to your billing email or contact
+                  support and we'll apply the discount to your next invoice.
+                </p>
+              </div>
+
+              <Textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Optional: tell us more (what would have made you stay?)"
+                rows={3}
+                className="resize-none"
+              />
+
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep My Plan</AlertDialogCancel>
+                <Button variant="outline" onClick={() => setStep("confirm")}>Continue Cancelling</Button>
+              </AlertDialogFooter>
+            </>
+          )}
+
+          {step === "confirm" && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Your {planName} plan won't renew{nextBillingDate ? ` on ${format(new Date(nextBillingDate), "MMM d, yyyy")}` : ""}.
+                  {" "}Cancellation takes effect at the end of your current billing period — you'll keep full access
+                  and all your minutes until then. You won't be charged again.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isCancelling}>Keep Subscription</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmCancel} disabled={isCancelling} className="gap-1.5">
+                  {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Yes, Cancel Subscription
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </Card>
