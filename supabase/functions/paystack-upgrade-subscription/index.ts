@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const USD_TO_NGN_RATE = 1500;
+import { computeBreakdown, breakdownPaymentColumns, USD_TO_NGN_RATE } from "../_shared/billing.ts";
 
 const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number }> = {
   starter: { name: "Starter", price_usd: 19, calls_limit: 50 },
@@ -160,6 +160,8 @@ Deno.serve(async (req) => {
           days_remaining:        proration.daysRemaining,
           new_monthly_price_ngn: newPriceNgn,
           new_monthly_price_usd: newPlanConfig.price_usd,
+          // Plan changes are never prorated — always the flat monthly price + VAT
+          breakdown: computeBreakdown(newPlanConfig.price_usd),
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -197,10 +199,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    const fullMonthlyAmountKobo = newPlanConfig.price_usd * USD_TO_NGN_RATE * 100;
-    const chargeAmountKobo = isDowngrade
-      ? fullMonthlyAmountKobo
-      : (proration.proratedAmountNgn * 100 || fullMonthlyAmountKobo);
+    // Flat monthly price + VAT, for both upgrades and downgrades
+    const breakdown = computeBreakdown(newPlanConfig.price_usd);
+    const fullMonthlyAmountKobo = breakdown.amount_kobo;
+    const chargeAmountKobo = breakdown.amount_kobo;
 
     // Create / get Paystack customer
     const customerRes  = await fetch("https://api.paystack.co/customer", {
@@ -301,14 +303,14 @@ Deno.serve(async (req) => {
       plan_selected:      new_plan_key,
       status:             "initialized",
       paystack_reference: reference,
-      amount_kobo:        chargeAmountKobo,
-      currency:           "NGN",
+      ...breakdownPaymentColumns(breakdown),
     });
 
     return new Response(
       JSON.stringify({
         authorization_url:   initData.data.authorization_url,
         reference,
+        breakdown,
         prorated_amount_ngn: proration.proratedAmountNgn,
         credit_ngn:          proration.creditNgn,
         is_upgrade:          isUpgrade,
