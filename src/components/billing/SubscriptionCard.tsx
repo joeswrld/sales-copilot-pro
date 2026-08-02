@@ -38,7 +38,7 @@ interface SubscriptionCardProps {
   teamSeatsUsed: number;
   teamSeatsLimit: number;
   onUpgrade: () => void;
-  onCancel: () => void;
+  onCancel: (reason?: string, feedback?: string) => void;
   isCancelling: boolean;
   canUpgrade: boolean;
   /** True once the user has already cancelled — access continues until cancelDate */
@@ -47,6 +47,47 @@ interface SubscriptionCardProps {
   cancelDate?: string | null;
 }
 
+const CANCEL_REASONS = [
+  { value: "too_expensive",   label: "It's too expensive" },
+  { value: "not_using",       label: "I'm not using it enough" },
+  { value: "missing_feature", label: "Missing a feature I need" },
+  { value: "switching",       label: "Switching to another tool" },
+  { value: "technical",       label: "Technical issues or bugs" },
+  { value: "temporary",       label: "Just pausing for now" },
+  { value: "other",           label: "Other" },
+];
+
+const RETENTION_OFFERS: Record<string, { title: string; body: string }> = {
+  too_expensive: {
+    title: "Would a smaller plan work better?",
+    body: "Instead of cancelling, you can switch to a lower tier and keep your calls, transcripts and AI summaries — at a lower monthly cost.",
+  },
+  not_using: {
+    title: "Let's make it worth it",
+    body: "Turn on auto-join so Fixsense records and summarises every meeting for you automatically — most low-usage teams double their usage within a week.",
+  },
+  missing_feature: {
+    title: "Tell us what's missing",
+    body: "Share the feature you need below. Our team reviews every request weekly and prioritises what paying customers ask for.",
+  },
+  switching: {
+    title: "Before you go",
+    body: "Fixsense keeps your full call history, deal intelligence and coaching clips. Staying on a lower plan preserves all of it instead of losing access.",
+  },
+  technical: {
+    title: "Let us fix it first",
+    body: "Describe the issue below and we'll investigate right away — most reported issues are resolved within 48 hours.",
+  },
+  temporary: {
+    title: "Pausing? Keep your data",
+    body: "Downgrading instead of cancelling keeps your recordings, transcripts and deal history intact and ready for when you're back.",
+  },
+  other: {
+    title: "Anything we can do?",
+    body: "Tell us a little more below — it genuinely shapes what we build next. You can still continue with cancellation.",
+  },
+};
+
 export default function SubscriptionCard({
   planName, status, priceUsd, priceNgn, nextBillingDate, minuteQuota,
   minutesRemaining, isUnlimited, teamSeatsUsed, teamSeatsLimit,
@@ -54,16 +95,31 @@ export default function SubscriptionCard({
   cancelAtPeriodEnd, cancelDate,
 }: SubscriptionCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [step, setStep] = useState<"reason" | "offer" | "confirm">("reason");
+  const [reason, setReason] = useState<string>("");
+  const [feedback, setFeedback] = useState("");
   const sc = STATUS_CFG[status] ?? STATUS_CFG.inactive;
   const SI = sc.icon;
   const isAutoRenewing = status === "active" && !cancelAtPeriodEnd;
   const daysToRenewal = nextBillingDate ? differenceInCalendarDays(new Date(nextBillingDate), new Date()) : null;
   const cancelDaysLeft = cancelDate ? differenceInCalendarDays(new Date(cancelDate), new Date()) : null;
 
+  const openCancelFlow = () => {
+    setStep("reason");
+    setReason("");
+    setFeedback("");
+    setConfirmOpen(true);
+  };
+
   const handleConfirmCancel = () => {
     setConfirmOpen(false);
-    onCancel();
+    onCancel(
+      CANCEL_REASONS.find((r) => r.value === reason)?.label ?? reason ?? undefined,
+      feedback.trim() || undefined,
+    );
   };
+
+  const offer = RETENTION_OFFERS[reason] ?? RETENTION_OFFERS.other;
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent overflow-hidden">
