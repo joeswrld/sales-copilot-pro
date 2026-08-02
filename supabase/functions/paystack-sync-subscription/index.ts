@@ -134,6 +134,11 @@ Deno.serve(async (req) => {
       currency: string;
       channel: string | null;
       gateway_response: string | null;
+      subtotal_usd?: number | null;
+      vat_usd?: number | null;
+      total_usd?: number | null;
+      exchange_rate?: number | null;
+      vat_rate?: number | null;
     }> = [];
 
     // Verify a specific reference if provided
@@ -192,23 +197,17 @@ Deno.serve(async (req) => {
       }
 
       if (includeTransactions) {
-        transactions = matchedTransactions
-          .map((tx) => ({
-            reference:        tx.reference,
-            status:           tx.status,
-            amount_kobo:      tx.amount,
-            amount_ngn:       tx.amount / 100,
-            paid_at:          tx.paid_at,
-            created_at:       tx.created_at,
-            currency:         tx.currency,
-            channel:          tx.channel,
-            gateway_response: tx.gateway_response,
-          }))
-          .sort(
-            (a, b) =>
-              new Date(b.paid_at || b.created_at).getTime() -
-              new Date(a.paid_at || a.created_at).getTime()
-          );
+        transactions = matchedTransactions.map((tx) => ({
+          reference:        tx.reference,
+          status:           tx.status,
+          amount_kobo:      tx.amount,
+          amount_ngn:       tx.amount / 100,
+          paid_at:          tx.paid_at,
+          created_at:       tx.created_at,
+          currency:         tx.currency,
+          channel:          tx.channel,
+          gateway_response: tx.gateway_response,
+        }));
       }
 
       if (!verifiedTransaction) {
@@ -276,6 +275,66 @@ Deno.serve(async (req) => {
       } else {
         console.error("subscription update failed:", updateErr);
       }
+    }
+
+    // ── Merge with locally recorded payments ───────────────────────────────
+    // Paystack list calls can come back empty (no customer code yet, keys
+    // rotated, sandbox/live mismatch), which used to leave paid users with an
+    // empty invoice table. The `payments` rows we wrote at checkout are the
+    // reliable fallback AND the only place the VAT breakdown lives.
+    if (includeTransactions) {
+      const { data: paymentRows } = await adminClient
+        .from("payments")
+        .select("paystack_reference, status, amount_kobo, currency, created_at, updated_at, subtotal_usd, vat_usd, total_usd, exchange_rate, vat_rate")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      const byRef = new Map<string, any>();
+      for (const p of paymentRows ?? []) {
+        if (p.paystack_reference) byRef.set(p.paystack_reference, p);
+      }
+
+      // 1. Enrich Paystack transactions with the stored breakdown
+      const merged: any[] = transactions.map((tx) => {
+        const p = byRef.get(tx.reference);
+        byRef.delete(tx.reference);
+        return {
+          ...tx,
+          subtotal_usd:  p?.subtotal_usd ?? null,
+          vat_usd:       p?.vat_usd ?? null,
+          total_usd:     p?.total_usd ?? null,
+          exchange_rate: p?.exchange_rate ?? null,
+          vat_rate:      p?.vat_rate ?? null,
+        };
+      });
+
+      // 2. Add any local payment rows Paystack didn't return
+      for (const p of byRef.values()) {
+        if (p.status === "initialized" || p.status === "pending") continue;
+        merged.push({
+          reference:        p.paystack_reference,
+          status:           p.status === "success" ? "success" : p.status,
+          amount_kobo:      p.amount_kobo ?? 0,
+          amount_ngn:      (p.amount_kobo ?? 0) / 100,
+          paid_at:          p.status === "success" ? (p.updated_at ?? p.created_at) : null,
+          created_at:       p.created_at,
+          currency:         p.currency ?? "NGN",
+          channel:          null,
+          gateway_response: null,
+          subtotal_usd:     p.subtotal_usd ?? null,
+          vat_usd:          p.vat_usd ?? null,
+          total_usd:        p.total_usd ?? null,
+          exchange_rate:    p.exchange_rate ?? null,
+          vat_rate:         p.vat_rate ?? null,
+        });
+      }
+
+      transactions = merged.sort(
+        (a, b) =>
+          new Date(b.paid_at || b.created_at).getTime() -
+          new Date(a.paid_at || a.created_at).getTime()
+      ) as typeof transactions;
     }
 
     return new Response(

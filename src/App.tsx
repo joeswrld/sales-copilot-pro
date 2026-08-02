@@ -43,7 +43,7 @@ import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from "@/components/PWABanner";
 import CookieConsent from "@/components/CookieConsent";
 import DealsPage from "@/pages/DealsPage";
-import IntegrationsDashboardPage from "./pages/IntegrationsPage";
+import IntegrationsDashboardPage from "./components/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
 import DealDetailPage from "./pages/DealDetailPage";

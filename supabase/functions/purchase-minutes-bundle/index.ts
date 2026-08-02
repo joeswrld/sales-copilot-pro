@@ -15,7 +15,7 @@ const VALID_BUNDLES: Record<number, number> = {
   5000: 240,
 };
 
-const USD_TO_NGN = 1500;
+import { computeBreakdown, breakdownPaymentColumns } from "../_shared/billing.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
@@ -48,6 +48,20 @@ Deno.serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceKey);
 
+    // ─── Preview (read-only pricing for the checkout dialog) ───
+    if (action === "preview") {
+      const previewPrice = VALID_BUNDLES[minutes];
+      if (!previewPrice)
+        return new Response(JSON.stringify({ error: "Invalid bundle" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      return new Response(
+        JSON.stringify({ breakdown: computeBreakdown(previewPrice) }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ─── Initialize purchase (get Paystack URL) ───
     if (action === "initialize") {
       const priceUsd = VALID_BUNDLES[minutes];
@@ -71,7 +85,8 @@ Deno.serve(async (req) => {
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
 
-      const amountKobo = Math.round(priceUsd * USD_TO_NGN * 100);
+      const breakdown = computeBreakdown(priceUsd);
+      const amountKobo = breakdown.amount_kobo;
       const ref = `bundle_${user.id.slice(0, 8)}_${minutes}m_${Date.now()}`;
 
       if (!paystackSecret)
@@ -108,10 +123,20 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
+      // Persist the exact breakdown so the invoice can be rebuilt later
+      await admin.from("payments").insert({
+        user_id: user.id,
+        plan_selected: `bundle_${minutes}m`,
+        status: "initialized",
+        paystack_reference: ref,
+        ...breakdownPaymentColumns(breakdown),
+      });
+
       return new Response(
         JSON.stringify({
           authorization_url: psData.data.authorization_url,
           reference: ref,
+          breakdown,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

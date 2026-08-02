@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const USD_TO_NGN_RATE = 1500;
+import { computeBreakdown, breakdownPaymentColumns, USD_TO_NGN_RATE } from "../_shared/billing.ts";
 
 const PLANS: Record<string, { name: string; price_usd: number; calls_limit: number; team_members_limit: number }> = {
   starter: { name: "Starter", price_usd: 19, calls_limit: 50, team_members_limit: 3 },
@@ -76,7 +76,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const amount_ngn_kobo = planConfig.price_usd * USD_TO_NGN_RATE * 100;
+    // VAT-inclusive amount, computed server-side (single source of truth)
+    const breakdown = computeBreakdown(planConfig.price_usd);
+    const amount_ngn_kobo = breakdown.amount_kobo;
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
     // 1. Create/get Paystack customer
@@ -177,12 +179,11 @@ Deno.serve(async (req) => {
       plan_selected: plan_key,
       status: "initialized",
       paystack_reference: reference,
-      amount_kobo: amount_ngn_kobo,
-      currency: "NGN",
+      ...breakdownPaymentColumns(breakdown),
     });
 
     return new Response(
-      JSON.stringify({ authorization_url: initData.data.authorization_url, reference }),
+      JSON.stringify({ authorization_url: initData.data.authorization_url, reference, breakdown }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
