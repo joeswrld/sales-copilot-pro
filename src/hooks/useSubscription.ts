@@ -381,7 +381,7 @@ export function useSubscription() {
 
   // ── Cancel subscription ────────────────────────────────────────────────
   const cancelSubscription = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload?: { reason?: string; feedback?: string }) => {
       const currentSub = query.data;
       if (!currentSub || currentSub.status === "cancelled") {
         throw new Error("No active subscription to cancel");
@@ -400,6 +400,8 @@ export function useSubscription() {
         body: {
           subscription_code: currentSub.paystack_subscription_code ?? null,
           email_token: currentSub.paystack_email_token ?? null,
+          reason: payload?.reason ?? null,
+          feedback: payload?.feedback ?? null,
         },
         headers: { Authorization: `Bearer ${freshToken}` },
       });
@@ -411,10 +413,16 @@ export function useSubscription() {
     onSuccess: (data: any) => {
       const until = data?.expires_at ? new Date(data.expires_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
       toast.success(until ? `Subscription cancelled. You'll keep access until ${until}.` : "Subscription cancelled. You'll keep access until the end of your current billing period.");
+
+      // Optimistically reflect "cancels at period end" so the billing page updates instantly.
+      queryClient.setQueriesData({ queryKey: ["subscription"] }, (old: any) =>
+        old ? { ...old, cancel_at_period_end: true, expires_at: data?.expires_at ?? old.expires_at } : old
+      );
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
       queryClient.invalidateQueries({ queryKey: ["billing-profile"] });
       queryClient.invalidateQueries({ queryKey: ["effective-plan"] });
       queryClient.invalidateQueries({ queryKey: ["minute-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["billing-recovery-status"] });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to cancel subscription");
