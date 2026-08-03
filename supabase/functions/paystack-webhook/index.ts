@@ -194,10 +194,12 @@ Deno.serve(async (req) => {
           updates.expires_at = data.plan_object.next_payment_date;
         }
 
+        const uid = await resolveUserId();
+        await logReactivationIfWasCancelled(uid);
         await updateSubscription(updates);
-        await logReactivation();
         break;
       }
+
 
 
       case "invoice.create": {
