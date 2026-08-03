@@ -104,6 +104,58 @@ Deno.serve(async (req) => {
       return null;
     };
 
+    // A successful payment always reactivates the plan: any pending
+    // "cancel at period end" is cleared so the user is upgraded again instantly.
+    const reactivationFields = {
+      cancel_at_period_end: false,
+      cancelled_at: null,
+      retention_outcome: "reactivated",
+      reactivated_at: new Date().toISOString(),
+    };
+
+    const resolveUserId = async (): Promise<string | undefined> => {
+      if (userId) return userId as string;
+      if (customerEmail) {
+        const { data: profile } = await supabase
+          .from("profiles").select("id").eq("email", customerEmail).maybeSingle();
+        return profile?.id;
+      }
+      return undefined;
+    };
+
+    /** Log a reactivation only when the plan was previously set to cancel. */
+    const logReactivationIfWasCancelled = async (uid?: string) => {
+      if (!uid) return;
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("id, plan, active_plan, plan_price_usd, cancel_at_period_end")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (!sub?.cancel_at_period_end) return;
+      await supabase.from("churn_events").insert({
+        user_id: uid,
+        subscription_id: sub.id,
+        plan: sub.active_plan ?? sub.plan ?? null,
+        event_type: "reactivated",
+        retention_outcome: "reactivated",
+        mrr_usd: sub.plan_price_usd ?? 0,
+      });
+      // Mark the original cancellation row as won back for churn analytics.
+      await supabase
+        .from("churn_events")
+        .update({ retention_outcome: "reactivated" })
+        .eq("user_id", uid)
+        .eq("event_type", "cancelled")
+        .is("retention_outcome", null);
+      await supabase
+        .from("churn_events")
+        .update({ retention_outcome: "reactivated" })
+        .eq("user_id", uid)
+        .eq("event_type", "cancelled")
+        .eq("retention_outcome", "cancelled");
+    };
+
+
     switch (eventType) {
       case "subscription.create": {
         const updates: Record<string, unknown> = {
@@ -112,6 +164,7 @@ Deno.serve(async (req) => {
           status: "active",
           next_payment_date: data.next_payment_date,
           updated_at: new Date().toISOString(),
+          ...reactivationFields,
         };
         await updateSubscription(updates);
         break;
@@ -122,6 +175,7 @@ Deno.serve(async (req) => {
         const updates: Record<string, unknown> = {
           status: "active",
           updated_at: new Date().toISOString(),
+          ...reactivationFields,
         };
 
         if (authorization) {
@@ -133,14 +187,20 @@ Deno.serve(async (req) => {
         const nextDate = new Date();
         nextDate.setMonth(nextDate.getMonth() + 1);
         updates.next_payment_date = nextDate.toISOString();
+        updates.expires_at = updates.next_payment_date;
 
         if (data.plan?.plan_code && data.plan_object?.next_payment_date) {
           updates.next_payment_date = data.plan_object.next_payment_date;
+          updates.expires_at = data.plan_object.next_payment_date;
         }
 
+        const uid = await resolveUserId();
+        await logReactivationIfWasCancelled(uid);
         await updateSubscription(updates);
         break;
       }
+
+
 
       case "invoice.create": {
         // Invoice created for upcoming charge

@@ -59,38 +59,13 @@ Deno.serve(async (req) => {
 
     const { userId } = resolved;
     const body = await req.json().catch(() => ({}));
-    const { subscription_code, email_token } = body ?? {};
     const reason = typeof body?.reason === "string" ? body.reason.slice(0, 120) : null;
     const feedback = typeof body?.feedback === "string" ? body.feedback.slice(0, 1000) : null;
+    const retentionOutcome =
+      typeof body?.retention_outcome === "string" ? body.retention_outcome.slice(0, 40) : "cancelled";
+    const retentionOfferShown = body?.retention_offer_shown === true;
 
     const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY")!;
-
-    // Disabling on Paystack stops the NEXT charge — the current paid period is untouched.
-    if (subscription_code && email_token) {
-      const res = await fetch(
-        "https://api.paystack.co/subscription/disable",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${PAYSTACK_SECRET}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code: subscription_code,
-            token: email_token,
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!data.status) {
-        return new Response(
-          JSON.stringify({ error: data.message || "Failed to cancel" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -99,9 +74,62 @@ Deno.serve(async (req) => {
 
     const { data: sub } = await adminClient
       .from("subscriptions")
-      .select("id, next_payment_date, billing_cycle_end, expires_at")
+      .select(
+        "id, plan, active_plan, plan_name, plan_price_usd, next_payment_date, billing_cycle_end, expires_at, paystack_subscription_code, paystack_email_token, paystack_customer_code"
+      )
       .eq("user_id", userId)
       .maybeSingle();
+
+    // Resolve the Paystack subscription server-side so cancellation ALWAYS
+    // reaches Paystack — never rely on codes supplied by the client.
+    let subscriptionCode: string | null = sub?.paystack_subscription_code ?? null;
+    let emailToken: string | null = sub?.paystack_email_token ?? null;
+
+    if ((!subscriptionCode || !emailToken) && sub?.paystack_customer_code) {
+      try {
+        const listRes = await fetch(
+          `https://api.paystack.co/subscription?customer=${encodeURIComponent(sub.paystack_customer_code)}`,
+          { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
+        );
+        const listData = await listRes.json();
+        const active = (listData?.data ?? []).find(
+          (s: Record<string, unknown>) => s.status === "active" || s.status === "attention"
+        );
+        if (active) {
+          subscriptionCode = (active.subscription_code as string) ?? subscriptionCode;
+          emailToken = (active.email_token as string) ?? emailToken;
+        }
+      } catch (e) {
+        console.warn("Paystack subscription lookup failed:", e);
+      }
+    }
+
+    // Disabling on Paystack stops the NEXT charge — the current paid period is untouched.
+    let paystackCancelled = false;
+    if (subscriptionCode && emailToken) {
+      const res = await fetch("https://api.paystack.co/subscription/disable", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code: subscriptionCode, token: emailToken }),
+      });
+
+      const data = await res.json();
+      paystackCancelled = data?.status === true;
+
+      // "already disabled"/"not found" is an acceptable end state — anything else is a hard failure.
+      const msg = String(data?.message ?? "").toLowerCase();
+      if (!paystackCancelled && !msg.includes("disable") && !msg.includes("not found")) {
+        return new Response(
+          JSON.stringify({ error: data.message || "Failed to cancel on Paystack" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      console.warn("No Paystack subscription code found for user", userId);
+    }
 
     // Access continues until the end of the period the user already paid for.
     const fallback = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -116,15 +144,40 @@ Deno.serve(async (req) => {
         cancelled_at: new Date().toISOString(),
         cancellation_reason: reason,
         cancellation_feedback: feedback,
+        retention_outcome: retentionOutcome,
+        retention_offer_shown: retentionOfferShown,
+        reactivated_at: null,
         expires_at: accessUntil,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
 
+    // Immutable churn log powering the admin churn-reason analytics.
+    await adminClient.from("churn_events").insert({
+      user_id: userId,
+      subscription_id: sub?.id ?? null,
+      plan: sub?.active_plan ?? sub?.plan ?? sub?.plan_name ?? null,
+      event_type: "cancelled",
+      cancellation_reason: reason,
+      cancellation_feedback: feedback,
+      retention_outcome: retentionOutcome,
+      retention_offer_shown: retentionOfferShown,
+      mrr_usd: sub?.plan_price_usd ?? 0,
+      access_until: accessUntil,
+    });
+
     return new Response(
-      JSON.stringify({ success: true, cancel_at_period_end: true, expires_at: accessUntil }),
+      JSON.stringify({
+        success: true,
+        cancel_at_period_end: true,
+        paystack_cancelled: paystackCancelled,
+        expires_at: accessUntil,
+        cancellation_reason: reason,
+        retention_outcome: retentionOutcome,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (err) {
     console.error("paystack-cancel-subscription error:", err);
     return new Response(

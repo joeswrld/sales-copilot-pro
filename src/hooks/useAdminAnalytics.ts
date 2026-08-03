@@ -33,6 +33,12 @@ export function useAdminAnalytics(range: AnalyticsRange) {
   const [minutes, setMinutes] = useState<SeriesPoint[]>([]);
   const [extraMinutes, setExtraMinutes] = useState<SeriesPoint[]>([]);
   const [profitCost, setProfitCost] = useState<SeriesPoint[]>([]);
+  const [churnReasons, setChurnReasons] = useState<
+    { reason: string; cancellations: number; reactivations: number; retained: number; mrr_lost_usd: number; share_pct: number }[]
+  >([]);
+  const [churnFeedback, setChurnFeedback] = useState<
+    { created_at: string; email: string; plan: string; reason: string; feedback: string; retention_outcome: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -40,7 +46,7 @@ export function useAdminAnalytics(range: AnalyticsRange) {
     const args = { _from: range.from.toISOString(), _to: range.to.toISOString(), _bucket: range.bucket };
     const argsNoBucket = { _from: range.from.toISOString(), _to: range.to.toISOString() };
     const supa = supabase as any;
-    const [r, u, p, a, c, ar, m, em, pc] = await Promise.all([
+    const [r, u, p, a, c, ar, m, em, pc, cr, cf] = await Promise.all([
       supa.rpc("admin_revenue_series", args),
       supa.rpc("admin_user_growth", args),
       supa.rpc("admin_plan_breakdown"),
@@ -50,6 +56,8 @@ export function useAdminAnalytics(range: AnalyticsRange) {
       supa.rpc("admin_minutes_consumed", args),
       supa.rpc("admin_extra_minutes_series", args),
       supa.rpc("admin_profit_cost", argsNoBucket),
+      supa.rpc("admin_churn_reasons", argsNoBucket),
+      supa.rpc("admin_churn_feedback", { ...argsNoBucket, _limit: 50 }),
     ]);
     setRevenue(r.data || []);
     setUserGrowth(u.data || []);
@@ -60,10 +68,12 @@ export function useAdminAnalytics(range: AnalyticsRange) {
     setMinutes(m.data || []);
     setExtraMinutes(em.data || []);
     setProfitCost(pc.data || []);
+    setChurnReasons(cr.data || []);
+    setChurnFeedback(cf.data || []);
     setLoading(false);
   }, [range.from, range.to, range.bucket]);
 
   useEffect(() => { load(); }, [load]);
 
-  return { revenue, userGrowth, planBreakdown, activeUsers, churn, arpu, minutes, extraMinutes, profitCost, loading, refresh: load };
+  return { revenue, userGrowth, planBreakdown, activeUsers, churn, arpu, minutes, extraMinutes, profitCost, churnReasons, churnFeedback, loading, refresh: load };
 }

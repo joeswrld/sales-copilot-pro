@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
 
     const { data: subscription } = await adminClient
       .from("subscriptions")
-      .select("user_id, status, paystack_customer_code, plan_name, plan_price_usd, amount_kobo")
+      .select("user_id, status, paystack_customer_code, plan_name, plan_price_usd, amount_kobo, cancel_at_period_end, plan, active_plan, id")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -256,6 +256,19 @@ Deno.serve(async (req) => {
       // Only flip to active from a non-active state; never downgrade an active row here.
       if (verifiedTransaction && subscription?.status !== "active") {
         patch.status = "active";
+      }
+
+      // A verified successful payment means the user has (re)subscribed:
+      // clear any pending "cancel at period end" so access is restored at once.
+      if (verifiedTransaction) {
+        patch.cancel_at_period_end = false;
+        patch.cancelled_at = null;
+        patch.payment_status = "success";
+        if (subscription?.cancel_at_period_end) {
+          patch.retention_outcome = "reactivated";
+          patch.reactivated_at = new Date().toISOString();
+        }
+        if (computedNext) patch.expires_at = computedNext;
       }
 
       const { error: updateErr } = await adminClient

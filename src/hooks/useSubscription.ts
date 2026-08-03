@@ -39,6 +39,16 @@ export interface Subscription {
   expires_at?: string | null;
   /** True once the user has cancelled — access continues until expires_at */
   cancel_at_period_end?: boolean | null;
+  /** Reason the user gave when cancelling */
+  cancellation_reason?: string | null;
+  /** Free-text feedback captured during the cancellation flow */
+  cancellation_feedback?: string | null;
+  /** "cancelled" | "retained" | "reactivated" */
+  retention_outcome?: string | null;
+  /** True when a retention offer was shown before cancelling */
+  retention_offer_shown?: boolean | null;
+  cancelled_at?: string | null;
+  reactivated_at?: string | null;
 }
 
 export interface SubscriptionTransaction {
@@ -123,6 +133,14 @@ export interface BillingState {
   cancelAtPeriodEnd: boolean;
   /** End of the current billing period — when access actually stops, if cancelAtPeriodEnd */
   cancelDate: string | null;
+  /** Reason recorded at cancellation time */
+  cancellationReason: string | null;
+  /** Free-text feedback recorded at cancellation time */
+  cancellationFeedback: string | null;
+  /** "cancelled" | "retained" | "reactivated" */
+  retentionOutcome: string | null;
+  /** When the user reactivated after a cancellation */
+  reactivatedAt: string | null;
 }
 
 // ── Serialized session refresh ────────────────────────────────────────────────
@@ -342,6 +360,10 @@ export function useSubscription() {
       paymentCancelled,
       cancelAtPeriodEnd,
       cancelDate,
+      cancellationReason: sub?.cancellation_reason ?? null,
+      cancellationFeedback: sub?.cancellation_feedback ?? null,
+      retentionOutcome: sub?.retention_outcome ?? null,
+      reactivatedAt: sub?.reactivated_at ?? null,
     };
   })();
 
@@ -381,7 +403,12 @@ export function useSubscription() {
 
   // ── Cancel subscription ────────────────────────────────────────────────
   const cancelSubscription = useMutation({
-    mutationFn: async (payload?: { reason?: string; feedback?: string }) => {
+    mutationFn: async (payload?: {
+      reason?: string;
+      feedback?: string;
+      retentionOutcome?: string;
+      retentionOfferShown?: boolean;
+    }) => {
       const currentSub = query.data;
       if (!currentSub || currentSub.status === "cancelled") {
         throw new Error("No active subscription to cancel");
@@ -402,6 +429,8 @@ export function useSubscription() {
           email_token: currentSub.paystack_email_token ?? null,
           reason: payload?.reason ?? null,
           feedback: payload?.feedback ?? null,
+          retention_outcome: payload?.retentionOutcome ?? "cancelled",
+          retention_offer_shown: payload?.retentionOfferShown ?? false,
         },
         headers: { Authorization: `Bearer ${freshToken}` },
       });
@@ -416,7 +445,16 @@ export function useSubscription() {
 
       // Optimistically reflect "cancels at period end" so the billing page updates instantly.
       queryClient.setQueriesData({ queryKey: ["subscription"] }, (old: any) =>
-        old ? { ...old, cancel_at_period_end: true, expires_at: data?.expires_at ?? old.expires_at } : old
+        old
+          ? {
+              ...old,
+              cancel_at_period_end: true,
+              expires_at: data?.expires_at ?? old.expires_at,
+              cancellation_reason: data?.cancellation_reason ?? old.cancellation_reason,
+              retention_outcome: data?.retention_outcome ?? "cancelled",
+              cancelled_at: new Date().toISOString(),
+            }
+          : old
       );
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
       queryClient.invalidateQueries({ queryKey: ["billing-profile"] });

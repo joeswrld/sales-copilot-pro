@@ -197,6 +197,87 @@ export default function AdminAnalyticsPage() {
             </ResponsiveContainer>
           </ChartCard>
         </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Churn Reasons</CardTitle>
+            <CardDescription className="text-xs">
+              Why users cancelled, and how many were won back after a retention offer
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {a.churnReasons.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No cancellations in this period.</p>
+            ) : (
+              <>
+                <div className="h-[260px] -ml-4">
+                  <ResponsiveContainer>
+                    <BarChart data={a.churnReasons} layout="vertical" margin={{ left: 40 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                      <XAxis type="number" fontSize={11} />
+                      <YAxis type="category" dataKey="reason" width={150} fontSize={11} />
+                      <Tooltip /><Legend />
+                      <Bar dataKey="cancellations" fill="#ef4444" name="Cancellations" />
+                      <Bar dataKey="reactivations" fill={COLORS[1]} name="Reactivated" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-2 pr-4">Reason</th>
+                        <th className="py-2 pr-4">Cancellations</th>
+                        <th className="py-2 pr-4">Share</th>
+                        <th className="py-2 pr-4">Reactivated</th>
+                        <th className="py-2 pr-4">Retained</th>
+                        <th className="py-2">MRR lost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {a.churnReasons.map((r) => (
+                        <tr key={r.reason} className="border-t border-border">
+                          <td className="py-2 pr-4">{r.reason}</td>
+                          <td className="py-2 pr-4 tabular-nums">{r.cancellations}</td>
+                          <td className="py-2 pr-4 tabular-nums">{Number(r.share_pct ?? 0).toFixed(1)}%</td>
+                          <td className="py-2 pr-4 tabular-nums">{r.reactivations}</td>
+                          <td className="py-2 pr-4 tabular-nums">{r.retained}</td>
+                          <td className="py-2 tabular-nums">${Number(r.mrr_lost_usd ?? 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Cancellation Feedback</CardTitle>
+            <CardDescription className="text-xs">Most recent verbatim feedback with retention outcome</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {a.churnFeedback.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No feedback recorded in this period.</p>
+            ) : (
+              a.churnFeedback.map((f, i) => (
+                <div key={i} className="rounded-lg border border-border px-3 py-2 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{new Date(f.created_at).toLocaleDateString()}</span>
+                    <span>·</span><span>{f.email}</span>
+                    <span>·</span><span>{f.plan ?? "—"}</span>
+                    <span>·</span><span className="text-foreground">{f.reason ?? "No reason given"}</span>
+                    {f.retention_outcome && <><span>·</span><span>{f.retention_outcome}</span></>}
+                  </div>
+                  {f.feedback && <p className="text-sm text-foreground italic">"{f.feedback}"</p>}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
