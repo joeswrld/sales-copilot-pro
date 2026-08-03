@@ -14,7 +14,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Zap, Calendar, RefreshCw, Timer, Users, ArrowUp, Loader2, CheckCircle2, XCircle, AlertCircle, Gift,
+  Zap, Calendar, RefreshCw, Timer, Users, ArrowUp, Loader2, CheckCircle2, XCircle, AlertCircle, Gift, MessageSquare,
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { formatNGN, formatMinutes } from "@/config/plans";
@@ -40,14 +40,28 @@ interface SubscriptionCardProps {
   teamSeatsUsed: number;
   teamSeatsLimit: number;
   onUpgrade: () => void;
-  onCancel: (reason?: string, feedback?: string) => void;
+  onCancel: (reason?: string, feedback?: string, retentionOfferShown?: boolean) => void;
   isCancelling: boolean;
   canUpgrade: boolean;
   /** True once the user has already cancelled — access continues until cancelDate */
   cancelAtPeriodEnd?: boolean;
   /** End of the current billing period, when cancelAtPeriodEnd is true */
   cancelDate?: string | null;
+  /** Reason the user gave when cancelling — shown back to them */
+  cancellationReason?: string | null;
+  /** Free-text feedback captured during cancellation */
+  cancellationFeedback?: string | null;
+  /** "cancelled" | "retained" | "reactivated" */
+  retentionOutcome?: string | null;
+  /** When the user reactivated after cancelling */
+  reactivatedAt?: string | null;
 }
+
+const OUTCOME_LABELS: Record<string, string> = {
+  cancelled: "Cancellation confirmed",
+  retained: "Retention offer accepted",
+  reactivated: "Reactivated — subscription resumed",
+};
 
 const CANCEL_REASONS = [
   { value: "too_expensive",   label: "It's too expensive" },
@@ -95,6 +109,7 @@ export default function SubscriptionCard({
   minutesRemaining, isUnlimited, teamSeatsUsed, teamSeatsLimit,
   onUpgrade, onCancel, isCancelling, canUpgrade,
   cancelAtPeriodEnd, cancelDate,
+  cancellationReason, cancellationFeedback, retentionOutcome, reactivatedAt,
 }: SubscriptionCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [step, setStep] = useState<"reason" | "offer" | "confirm">("reason");
@@ -118,6 +133,7 @@ export default function SubscriptionCard({
     onCancel(
       CANCEL_REASONS.find((r) => r.value === reason)?.label ?? reason ?? undefined,
       feedback.trim() || undefined,
+      true,
     );
   };
 
@@ -155,6 +171,31 @@ export default function SubscriptionCard({
                 </>
               )}
             </p>
+          </div>
+        )}
+
+        {(cancellationReason || retentionOutcome) && (
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-1.5">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" /> Cancellation record
+            </p>
+            {cancellationReason && (
+              <p className="text-sm text-foreground">
+                <span className="text-muted-foreground">Reason: </span>
+                {cancellationReason}
+              </p>
+            )}
+            {cancellationFeedback && (
+              <p className="text-sm text-muted-foreground italic">"{cancellationFeedback}"</p>
+            )}
+            {retentionOutcome && (
+              <p className="text-xs text-muted-foreground">
+                Outcome: {OUTCOME_LABELS[retentionOutcome] ?? retentionOutcome}
+                {retentionOutcome === "reactivated" && reactivatedAt
+                  ? ` on ${format(new Date(reactivatedAt), "MMM d, yyyy")}`
+                  : ""}
+              </p>
+            )}
           </div>
         )}
 
@@ -280,14 +321,6 @@ export default function SubscriptionCard({
                 </AlertDialogTitle>
                 <AlertDialogDescription>{offer.body}</AlertDialogDescription>
               </AlertDialogHeader>
-
-              <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-1">
-                <p className="text-sm font-semibold text-foreground">Stay and get 30% off your next 2 months</p>
-                <p className="text-xs text-muted-foreground">
-                  Keep every feature on {planName} at a reduced rate. Reply to your billing email or contact
-                  support and we'll apply the discount to your next invoice.
-                </p>
-              </div>
 
               <Textarea
                 value={feedback}
