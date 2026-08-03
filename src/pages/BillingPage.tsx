@@ -300,11 +300,23 @@ export default function BillingPage() {
                     if (next) openPlanCheckout(next, () => changePlan.mutate(next.key));
                     else document.getElementById("change-plan-section")?.scrollIntoView({ behavior: "smooth" });
                   }}
-                  onCancel={(reason, feedback) => cancelSubscription.mutate({ reason, feedback })}
+                  onCancel={(reason, feedback, offerShown) =>
+                    cancelSubscription.mutate({
+                      reason,
+                      feedback,
+                      retentionOutcome: "cancelled",
+                      retentionOfferShown: offerShown,
+                    })
+                  }
                   isCancelling={cancelSubscription.isPending}
                   canUpgrade={isActive && available.some((p) => PLANS_SIMPLE.findIndex((x) => x.key === p.key) > PLANS_SIMPLE.findIndex((x) => x.key === currentPlanKey))}
                   cancelAtPeriodEnd={billingState.cancelAtPeriodEnd}
                   cancelDate={billingState.cancelDate}
+                  cancellationReason={billingState.cancellationReason}
+                  cancellationFeedback={billingState.cancellationFeedback}
+                  retentionOutcome={billingState.retentionOutcome}
+                  reactivatedAt={billingState.reactivatedAt}
+
                 />
 
                 {usage && (
