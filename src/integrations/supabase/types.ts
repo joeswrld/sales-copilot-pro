@@ -1334,6 +1334,51 @@ export type Database = {
         }
         Relationships: []
       }
+      churn_events: {
+        Row: {
+          access_until: string | null
+          cancellation_feedback: string | null
+          cancellation_reason: string | null
+          created_at: string
+          event_type: string
+          id: string
+          mrr_usd: number | null
+          plan: string | null
+          retention_offer_shown: boolean
+          retention_outcome: string | null
+          subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          access_until?: string | null
+          cancellation_feedback?: string | null
+          cancellation_reason?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          mrr_usd?: number | null
+          plan?: string | null
+          retention_offer_shown?: boolean
+          retention_outcome?: string | null
+          subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          access_until?: string | null
+          cancellation_feedback?: string | null
+          cancellation_reason?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          mrr_usd?: number | null
+          plan?: string | null
+          retention_offer_shown?: boolean
+          retention_outcome?: string | null
+          subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       coaching_clip_reactions: {
         Row: {
           clip_id: string
@@ -6025,6 +6070,9 @@ export type Database = {
           plan_id: string | null
           plan_name: string
           plan_price_usd: number | null
+          reactivated_at: string | null
+          retention_offer_shown: boolean
+          retention_outcome: string | null
           retry_count: number
           status: string
           subscription_status: string
@@ -6065,6 +6113,9 @@ export type Database = {
           plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
+          reactivated_at?: string | null
+          retention_offer_shown?: boolean
+          retention_outcome?: string | null
           retry_count?: number
           status?: string
           subscription_status?: string
@@ -6105,6 +6156,9 @@ export type Database = {
           plan_id?: string | null
           plan_name?: string
           plan_price_usd?: number | null
+          reactivated_at?: string | null
+          retention_offer_shown?: boolean
+          retention_outcome?: string | null
           retry_count?: number
           status?: string
           subscription_status?: string
@@ -7337,11 +7391,33 @@ export type Database = {
           bucket: string
         }[]
       }
+      admin_churn_feedback: {
+        Args: { _from: string; _limit?: number; _to: string }
+        Returns: {
+          created_at: string
+          email: string
+          feedback: string
+          plan: string
+          reason: string
+          retention_outcome: string
+        }[]
+      }
       admin_churn_rate: {
         Args: { _from: string; _to: string }
         Returns: {
           bucket: string
           churn_rate: number
+        }[]
+      }
+      admin_churn_reasons: {
+        Args: { _from: string; _to: string }
+        Returns: {
+          cancellations: number
+          mrr_lost_usd: number
+          reactivations: number
+          reason: string
+          retained: number
+          share_pct: number
         }[]
       }
       admin_delete_user:
@@ -8128,6 +8204,9 @@ export type Database = {
           plan_id: string | null
           plan_name: string
           plan_price_usd: number | null
+          reactivated_at: string | null
+          retention_offer_shown: boolean
+          retention_outcome: string | null
           retry_count: number
           status: string
           subscription_status: string
