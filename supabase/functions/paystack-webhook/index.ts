@@ -104,6 +104,38 @@ Deno.serve(async (req) => {
       return null;
     };
 
+    // A successful payment always reactivates the plan: any pending
+    // "cancel at period end" is cleared so the user is upgraded again instantly.
+    const reactivationFields = {
+      cancel_at_period_end: false,
+      cancelled_at: null,
+      retention_outcome: "reactivated",
+      reactivated_at: new Date().toISOString(),
+    };
+
+    const logReactivation = async () => {
+      let uid = userId as string | undefined;
+      if (!uid && customerEmail) {
+        const { data: profile } = await supabase
+          .from("profiles").select("id").eq("email", customerEmail).maybeSingle();
+        uid = profile?.id;
+      }
+      if (!uid) return;
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("id, plan, active_plan, plan_price_usd, cancel_at_period_end")
+        .eq("user_id", uid)
+        .maybeSingle();
+      await supabase.from("churn_events").insert({
+        user_id: uid,
+        subscription_id: sub?.id ?? null,
+        plan: sub?.active_plan ?? sub?.plan ?? null,
+        event_type: "reactivated",
+        retention_outcome: "reactivated",
+        mrr_usd: sub?.plan_price_usd ?? 0,
+      });
+    };
+
     switch (eventType) {
       case "subscription.create": {
         const updates: Record<string, unknown> = {
@@ -112,6 +144,7 @@ Deno.serve(async (req) => {
           status: "active",
           next_payment_date: data.next_payment_date,
           updated_at: new Date().toISOString(),
+          ...reactivationFields,
         };
         await updateSubscription(updates);
         break;
@@ -122,6 +155,7 @@ Deno.serve(async (req) => {
         const updates: Record<string, unknown> = {
           status: "active",
           updated_at: new Date().toISOString(),
+          ...reactivationFields,
         };
 
         if (authorization) {
@@ -133,14 +167,18 @@ Deno.serve(async (req) => {
         const nextDate = new Date();
         nextDate.setMonth(nextDate.getMonth() + 1);
         updates.next_payment_date = nextDate.toISOString();
+        updates.expires_at = updates.next_payment_date;
 
         if (data.plan?.plan_code && data.plan_object?.next_payment_date) {
           updates.next_payment_date = data.plan_object.next_payment_date;
+          updates.expires_at = data.plan_object.next_payment_date;
         }
 
         await updateSubscription(updates);
+        await logReactivation();
         break;
       }
+
 
       case "invoice.create": {
         // Invoice created for upcoming charge
