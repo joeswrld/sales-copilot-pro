@@ -113,28 +113,48 @@ Deno.serve(async (req) => {
       reactivated_at: new Date().toISOString(),
     };
 
-    const logReactivation = async () => {
-      let uid = userId as string | undefined;
-      if (!uid && customerEmail) {
+    const resolveUserId = async (): Promise<string | undefined> => {
+      if (userId) return userId as string;
+      if (customerEmail) {
         const { data: profile } = await supabase
           .from("profiles").select("id").eq("email", customerEmail).maybeSingle();
-        uid = profile?.id;
+        return profile?.id;
       }
+      return undefined;
+    };
+
+    /** Log a reactivation only when the plan was previously set to cancel. */
+    const logReactivationIfWasCancelled = async (uid?: string) => {
       if (!uid) return;
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("id, plan, active_plan, plan_price_usd, cancel_at_period_end")
         .eq("user_id", uid)
         .maybeSingle();
+      if (!sub?.cancel_at_period_end) return;
       await supabase.from("churn_events").insert({
         user_id: uid,
-        subscription_id: sub?.id ?? null,
-        plan: sub?.active_plan ?? sub?.plan ?? null,
+        subscription_id: sub.id,
+        plan: sub.active_plan ?? sub.plan ?? null,
         event_type: "reactivated",
         retention_outcome: "reactivated",
-        mrr_usd: sub?.plan_price_usd ?? 0,
+        mrr_usd: sub.plan_price_usd ?? 0,
       });
+      // Mark the original cancellation row as won back for churn analytics.
+      await supabase
+        .from("churn_events")
+        .update({ retention_outcome: "reactivated" })
+        .eq("user_id", uid)
+        .eq("event_type", "cancelled")
+        .is("retention_outcome", null);
+      await supabase
+        .from("churn_events")
+        .update({ retention_outcome: "reactivated" })
+        .eq("user_id", uid)
+        .eq("event_type", "cancelled")
+        .eq("retention_outcome", "cancelled");
     };
+
 
     switch (eventType) {
       case "subscription.create": {
