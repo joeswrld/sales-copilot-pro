@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { playNotificationSound } from "@/lib/notificationSound";
+import { safeInternalPath } from "@/lib/safeLink";
 
 export interface Notification {
   id: string;
@@ -62,9 +63,9 @@ export function useNotifications() {
             description: n.message,
             position: "bottom-right",
             duration: 4000,
-            action: n.link ? {
+            action: safeInternalPath(n.link) ? {
               label: "View",
-              onClick: () => { window.location.href = n.link!; },
+              onClick: () => { window.location.assign(safeInternalPath(n.link)!); },
             } : undefined,
           });
         }
