@@ -62,7 +62,7 @@ export function useAsanaConfig() {
     queryFn: async () => {
       const { data } = await supabase
         .from("asana_configs")
-        .select("*")
+        .select("id, user_id, workspace_gid, workspace_name, project_gid, enabled")
         .eq("user_id", user!.id)
         .maybeSingle();
       return (data || null) as AsanaConfig | null;
@@ -137,7 +137,7 @@ export function useNotionConfig() {
     queryFn: async () => {
       const { data } = await supabase
         .from("notion_configs")
-        .select("*")
+        .select("id, user_id, workspace_id, workspace_name, database_id, enabled")
         .eq("user_id", user!.id)
         .maybeSingle();
       return (data || null) as NotionConfig | null;
@@ -298,7 +298,7 @@ export function useApiKeys() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("api_keys")
-        .select("*")
+        .select("id, user_id, key_prefix, name, scopes, last_used_at, expires_at, revoked, created_at")
         .eq("user_id", user!.id)
         .eq("revoked", false)
         .order("created_at", { ascending: false });
@@ -328,9 +328,17 @@ export function useApiKeys() {
       // Fallback: create directly in DB
       const rawKey = `fxs_${crypto.randomUUID().replace(/-/g, "")}`;
       const prefix = rawKey.slice(0, 12);
+      // Store only a SHA-256 hash of the key — never the raw secret.
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(rawKey)
+      );
+      const keyHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
       const { error: dbErr } = await supabase.from("api_keys").insert({
         user_id: user!.id,
-        key_hash: rawKey,
+        key_hash: keyHash,
         key_prefix: prefix,
         name,
         scopes: scopes || ["calls:read", "summaries:read", "analytics:read"],
