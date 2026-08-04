@@ -65,7 +65,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    const finalSignupUrl = signupUrl || "https://fixsense.com.ng/login";
+    // Only allow redirects to trusted Fixsense origins (open-redirect / phishing guard)
+    const ALLOWED_ORIGINS = [
+      "https://fixsense.com.ng",
+      "https://www.fixsense.com.ng",
+      "https://app.fixsense.com.ng",
+      "https://fixsense.app",
+    ];
+    const DEFAULT_SIGNUP_URL = "https://fixsense.com.ng/login";
+    let finalSignupUrl = DEFAULT_SIGNUP_URL;
+    if (typeof signupUrl === "string" && signupUrl.length < 500) {
+      try {
+        const u = new URL(signupUrl);
+        if (ALLOWED_ORIGINS.includes(u.origin)) finalSignupUrl = u.toString();
+      } catch { /* keep default */ }
+    }
 
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       redirectTo: finalSignupUrl,

@@ -182,6 +182,21 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
+      // Idempotency: refuse to credit the same Paystack reference twice
+      const { data: alreadyCredited } = await admin
+        .from("payments")
+        .select("id")
+        .eq("reference", reference)
+        .eq("status", "success")
+        .maybeSingle();
+
+      if (alreadyCredited) {
+        return new Response(
+          JSON.stringify({ error: "This payment has already been credited" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Get active subscription
       const { data: sub } = await admin
         .from("subscriptions")
@@ -195,6 +210,26 @@ Deno.serve(async (req) => {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+
+      // Claim the reference first so concurrent replays cannot both credit
+      const { error: claimErr } = await admin.from("payments").insert({
+        user_id: user.id,
+        reference,
+        amount_ngn: verifyData.data.amount / 100,
+        amount_kobo: verifyData.data.amount,
+        status: "success",
+        channel: verifyData.data.channel || "card",
+        currency: "NGN",
+        paid_at: verifyData.data.paid_at || new Date().toISOString(),
+        gateway_response: verifyData.data.gateway_response || "Approved",
+        plan_name: `extra_${bundleMinutes}_minutes`,
+      });
+      if (claimErr) {
+        return new Response(
+          JSON.stringify({ error: "This payment has already been credited" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       const newExtra = (sub.extra_minutes || 0) + bundleMinutes;
       const expiresAt = sub.next_payment_date || new Date(Date.now() + 30 * 86400000).toISOString();
@@ -222,22 +257,6 @@ Deno.serve(async (req) => {
           p_message: `${bundleMinutes} extra minutes have been added to your account.`,
           p_link: "/billing",
           p_idempotency_key: `bundle_${reference}`,
-        });
-      } catch {}
-
-      // Record payment
-      try {
-        await admin.from("payments").insert({
-          user_id: user.id,
-          reference,
-          amount_ngn: verifyData.data.amount / 100,
-          amount_kobo: verifyData.data.amount,
-          status: "success",
-          channel: verifyData.data.channel || "card",
-          currency: "NGN",
-          paid_at: verifyData.data.paid_at || new Date().toISOString(),
-          gateway_response: verifyData.data.gateway_response || "Approved",
-          plan_name: `extra_${bundleMinutes}_minutes`,
         });
       } catch {}
 
