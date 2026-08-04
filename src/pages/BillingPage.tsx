@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   CreditCard, Zap, Loader2, AlertTriangle, RotateCcw, Info,
-  ArrowUp, ArrowDown, Timer, Users,
+  ArrowUp, ArrowDown, Timer, Users, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -206,7 +206,40 @@ export default function BillingPage() {
           <>
             <TeamUsageBillingCard className="mb-2" />
 
+            {/* ── Re-subscribed / access restored notice ── */}
+            {showActive && justReactivated && !billingState.cancelAtPeriodEnd && (
+              <Card className="border-emerald-500/40 bg-emerald-500/5">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">
+                        Welcome back — your access has been restored
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Your <strong className="text-foreground capitalize">{subscription?.plan_name}</strong> plan is
+                        active again and every feature on it is unlocked.
+                        {subscription?.next_payment_date && (
+                          <> It renews on{" "}
+                            <strong className="text-foreground">
+                              {new Date(subscription.next_payment_date).toLocaleDateString(undefined, {
+                                year: "numeric", month: "long", day: "numeric",
+                              })}
+                            </strong>.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => setReactivationDismissed(true)} className="shrink-0">
+                      Dismiss
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* ── Payment cancelled notice ── */}
+
             {paymentCancelledNotice && showActive && (
               <Card className="border-blue-500/40 bg-blue-500/5">
                 <CardContent className="pt-6">
