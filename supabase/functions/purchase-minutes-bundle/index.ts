@@ -182,21 +182,6 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
-      // Idempotency: refuse to credit the same Paystack reference twice
-      const { data: alreadyCredited } = await admin
-        .from("payments")
-        .select("id")
-        .eq("reference", reference)
-        .eq("status", "success")
-        .maybeSingle();
-
-      if (alreadyCredited) {
-        return new Response(
-          JSON.stringify({ error: "This payment has already been credited" }),
-          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
       // Get active subscription
       const { data: sub } = await admin
         .from("subscriptions")
@@ -211,20 +196,24 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
-      // Claim the reference first so concurrent replays cannot both credit
-      const { error: claimErr } = await admin.from("payments").insert({
-        user_id: user.id,
-        reference,
-        amount_ngn: verifyData.data.amount / 100,
-        amount_kobo: verifyData.data.amount,
-        status: "success",
-        channel: verifyData.data.channel || "card",
-        currency: "NGN",
-        paid_at: verifyData.data.paid_at || new Date().toISOString(),
-        gateway_response: verifyData.data.gateway_response || "Approved",
-        plan_name: `extra_${bundleMinutes}_minutes`,
-      });
-      if (claimErr) {
+      // Idempotency: atomically claim this reference. The initialize step already
+      // inserted a row with status "initialized"; flipping it to "success" here can
+      // only succeed once, so a replayed reference cannot credit minutes twice.
+      const { data: claimed, error: claimErr } = await admin
+        .from("payments")
+        .update({
+          status: "success",
+          amount_kobo: verifyData.data.amount,
+          currency: "NGN",
+          paystack_response: verifyData.data,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("paystack_reference", reference)
+        .eq("user_id", user.id)
+        .eq("status", "initialized")
+        .select("id");
+
+      if (claimErr || !claimed || claimed.length === 0) {
         return new Response(
           JSON.stringify({ error: "This payment has already been credited" }),
           { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
