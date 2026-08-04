@@ -107,7 +107,7 @@ Only include items backed by the transcript. Empty arrays are OK. No prose outsi
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.6-flash",
         messages: [
           { role: "system", content: "You output only strict JSON. No markdown." },
           { role: "user", content: prompt },
