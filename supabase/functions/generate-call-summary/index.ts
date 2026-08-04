@@ -217,8 +217,8 @@ Deno.serve(async (req) => {
     let buyingSignals: string[] = [];
     let actionItems: string[] = [];
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (geminiKey && transcriptText.length > 0) {
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+    if (lovableKey && transcriptText.length > 0) {
       try {
         const meetingType = call?.meeting_type || "sales call";
         const prompt = `Analyze this ${meetingType} sales call transcript and provide a comprehensive analysis:
@@ -247,19 +247,27 @@ Respond in JSON format:
   "next_steps": ["..."]
 }`;
 
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
-            }),
-          }
-        );
-        const geminiData = await res.json();
-        const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${lovableKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3.6-flash",
+            messages: [
+              { role: "system", content: "You output only strict JSON. No markdown." },
+              { role: "user", content: prompt },
+            ],
+            response_format: { type: "json_object" },
+          }),
+        });
+        if (!res.ok) {
+          console.error("Lovable AI error:", res.status, await res.text());
+          throw new Error("AI summary failed");
+        }
+        const aiData = await res.json();
+        const text = aiData?.choices?.[0]?.message?.content || "";
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);

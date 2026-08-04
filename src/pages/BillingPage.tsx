@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   CreditCard, Zap, Loader2, AlertTriangle, RotateCcw, Info,
-  ArrowUp, ArrowDown, Timer, Users,
+  ArrowUp, ArrowDown, Timer, Users, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -85,6 +85,7 @@ export default function BillingPage() {
   const { verify: verifyBundle, purchase: purchaseBundle, isPurchasing: isPurchasingBundle } = useExtraMinutes();
   const [searchParams, setSearchParams] = useSearchParams();
   const [paymentCancelledNotice, setPaymentCancelledNotice] = useState(false);
+  const [reactivationDismissed, setReactivationDismissed] = useState(false);
   const handledRef = useRef<string | null>(null);
 
   // ── Checkout dialog state ────────────────────────────────────────────────
@@ -178,6 +179,13 @@ export default function BillingPage() {
 
   const available   = PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey && p.key !== "free");
   const showActive  = billingState.billingStatus === "active";
+  // Show a confirmation banner right after a re-subscribe (reactivated in the last 24h)
+  const justReactivated = (() => {
+    if (reactivationDismissed) return false;
+    const at = billingState.reactivatedAt;
+    if (!at) return false;
+    return Date.now() - new Date(at).getTime() < 24 * 60 * 60 * 1000;
+  })();
   const showPending = billingState.hasIncompleteCheckout;
   const priceUSD    = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN    = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
@@ -206,7 +214,40 @@ export default function BillingPage() {
           <>
             <TeamUsageBillingCard className="mb-2" />
 
+            {/* ── Re-subscribed / access restored notice ── */}
+            {showActive && justReactivated && !billingState.cancelAtPeriodEnd && (
+              <Card className="border-emerald-500/40 bg-emerald-500/5">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">
+                        Welcome back — your access has been restored
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Your <strong className="text-foreground capitalize">{subscription?.plan_name}</strong> plan is
+                        active again and every feature on it is unlocked.
+                        {subscription?.next_payment_date && (
+                          <> It renews on{" "}
+                            <strong className="text-foreground">
+                              {new Date(subscription.next_payment_date).toLocaleDateString(undefined, {
+                                year: "numeric", month: "long", day: "numeric",
+                              })}
+                            </strong>.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => setReactivationDismissed(true)} className="shrink-0">
+                      Dismiss
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* ── Payment cancelled notice ── */}
+
             {paymentCancelledNotice && showActive && (
               <Card className="border-blue-500/40 bg-blue-500/5">
                 <CardContent className="pt-6">

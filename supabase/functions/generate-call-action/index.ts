@@ -86,9 +86,9 @@ Deno.serve(async (req) => {
     const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).single();
     const repName = profile?.full_name || profile?.email?.split("@")[0] || "there";
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) {
-      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableKey) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -117,20 +117,40 @@ Respond in JSON:
 
 Keep the action specific and actionable. The email should be professional, reference specific points from the call, and include a clear CTA.`;
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 1500 },
-        }),
-      }
-    );
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.6-flash",
+        messages: [
+          { role: "system", content: "You output only strict JSON. No markdown." },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
 
-    const geminiData = await res.json();
-    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Lovable AI error:", res.status, errText);
+      if (res.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limited, please try again" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (res.status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error("AI generation failed");
+    }
+
+    const aiData = await res.json();
+    const text = aiData?.choices?.[0]?.message?.content || "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {

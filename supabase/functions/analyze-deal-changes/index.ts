@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
     }));
 
     // Use Gemini Flash to analyze
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       // Return basic analysis without AI
       const latestSentiment = calls[0]?.sentiment_score ?? 50;
       const prevSentiment = calls.length > 1 ? calls[1]?.sentiment_score ?? 50 : 50;
@@ -130,30 +130,32 @@ Respond with JSON only (no markdown):
   "buying_signals": ["positive signals detected"]
 }`;
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 1024,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.6-flash",
+        messages: [
+          { role: "system", content: "You output only strict JSON. No markdown." },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error("Gemini error:", errText);
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      console.error("Lovable AI error:", aiRes.status, errText);
+      if (aiRes.status === 429) throw new Error("Rate limited, please try again shortly");
+      if (aiRes.status === 402) throw new Error("AI credits exhausted");
       throw new Error("AI analysis failed");
     }
 
-    const geminiData = await geminiRes.json();
-    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const aiData = await aiRes.json();
+    const text = aiData?.choices?.[0]?.message?.content;
     if (!text) throw new Error("Empty AI response");
 
     const analysis = JSON.parse(text);
