@@ -85,6 +85,7 @@ export default function BillingPage() {
   const { verify: verifyBundle, purchase: purchaseBundle, isPurchasing: isPurchasingBundle } = useExtraMinutes();
   const [searchParams, setSearchParams] = useSearchParams();
   const [paymentCancelledNotice, setPaymentCancelledNotice] = useState(false);
+  const [reactivationDismissed, setReactivationDismissed] = useState(false);
   const handledRef = useRef<string | null>(null);
 
   // ── Checkout dialog state ────────────────────────────────────────────────
@@ -178,6 +179,13 @@ export default function BillingPage() {
 
   const available   = PLANS_SIMPLE.filter((p) => p.key !== currentPlanKey && p.key !== "free");
   const showActive  = billingState.billingStatus === "active";
+  // Show a confirmation banner right after a re-subscribe (reactivated in the last 24h)
+  const justReactivated = (() => {
+    if (reactivationDismissed) return false;
+    const at = billingState.reactivatedAt;
+    if (!at) return false;
+    return Date.now() - new Date(at).getTime() < 24 * 60 * 60 * 1000;
+  })();
   const showPending = billingState.hasIncompleteCheckout;
   const priceUSD    = subscription?.plan_price_usd || (subscription?.amount_kobo ? subscription.amount_kobo / USD_TO_NGN / 100 : 0);
   const priceNGN    = subscription?.amount_kobo ? subscription.amount_kobo / 100 : 0;
