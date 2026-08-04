@@ -196,6 +196,30 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
+      // Idempotency: atomically claim this reference. The initialize step already
+      // inserted a row with status "initialized"; flipping it to "success" here can
+      // only succeed once, so a replayed reference cannot credit minutes twice.
+      const { data: claimed, error: claimErr } = await admin
+        .from("payments")
+        .update({
+          status: "success",
+          amount_kobo: verifyData.data.amount,
+          currency: "NGN",
+          paystack_response: verifyData.data,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("paystack_reference", reference)
+        .eq("user_id", user.id)
+        .eq("status", "initialized")
+        .select("id");
+
+      if (claimErr || !claimed || claimed.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "This payment has already been credited" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const newExtra = (sub.extra_minutes || 0) + bundleMinutes;
       const expiresAt = sub.next_payment_date || new Date(Date.now() + 30 * 86400000).toISOString();
 
@@ -222,22 +246,6 @@ Deno.serve(async (req) => {
           p_message: `${bundleMinutes} extra minutes have been added to your account.`,
           p_link: "/billing",
           p_idempotency_key: `bundle_${reference}`,
-        });
-      } catch {}
-
-      // Record payment
-      try {
-        await admin.from("payments").insert({
-          user_id: user.id,
-          reference,
-          amount_ngn: verifyData.data.amount / 100,
-          amount_kobo: verifyData.data.amount,
-          status: "success",
-          channel: verifyData.data.channel || "card",
-          currency: "NGN",
-          paid_at: verifyData.data.paid_at || new Date().toISOString(),
-          gateway_response: verifyData.data.gateway_response || "Approved",
-          plan_name: `extra_${bundleMinutes}_minutes`,
         });
       } catch {}
 

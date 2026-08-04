@@ -23,6 +23,21 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const { email, redirectTo } = await req.json().catch(() => ({}));
+
+    // Only allow redirects to trusted Fixsense origins (open-redirect / phishing guard)
+    const ALLOWED_ORIGINS = [
+      "https://fixsense.com.ng",
+      "https://www.fixsense.com.ng",
+      "https://app.fixsense.com.ng",
+      "https://fixsense.app",
+    ];
+    let safeRedirect: string | undefined = "https://fixsense.com.ng/verify-email";
+    if (typeof redirectTo === "string" && redirectTo.length < 500) {
+      try {
+        const u = new URL(redirectTo);
+        if (ALLOWED_ORIGINS.includes(u.origin)) safeRedirect = u.toString();
+      } catch { /* keep default */ }
+    }
     if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: "invalid_email" }, 400);
     }
@@ -55,7 +70,7 @@ Deno.serve(async (req) => {
     const { error } = await admin.auth.resend({
       type: "signup",
       email: normEmail,
-      options: { emailRedirectTo: typeof redirectTo === "string" ? redirectTo : undefined },
+      options: { emailRedirectTo: safeRedirect },
     });
     if (error) return json({ error: error.message }, 400);
 

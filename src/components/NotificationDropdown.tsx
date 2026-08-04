@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/hooks/useNotifications";
 import { format, isToday, isYesterday } from "date-fns";
+import { safeInternalPath } from "@/lib/safeLink";
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
 
@@ -264,8 +265,9 @@ export function NotificationDropdown() {
   const handleNotifClick = useCallback((n: NotifItem) => {
     if (!n.is_read) markRead.mutate(n.id);
     setOpen(false);
-    if (n.link) {
-      navigate(n.link);
+    const safe = safeInternalPath(n.link);
+    if (safe) {
+      navigate(safe);
     } else if (n.reference_id) {
       navigate("/messages");
     }
