@@ -428,6 +428,7 @@ export type Database = {
         Row: {
           action: string
           actor_email: string | null
+          actor_role: string | null
           browser: string | null
           category: string | null
           city: string | null
@@ -448,6 +449,7 @@ export type Database = {
         Insert: {
           action: string
           actor_email?: string | null
+          actor_role?: string | null
           browser?: string | null
           category?: string | null
           city?: string | null
@@ -468,6 +470,7 @@ export type Database = {
         Update: {
           action?: string
           actor_email?: string | null
+          actor_role?: string | null
           browser?: string | null
           category?: string | null
           city?: string | null
@@ -6012,6 +6015,104 @@ export type Database = {
         }
         Relationships: []
       }
+      security_scan_findings: {
+        Row: {
+          category: string
+          created_at: string
+          detail: string | null
+          finding_key: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          metadata: Json
+          resolved_at: string | null
+          run_id: string | null
+          severity: string
+          state: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          detail?: string | null
+          finding_key: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          resolved_at?: string | null
+          run_id?: string | null
+          severity?: string
+          state?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          detail?: string | null
+          finding_key?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          resolved_at?: string | null
+          run_id?: string | null
+          severity?: string
+          state?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_scan_findings_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "security_scan_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      security_scan_runs: {
+        Row: {
+          created_at: string
+          error_text: string | null
+          finished_at: string | null
+          id: string
+          new_findings: number
+          resolved_findings: number
+          started_at: string
+          status: string
+          total_findings: number
+          trigger_source: string
+        }
+        Insert: {
+          created_at?: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          new_findings?: number
+          resolved_findings?: number
+          started_at?: string
+          status?: string
+          total_findings?: number
+          trigger_source?: string
+        }
+        Update: {
+          created_at?: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          new_findings?: number
+          resolved_findings?: number
+          started_at?: string
+          status?: string
+          total_findings?: number
+          trigger_source?: string
+        }
+        Relationships: []
+      }
       signup_ip_log: {
         Row: {
           created_at: string
@@ -8279,6 +8380,7 @@ export type Database = {
         Returns: {
           action: string
           actor_email: string | null
+          actor_role: string | null
           browser: string | null
           category: string | null
           city: string | null
