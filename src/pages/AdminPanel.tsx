@@ -307,6 +307,8 @@ export default function AdminPanel() {
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Link to="/admin/analytics" className="back-link" style={{ background: "rgba(56,189,248,.12)", borderColor: "rgba(56,189,248,.3)" }}>📊 Analytics</Link>
               <Link to="/admin/activity" className="back-link" style={{ background: "rgba(167,139,250,.12)", borderColor: "rgba(167,139,250,.3)" }}>🛰 Activity Center</Link>
+              <Link to="/admin/security" className="back-link" style={{ background: "rgba(248,113,113,.12)", borderColor: "rgba(248,113,113,.3)" }}>🛡 Security Scans</Link>
+
               <Link to="/dashboard" className="back-link">← App</Link>
             </div>
           </header>

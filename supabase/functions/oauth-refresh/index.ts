@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { auditTokenAccess } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,6 +122,19 @@ Deno.serve(async (req) => {
     }
 
     const effectiveUserId = user.id;
+
+    // Audit: a stored OAuth token was read and refreshed.
+    await auditTokenAccess(
+      {
+        user_id: effectiveUserId,
+        actor_email: user.email ?? null,
+        target_type: "integration",
+        target_id: String(provider ?? "unknown"),
+        details: { provider, stage: "token_refresh" },
+        req,
+      },
+      "oauth_token_refreshed",
+    );
 
     if (!provider || !refreshConfigs[provider]) {
       return new Response(

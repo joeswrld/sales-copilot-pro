@@ -3582,6 +3582,42 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_events: {
+        Row: {
+          created_at: string
+          event: string
+          id: string
+          metadata: Json
+          path: string | null
+          referrer: string | null
+          session_id: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          id?: string
+          metadata?: Json
+          path?: string | null
+          referrer?: string | null
+          session_id: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          id?: string
+          metadata?: Json
+          path?: string | null
+          referrer?: string | null
+          session_id?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       google_tokens: {
         Row: {
           access_token: string
@@ -7533,6 +7569,31 @@ export type Database = {
           revenue: number
         }[]
       }
+      admin_funnel_metrics: {
+        Args: { _from: string; _to: string }
+        Returns: {
+          page_views: number
+          signup_abandon_pct: number
+          signups_abandoned: number
+          signups_completed: number
+          signups_started: number
+          trial_clicks: number
+          trial_to_signup_pct: number
+          visit_to_trial_pct: number
+          visitors: number
+        }[]
+      }
+      admin_funnel_series: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          signups_abandoned: number
+          signups_completed: number
+          signups_started: number
+          trial_clicks: number
+          visitors: number
+        }[]
+      }
       admin_get_all_users: {
         Args: never
         Returns: {
@@ -7658,6 +7719,7 @@ export type Database = {
           revenue: number
         }[]
       }
+      admin_security_scan_overview: { Args: { _limit?: number }; Returns: Json }
       admin_toggle_feature_flag:
         | { Args: { p_enabled: boolean; p_key: string }; Returns: undefined }
         | {
@@ -8772,6 +8834,10 @@ export type Database = {
       reset_monthly_usage: { Args: never; Returns: number }
       reset_team_monthly_usage: { Args: never; Returns: number }
       resolve_minute_quota: { Args: { p_plan_name: string }; Returns: number }
+      run_security_regression_scan: {
+        Args: { _trigger?: string }
+        Returns: string
+      }
       safe_mark_abandoned: {
         Args: { p_reference: string; p_user_id: string }
         Returns: string
@@ -8804,6 +8870,17 @@ export type Database = {
           deal_name: string
           message_id: string
           sender_name: string
+        }[]
+      }
+      security_scan_probe: {
+        Args: never
+        Returns: {
+          category: string
+          detail: string
+          finding_key: string
+          metadata: Json
+          severity: string
+          title: string
         }[]
       }
       set_typing_status: {

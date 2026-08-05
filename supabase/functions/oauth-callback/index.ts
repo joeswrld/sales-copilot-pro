@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
 import { logSecurityEvent } from "../_shared/security-logger.ts";
+import { auditTokenAccess } from "../_shared/audit.ts";
 
 const RATE_CONFIG = { maxRequests: 15, windowMs: 60_000, maxFailures: 8, blockDurationMs: 900_000 };
 
@@ -181,6 +182,24 @@ Deno.serve(async (req) => {
       console.error("DB update failed:", dbError);
       return new Response(`<html><body><p>Failed to save integration. Please try again.</p></body></html>`, { headers: { "Content-Type": "text/html" } });
     }
+
+    // Audit: OAuth tokens were issued and stored for this user.
+    await auditTokenAccess(
+      {
+        user_id: state.userId,
+        target_type: "integration",
+        target_id: state.provider,
+        risk_score: 55,
+        details: {
+          provider: state.provider,
+          stage: "tokens_stored",
+          has_refresh_token: !!refreshToken,
+          expires_at: expiresAt,
+        },
+        req,
+      },
+      "oauth_tokens_stored",
+    );
 
     // Validate redirect_uri against allowlist
     const allowedRedirects = ["", "/settings", "/integrations", "/dashboard/integrations"];
