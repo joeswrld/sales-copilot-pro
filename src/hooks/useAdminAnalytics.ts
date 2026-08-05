@@ -39,7 +39,14 @@ export function useAdminAnalytics(range: AnalyticsRange) {
   const [churnFeedback, setChurnFeedback] = useState<
     { created_at: string; email: string; plan: string; reason: string; feedback: string; retention_outcome: string }[]
   >([]);
+  const [funnel, setFunnel] = useState<{
+    visitors: number; page_views: number; trial_clicks: number;
+    signups_started: number; signups_completed: number; signups_abandoned: number;
+    visit_to_trial_pct: number; trial_to_signup_pct: number; signup_abandon_pct: number;
+  } | null>(null);
+  const [funnelSeries, setFunnelSeries] = useState<SeriesPoint[]>([]);
   const [loading, setLoading] = useState(true);
+
 
   const load = useCallback(async () => {
     setLoading(true);
