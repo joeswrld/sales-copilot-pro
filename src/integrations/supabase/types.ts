@@ -8834,6 +8834,10 @@ export type Database = {
       reset_monthly_usage: { Args: never; Returns: number }
       reset_team_monthly_usage: { Args: never; Returns: number }
       resolve_minute_quota: { Args: { p_plan_name: string }; Returns: number }
+      run_security_regression_scan: {
+        Args: { _trigger?: string }
+        Returns: string
+      }
       safe_mark_abandoned: {
         Args: { p_reference: string; p_user_id: string }
         Returns: string
