@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
 import { logSecurityEvent } from "../_shared/security-logger.ts";
+import { auditTokenAccess } from "../_shared/audit.ts";
 
 const RATE_CONFIG = { maxRequests: 10, windowMs: 60_000, maxFailures: 5, blockDurationMs: 900_000 };
 
@@ -123,6 +124,20 @@ Deno.serve(async (req) => {
     }
 
     const userId = user.id;
+
+    // Audit: an OAuth authorization (token issuance) flow was initiated.
+    await auditTokenAccess(
+      {
+        user_id: userId,
+        actor_email: user.email ?? null,
+        target_type: "integration",
+        target_id: provider,
+        details: { provider, stage: "authorize_start" },
+        req,
+      },
+      "oauth_authorize_initiated",
+    );
+
     const config = providers[provider];
     const clientId = Deno.env.get(config.clientIdEnv);
 

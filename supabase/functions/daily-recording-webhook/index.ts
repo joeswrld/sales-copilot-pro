@@ -9,6 +9,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { auditWebhook } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,6 +89,18 @@ Deno.serve(async (req) => {
     const evt = payload.event as string;
     const p = payload.payload || {};
     const eventRoomName: string | undefined = p.room_name || p.room;
+
+    // Audit: signed Daily webhook accepted and about to be processed.
+    await auditWebhook(
+      {
+        actor_role: "system",
+        target_type: "daily_room",
+        target_id: eventRoomName ?? null,
+        details: { provider: "daily", event: evt, signature_verified: !!webhookSecret },
+        req,
+      },
+      `daily_webhook_${evt}`,
+    );
 
     // ── Lifecycle events (no recording download involved) ─────────────────────
     // A meeting only becomes "live" and starts consuming minutes when a real

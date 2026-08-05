@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac } from "node:crypto";
 import { checkRateLimit, getClientIP, recordFailure } from "../_shared/rate-limiter.ts";
 import { logSecurityEvent } from "../_shared/security-logger.ts";
+import { auditWebhook } from "../_shared/audit.ts";
 
 const RATE_CONFIG = { maxRequests: 30, windowMs: 60_000, maxFailures: 10, blockDurationMs: 600_000 };
 
@@ -53,6 +54,20 @@ Deno.serve(async (req) => {
     const customerCode = data.customer?.customer_code;
 
     console.log("Webhook data:", { userId, customerEmail, customerCode, eventType });
+
+    // Audit: signed billing webhook accepted and about to be processed.
+    await auditWebhook(
+      {
+        user_id: userId ?? null,
+        actor_email: customerEmail ?? null,
+        actor_role: "system",
+        target_type: "paystack_event",
+        target_id: String(data?.reference ?? data?.id ?? eventType),
+        details: { provider: "paystack", event: eventType, customer_code: customerCode ?? null },
+        req,
+      },
+      `paystack_webhook_${eventType}`,
+    );
 
     // Helper to find and update subscription
     const updateSubscription = async (updates: Record<string, unknown>) => {
