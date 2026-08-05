@@ -9,6 +9,8 @@ import AdminRoute from "@/components/AdminRoute";
 import AdminPanel from "./pages/AdminPanel";
 import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
+import AdminSecurityPage from "./pages/AdminSecurityPage";
+import FunnelTracker from "@/components/FunnelTracker";
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
@@ -88,6 +90,7 @@ function AppRoutes() {
       <PlanEnforcementProvider>
         <UpgradeModal />
         <DebugInspector />
+        <FunnelTracker />
         <PWABanner />
         <CookieConsent />
 
@@ -123,6 +126,16 @@ function AppRoutes() {
               <AdminRoute>
                 <ErrorBoundary>
                   <AdminPanel />
+                </ErrorBoundary>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/security"
+            element={
+              <AdminRoute>
+                <ErrorBoundary>
+                  <AdminSecurityPage />
                 </ErrorBoundary>
               </AdminRoute>
             }
