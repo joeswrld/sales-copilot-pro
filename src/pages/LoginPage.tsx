@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { trackFunnel } from "@/lib/funnel";
 import { supabase } from "@/integrations/supabase/client";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -258,6 +259,7 @@ export default function LoginPage() {
         if (error) throw error;
         // Email verification is MANDATORY. Even if Supabase happens to return a
         // session (some legacy settings), gate the app until the address is confirmed.
+        void trackFunnel("signup_completed", { method: "email" });
         toast({ title: "Check your email", description: "Click the verification link to activate your account." });
         navigate("/verify-email");
       } else {
@@ -286,11 +288,13 @@ export default function LoginPage() {
       return;
     }
     setTermsError(false);
+    if (mode === "signup") void trackFunnel("signup_started", { method: "google" });
     const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/dashboard` } });
     if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
   };
 
   const switchToSignup = () => {
+    void trackFunnel("signup_started", { method: "email" });
     setMode("signup");
     setTermsError(false);
   };
