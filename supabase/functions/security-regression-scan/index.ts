@@ -1,157 +1,34 @@
 /**
  * security-regression-scan
  *
- * Automated security regression scanner. Runs a suite of SQL/config checks
- * against the live database and records results in
- * `security_scan_runs` / `security_scan_findings`, marking findings that
- * disappeared as `resolved` and new ones as `new`.
+ * Automated security regression scanner. Calls the vetted, parameter-free
+ * database probe `public.security_scan_probe()` (SECURITY DEFINER, read-only)
+ * and records results in `security_scan_runs` / `security_scan_findings`,
+ * flagging brand-new findings and auto-resolving ones that no longer reproduce.
  *
  * Trigger sources:
- *   - "deploy"  → called after each deploy (CRON_SECRET header)
- *   - "cron"    → scheduled re-run
- *   - "manual"  → admin clicks "Run scan" in the admin UI (JWT + admin role)
+ *   - "deploy" / "cron" → server-to-server with the CRON_SECRET header
+ *   - "manual"          → admin clicks "Run scan" in the admin UI (admin JWT)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { logAudit } from "../_shared/audit.ts";
 
-type Severity = "critical" | "high" | "medium" | "low" | "info";
-
-interface Finding {
+interface ProbeRow {
   finding_key: string;
   title: string;
-  severity: Severity;
+  severity: string;
   category: string;
   detail: string;
-  metadata?: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
 }
-
-interface Check {
-  key: string;
-  title: string;
-  severity: Severity;
-  category: string;
-  sql: string;
-  /** Rows returned => a finding (one per row). */
-  detail: (row: Record<string, unknown>) => string;
-}
-
-const CHECKS: Check[] = [
-  {
-    key: "rls_disabled",
-    title: "Table in public schema without RLS enabled",
-    severity: "critical",
-    category: "rls",
-    sql: `select c.relname as table_name
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity = false`,
-    detail: (r) => `public.${r.table_name} has row level security disabled`,
-  },
-  {
-    key: "rls_no_policy",
-    title: "RLS enabled but no policies defined",
-    severity: "high",
-    category: "rls",
-    sql: `select c.relname as table_name
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity = true
-            and not exists (select 1 from pg_policy p where p.polrelid = c.oid)`,
-    detail: (r) => `public.${r.table_name} has RLS on but zero policies — it is unreadable and unwritable`,
-  },
-  {
-    key: "anon_write_policy",
-    title: "Anonymous role can write via an unrestricted policy",
-    severity: "high",
-    category: "rls",
-    sql: `select c.relname as table_name, p.polname as policy_name, p.polcmd as cmd
-          from pg_policy p
-          join pg_class c on c.oid = p.polrelid
-          join pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = 'public'
-            and p.polcmd in ('w','d','*')
-            and 'anon' = any (select rolname from pg_roles where oid = any (p.polroles))
-            and coalesce(pg_get_expr(p.polqual, p.polrelid), 'true') = 'true'`,
-    detail: (r) => `policy "${r.policy_name}" on public.${r.table_name} lets anon modify rows with no restriction`,
-  },
-  {
-    key: "security_definer_mutable_search_path",
-    title: "SECURITY DEFINER function without a fixed search_path",
-    severity: "medium",
-    category: "functions",
-    sql: `select p.proname as function_name
-          from pg_proc p
-          join pg_namespace n on n.oid = p.pronamespace
-          where n.nspname = 'public' and p.prosecdef = true
-            and not exists (
-              select 1 from unnest(coalesce(p.proconfig, array[]::text[])) cfg
-              where cfg like 'search_path=%'
-            )`,
-    detail: (r) => `public.${r.function_name}() is SECURITY DEFINER without "SET search_path" (search-path hijack risk)`,
-  },
-  {
-    key: "public_storage_bucket",
-    title: "Storage bucket is publicly readable",
-    severity: "high",
-    category: "storage",
-    sql: `select id from storage.buckets where public = true`,
-    detail: (r) => `storage bucket "${r.id}" is public — objects are readable without a signed URL`,
-  },
-  {
-    key: "plaintext_token_column",
-    title: "Token/secret column readable by client roles",
-    severity: "critical",
-    category: "secrets",
-    sql: `select table_name, column_name, grantee
-          from information_schema.column_privileges
-          where table_schema = 'public'
-            and privilege_type = 'SELECT'
-            and grantee in ('anon','authenticated')
-            and (column_name ilike '%access_token%'
-              or column_name ilike '%refresh_token%'
-              or column_name ilike '%secret%'
-              or column_name = 'key_hash')`,
-    detail: (r) => `${r.grantee} can select public.${r.table_name}.${r.column_name}`,
-  },
-  {
-    key: "role_column_on_profile_table",
-    title: "Privilege column stored outside user_roles",
-    severity: "high",
-    category: "authorization",
-    sql: `select table_name, column_name
-          from information_schema.columns
-          where table_schema = 'public'
-            and table_name in ('profiles','users','user_preferences')
-            and column_name in ('role','is_admin','admin')`,
-    detail: (r) => `public.${r.table_name}.${r.column_name} allows privilege escalation — roles belong in public.user_roles`,
-  },
-  {
-    key: "security_definer_view",
-    title: "View defined with SECURITY DEFINER semantics",
-    severity: "medium",
-    category: "rls",
-    sql: `select c.relname as view_name
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = 'public' and c.relkind = 'v'
-            and coalesce(array_to_string(c.reloptions, ','), '') like '%security_invoker=false%'`,
-    detail: (r) => `view public.${r.view_name} bypasses the caller's RLS`,
-  },
-];
 
 function admin() {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-}
-
-async function runSql(sb: any, sql: string): Promise<Record<string, unknown>[]> {
-  const { data, error } = await sb.rpc("security_scan_query", { _sql: sql });
-  if (error) throw new Error(`${error.message}`);
-  return (data ?? []) as Record<string, unknown>[];
 }
 
 Deno.serve(async (req) => {
@@ -164,16 +41,16 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    trigger = typeof body?.trigger === "string" ? body.trigger : "manual";
+    const requested = typeof body?.trigger === "string" ? body.trigger : "manual";
 
     // ── Authorization: CRON_SECRET (deploy/cron) OR an admin JWT (manual) ──
     const cronSecret = Deno.env.get("CRON_SECRET");
-    const providedCron = req.headers.get("x-cron-secret");
-    const isCron = !!cronSecret && providedCron === cronSecret;
+    const isCron = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
 
-    if (!isCron) {
-      const authHeader = req.headers.get("Authorization") ?? "";
-      const jwt = authHeader.replace("Bearer ", "");
+    if (isCron) {
+      trigger = requested === "deploy" ? "deploy" : "cron";
+    } else {
+      const jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
       if (!jwt) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
@@ -196,7 +73,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      trigger = trigger === "manual" ? "manual" : trigger;
+      trigger = "manual";
     }
 
     // ── Start a run ────────────────────────────────────────────────────
@@ -208,28 +85,20 @@ Deno.serve(async (req) => {
     if (runErr) throw runErr;
     const runId = run.id as string;
 
-    // ── Execute checks ─────────────────────────────────────────────────
-    const findings: Finding[] = [];
-    const checkErrors: string[] = [];
-
-    for (const check of CHECKS) {
-      try {
-        const rows = await runSql(sb, check.sql);
-        for (const row of rows) {
-          const suffix = Object.values(row).join(":").slice(0, 120);
-          findings.push({
-            finding_key: `${check.key}:${suffix}`,
-            title: check.title,
-            severity: check.severity,
-            category: check.category,
-            detail: check.detail(row),
-            metadata: row,
-          });
-        }
-      } catch (e) {
-        checkErrors.push(`${check.key}: ${e instanceof Error ? e.message : String(e)}`);
-      }
+    // ── Execute the probe suite ────────────────────────────────────────
+    const { data: probe, error: probeErr } = await sb.rpc("security_scan_probe");
+    if (probeErr) {
+      await sb
+        .from("security_scan_runs")
+        .update({
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          error_text: probeErr.message,
+        })
+        .eq("id", runId);
+      throw new Error(`probe failed: ${probeErr.message}`);
     }
+    const findings = (probe ?? []) as ProbeRow[];
 
     // ── Reconcile against previously open findings ─────────────────────
     const { data: existing } = await sb
@@ -237,16 +106,16 @@ Deno.serve(async (req) => {
       .select("id, finding_key, state")
       .neq("state", "resolved");
 
-    const existingByKey = new Map<string, { id: string; state: string }>(
-      (existing ?? []).map((f: any) => [f.finding_key, { id: f.id, state: f.state }]),
+    const existingByKey = new Map<string, string>(
+      (existing ?? []).map((f: any) => [f.finding_key, f.id]),
     );
     const seenKeys = new Set(findings.map((f) => f.finding_key));
     const now = new Date().toISOString();
     let newCount = 0;
 
     for (const f of findings) {
-      const prior = existingByKey.get(f.finding_key);
-      if (prior) {
+      const priorId = existingByKey.get(f.finding_key);
+      if (priorId) {
         await sb
           .from("security_scan_findings")
           .update({
@@ -259,7 +128,7 @@ Deno.serve(async (req) => {
             last_seen_at: now,
             updated_at: now,
           })
-          .eq("id", prior.id);
+          .eq("id", priorId);
       } else {
         newCount++;
         await sb.from("security_scan_findings").insert({
@@ -291,12 +160,11 @@ Deno.serve(async (req) => {
     await sb
       .from("security_scan_runs")
       .update({
-        status: checkErrors.length ? "completed_with_errors" : "completed",
+        status: "completed",
         finished_at: now,
         total_findings: findings.length,
         new_findings: newCount,
         resolved_findings: resolvedIds.length,
-        error_text: checkErrors.length ? checkErrors.join(" | ") : null,
       })
       .eq("id", runId);
 
@@ -320,7 +188,6 @@ Deno.serve(async (req) => {
         total_findings: findings.length,
         new_findings: newCount,
         resolved_findings: resolvedIds.length,
-        check_errors: checkErrors,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
