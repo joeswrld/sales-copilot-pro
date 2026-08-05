@@ -102,7 +102,49 @@ export default function AdminAnalyticsPage() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {a.loading && <div className="text-sm text-muted-foreground">Loading analytics…</div>}
+
+        {/* ── Acquisition funnel ─────────────────────────────────────── */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Website & Sign-up Funnel</CardTitle>
+            <CardDescription className="text-xs">
+              Unique visitors, “Start Free Trial” clicks, and sign-ups started vs finished
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: "Website visitors", value: a.funnel?.visitors ?? 0, sub: `${a.funnel?.page_views ?? 0} page views` },
+                { label: "Clicked Start Free Trial", value: a.funnel?.trial_clicks ?? 0, sub: `${Number(a.funnel?.visit_to_trial_pct ?? 0)}% of visitors` },
+                { label: "Started sign-up", value: a.funnel?.signups_started ?? 0, sub: `${a.funnel?.signups_completed ?? 0} completed` },
+                { label: "Abandoned sign-up", value: a.funnel?.signups_abandoned ?? 0, sub: `${Number(a.funnel?.signup_abandon_pct ?? 0)}% drop-off` },
+              ].map((s) => (
+                <div key={s.label} className="rounded-lg border border-border px-3 py-3">
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{s.value}</p>
+                  <p className="text-xs text-muted-foreground">{s.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="h-[260px] -ml-4">
+              <ResponsiveContainer>
+                <BarChart data={a.funnelSeries.map(r => ({ ...r, bucket: fmtBucket(r.bucket as string) }))}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="bucket" fontSize={11} /><YAxis fontSize={11} /><Tooltip /><Legend />
+                  <Bar dataKey="visitors" fill={COLORS[0]} name="Visitors" />
+                  <Bar dataKey="trial_clicks" fill={COLORS[3]} name="Trial clicks" />
+                  <Bar dataKey="signups_started" fill={COLORS[2]} name="Sign-ups started" />
+                  <Bar dataKey="signups_completed" fill={COLORS[1]} name="Sign-ups completed" />
+                  <Bar dataKey="signups_abandoned" fill="#ef4444" name="Abandoned" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
           <ChartCard title="Revenue (MRR / monthly)" description="Successful payments per bucket">
             <ResponsiveContainer>
               <AreaChart data={a.revenue.map(r => ({ ...r, bucket: fmtBucket(r.bucket as string) }))}>
