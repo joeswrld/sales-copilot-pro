@@ -8868,6 +8868,17 @@ export type Database = {
           sender_name: string
         }[]
       }
+      security_scan_probe: {
+        Args: never
+        Returns: {
+          category: string
+          detail: string
+          finding_key: string
+          metadata: Json
+          severity: string
+          title: string
+        }[]
+      }
       set_typing_status: {
         Args: {
           p_channel_id: string
