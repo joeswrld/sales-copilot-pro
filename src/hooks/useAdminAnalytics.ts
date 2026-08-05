@@ -53,7 +53,7 @@ export function useAdminAnalytics(range: AnalyticsRange) {
     const args = { _from: range.from.toISOString(), _to: range.to.toISOString(), _bucket: range.bucket };
     const argsNoBucket = { _from: range.from.toISOString(), _to: range.to.toISOString() };
     const supa = supabase as any;
-    const [r, u, p, a, c, ar, m, em, pc, cr, cf] = await Promise.all([
+    const [r, u, p, a, c, ar, m, em, pc, cr, cf, fm, fs] = await Promise.all([
       supa.rpc("admin_revenue_series", args),
       supa.rpc("admin_user_growth", args),
       supa.rpc("admin_plan_breakdown"),
@@ -65,6 +65,8 @@ export function useAdminAnalytics(range: AnalyticsRange) {
       supa.rpc("admin_profit_cost", argsNoBucket),
       supa.rpc("admin_churn_reasons", argsNoBucket),
       supa.rpc("admin_churn_feedback", { ...argsNoBucket, _limit: 50 }),
+      supa.rpc("admin_funnel_metrics", argsNoBucket),
+      supa.rpc("admin_funnel_series", args),
     ]);
     setRevenue(r.data || []);
     setUserGrowth(u.data || []);
@@ -77,10 +79,13 @@ export function useAdminAnalytics(range: AnalyticsRange) {
     setProfitCost(pc.data || []);
     setChurnReasons(cr.data || []);
     setChurnFeedback(cf.data || []);
+    setFunnel((fm.data && fm.data[0]) || null);
+    setFunnelSeries(fs.data || []);
     setLoading(false);
   }, [range.from, range.to, range.bucket]);
 
   useEffect(() => { load(); }, [load]);
 
-  return { revenue, userGrowth, planBreakdown, activeUsers, churn, arpu, minutes, extraMinutes, profitCost, churnReasons, churnFeedback, loading, refresh: load };
+  return { revenue, userGrowth, planBreakdown, activeUsers, churn, arpu, minutes, extraMinutes, profitCost, churnReasons, churnFeedback, funnel, funnelSeries, loading, refresh: load };
 }
+
