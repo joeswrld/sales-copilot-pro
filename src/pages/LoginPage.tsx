@@ -95,6 +95,7 @@ function TrustRow({ tone = "light" }: { tone?: "light" | "dark" }) {
         fontSize: "11.5px",
         color: dark ? "rgba(255,255,255,0.42)" : "#94a3b8",
         fontFamily: "var(--font-body)",
+        letterSpacing: "0.005em",
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
@@ -105,6 +106,46 @@ function TrustRow({ tone = "light" }: { tone?: "light" | "dark" }) {
       <span>SOC 2 Type II</span>
       <span aria-hidden="true" style={{ opacity: 0.4 }}>·</span>
       <span>GDPR compliant</span>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Avatar cluster — quiet, immediate social proof for the value panel
+   ──────────────────────────────────────────────────────────────────────── */
+function AvatarCluster() {
+  const initials = ["PN", "JO", "MR", "AK"];
+  const tones = ["#60a5fa", "#a78bfa", "#4ade80", "#fb923c"];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ display: "flex" }}>
+        {initials.map((i, idx) => (
+          <div
+            key={i}
+            style={{
+              width: "26px",
+              height: "26px",
+              borderRadius: "50%",
+              background: `linear-gradient(155deg, ${tones[idx]}33, ${tones[idx]}11)`,
+              border: "1.5px solid rgba(255,255,255,0.12)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "9px",
+              fontWeight: 700,
+              color: "rgba(255,255,255,0.75)",
+              fontFamily: "var(--font-body)",
+              marginLeft: idx === 0 ? 0 : "-8px",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+            }}
+          >
+            {i}
+          </div>
+        ))}
+      </div>
+      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)", fontFamily: "var(--font-body)", letterSpacing: "0.005em" }}>
+        Joined by <strong style={{ color: "rgba(255,255,255,0.72)", fontWeight: 600 }}>200+ revenue teams</strong>
+      </span>
     </div>
   );
 }
@@ -633,14 +674,16 @@ export default function LoginPage() {
         .lp-left::after {
           content: '';
           position: absolute; top: 0; right: 0; bottom: 0; width: 1px;
-          background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.07) 20%, rgba(255,255,255,0.07) 80%, transparent 100%);
+          background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.09) 20%, rgba(255,255,255,0.09) 80%, transparent 100%);
         }
         .lp-left::before {
           content: '';
           position: absolute; inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+          background-image:
+            radial-gradient(560px 420px at 8% -8%, rgba(59,130,246,0.14), transparent 60%),
+            radial-gradient(480px 380px at 100% 108%, rgba(74,222,128,0.08), transparent 60%),
+            url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
           pointer-events: none;
-          opacity: 0.4;
         }
 
         .lp-left-brand {
@@ -659,10 +702,12 @@ export default function LoginPage() {
         .lp-value-eyebrow {
           display: inline-flex; align-items: center; gap: 6px;
           background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.18);
-          border-radius: 20px; padding: 5px 12px 5px 10px; margin-bottom: 28px;
+          border-radius: 20px; padding: 5px 12px 5px 10px; margin-bottom: 30px;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
         }
         .lp-value-eyebrow-dot {
           width: 6px; height: 6px; border-radius: 50%; background: #4ade80; display: inline-block;
+          box-shadow: 0 0 0 3px rgba(74,222,128,0.14);
         }
         .lp-value-eyebrow-text {
           font-size: 11px; font-weight: 600; color: #86efac;
@@ -670,30 +715,36 @@ export default function LoginPage() {
         }
 
         .lp-value-headline {
-          font-size: clamp(28px, 2.6vw, 36px);
+          font-size: clamp(30px, 2.8vw, 39px);
           font-weight: 400;
           color: #fff;
-          line-height: 1.14;
-          letter-spacing: -0.02em;
+          line-height: 1.12;
+          letter-spacing: -0.025em;
           font-family: var(--font-serif);
-          margin-bottom: 14px;
+          margin-bottom: 16px;
           max-width: 340px;
         }
+        .lp-value-headline em {
+          font-style: italic;
+          color: rgba(255,255,255,0.6);
+        }
         .lp-value-sub {
-          font-size: 14px; color: rgba(255,255,255,0.4);
+          font-size: 14.5px; color: rgba(255,255,255,0.42);
           line-height: 1.65; max-width: 320px;
-          letter-spacing: -0.005em;
+          letter-spacing: -0.003em;
         }
 
         .lp-left-footer {
           position: relative; z-index: 1;
-          display: flex; flex-direction: column; gap: 16px;
+          display: flex; flex-direction: column; gap: 18px;
+          padding-top: 18px;
+          border-top: 1px solid rgba(255,255,255,0.06);
         }
 
         /* ── Right form panel ────────────────────────────────────────── */
         .lp-right {
           flex: 1;
-          background: #f8fafc;
+          background: linear-gradient(180deg, #fbfcfe 0%, #f4f6fa 100%);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -705,22 +756,27 @@ export default function LoginPage() {
         .lp-right::before {
           content: '';
           position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px);
-          background-size: 40px 40px;
+          background-image: radial-gradient(680px 520px at 82% 8%, rgba(29,78,216,0.05), transparent 62%);
           pointer-events: none;
         }
 
         .auth-box {
           position: relative; z-index: 1;
-          width: 100%; max-width: 388px;
-          animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          width: 100%; max-width: 400px;
+          background: #ffffff;
+          border: 1px solid rgba(15,23,42,0.06);
+          border-radius: 20px;
+          padding: 36px 36px 32px;
+          box-shadow:
+            0 1px 2px rgba(15,23,42,0.03),
+            0 12px 32px -12px rgba(15,23,42,0.10),
+            0 24px 64px -24px rgba(15,23,42,0.08);
+          animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(14px) scale(0.99); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -729,9 +785,13 @@ export default function LoginPage() {
           * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
         }
 
+        @media (max-width: 1100px) and (min-width: 901px) {
+          .auth-box { padding: 30px 28px 26px; }
+        }
+
         .auth-brand {
           display: flex; align-items: center; gap: 10px;
-          margin-bottom: 28px; text-decoration: none;
+          margin-bottom: 26px; text-decoration: none;
         }
         .auth-brand-wordmark {
           font-size: 16px; font-weight: 700; color: var(--ink);
@@ -777,19 +837,24 @@ export default function LoginPage() {
         }
 
         .google-btn {
-          width: 100%; padding: 11px 16px; min-height: 44px;
+          width: 100%; padding: 12px 16px; min-height: 46px;
           background: #fff; color: #1e293b;
-          border: 1.5px solid #e2e8f0; border-radius: 10px;
-          font-size: 14px; font-weight: 500; font-family: var(--font-body);
+          border: 1.5px solid #e2e8f0; border-radius: 11px;
+          font-size: 14.5px; font-weight: 600; font-family: var(--font-body);
+          letter-spacing: -0.005em;
           cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
-          transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.1s ease;
-          box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+          transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.1s ease, transform 0.08s ease-out;
+          box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 1px 0 rgba(255,255,255,0.6) inset;
         }
         .google-btn:hover:not(:disabled) {
           border-color: #cbd5e1;
-          box-shadow: 0 2px 8px rgba(15,23,42,0.08);
+          box-shadow: 0 4px 14px -2px rgba(15,23,42,0.12), 0 1px 0 rgba(255,255,255,0.6) inset;
         }
-        .google-btn:active:not(:disabled) { background: #f8fafc; }
+        .google-btn:active:not(:disabled) {
+          background: #f8fafc;
+          transform: scale(0.985);
+          box-shadow: 0 1px 2px rgba(15,23,42,0.05) inset;
+        }
         .google-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
         .auth-divider {
@@ -822,16 +887,17 @@ export default function LoginPage() {
         }
         .auth-input {
           width: 100%; padding: 11px 12px 11px 38px; min-height: 44px;
-          background: #fff; border: 1.5px solid #e2e8f0;
-          border-radius: 10px; color: var(--ink); font-size: 14px;
+          background: #fbfcfe; border: 1.5px solid #e2e8f0;
+          border-radius: 10px; color: var(--ink); font-size: 14.5px;
           font-family: var(--font-body); outline: none;
-          transition: border-color 0.15s ease, box-shadow 0.15s ease;
-          box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+          transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
         }
         .auth-input::placeholder { color: var(--text-placeholder); }
+        .auth-input:hover:not(:focus) { border-color: #cbd5e1; }
         .auth-input:focus {
+          background: #fff;
           border-color: var(--blue);
-          box-shadow: 0 0 0 3px var(--blue-ring);
+          box-shadow: 0 0 0 3.5px var(--blue-ring);
         }
         .auth-input--error {
           border-color: #fca5a5;
@@ -911,22 +977,32 @@ export default function LoginPage() {
         .terms-text a:hover { text-decoration: underline; }
 
         .submit-btn {
-          width: 100%; padding: 12px 20px; min-height: 46px;
-          background: var(--ink); color: #fff;
-          border: none; border-radius: 10px;
-          font-size: 14px; font-weight: 600; font-family: var(--font-body);
+          width: 100%; padding: 13px 20px; min-height: 48px;
+          background: linear-gradient(180deg, #1e293b 0%, var(--ink) 100%);
+          color: #fff;
+          border: none; border-radius: 11px;
+          font-size: 14.5px; font-weight: 600; font-family: var(--font-body);
           cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-          transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease-out, opacity 0.15s ease;
+          transition: box-shadow 0.15s ease, transform 0.08s ease-out, opacity 0.15s ease, filter 0.15s ease;
           letter-spacing: -0.01em;
-          box-shadow: 0 1px 2px rgba(15,23,42,0.12);
-          margin-top: 6px;
+          box-shadow:
+            0 1px 0 rgba(255,255,255,0.08) inset,
+            0 1px 2px rgba(15,23,42,0.15),
+            0 8px 20px -8px rgba(15,23,42,0.35);
+          margin-top: 8px;
         }
         .submit-btn:hover:not(:disabled) {
-          background: #1e293b;
-          box-shadow: 0 4px 16px rgba(15,23,42,0.2);
+          filter: brightness(1.08);
+          box-shadow:
+            0 1px 0 rgba(255,255,255,0.1) inset,
+            0 2px 4px rgba(15,23,42,0.18),
+            0 12px 28px -8px rgba(15,23,42,0.42);
         }
-        .submit-btn:active:not(:disabled) { transform: scale(0.98); }
-        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .submit-btn:active:not(:disabled) {
+          transform: scale(0.98);
+          filter: brightness(0.98);
+        }
+        .submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
         .spinner {
           width: 14px; height: 14px; display: inline-block;
@@ -997,19 +1073,22 @@ export default function LoginPage() {
 
           .mobile-top-bar {
             background: var(--bg-left);
-            padding: 22px 20px 26px;
+            padding: 24px 20px 28px;
             position: relative; overflow: hidden; flex-shrink: 0;
           }
           .mobile-top-bar::before {
             content: '';
             position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
           }
           .mobile-top-bar::after {
             content: '';
             position: absolute; inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-            pointer-events: none; opacity: 0.4;
+            background-image:
+              radial-gradient(340px 220px at 12% -10%, rgba(59,130,246,0.16), transparent 60%),
+              radial-gradient(300px 200px at 100% 115%, rgba(74,222,128,0.09), transparent 60%),
+              url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+            pointer-events: none;
           }
 
           .mobile-brand {
@@ -1030,33 +1109,34 @@ export default function LoginPage() {
 
           .mobile-hero-text { position: relative; z-index: 1; }
           .mobile-hero-text h1 {
-            font-size: clamp(21px, 6vw, 25px); font-weight: 400; color: #fff;
-            font-family: var(--font-serif); letter-spacing: -0.01em;
-            line-height: 1.18; margin-bottom: 6px;
+            font-size: clamp(22px, 6.4vw, 26px); font-weight: 400; color: #fff;
+            font-family: var(--font-serif); letter-spacing: -0.015em;
+            line-height: 1.16; margin-bottom: 7px;
           }
           .mobile-hero-text p {
-            font-size: 13px; color: rgba(255,255,255,0.42); line-height: 1.5;
+            font-size: 13.5px; color: rgba(255,255,255,0.44); line-height: 1.5;
             max-width: 30ch;
           }
 
           .mobile-form-area {
-            flex: 1; padding: 22px 20px calc(28px + env(safe-area-inset-bottom, 0px));
+            flex: 1; padding: 18px 16px calc(24px + env(safe-area-inset-bottom, 0px));
             position: relative; z-index: 1;
             overflow-y: auto;
+            margin-top: -14px;
           }
-          .mobile-form-area::before {
-            content: '';
-            position: absolute; inset: 0;
-            background-image:
-              linear-gradient(rgba(148,163,184,0.07) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(148,163,184,0.07) 1px, transparent 1px);
-            background-size: 36px 36px;
-            pointer-events: none;
+
+          .mobile-form-card {
+            background: #fff;
+            border: 1px solid rgba(15,23,42,0.06);
+            border-radius: 18px;
+            padding: 20px 18px 18px;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.03), 0 12px 28px -14px rgba(15,23,42,0.16);
+            animation: fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           }
 
           .mobile-mode-tabs {
-            display: flex; background: #eef2f7; border-radius: 10px; padding: 3px;
-            margin-bottom: 20px; position: relative; z-index: 1;
+            display: flex; background: #f1f5f9; border-radius: 10px; padding: 3px;
+            margin-bottom: 18px; position: relative; z-index: 1;
           }
           .mobile-mode-tab {
             flex: 1; padding: 9px 0; min-height: 40px; background: none; border: none;
@@ -1085,14 +1165,20 @@ export default function LoginPage() {
           </a>
 
           <div className="lp-value-prop">
-            
-            <h1 className="lp-value-headline">Continue where your meetings left off.</h1>
+            <div className="lp-value-eyebrow">
+              <span className="lp-value-eyebrow-dot" aria-hidden="true" />
+              <span className="lp-value-eyebrow-text">Live on 200+ revenue teams</span>
+            </div>
+            <h1 className="lp-value-headline">
+              Continue where your <em>meetings</em> left off.
+            </h1>
             <p className="lp-value-sub">
-              Every call, transcript, and coaching insight — right where you saved it. Sign in to pick up instantly.
+              Every call, transcript, and coaching insight — exactly where you saved it. Sign in and pick up instantly.
             </p>
           </div>
 
           <div className="lp-left-footer">
+            <AvatarCluster />
             <TrustRow tone="dark" />
           </div>
         </div>
@@ -1148,7 +1234,10 @@ export default function LoginPage() {
             <FixsenseLogo size={26} borderRadius={7} />
             <span className="mobile-brand-name">Fixsense</span>
           </a>
-          
+          <div className="mobile-value-eyebrow">
+            <span className="mobile-value-eyebrow-dot" aria-hidden="true" />
+            <span className="mobile-value-eyebrow-text">200+ revenue teams</span>
+          </div>
           <div className="mobile-hero-text">
             <h1>
               {mode === "login"
@@ -1168,33 +1257,35 @@ export default function LoginPage() {
         </div>
 
         <div className="mobile-form-area">
-          {mode !== "forgot" && (
-            <div className="mobile-mode-tabs" role="tablist" aria-label="Sign in or create account">
-              <button
-                role="tab"
-                aria-selected={mode === "login"}
-                className={`mobile-mode-tab ${mode === "login" ? "mobile-mode-tab--active" : ""}`}
-                onClick={switchToLogin}
-                type="button"
-              >
-                Sign in
-              </button>
-              <button
-                role="tab"
-                aria-selected={mode === "signup"}
-                className={`mobile-mode-tab ${mode === "signup" ? "mobile-mode-tab--active" : ""}`}
-                onClick={switchToSignup}
-                type="button"
-              >
-                Create account
-              </button>
+          <div className="mobile-form-card">
+            {mode !== "forgot" && (
+              <div className="mobile-mode-tabs" role="tablist" aria-label="Sign in or create account">
+                <button
+                  role="tab"
+                  aria-selected={mode === "login"}
+                  className={`mobile-mode-tab ${mode === "login" ? "mobile-mode-tab--active" : ""}`}
+                  onClick={switchToLogin}
+                  type="button"
+                >
+                  Sign in
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={mode === "signup"}
+                  className={`mobile-mode-tab ${mode === "signup" ? "mobile-mode-tab--active" : ""}`}
+                  onClick={switchToSignup}
+                  type="button"
+                >
+                  Create account
+                </button>
+              </div>
+            )}
+
+            {formBody}
+
+            <div className="auth-security">
+              <TrustRow tone="light" />
             </div>
-          )}
-
-          {formBody}
-
-          <div className="auth-security">
-            <TrustRow tone="light" />
           </div>
         </div>
       </div>
