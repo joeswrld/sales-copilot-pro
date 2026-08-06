@@ -1085,10 +1085,7 @@ export default function LoginPage() {
           </a>
 
           <div className="lp-value-prop">
-            <div className="lp-value-eyebrow">
-              <span className="lp-value-eyebrow-dot" aria-hidden="true" />
-              <span className="lp-value-eyebrow-text">Trusted by 200+ revenue teams</span>
-            </div>
+            
             <h1 className="lp-value-headline">Continue where your meetings left off.</h1>
             <p className="lp-value-sub">
               Every call, transcript, and coaching insight — right where you saved it. Sign in to pick up instantly.
