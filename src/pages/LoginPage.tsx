@@ -1148,10 +1148,7 @@ export default function LoginPage() {
             <FixsenseLogo size={26} borderRadius={7} />
             <span className="mobile-brand-name">Fixsense</span>
           </a>
-          <div className="mobile-value-eyebrow">
-            <span className="mobile-value-eyebrow-dot" aria-hidden="true" />
-            <span className="mobile-value-eyebrow-text">200+ revenue teams</span>
-          </div>
+          
           <div className="mobile-hero-text">
             <h1>
               {mode === "login"
