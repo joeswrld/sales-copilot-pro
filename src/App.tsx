@@ -95,6 +95,8 @@ function AppRoutes() {
         <UpgradeModal />
         <DebugInspector />
         <FunnelTracker />
+        <AnalyticsTracker />
+
         <PWABanner />
         <CookieConsent />
 
