@@ -1,25 +1,73 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type RangePreset = "7d" | "30d" | "90d" | "1y" | "custom";
+export type RangePreset =
+  | "today" | "yesterday" | "7d" | "30d" | "90d" | "1m" | "1y" | "5y" | "10y" | "custom";
 
 export interface AnalyticsRange {
   from: Date;
   to: Date;
-  bucket: "day" | "week" | "month";
+  bucket: "hour" | "day" | "week" | "month" | "year";
 }
 
+export const RANGE_LABELS: Record<Exclude<RangePreset, "custom">, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  "1m": "1 month",
+  "1y": "1 year",
+  "5y": "5 years",
+  "10y": "10 years",
+};
+
 export function rangeFromPreset(preset: RangePreset, custom?: { from: Date; to: Date }): AnalyticsRange {
-  const to = new Date();
-  let from = new Date();
-  let bucket: AnalyticsRange["bucket"] = "day";
-  if (preset === "7d") from.setDate(to.getDate() - 7);
-  else if (preset === "30d") from.setDate(to.getDate() - 30);
-  else if (preset === "90d") { from.setDate(to.getDate() - 90); bucket = "week"; }
-  else if (preset === "1y") { from.setFullYear(to.getFullYear() - 1); bucket = "month"; }
-  else if (preset === "custom" && custom) { return { from: custom.from, to: custom.to, bucket: "day" }; }
-  return { from, to, bucket };
+  const now = new Date();
+  const startOfDay = (d: Date) => { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; };
+  const endOfDay = (d: Date) => { const c = new Date(d); c.setHours(23, 59, 59, 999); return c; };
+
+  switch (preset) {
+    case "today":
+      return { from: startOfDay(now), to: now, bucket: "hour" };
+    case "yesterday": {
+      const y = new Date(now); y.setDate(now.getDate() - 1);
+      return { from: startOfDay(y), to: endOfDay(y), bucket: "hour" };
+    }
+    case "7d": {
+      const f = new Date(now); f.setDate(now.getDate() - 7);
+      return { from: f, to: now, bucket: "day" };
+    }
+    case "30d": {
+      const f = new Date(now); f.setDate(now.getDate() - 30);
+      return { from: f, to: now, bucket: "day" };
+    }
+    case "1m": {
+      const f = new Date(now); f.setMonth(now.getMonth() - 1);
+      return { from: f, to: now, bucket: "day" };
+    }
+    case "90d": {
+      const f = new Date(now); f.setDate(now.getDate() - 90);
+      return { from: f, to: now, bucket: "week" };
+    }
+    case "1y": {
+      const f = new Date(now); f.setFullYear(now.getFullYear() - 1);
+      return { from: f, to: now, bucket: "month" };
+    }
+    case "5y": {
+      const f = new Date(now); f.setFullYear(now.getFullYear() - 5);
+      return { from: f, to: now, bucket: "year" };
+    }
+    case "10y": {
+      const f = new Date(now); f.setFullYear(now.getFullYear() - 10);
+      return { from: f, to: now, bucket: "year" };
+    }
+    default:
+      if (custom) return { from: custom.from, to: endOfDay(custom.to), bucket: "day" };
+      return { from: startOfDay(now), to: now, bucket: "hour" };
+  }
 }
+
 
 interface SeriesPoint { bucket: string; [k: string]: any }
 
