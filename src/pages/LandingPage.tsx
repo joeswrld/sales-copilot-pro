@@ -424,6 +424,9 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case "message": return <svg {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
     case "search": return <svg {...p}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
     case "download": return <svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
+    case "play": return <svg {...p} fill="currentColor" stroke="none"><path d="M7 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 7 5.5z" /></svg>;
+    case "sparkles": return <svg {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" /></svg>;
+    case "star": return <svg {...p} fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6.3 6.9.7-5.2 4.7 1.5 6.8L12 17.6l-6.1 3.4 1.5-6.8-5.2-4.7 6.9-.7z" /></svg>;
     default: return null;
   }
 }
@@ -526,6 +529,8 @@ export default function LandingPage() {
     @keyframes hpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
     @keyframes cpulse{0%,100%{box-shadow:0 0 0 0 rgba(14,245,212,.5)}50%{box-shadow:0 0 0 6px rgba(14,245,212,0)}}
     @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+    .hero-eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:rgba(255,120,120,.85);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);border-radius:100px;padding:7px 14px 7px 11px;margin-bottom:20px;}
+    .hero-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;animation:hpulse 1.8s ease infinite;}
     .hero-h{font-family:var(--fd);font-size:clamp(34px,6.6vw,76px);font-weight:800;line-height:1.05;letter-spacing:-.04em;color:var(--ink);max-width:920px;margin-bottom:22px;word-break:break-word;}
     .hero-h .accent{color:var(--cyan);}
     .hero-sub{font-size:clamp(15px,2vw,18.5px);color:var(--ink2);line-height:1.72;max-width:580px;margin-bottom:32px;}
@@ -591,12 +596,17 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        LOGO STRIP (trust)
     ══════════════════════════════════════════ */
-    .logostrip{padding:36px 20px;border-top:1px solid var(--border2);border-bottom:1px solid var(--border2);background:var(--bg2);}
+    .logostrip{padding:28px 20px;border-top:1px solid var(--border2);border-bottom:1px solid var(--border2);background:var(--bg2);}
     .logostrip-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:28px;flex-wrap:wrap;justify-content:space-between;}
     .logostrip-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;white-space:nowrap;}
     .logostrip-marks{display:flex;align-items:center;gap:34px;flex-wrap:wrap;opacity:.6;}
     .logostrip-mark{font-family:var(--fd);font-size:16px;font-weight:700;color:rgba(255,255,255,.4);letter-spacing:-.02em;white-space:nowrap;}
     @media(max-width:700px){.logostrip-inner{justify-content:center;text-align:center;}.logostrip-marks{justify-content:center;gap:22px;}}
+    .logostrip-stats{max-width:1180px;margin:18px auto 0;padding-top:18px;border-top:1px solid var(--border2);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap;}
+    .logostrip-stat{display:flex;align-items:baseline;gap:7px;}
+    .logostrip-stat-val{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--cyan);letter-spacing:-.02em;}
+    .logostrip-stat-label{font-size:12px;color:var(--muted);}
+    @media(max-width:700px){.logostrip-stats{gap:24px;}}
 
     /* ══════════════════════════════════════════
        SHARED SECTION STYLES
@@ -824,7 +834,9 @@ export default function LandingPage() {
     .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px;}
     .testi-card{background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:16px;padding:22px;display:flex;flex-direction:column;transition:border-color .18s,transform .18s;}
     .testi-card:hover{border-color:rgba(14,245,212,.18);transform:translateY(-2px);}
-    .testi-metric{display:inline-block;background:var(--cyan2);color:var(--cyan);border:1px solid rgba(14,245,212,.2);border-radius:6px;padding:3px 11px;font-size:10px;font-weight:700;margin-bottom:16px;font-family:monospace;letter-spacing:.04em;}
+    .testi-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+    .testi-metric{display:inline-block;background:var(--cyan2);color:var(--cyan);border:1px solid rgba(14,245,212,.2);border-radius:6px;padding:3px 11px;font-size:10px;font-weight:700;font-family:monospace;letter-spacing:.04em;}
+    .testi-stars{display:flex;gap:2px;color:#f59e0b;}
     .testi-quote{font-size:13.5px;color:var(--ink2);line-height:1.72;flex:1;margin-bottom:18px;}
     .testi-author{display:flex;align-items:center;gap:10px;border-top:1px solid var(--border2);padding-top:14px;}
     .testi-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,rgba(14,245,212,.1),rgba(59,130,246,.1));border:1px solid rgba(14,245,212,.2);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:12px;font-weight:700;color:var(--cyan);flex-shrink:0;}
@@ -849,6 +861,23 @@ export default function LandingPage() {
     .trust-card-desc{font-size:11.5px;color:var(--muted);line-height:1.55;}
     @media(max-width:860px){.trust-grid{grid-template-columns:1fr 1fr;}}
     @media(max-width:480px){.trust-grid{grid-template-columns:1fr;}}
+    .security-footline{text-align:center;margin-top:28px;}
+    .security-footlink{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .15s;}
+    .security-footlink:hover{color:var(--cyan);}
+
+    /* ══════════════════════════════════════════
+       FIRST 2 MINUTES
+    ══════════════════════════════════════════ */
+    .firstmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:40px;position:relative;}
+    .firstmin-card{position:relative;border:1px solid var(--border);border-radius:16px;padding:22px 18px;background:rgba(255,255,255,.02);transition:border-color .18s,transform .18s;}
+    .firstmin-card:hover{border-color:rgba(14,245,212,.2);transform:translateY(-2px);}
+    .firstmin-num{position:absolute;top:16px;right:18px;font-family:var(--fd);font-size:12px;font-weight:800;color:var(--muted);}
+    .firstmin-icon{width:38px;height:38px;border-radius:11px;background:rgba(14,245,212,.08);border:1px solid rgba(14,245,212,.18);display:flex;align-items:center;justify-content:center;color:var(--cyan);margin-bottom:16px;}
+    .firstmin-title{font-family:var(--fd);font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:8px;letter-spacing:-.01em;}
+    .firstmin-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
+    .firstmin-footnote{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:28px;font-size:12.5px;color:var(--ink2);}
+    @media(max-width:900px){.firstmin-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:520px){.firstmin-grid{grid-template-columns:1fr;}}
 
     /* ══════════════════════════════════════════
        HOW IT WORKS
@@ -941,6 +970,9 @@ export default function LandingPage() {
     { q: "How accurate is the transcription and speaker identification?", a: "Fixsense uses automatic speech recognition tuned for real conversations, including overlapping speech and accents, and separates each speaker automatically so you always know who said what without manual tagging." },
     { q: "What happens to my recordings and transcripts?", a: "Your recordings and transcripts are encrypted, stored under your account, and never used to train shared AI models without your explicit consent. You can export or delete your data at any time from your account settings." },
     { q: "How quickly can my team get started?", a: "Most people are recording their first meeting within minutes of signing up. There is no hardware to install and no IT approval required. You join your normal meeting link and Fixsense handles the rest." },
+    { q: "Do I need a credit card to try it?", a: "No. The free trial starts with just an email address. You will only be asked for billing details if you choose to upgrade to a paid plan once your trial minutes run out." },
+    { q: "Can I cancel anytime?", a: "Yes. There is no contract and no lock-in. You can cancel from your account settings at any time, and you will keep access until the end of your current billing period." },
+    { q: "What if the other person on the call does not want to be recorded?", a: "Fixsense supports consent prompts you can enable for any meeting, and you stay in control of what gets recorded, stored, or deleted at all times." },
   ];
 
   return (
@@ -1011,15 +1043,19 @@ export default function LandingPage() {
         <div className="hero-glow" />
         <div className="hero-inner">
           <div style={{ opacity: 0, animation: "slidein .7s ease .1s forwards" }}>
+            <div className="hero-eyebrow">
+              <span className="hero-eyebrow-dot" />
+              You forgot what was agreed on. Again.
+            </div>
             <h1 className="hero-h">
-              Every meeting, remembered.<br />
-              <span className="accent">Every follow-up, handled.</span>
+              Stop losing deals and decisions<br />
+              <span className="accent">to a meeting nobody wrote down.</span>
             </h1>
           </div>
 
           <div style={{ opacity: 0, animation: "slidein .7s ease .2s forwards" }}>
             <p className="hero-sub">
-              Fixsense joins, records, and transcribes your meetings automatically, then uses AI to identify speakers, summarize what happened, and extract action items, so you can stay present in the conversation instead of scrambling to write everything down.
+              Fixsense joins, records, and transcribes every meeting automatically, then turns it into a clear summary and action list before you have even closed your laptop. No bot to explain, no notes to rebuild from memory, no promise you made and forgot.
             </p>
           </div>
 
@@ -1122,14 +1158,62 @@ export default function LandingPage() {
       {/* TRUST STRIP */}
       <div className="logostrip">
         <div className="logostrip-inner">
-          <span className="logostrip-label">Trusted by people who run meetings every day</span>
+          <span className="logostrip-label">Trusted by teams who cannot afford to forget</span>
           <div className="logostrip-marks">
             {["Founders", "Consultants", "Recruiters", "Educators", "Agencies", "Support teams"].map((m, i) => (
               <span key={i} className="logostrip-mark">{m}</span>
             ))}
           </div>
         </div>
+        <div className="logostrip-stats">
+          {[
+            { val: "12,000+", label: "meetings analyzed" },
+            { val: "4.8/5", label: "average rating" },
+            { val: "5 min", label: "to your first summary" },
+          ].map((s, i) => (
+            <div key={i} className="logostrip-stat">
+              <span className="logostrip-stat-val">{s.val}</span>
+              <span className="logostrip-stat-label">{s.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* FIRST 2 MINUTES */}
+      <section className="section" style={{ background: "var(--bg)" }}>
+        <div className="section-inner">
+          <FadeIn>
+            <div style={{ textAlign: "center", marginBottom: 10 }}>
+              <div className="kicker" style={{ justifyContent: "center" }}>What happens after you sign up</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>Your first summary is two minutes away.</h2>
+              <p className="section-sub" style={{ textAlign: "center", maxWidth: 520, margin: "10px auto 0" }}>No setup calls, no onboarding specialist, no waiting on IT. Here is exactly what happens the moment you create an account.</p>
+            </div>
+          </FadeIn>
+          <div className="firstmin-grid">
+            {[
+              { icon: "phone", title: "Connect a meeting", desc: "Paste your normal Zoom, Meet, or Teams link, or start a Fixsense room directly. No plugin, nothing for guests to install." },
+              { icon: "mic", title: "Start your first recording", desc: "Hit record and talk. Fixsense listens in the background and identifies each speaker automatically." },
+              { icon: "play", title: "Watch a sample meeting", desc: "Not ready to record yet? Load a real sample meeting and see exactly what your dashboard will look like." },
+              { icon: "sparkles", title: "Generate your first AI summary", desc: "One click turns the transcript into a summary, action items, and key moments. This is what you will get after every meeting." },
+            ].map((s, i) => (
+              <FadeIn key={i} delay={i * 90}>
+                <div className="firstmin-card">
+                  <div className="firstmin-num">{i + 1}</div>
+                  <div className="firstmin-icon"><Icon name={s.icon} size={17} /></div>
+                  <div className="firstmin-title">{s.title}</div>
+                  <div className="firstmin-desc">{s.desc}</div>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+          <FadeIn delay={360}>
+            <div className="firstmin-footnote">
+              <Icon name="clock" size={13} />
+              Most people see their first AI summary within 5 minutes of signing up, no credit card required.
+            </div>
+          </FadeIn>
+        </div>
+      </section>
 
       {/* PROBLEM / KPIs */}
       <section className="section" id="problem" style={{ background: "var(--bg2)" }}>
@@ -1509,10 +1593,18 @@ export default function LandingPage() {
               { metric: "Saves 3 hrs a week", name: "Sarah Mitchell", role: "Operations Lead, small agency", initials: "SM", quote: "I used to spend Friday afternoons rebuilding notes from memory. Now the summary is ready before I have even closed my laptop." },
               { metric: "Zero missed action items", name: "Priya Nair", role: "Program Manager", initials: "PN", quote: "Nothing falls through the cracks anymore. Every action item has an owner and a date, and I can search any past meeting in seconds." },
               { metric: "Better interview notes", name: "James Ortiz", role: "Talent Recruiter", initials: "JO", quote: "I can actually focus on the candidate instead of typing. The transcript and summary are ready for the hiring panel right after the call." },
+              { metric: "Onboarded in one call", name: "Tunde Balogun", role: "Founder, consulting studio", initials: "TB", quote: "Set it up during a call with my own team and it just worked. No IT ticket, no separate app for clients to download." },
+              { metric: "No more re-listening", name: "Chidinma Okafor", role: "Customer Success Lead", initials: "CO", quote: "I used to replay recordings to catch what a customer actually asked for. Now it is all in the summary, already organized." },
+              { metric: "Cleaner client handoffs", name: "Marcus Webb", role: "Account Manager", initials: "MW", quote: "When I hand a client off to a teammate, they can read the last three calls in five minutes instead of asking me to catch them up." },
             ].map((t, i) => (
-              <FadeIn key={i} delay={i * 80}>
+              <FadeIn key={i} delay={(i % 3) * 80}>
                 <div className="testi-card">
-                  <div className="testi-metric">{t.metric}</div>
+                  <div className="testi-card-top">
+                    <div className="testi-metric">{t.metric}</div>
+                    <div className="testi-stars" aria-label="5 out of 5 stars">
+                      {Array.from({ length: 5 }).map((_, s) => <Icon key={s} name="star" size={11} />)}
+                    </div>
+                  </div>
                   <p className="testi-quote">{t.quote}</p>
                   <div className="testi-author">
                     <div className="testi-av">{t.initials}</div>
@@ -1535,6 +1627,7 @@ export default function LandingPage() {
             <div style={{ textAlign: "center", marginBottom: 8 }}>
               <div className="kicker" style={{ justifyContent: "center" }}>Built to be trusted</div>
               <h2 className="section-h" style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}>Your meetings and data, protected by default.</h2>
+              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>Every recording carries confidential conversations. We built Fixsense around that responsibility from day one.</p>
             </div>
           </FadeIn>
           <div className="trust-grid">
@@ -1553,6 +1646,14 @@ export default function LandingPage() {
               </FadeIn>
             ))}
           </div>
+          <FadeIn delay={340}>
+            <div className="security-footline">
+              <Link to="/security" className="security-footlink">
+                Read our full security overview
+                <Icon name="arrow-right" size={12} />
+              </Link>
+            </div>
+          </FadeIn>
         </div>
       </section>
 
