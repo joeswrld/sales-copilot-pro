@@ -3,13 +3,14 @@ import DashboardLayout from "@/components/DashboardLayout";
 import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
 import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
 import { PlanBanner } from "@/components/plan/PlanGate";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -132,12 +133,27 @@ export default function DashboardHome() {
   const { data: calls, isLoading: callsLoading } = useCalls();
   const { profile, isLoading: profileLoading } = useUserProfile();
 
+  const checklistDismissKey = user ? `fixsense_onboard_checklist_dismissed_${user.id}` : null;
+  const [checklistDismissed, setChecklistDismissed] = useState(
+    () => checklistDismissKey ? localStorage.getItem(checklistDismissKey) === "1" : false
+  );
+
   useEffect(() => {
     if (profileLoading || callsLoading) return;
     if (profile && !profile.onboarding_complete && (!calls || calls.length === 0)) {
       navigate("/onboarding", { replace: true });
     }
   }, [profile, profileLoading, calls, callsLoading, navigate]);
+
+  // Show the checklist for anyone who hasn't recorded a real meeting yet,
+  // until they explicitly dismiss it. This replaces the bare empty state
+  // with a guided path to first value.
+  const showChecklist = !checklistDismissed && !callsLoading && (!calls || calls.length === 0);
+
+  const handleDismissChecklist = () => {
+    setChecklistDismissed(true);
+    if (checklistDismissKey) localStorage.setItem(checklistDismissKey, "1");
+  };
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const recentCalls = (calls || []).slice(0, 5);
@@ -177,6 +193,10 @@ export default function DashboardHome() {
             Welcome back, {displayName}. Here's your sales performance overview.
           </p>
         </div>
+
+        {/* ── Guided onboarding checklist, shown until the person has a
+             real recorded meeting or dismisses it ── */}
+        {showChecklist && <OnboardingChecklist onDismiss={handleDismissChecklist} />}
 
         {/* ── Stat cards + Pipeline Health ── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -226,10 +246,7 @@ export default function DashboardHome() {
             </div>
           ) : recentCalls.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-sm text-muted-foreground">No calls yet. Start by adding your first call.</p>
-              <Link to="/live" className="text-xs text-primary hover:underline mt-2 inline-block">
-                Start a live call →
-              </Link>
+              <p className="text-sm text-muted-foreground">No calls yet. Use the checklist above to get your first summary.</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
