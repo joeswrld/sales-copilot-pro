@@ -111,3 +111,6 @@ verify_jwt = false
 
 [functions.resend-verification]
 verify_jwt = false
+
+[functions.security-regression-scan]
+verify_jwt = false

@@ -11,6 +11,10 @@ import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
 import AdminSecurityPage from "./pages/AdminSecurityPage";
 import FunnelTracker from "@/components/FunnelTracker";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
+import AdminProductAnalyticsPage from "./pages/AdminProductAnalyticsPage";
+import AdminSessionReplayPage from "./pages/AdminSessionReplayPage";
+
 import { PlanEnforcementProvider } from "@/contexts/PlanEnforcementContext";
 import UpgradeModal from "@/components/plan/UpgradeModal";
 
@@ -91,6 +95,8 @@ function AppRoutes() {
         <UpgradeModal />
         <DebugInspector />
         <FunnelTracker />
+        <AnalyticsTracker />
+
         <PWABanner />
         <CookieConsent />
 
@@ -150,6 +156,27 @@ function AppRoutes() {
               </AdminRoute>
             }
           />
+          <Route
+            path="/admin/product"
+            element={
+              <AdminRoute>
+                <ErrorBoundary>
+                  <AdminProductAnalyticsPage />
+                </ErrorBoundary>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/product/session/:sessionId"
+            element={
+              <AdminRoute>
+                <ErrorBoundary>
+                  <AdminSessionReplayPage />
+                </ErrorBoundary>
+              </AdminRoute>
+            }
+          />
+
           <Route
             path="/admin/activity"
             element={

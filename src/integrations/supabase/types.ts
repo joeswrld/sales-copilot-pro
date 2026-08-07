@@ -275,6 +275,143 @@ export type Database = {
           },
         ]
       }
+      analytics_events: {
+        Row: {
+          event: string
+          id: number
+          label: string | null
+          metadata: Json
+          path: string | null
+          scroll_pct: number | null
+          selector: string | null
+          session_id: string
+          ts: string
+          user_id: string | null
+          vh: number | null
+          vw: number | null
+          x: number | null
+          y: number | null
+        }
+        Insert: {
+          event: string
+          id?: number
+          label?: string | null
+          metadata?: Json
+          path?: string | null
+          scroll_pct?: number | null
+          selector?: string | null
+          session_id: string
+          ts?: string
+          user_id?: string | null
+          vh?: number | null
+          vw?: number | null
+          x?: number | null
+          y?: number | null
+        }
+        Update: {
+          event?: string
+          id?: number
+          label?: string | null
+          metadata?: Json
+          path?: string | null
+          scroll_pct?: number | null
+          selector?: string | null
+          session_id?: string
+          ts?: string
+          user_id?: string | null
+          vh?: number | null
+          vw?: number | null
+          x?: number | null
+          y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "analytics_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_sessions: {
+        Row: {
+          browser: string | null
+          clicks: number
+          country: string | null
+          created_at: string
+          dead_clicks: number
+          device: string | null
+          duration_ms: number
+          entry_path: string | null
+          errors: number
+          exit_path: string | null
+          id: string
+          last_seen_at: string
+          max_scroll_pct: number
+          os: string | null
+          page_views: number
+          rage_clicks: number
+          referrer: string | null
+          screen_h: number | null
+          screen_w: number | null
+          started_at: string
+          timezone: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          browser?: string | null
+          clicks?: number
+          country?: string | null
+          created_at?: string
+          dead_clicks?: number
+          device?: string | null
+          duration_ms?: number
+          entry_path?: string | null
+          errors?: number
+          exit_path?: string | null
+          id: string
+          last_seen_at?: string
+          max_scroll_pct?: number
+          os?: string | null
+          page_views?: number
+          rage_clicks?: number
+          referrer?: string | null
+          screen_h?: number | null
+          screen_w?: number | null
+          started_at?: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          browser?: string | null
+          clicks?: number
+          country?: string | null
+          created_at?: string
+          dead_clicks?: number
+          device?: string | null
+          duration_ms?: number
+          entry_path?: string | null
+          errors?: number
+          exit_path?: string | null
+          id?: string
+          last_seen_at?: string
+          max_scroll_pct?: number
+          os?: string | null
+          page_views?: number
+          rage_clicks?: number
+          referrer?: string | null
+          screen_h?: number | null
+          screen_w?: number | null
+          started_at?: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string | null
@@ -7770,6 +7907,165 @@ export type Database = {
           bucket: string
           cumulative: number
           signups: number
+        }[]
+      }
+      analytics_click_map: {
+        Args: {
+          _device?: string
+          _from: string
+          _grid?: number
+          _path: string
+          _to: string
+        }
+        Returns: {
+          gx: number
+          gy: number
+          hits: number
+          kind: string
+          top_label: string
+        }[]
+      }
+      analytics_filter_options: {
+        Args: { _from: string; _to: string }
+        Returns: Json
+      }
+      analytics_friction: {
+        Args: { _from: string; _limit?: number; _to: string }
+        Returns: {
+          kind: string
+          label: string
+          occurrences: number
+          path: string
+          sample: string
+          selector: string
+          sessions: number
+        }[]
+      }
+      analytics_ignored_elements: {
+        Args: { _from: string; _limit?: number; _path?: string; _to: string }
+        Returns: {
+          click_rate: number
+          clicked: number
+          label: string
+          path: string
+          seen: number
+          selector: string
+        }[]
+      }
+      analytics_ingest: {
+        Args: { _events?: Json; _session: Json }
+        Returns: undefined
+      }
+      analytics_journeys: {
+        Args: { _from: string; _limit?: number; _to: string }
+        Returns: {
+          from_path: string
+          to_path: string
+          transitions: number
+        }[]
+      }
+      analytics_overview: {
+        Args: {
+          _browser?: string
+          _country?: string
+          _device?: string
+          _from: string
+          _path?: string
+          _to: string
+          _user?: string
+        }
+        Returns: {
+          avg_duration_sec: number
+          avg_scroll_pct: number
+          bounce_rate: number
+          clicks: number
+          conversion_rate: number
+          dead_clicks: number
+          errors: number
+          page_views: number
+          rage_clicks: number
+          sessions: number
+          signups: number
+          users: number
+        }[]
+      }
+      analytics_scroll_depth: {
+        Args: { _device?: string; _from: string; _path: string; _to: string }
+        Returns: {
+          depth_pct: number
+          reach_pct: number
+          sessions: number
+        }[]
+      }
+      analytics_series: {
+        Args: { _bucket?: string; _from: string; _to: string }
+        Returns: {
+          bucket: string
+          dead_clicks: number
+          errors: number
+          page_views: number
+          rage_clicks: number
+          sessions: number
+        }[]
+      }
+      analytics_session_replay: { Args: { _session_id: string }; Returns: Json }
+      analytics_sessions_list: {
+        Args: {
+          _browser?: string
+          _country?: string
+          _device?: string
+          _friction_only?: boolean
+          _from: string
+          _limit?: number
+          _offset?: number
+          _path?: string
+          _to: string
+          _user?: string
+        }
+        Returns: {
+          avatar_url: string
+          browser: string
+          clicks: number
+          country: string
+          dead_clicks: number
+          device: string
+          duration_sec: number
+          email: string
+          entry_path: string
+          errors: number
+          event_count: number
+          exit_path: string
+          full_name: string
+          id: string
+          max_scroll_pct: number
+          os: string
+          page_views: number
+          rage_clicks: number
+          referrer: string
+          started_at: string
+          user_id: string
+        }[]
+      }
+      analytics_top_pages: {
+        Args: {
+          _browser?: string
+          _country?: string
+          _device?: string
+          _from: string
+          _limit?: number
+          _to: string
+          _user?: string
+        }
+        Returns: {
+          avg_scroll_pct: number
+          dead_clicks: number
+          errors: number
+          exit_rate: number
+          exits: number
+          path: string
+          rage_clicks: number
+          sessions: number
+          views: number
         }[]
       }
       attach_call_to_deal: {
