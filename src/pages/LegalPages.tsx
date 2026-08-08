@@ -267,7 +267,7 @@ export function PrivacyPage() {
   return (
     <LegalLayout page="privacy" kicker="Privacy Policy" title="Your data." titleC="Our responsibility."
       subtitle="We're committed to protecting your personal information and being fully transparent about what we collect, why, and how we protect it."
-      updated="March 29, 2026" version="2.1" sections={sections}>
+      updated="August 8, 2026" version="2.2" sections={sections}>
 
       <section className="lg-section" id="overview">
         <h2>Overview</h2>
@@ -303,6 +303,9 @@ export function PrivacyPage() {
         </ul>
         <h3>Integration Data</h3>
         <p>If you connect third-party services , we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
+        <h3>Website Visitors & Abandoned Sign-ups</h3>
+        <p>When you browse fixsense.com.ng, we record anonymous session activity (pages viewed, clicks, scroll depth, device and browser type) if you've accepted analytics cookies — never your keystrokes or anything you type. We never link this to your name or email unless you sign in.</p>
+        <p>If you begin creating an account and enter an email address (and optionally your name) into the sign-up form but don't complete sign-up, we record that email and name so our team can follow up. We only ever record what you've actually typed into that field, and only after you move on from it — never anything you haven't entered yourself. You can ask us to delete this at any time by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.</p>
       </section>
 
       <section className="lg-section" id="how-we-use">
