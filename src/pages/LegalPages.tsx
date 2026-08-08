@@ -1,6 +1,6 @@
 /**
- * LegalPages.tsx — Redesigned to match Fixsense dark landing page aesthetic.
- * Privacy, Terms, Security, Contact — all unified with the dark theme.
+ * LegalPages.tsx: matches the Fixsense landing page's light paper/navy aesthetic.
+ * Privacy, Terms, Security, Contact: all unified with that design system.
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -18,93 +18,93 @@ function Logo({ size = 28 }: { size?: number }) {
 // ─── Shared CSS ───────────────────────────────────────────────────────────────
 
 const sharedCss = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Syne+Mono&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&family=IBM+Plex+Mono:wght@500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   .lp-legal {
-    --bg: #050810; --bg2: #0a0d18; --bg3: #0f1220;
-    --card: rgba(255,255,255,0.03); --card-border: rgba(255,255,255,0.07); --card-hover: rgba(255,255,255,0.06);
-    --ink: #f0f2f8; --ink2: rgba(240,242,248,0.65); --ink3: rgba(240,242,248,0.38); --ink4: rgba(240,242,248,0.18);
-    --cyan: #0ef5d4; --cyan2: rgba(14,245,212,0.15); --cyan3: rgba(14,245,212,0.07);
-    --purple: #8b5cf6; --amber: #f59e0b; --green: #10b981; --blue: #3b82f6;
-    --font: 'DM Sans', system-ui, sans-serif;
-    --fd: 'Syne', system-ui, sans-serif;
-    --fm: 'Syne Mono', monospace;
-    background: var(--bg); color: var(--ink); font-family: var(--font);
+    --paper: #FAFAF8; --paper2: #F3F2ED; --ink-panel: #14140F;
+    --card: rgba(23,23,15,0.025); --card-border: rgba(23,23,15,0.11); --card-hover: rgba(23,23,15,0.05);
+    --ink: #17170F; --ink2: rgba(23,23,15,0.66); --ink3: rgba(23,23,15,0.42); --ink4: rgba(23,23,15,0.28);
+    --accent: #22315C; --accent2: rgba(34,49,92,0.15); --accent3: rgba(34,49,92,0.07);
+    --purple: #5b4b8a; --amber: #8A5A20; --green: #2F6B4F; --blue: #22315C;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --fd: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --fm: 'IBM Plex Mono', ui-monospace, monospace;
+    background: var(--paper); color: var(--ink); font-family: var(--font);
     -webkit-font-smoothing: antialiased; min-height: 100vh; line-height: 1.6; overflow-x: hidden;
   }
 
   /* NAV */
-  .lg-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 60px; display: flex; align-items: center; padding: 0 24px; background: rgba(5,8,16,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid var(--card-border); }
+  .lg-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 60px; display: flex; align-items: center; padding: 0 24px; background: rgba(250,250,248,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--card-border); }
   .lg-nav-i { max-width: 1100px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
   .lg-nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
-  .lg-nav-name { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+  .lg-nav-name { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
   .lg-nav-links { display: flex; align-items: center; gap: 22px; }
   .lg-nav-link { font-size: 13px; font-weight: 500; color: var(--ink3); text-decoration: none; transition: color 0.2s; }
   .lg-nav-link:hover, .lg-nav-link.act { color: var(--ink); }
-  .lg-nav-link.act { color: var(--cyan); }
-  .lg-nav-cta { font-size: 13px; font-weight: 600; color: var(--bg); background: var(--cyan); border: none; padding: 7px 18px; border-radius: 8px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.15s; }
+  .lg-nav-link.act { color: var(--accent); }
+  .lg-nav-cta { font-size: 13px; font-weight: 600; color: var(--paper); background: var(--accent); border: 1px solid var(--accent); padding: 7px 18px; border-radius: 6px; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all 0.15s; }
   .lg-nav-cta:hover { opacity: 0.88; }
   @media(max-width:768px){ .lg-nav-links { display: none; } }
 
   /* HERO BAND */
   .lg-hero { padding: 108px 24px 60px; position: relative; overflow: hidden; }
-  .lg-hero-orb { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 400px; background: radial-gradient(ellipse, rgba(14,245,212,0.05) 0%, transparent 65%); pointer-events: none; }
+  .lg-hero-orb { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 400px; background: radial-gradient(ellipse, rgba(34,49,92,0.05) 0%, transparent 65%); pointer-events: none; }
   .lg-hero-inner { max-width: 1100px; margin: 0 auto; }
-  .lg-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 16px; font-family: var(--fm); }
+  .lg-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 16px; font-family: var(--fm); }
   .lg-kicker-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-  .lg-h1 { font-family: var(--fd); font-size: clamp(28px,4.5vw,50px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.07; color: var(--ink); margin-bottom: 14px; }
-  .lg-h1 .c { color: var(--cyan); }
+  .lg-h1 { font-family: var(--fd); font-size: clamp(28px,4.5vw,50px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.07; color: var(--ink); margin-bottom: 14px; }
+  .lg-h1 .c { color: var(--accent); }
   .lg-sub { font-size: 16px; color: var(--ink2); line-height: 1.7; max-width: 540px; margin-bottom: 24px; }
   .lg-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .lg-meta-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--ink3); }
+  .lg-meta-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--paper2); border: 1px solid var(--card-border); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--ink3); }
   .lg-meta-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
   .lg-breadcrumb { display: flex; align-items: center; gap: 7px; margin-bottom: 20px; font-size: 12px; color: var(--ink4); }
   .lg-breadcrumb a { color: var(--ink3); text-decoration: none; transition: color 0.15s; }
   .lg-breadcrumb a:hover { color: var(--ink); }
   .lg-breadcrumb .sep { color: var(--ink4); }
-  .lg-breadcrumb .cur { color: var(--cyan); }
+  .lg-breadcrumb .cur { color: var(--accent); }
 
   /* LAYOUT */
   .lg-layout { max-width: 1100px; margin: 0 auto; padding: 56px 24px 96px; display: grid; grid-template-columns: 210px 1fr; gap: 52px; align-items: start; }
   @media(max-width:860px){ .lg-layout { grid-template-columns: 1fr; gap: 28px; padding: 36px 20px 72px; } .lg-toc { display: none; } }
 
   /* TOC */
-  .lg-toc { position: sticky; top: 76px; background: var(--bg2); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px 14px; }
-  .lg-toc-title { font-size: 9.5px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; padding-left: 6px; font-family: var(--fm); }
+  .lg-toc { position: sticky; top: 76px; background: var(--paper2); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px 14px; }
+  .lg-toc-title { font-size: 9.5px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; padding-left: 6px; font-family: var(--fm); }
   .lg-toc-link { display: block; padding: 6px 9px; border-radius: 7px; border-left: 2px solid transparent; font-size: 12px; font-weight: 500; color: var(--ink3); text-decoration: none; transition: all 0.15s; margin-bottom: 2px; }
   .lg-toc-link:hover { color: var(--ink); background: var(--card); }
-  .lg-toc-link.act { color: var(--cyan); background: var(--cyan3); border-left-color: var(--cyan); }
+  .lg-toc-link.act { color: var(--accent); background: var(--accent3); border-left-color: var(--accent); }
 
   /* CONTENT */
   .lg-content { min-width: 0; }
   .lg-section { margin-bottom: 48px; scroll-margin-top: 80px; }
-  .lg-section h2 { font-family: var(--fd); font-size: 20px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--card-border); }
-  .lg-section h3 { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--ink2); margin: 20px 0 8px; letter-spacing: -0.02em; }
+  .lg-section h2 { font-family: var(--fd); font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--card-border); }
+  .lg-section h3 { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--ink2); margin: 20px 0 8px; letter-spacing: -0.01em; }
   .lg-section p { font-size: 14px; color: var(--ink2); line-height: 1.8; margin-bottom: 14px; }
   .lg-section strong { color: var(--ink); font-weight: 600; }
   .lg-section ul, .lg-section ol { margin: 0 0 16px; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
   .lg-section li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--ink2); line-height: 1.65; }
-  .lg-section ul li::before { content: ''; display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); flex-shrink: 0; margin-top: 8px; }
+  .lg-section ul li::before { content: ''; display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 8px; }
   .lg-section ol { counter-reset: li; }
-  .lg-section ol li::before { counter-increment: li; content: counter(li); display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--cyan3); color: var(--cyan); font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px; border: 1px solid rgba(14,245,212,.2); }
-  .lg-section a { color: var(--cyan); text-decoration: none; }
+  .lg-section ol li::before { counter-increment: li; content: counter(li); display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent3); color: var(--accent); font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px; border: 1px solid var(--accent2); }
+  .lg-section a { color: var(--accent); text-decoration: none; }
   .lg-section a:hover { text-decoration: underline; }
 
-  .lg-highlight { background: rgba(14,245,212,.04); border: 1px solid rgba(14,245,212,.15); border-left: 3px solid var(--cyan); border-radius: 0 10px 10px 0; padding: 16px 18px; margin: 16px 0; }
+  .lg-highlight { background: var(--accent3); border: 1px solid var(--accent2); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding: 16px 18px; margin: 16px 0; }
   .lg-highlight p { color: var(--ink); margin: 0; font-size: 14px; }
-  .lg-highlight strong { color: var(--cyan); }
+  .lg-highlight strong { color: var(--accent); }
 
   .lg-badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
-  .lg-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--card-border); border-radius: 20px; padding: 4px 12px; font-size: 11.5px; color: var(--ink2); }
+  .lg-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--paper2); border: 1px solid var(--card-border); border-radius: 20px; padding: 4px 12px; font-size: 11.5px; color: var(--ink2); }
 
-  code { font-size: 12px; color: var(--cyan); background: var(--cyan3); border-radius: 4px; padding: 1px 6px; font-family: var(--fm); border: 1px solid rgba(14,245,212,.15); }
+  code { font-size: 12px; color: var(--accent); background: var(--accent3); border-radius: 4px; padding: 1px 6px; font-family: var(--fm); border: 1px solid var(--accent2); }
 
   /* FOOTER */
-  .lg-footer { background: var(--bg2); padding: 40px 24px 28px; border-top: 1px solid var(--card-border); }
+  .lg-footer { background: var(--paper2); padding: 40px 24px 28px; border-top: 1px solid var(--card-border); }
   .lg-footer-i { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
   .lg-footer-brand { display: flex; align-items: center; gap: 9px; }
-  .lg-footer-name { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+  .lg-footer-name { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
   .lg-footer-copy { font-size: 12px; color: var(--ink4); margin-top: 4px; }
   .lg-footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
   .lg-footer-link { font-size: 12px; color: var(--ink3); text-decoration: none; transition: color 0.2s; }
@@ -113,45 +113,45 @@ const sharedCss = `
   /* CONTACT-SPECIFIC */
   .contact-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 44px; }
   @media(max-width:540px){ .contact-cards { grid-template-columns: 1fr; } }
-  .contact-card { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 14px; padding: 22px; transition: border-color 0.2s, transform 0.2s; }
-  .contact-card:hover { border-color: rgba(14,245,212,.2); transform: translateY(-2px); }
+  .contact-card { background: var(--paper); border: 1px solid var(--card-border); border-radius: 14px; padding: 22px; transition: border-color 0.2s, transform 0.2s; }
+  .contact-card:hover { border-color: var(--accent2); transform: translateY(-2px); }
   .contact-card-icon { font-size: 24px; margin-bottom: 10px; display: block; }
   .contact-card-title { font-family: var(--fd); font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
   .contact-card-desc { font-size: 13px; color: var(--ink3); line-height: 1.65; margin-bottom: 12px; }
-  .contact-card-link { font-size: 13px; font-weight: 600; color: var(--cyan); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .contact-card-link { font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   .contact-card-link:hover { text-decoration: underline; }
 
-  .contact-form-wrap { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 16px; padding: 32px; margin-bottom: 44px; }
-  .contact-form-title { font-family: var(--fd); font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 6px; }
+  .contact-form-wrap { background: var(--paper); border: 1px solid var(--card-border); border-radius: 16px; padding: 32px; margin-bottom: 44px; }
+  .contact-form-title { font-family: var(--fd); font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 6px; }
   .contact-form-sub { font-size: 13px; color: var(--ink3); margin-bottom: 24px; }
   .contact-form { display: flex; flex-direction: column; gap: 14px; }
   .contact-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media(max-width:540px){ .contact-row { grid-template-columns: 1fr; } }
   .form-field { display: flex; flex-direction: column; gap: 5px; }
-  .form-label { font-size: 10px; font-weight: 700; color: var(--ink4); text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--fm); }
-  .form-input, .form-select, .form-textarea { background: var(--bg3); border: 1px solid var(--card-border); border-radius: 9px; padding: 10px 13px; color: var(--ink); font-size: 13.5px; font-family: var(--font); outline: none; transition: border-color 0.15s; width: 100%; }
+  .form-label { font-size: 10px; font-weight: 600; color: var(--ink4); text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--fm); }
+  .form-input, .form-select, .form-textarea { background: var(--paper2); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 13px; color: var(--ink); font-size: 13.5px; font-family: var(--font); outline: none; transition: border-color 0.15s; width: 100%; }
   .form-input::placeholder, .form-textarea::placeholder { color: var(--ink4); }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: rgba(14,245,212,.4); }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
   .form-select { cursor: pointer; }
-  .form-select option { background: #0a0d18; }
+  .form-select option { background: #FAFAF8; color: #17170F; }
   .form-textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
-  .form-submit { display: inline-flex; align-items: center; gap: 8px; background: var(--cyan); color: var(--bg); border: none; border-radius: 9px; padding: 12px 26px; font-size: 13.5px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: all 0.2s; align-self: flex-start; }
-  .form-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .form-submit { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: var(--paper); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 26px; font-size: 13.5px; font-weight: 600; font-family: var(--font); cursor: pointer; transition: all 0.2s; align-self: flex-start; }
+  .form-submit:hover:not(:disabled) { opacity: 0.88; }
   .form-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .form-success { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; gap: 12px; }
-  .form-success-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.25); display: flex; align-items: center; justify-content: center; font-size: 24px; }
-  .form-success-title { font-family: var(--fd); font-size: 20px; font-weight: 800; color: var(--ink); }
+  .form-success-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(47,107,79,.1); border: 1px solid rgba(47,107,79,.25); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+  .form-success-title { font-family: var(--fd); font-size: 20px; font-weight: 700; color: var(--ink); }
   .form-success-sub { font-size: 14px; color: var(--ink3); max-width: 320px; line-height: 1.65; }
 
   /* FAQ in contact */
-  .faq-section-title { font-family: var(--fd); font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 6px; }
+  .faq-section-title { font-family: var(--fd); font-size: 20px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 6px; }
   .faq-section-sub { font-size: 13px; color: var(--ink3); margin-bottom: 20px; }
   .cfaq-item { border: 1px solid var(--card-border); border-radius: 11px; margin-bottom: 8px; overflow: hidden; background: var(--card); transition: border-color 0.15s; }
-  .cfaq-item:hover { border-color: rgba(14,245,212,.15); }
+  .cfaq-item:hover { border-color: var(--accent2); }
   .cfaq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; background: transparent; border: none; cursor: pointer; text-align: left; font-size: 13.5px; font-weight: 600; color: var(--ink); font-family: var(--font); gap: 12px; }
   .cfaq-chevron { width: 20px; height: 20px; border-radius: 50%; background: var(--card-hover); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s, background 0.15s; font-size: 10px; color: var(--ink3); }
-  .cfaq-chevron.open { transform: rotate(180deg); background: var(--cyan3); color: var(--cyan); }
+  .cfaq-chevron.open { transform: rotate(180deg); background: var(--accent3); color: var(--accent); }
   .cfaq-a { max-height: 0; overflow: hidden; transition: max-height 0.28s ease, padding 0.28s ease; padding: 0 18px; }
   .cfaq-a.open { max-height: 220px; padding: 0 18px 16px; }
   .cfaq-a p { font-size: 13px; color: var(--ink2); line-height: 1.72; margin: 0; }
@@ -327,10 +327,10 @@ export function PrivacyPage() {
         </div>
         <h3>Service Providers</h3>
         <ul>
-          <li><strong>Supabase</strong> — Database and authentication infrastructure</li>
-          <li><strong>Paystack</strong> — Payment processing</li>
-          <li><strong>Anthropic / Claude</strong> — AI analysis of transcripts to generate insights</li>
-          <li><strong>Daily.co</strong> — Meeting room infrastructure</li>
+          <li><strong>Supabase:</strong> Database and authentication infrastructure</li>
+          <li><strong>Paystack:</strong> Payment processing</li>
+          <li><strong>Anthropic / Claude:</strong> AI analysis of transcripts to generate insights</li>
+          <li><strong>Daily.co:</strong> Meeting room infrastructure</li>
         </ul>
         <h3>Legal Requirements</h3>
         <p>We may disclose data when required by law, court order, or governmental authority.</p>
@@ -420,7 +420,7 @@ export function TermsPage() {
 
   return (
     <LegalLayout page="terms" kicker="Terms of Service" title="The rules of" titleC="the road."
-      subtitle="By using Fixsense, you agree to these terms. Please read them carefully — they govern your use of our platform and services."
+      subtitle="By using Fixsense, you agree to these terms. Please read them carefully: they govern your use of our platform and services."
       updated="March 29, 2026" version="3.0" sections={sections}>
 
       <section className="lg-section" id="agreement">
@@ -435,7 +435,7 @@ export function TermsPage() {
         <h2>Use of Services</h2>
         <p>Fixsense provides AI-powered sales intelligence tools including call recording, transcription, analysis, coaching insights, and team collaboration features. Our Services are designed for professional sales use.</p>
         <p>We reserve the right to modify, suspend, or discontinue any part of the Services at any time with reasonable notice for material changes.</p>
-        <p>You acknowledge that Fixsense uses AI models (including Anthropic's Claude) to process your meeting content. AI outputs are intended to assist — not replace — human judgment.</p>
+        <p>You acknowledge that Fixsense uses AI models (including Anthropic's Claude) to process your meeting content. AI outputs are intended to assist, not replace, human judgment.</p>
       </section>
 
       <section className="lg-section" id="accounts">
@@ -550,13 +550,13 @@ export function SecurityPage() {
 
   return (
     <LegalLayout page="security" kicker="Security" title="Built for" titleC="enterprise trust."
-      subtitle="Security isn't a feature — it's the foundation. Here's exactly how we protect your calls, transcripts, and data."
+      subtitle="Security isn't a feature. It's the foundation. Here's exactly how we protect your calls, transcripts, and data."
       updated="March 29, 2026" version="1.4" sections={sections}>
 
       <section className="lg-section" id="commitment">
         <h2>Our Commitment</h2>
         <div className="lg-highlight">
-          <p><strong>Your call recordings and transcripts contain sensitive business conversations.</strong> We treat that data with the seriousness it deserves — end-to-end encryption, strict access controls, and zero tolerance for unauthorized access.</p>
+          <p><strong>Your call recordings and transcripts contain sensitive business conversations.</strong> We treat that data with the seriousness it deserves: end-to-end encryption, strict access controls, and zero tolerance for unauthorized access.</p>
         </div>
         <div className="lg-badge-row">
           <div className="lg-badge">🔒 AES-256 Encryption</div>
@@ -575,7 +575,7 @@ export function SecurityPage() {
         <ul>
           <li>All traffic routed through Supabase's hardened network perimeter</li>
           <li>DDoS protection and rate limiting on all public endpoints</li>
-          <li>Database is not publicly accessible — only through authenticated API layer</li>
+          <li>Database is not publicly accessible, only through authenticated API layer</li>
           <li>Web Application Firewall (WAF) on all inbound traffic</li>
         </ul>
       </section>
@@ -635,7 +635,7 @@ export function SecurityPage() {
           <div className="lg-badge">💳 PCI DSS (via Paystack)</div>
         </div>
         <h3>Recording Consent</h3>
-        <p>Fixsense's meeting bot joins calls visibly as "Fixsense AI Recorder" — conspicuous to all participants. Users are responsible for compliance with their jurisdiction's recording consent laws.</p>
+        <p>Fixsense's meeting bot joins calls visibly as "Fixsense AI Recorder," conspicuous to all participants. Users are responsible for compliance with their jurisdiction's recording consent laws.</p>
       </section>
 
       <section className="lg-section" id="incident">
@@ -708,7 +708,7 @@ export function ContactPage() {
     { q: "What's the typical response time for support?", a: "We aim to respond within 24 hours on business days. Enterprise customers get priority response within 4 hours. Urgent security issues are addressed within 1 hour." },
     { q: "I can't access my account. What should I do?", a: "Try the 'Forgot Password' link on the login page. If that doesn't work, email support@fixsense.com.ng with your account email and we'll manually verify and restore access." },
     { q: "How do I cancel my subscription?", a: "Cancel directly from your Billing dashboard at any time. Your access continues until the end of the billing period." },
-    { q: "Can I get a demo before subscribing?", a: "Yes — the Free plan includes up to 30 minutes per month, no credit card required. For a personalized demo with our team, email enterprise@fixsense.com.ng." },
+    { q: "Can I get a demo before subscribing?", a: "Yes, the Free plan includes up to 30 minutes per month, no credit card required. For a personalized demo with our team, email enterprise@fixsense.com.ng." },
     { q: "Do you offer refunds?", a: "We offer a 7-day money-back guarantee on new paid subscriptions. After 7 days, refunds are considered case-by-case. Email billing@fixsense.com.ng." },
   ];
 
@@ -742,7 +742,7 @@ export function ContactPage() {
           </div>
           <div className="lg-kicker"><div className="lg-kicker-dot" />Get in Touch</div>
           <h1 className="lg-h1">We're here.<br /><span className="c">Let's talk.</span></h1>
-          <p className="lg-sub">Whether you have a question about your account, a security concern, or want to discuss enterprise needs — the right team is just an email away.</p>
+          <p className="lg-sub">Whether you have a question about your account, a security concern, or want to discuss enterprise needs, the right team is just an email away.</p>
           <div className="lg-meta">
             <div className="lg-meta-pill"><div className="lg-meta-dot" />Avg. response: &lt;24 hours</div>
             <div className="lg-meta-pill">Mon–Fri, 9am–6pm WAT</div>
