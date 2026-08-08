@@ -68,18 +68,44 @@ export function trackFunnelOnce(key: string, event: FunnelEvent, metadata?: Reco
  * signup form themselves — never anything they haven't entered, and never
  * before they've left the field. This lets the team follow up on people who
  * started signing up and dropped off, similar to standard cart/lead
- * recovery. Disclosed in the Privacy Policy under "Abandoned sign-ups".
+ * recovery. Disclosed in the Privacy Policy under "Website Visitors &
+ * Abandoned Sign-ups".
+ *
+ * Gated behind the `partial_lead_capture_enabled` platform_config flag
+ * (see is_partial_lead_capture_enabled RPC) so it can ship disabled and be
+ * turned on later once the Privacy Policy's 14-day change-notice period has
+ * run, without needing a new deploy.
  *
  * Fires at most once per funnel session (further edits to the field don't
  * re-send), and only once the email looks syntactically valid — this is
  * never sent from a keystroke, only from a field the visitor has committed.
  */
 const partialLeadSent = new Set<string>();
+
+// Cache the flag for the lifetime of the tab so we're not round-tripping to
+// the DB on every blur. Re-checked on a fresh page load.
+let captureEnabledCache: Promise<boolean> | null = null;
+async function isPartialLeadCaptureEnabled(): Promise<boolean> {
+  if (!captureEnabledCache) {
+    captureEnabledCache = (async () => {
+      try {
+        const { data, error } = await (supabase as any).rpc("is_partial_lead_capture_enabled");
+        if (error) return false;
+        return data === true;
+      } catch {
+        return false;
+      }
+    })();
+  }
+  return captureEnabledCache;
+}
+
 export async function reportPartialLead(email: string, fullName?: string): Promise<void> {
   const trimmed = email.trim();
   if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
   const key = funnelSessionId();
   if (partialLeadSent.has(key)) return;
+  if (!(await isPartialLeadCaptureEnabled())) return;
   partialLeadSent.add(key);
   await trackFunnel("signup_started", {
     method: "email",
