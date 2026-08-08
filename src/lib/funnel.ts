@@ -61,6 +61,33 @@ export function trackFunnelOnce(key: string, event: FunnelEvent, metadata?: Reco
   void trackFunnel(event, metadata);
 }
 
+/**
+ * Partial-lead capture for abandoned signups.
+ *
+ * Records the email (and name, if given) the visitor has typed into the
+ * signup form themselves — never anything they haven't entered, and never
+ * before they've left the field. This lets the team follow up on people who
+ * started signing up and dropped off, similar to standard cart/lead
+ * recovery. Disclosed in the Privacy Policy under "Abandoned sign-ups".
+ *
+ * Fires at most once per funnel session (further edits to the field don't
+ * re-send), and only once the email looks syntactically valid — this is
+ * never sent from a keystroke, only from a field the visitor has committed.
+ */
+const partialLeadSent = new Set<string>();
+export async function reportPartialLead(email: string, fullName?: string): Promise<void> {
+  const trimmed = email.trim();
+  if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
+  const key = funnelSessionId();
+  if (partialLeadSent.has(key)) return;
+  partialLeadSent.add(key);
+  await trackFunnel("signup_started", {
+    method: "email",
+    partial_email: trimmed,
+    partial_name: fullName?.trim() || null,
+  });
+}
+
 const TRIAL_CTA = /start\s*(your\s*)?free\s*trial|start\s*free|try\s*(it\s*)?free|get\s*started\s*free/i;
 
 /** True when a clicked element looks like a "Start Free Trial" CTA. */
