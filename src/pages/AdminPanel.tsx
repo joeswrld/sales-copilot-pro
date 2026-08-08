@@ -92,6 +92,7 @@ const NAV_ITEMS = [
   { id: "users",     label: "Users",         icon: "◎" },
   { id: "billing",   label: "Billing",       icon: "◆" },
   { id: "analytics", label: "Analytics",     icon: "◇" },
+  { id: "visitors",  label: "Website Visitors", icon: "◍" },
   { id: "flags",     label: "Feature Flags", icon: "⌁" },
   { id: "ai",        label: "AI & Infra",    icon: "◉" },
   { id: "security",  label: "Security",      icon: "◐" },
@@ -318,6 +319,7 @@ export default function AdminPanel() {
               {section === "users"      && <UsersSection />}
               {section === "billing"    && <BillingSection />}
               {section === "analytics"  && <AnalyticsSection />}
+              {section === "visitors"   && <VisitorsSection />}
               {section === "flags"      && <FeatureFlagsSection />}
               {section === "ai"         && <AIInfraSection />}
               {section === "security"   && <SecuritySection />}
@@ -1256,6 +1258,226 @@ function ExtraMinutesSection() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSITE VISITORS SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VisitorSession {
+  id: string; user_id: string | null; user_email: string | null; user_name: string | null;
+  started_at: string; last_seen_at: string; duration_ms: number; page_views: number;
+  clicks: number; rage_clicks: number; dead_clicks: number; errors: number; max_scroll_pct: number;
+  device: string | null; browser: string | null; os: string | null; country: string | null;
+  timezone: string | null; entry_path: string | null; exit_path: string | null; referrer: string | null;
+}
+interface SessionEvent {
+  id: number; ts: string; event: string; path: string | null; selector: string | null;
+  label: string | null; x: number | null; y: number | null; scroll_pct: number | null;
+  metadata: Record<string, any> | null;
+}
+interface FunnelMetrics {
+  visitors: number; page_views: number; trial_clicks: number; signups_started: number;
+  signups_completed: number; signups_abandoned: number; visit_to_trial_pct: number;
+  trial_to_signup_pct: number; signup_abandon_pct: number;
+}
+interface PartialLead {
+  session_id: string; email: string; name: string | null; path: string | null; created_at: string;
+}
+
+const fmtDuration = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+};
+
+function VisitorsSection() {
+  const [range, setRange] = useState<RangeKey>("7d");
+  const [funnel, setFunnel] = useState<FunnelMetrics | null>(null);
+  const [sessions, setSessions] = useState<VisitorSession[]>([]);
+  const [total, setTotal] = useState(0);
+  const [leads, setLeads] = useState<PartialLead[]>([]);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<VisitorSession | null>(null);
+  const [tab, setTab] = useState<"sessions" | "leads">("sessions");
+  const PER = 25;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const days = RANGE_DAYS[range];
+    const to = new Date();
+    const from = new Date(Date.now() - days * 86400000);
+    const [f, s, l] = await Promise.all([
+      (supabase as any).rpc("admin_funnel_metrics", { _from: from.toISOString(), _to: to.toISOString() }),
+      (supabase as any).rpc("admin_get_visitor_sessions", { p_days: days, p_limit: PER, p_offset: page * PER }),
+      (supabase as any).from("funnel_events")
+        .select("session_id, path, created_at, metadata")
+        .eq("event", "signup_started")
+        .not("metadata->>partial_email", "is", null)
+        .gte("created_at", from.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
+    if (f.data?.[0]) setFunnel(f.data[0]);
+    if (s.data) { setSessions((s.data as any).sessions || []); setTotal((s.data as any).total || 0); }
+    if (l.data) {
+      setLeads((l.data as any[]).map(r => ({
+        session_id: r.session_id, path: r.path, created_at: r.created_at,
+        email: r.metadata?.partial_email, name: r.metadata?.partial_name ?? null,
+      })).filter(r => r.email));
+    }
+    setLoading(false);
+  }, [range, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div className="an-tabs">
+          <button className={`an-tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
+          <button className={`an-tab ${tab === "leads" ? "active" : ""}`} onClick={() => setTab("leads")}>Abandoned Sign-ups {leads.length > 0 && `(${leads.length})`}</button>
+        </div>
+        <div className="range-tabs">
+          {(["7d", "30d", "90d"] as RangeKey[]).map(r => (
+            <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => { setRange(r); setPage(0); }}>{r}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <SkeletonGrid count={6} height={80} /> : (
+        <>
+          {funnel && (
+            <div className="kpi-grid" style={{ marginBottom: 16 }}>
+              <KpiCard label="Website Visitors" value={fmt(funnel.visitors)} sub={`${fmt(funnel.page_views)} page views`} color={LC.blue} />
+              <KpiCard label="Started Free Trial" value={fmt(funnel.trial_clicks)} sub={`${funnel.visit_to_trial_pct}% of visitors`} color={LC.cyan} />
+              <KpiCard label="Started Sign-up" value={fmt(funnel.signups_started)} sub={`${funnel.trial_to_signup_pct}% of trial clicks`} color={LC.amber} />
+              <KpiCard label="Completed Sign-up" value={fmt(funnel.signups_completed)} color={LC.green} />
+              <KpiCard label="Abandoned Sign-up" value={fmt(funnel.signups_abandoned)} sub={`${funnel.signup_abandon_pct}% drop-off`} color={LC.coral} />
+            </div>
+          )}
+
+          {tab === "sessions" && (
+            <>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>{["Visitor", "Location / Device", "Entry → Exit", "Duration", "Activity", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {sessions.map(s => (
+                      <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => setSelected(s)}>
+                        <td>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{s.user_name || (s.user_id ? "Signed-in visitor" : "Anonymous visitor")}</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)" }}>{s.user_email || `session ${s.id.slice(0, 8)}…`}</div>
+                        </td>
+                        <td style={{ fontSize: 11, color: "var(--muted)" }}>{[s.country, s.device, s.browser].filter(Boolean).join(" · ") || "—"}</td>
+                        <td style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)" }}>{s.entry_path || "/"} → {s.exit_path || s.entry_path || "/"}</td>
+                        <td style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)" }}>{fmtDuration(s.duration_ms || 0)}</td>
+                        <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                          {s.page_views}pv · {s.clicks}clk{s.rage_clicks > 0 && <span style={{ color: "var(--red)" }}> · {s.rage_clicks} rage</span>}{s.errors > 0 && <span style={{ color: "var(--red)" }}> · {s.errors} err</span>}
+                        </td>
+                        <td><span className="action-btn" title="View session replay">▶</span></td>
+                      </tr>
+                    ))}
+                    {!sessions.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No visitor sessions in this period</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <div className="pagination">
+                <button className="page-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
+                <span style={{ color: "var(--muted)", fontSize: 12 }}>Page {page + 1} / {Math.max(1, Math.ceil(total / PER))}</span>
+                <button className="page-btn" disabled={(page + 1) * PER >= total} onClick={() => setPage(p => p + 1)}>Next →</button>
+              </div>
+            </>
+          )}
+
+          {tab === "leads" && (
+            <div className="table-wrap">
+              <table>
+                <thead><tr>{["Email", "Name", "Page", "Left the form", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {leads.map(l => (
+                    <tr key={`${l.session_id}-${l.created_at}`}>
+                      <td style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--text)" }}>{l.email}</td>
+                      <td style={{ fontSize: 12, color: "var(--text)" }}>{l.name || "—"}</td>
+                      <td style={{ fontSize: 11, color: "var(--muted)" }}>{l.path || "—"}</td>
+                      <td style={{ fontSize: 11, color: "var(--muted)" }}>{fmtTime(l.created_at)}</td>
+                      <td><a href={`mailto:${l.email}`} className="action-btn" title="Email this lead">✉</a></td>
+                    </tr>
+                  ))}
+                  {!leads.length && <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No abandoned sign-ups with a captured email in this period</td></tr>}
+                </tbody>
+              </table>
+              <div style={{ padding: "10px 14px", fontSize: 11, color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                Only visitors who typed an email into the sign-up form themselves appear here. See the Privacy Policy's "Abandoned sign-ups" section.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {selected && <SessionReplayModal session={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+function SessionReplayModal({ session, onClose }: { session: VisitorSession; onClose: () => void }) {
+  const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await (supabase as any).rpc("admin_get_session_events", { p_session_id: session.id });
+      setEvents(Array.isArray(data) ? data : []);
+      setLoading(false);
+    })();
+  }, [session.id]);
+
+  const iconFor = (ev: string) => ({
+    page_view: "◇", click: "●", rage_click: "⊗", dead_click: "○",
+    scroll: "↕", error: "⚠", element_view: "◎", form_submit: "▣",
+  } as Record<string, string>)[ev] || "·";
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ width: "min(640px,100%)" }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{session.user_name || session.user_email || "Anonymous visitor"}</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>{[session.country, session.device, session.browser, session.os].filter(Boolean).join(" · ")}</div>
+          </div>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: "10px 16px", display: "flex", gap: 14, flexWrap: "wrap", borderBottom: "1px solid var(--border)", fontSize: 11, color: "var(--muted)" }}>
+          <span>{fmtTime(session.started_at)}</span>
+          <span>Duration {fmtDuration(session.duration_ms || 0)}</span>
+          <span>Max scroll {session.max_scroll_pct || 0}%</span>
+          <span>Referrer {session.referrer || "direct"}</span>
+        </div>
+        <div style={{ maxHeight: 420, overflowY: "auto", padding: "10px 16px" }}>
+          {loading ? <SkeletonGrid count={6} height={28} /> : events.length === 0 ? (
+            <div style={{ textAlign: "center", color: "var(--muted)", padding: 24, fontSize: 12 }}>No recorded movement for this session</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {events.map(e => (
+                <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 11 }}>
+                  <span style={{ width: 16, textAlign: "center", color: e.event.includes("rage") || e.event === "error" ? "var(--red)" : "var(--accent)" }}>{iconFor(e.event)}</span>
+                  <span style={{ fontFamily: "var(--mono)", color: "var(--muted)", width: 68, flexShrink: 0 }}>{new Date(e.ts).toLocaleTimeString("en-NG", { hour12: false })}</span>
+                  <span style={{ color: "var(--text)", flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 600 }}>{e.event.replace("_", " ")}</span>
+                    {e.label && <span style={{ color: "var(--muted)" }}> — {e.label}</span>}
+                    {e.path && <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}> {e.path}</span>}
+                    {e.scroll_pct != null && <span style={{ color: "var(--dim)" }}> {e.scroll_pct}%</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
