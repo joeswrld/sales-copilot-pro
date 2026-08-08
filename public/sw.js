@@ -206,8 +206,8 @@ self.addEventListener('push', (event) => {
   const {
     title = '📅 Fixsense Reminder',
     body = 'You have an upcoming meeting.',
-    icon = '/fixsense_icon_logo (2).png',
-    badge = '/fixsense_icon_logo (2).png',
+    icon = '/android-chrome-192x192.png',
+    badge = '/android-chrome-192x192.png',
     tag = 'fixsense-reminder',
     url = '/live',
     requireInteraction = false,
