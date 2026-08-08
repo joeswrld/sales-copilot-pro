@@ -1293,8 +1293,45 @@ const fmtDuration = (ms: number) => {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 };
 
+type VisitorRangeKey = "today" | "yesterday" | "7d" | "30d" | "1y" | "5y" | "10y";
+const VISITOR_RANGE_LABELS: Record<VisitorRangeKey, string> = {
+  today: "Today", yesterday: "Yesterday", "7d": "7 days", "30d": "30 days",
+  "1y": "1 year", "5y": "5 years", "10y": "10 years",
+};
+
+/** Exact calendar-accurate {from, to} for each visitor-tab range option. */
+function resolveVisitorRange(key: VisitorRangeKey): { from: Date; to: Date } {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  switch (key) {
+    case "today":
+      return { from: startOfToday, to: now };
+    case "yesterday": {
+      const y = new Date(startOfToday);
+      y.setDate(y.getDate() - 1);
+      return { from: y, to: startOfToday };
+    }
+    case "7d":
+      return { from: new Date(now.getTime() - 7 * 86400000), to: now };
+    case "30d":
+      return { from: new Date(now.getTime() - 30 * 86400000), to: now };
+    case "1y": {
+      const f = new Date(now); f.setFullYear(f.getFullYear() - 1);
+      return { from: f, to: now };
+    }
+    case "5y": {
+      const f = new Date(now); f.setFullYear(f.getFullYear() - 5);
+      return { from: f, to: now };
+    }
+    case "10y": {
+      const f = new Date(now); f.setFullYear(f.getFullYear() - 10);
+      return { from: f, to: now };
+    }
+  }
+}
+
 function VisitorsSection() {
-  const [range, setRange] = useState<RangeKey>("7d");
+  const [range, setRange] = useState<VisitorRangeKey>("7d");
   const [funnel, setFunnel] = useState<FunnelMetrics | null>(null);
   const [sessions, setSessions] = useState<VisitorSession[]>([]);
   const [total, setTotal] = useState(0);
@@ -1309,17 +1346,16 @@ function VisitorsSection() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const days = RANGE_DAYS[range];
-    const to = new Date();
-    const from = new Date(Date.now() - days * 86400000);
+    const { from, to } = resolveVisitorRange(range);
     const [f, s, l, c] = await Promise.all([
       (supabase as any).rpc("admin_funnel_metrics", { _from: from.toISOString(), _to: to.toISOString() }),
-      (supabase as any).rpc("admin_get_visitor_sessions", { p_days: days, p_limit: PER, p_offset: page * PER }),
+      (supabase as any).rpc("admin_get_visitor_sessions", { _from: from.toISOString(), _to: to.toISOString(), p_limit: PER, p_offset: page * PER }),
       (supabase as any).from("funnel_events")
         .select("session_id, path, created_at, metadata")
         .eq("event", "signup_started")
         .not("metadata->>partial_email", "is", null)
         .gte("created_at", from.toISOString())
+        .lte("created_at", to.toISOString())
         .order("created_at", { ascending: false })
         .limit(100),
       (supabase as any).rpc("is_partial_lead_capture_enabled"),
@@ -1361,9 +1397,9 @@ function VisitorsSection() {
           <button className={`an-tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
           <button className={`an-tab ${tab === "leads" ? "active" : ""}`} onClick={() => setTab("leads")}>Abandoned Sign-ups {leads.length > 0 && `(${leads.length})`}</button>
         </div>
-        <div className="range-tabs">
-          {(["7d", "30d", "90d"] as RangeKey[]).map(r => (
-            <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => { setRange(r); setPage(0); }}>{r}</button>
+        <div className="range-tabs" style={{ flexWrap: "wrap", rowGap: 4 }}>
+          {(["today", "yesterday", "7d", "30d", "1y", "5y", "10y"] as VisitorRangeKey[]).map(r => (
+            <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => { setRange(r); setPage(0); }}>{VISITOR_RANGE_LABELS[r]}</button>
           ))}
         </div>
       </div>
