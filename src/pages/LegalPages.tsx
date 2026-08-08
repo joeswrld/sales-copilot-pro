@@ -305,7 +305,7 @@ export function PrivacyPage() {
         <p>If you connect third-party services , we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
         <h3>Website Visitors & Abandoned Sign-ups</h3>
         <p>When you browse fixsense.com.ng, we record anonymous session activity (pages viewed, clicks, scroll depth, device and browser type) if you've accepted analytics cookies — never your keystrokes or anything you type. We never link this to your name or email unless you sign in.</p>
-        <p>If you begin creating an account and enter an email address (and optionally your name) into the sign-up form but don't complete sign-up, we record that email and name so our team can follow up. We only ever record what you've actually typed into that field, and only after you move on from it — never anything you haven't entered yourself. You can ask us to delete this at any time by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.</p>
+        <p>If you begin creating an account and enter an email address (and optionally your name) into the sign-up form but don't complete sign-up, we record that email and name so our team can follow up with you. This is active as of August 8, 2026. We only ever record what you've actually typed into that field, and only after you move on from it — never anything you haven't entered yourself. You can ask us to delete this, or opt out of future follow-up, at any time by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.</p>
       </section>
 
       <section className="lg-section" id="how-we-use">
