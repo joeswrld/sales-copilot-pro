@@ -43,9 +43,36 @@ function FixsenseLogo({ size = 36, borderRadius = 10 }: { size?: number; borderR
    ──────────────────────────────────────────────────────────────────────── */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Common disposable/temp-mail domains. Not exhaustive — new ones appear
+// constantly — but blocks the vast majority of throwaway-inbox services
+// people use to dodge signup verification.
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "mailinator.com", "guerrillamail.com", "guerrillamail.info", "guerrillamail.biz",
+  "10minutemail.com", "10minutemail.net", "tempmail.com", "temp-mail.org",
+  "yopmail.com", "yopmail.fr", "yopmail.net", "throwawaymail.com",
+  "trashmail.com", "trashmail.net", "getnada.com", "maildrop.cc",
+  "sharklasers.com", "dispostable.com", "fakeinbox.com", "mintemail.com",
+  "mailnesia.com", "mohmal.com", "moakt.com", "emailondeck.com",
+  "tempinbox.com", "mailcatch.com", "tempr.email", "spamgourmet.com",
+  "burnermail.io", "inboxbear.com", "mytemp.email", "temp-mail.io",
+  "discard.email", "discardmail.com", "mailtemp.info", "throwam.com",
+  "mailnull.com", "spambog.com", "spambox.us", "tempail.com",
+  "emailfake.com", "fakemailgenerator.com", "crazymailing.com",
+  "correotemporal.org", "harakirimail.com", "kurzepost.de", "tempmailo.com",
+]);
+
 function emailError(value: string): string | null {
   if (!value) return null; // don't nag before they've typed anything
   if (!EMAIL_RE.test(value)) return "Enter a valid email address.";
+  return null;
+}
+
+function disposableEmailError(value: string): string | null {
+  if (!value || !EMAIL_RE.test(value)) return null;
+  const domain = value.trim().toLowerCase().split("@")[1];
+  if (domain && DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    return "Temporary or disposable email addresses aren't supported. Please use a permanent email.";
+  }
   return null;
 }
 
@@ -60,6 +87,9 @@ function friendlyAuthError(raw: string): string {
   const msg = raw.toLowerCase();
   if (msg.includes("invalid login credentials")) {
     return "That email or password isn't right. Double-check and try again.";
+  }
+  if (msg.includes("temporary or disposable email") || msg.includes("disposable email")) {
+    return "Temporary or disposable email addresses aren't supported. Please use a permanent email.";
   }
   if (msg.includes("user already registered") || msg.includes("already registered")) {
     return "An account with this email already exists. Try signing in instead.";
@@ -118,13 +148,40 @@ function TrustRow({ tone = "light" }: { tone?: "light" | "dark" }) {
 /* ────────────────────────────────────────────────────────────────────────
    Login page
    ──────────────────────────────────────────────────────────────────────── */
+const VISITED_KEY = "fixsense_has_visited";
+
+/** True if this looks like the visitor's first time on the login page
+ * (no record of a prior visit in localStorage). Fails safe to "not first
+ * visit" (login default) if storage is unavailable, e.g. private browsing —
+ * matches the fail-silent pattern used in CookieConsent.tsx. */
+function isFirstVisit(): boolean {
+  try {
+    return localStorage.getItem(VISITED_KEY) === null;
+  } catch {
+    return false;
+  }
+}
+
+function markVisited(): void {
+  try {
+    localStorage.setItem(VISITED_KEY, "1");
+  } catch {
+    // localStorage unavailable — nothing to do, next load just won't know.
+  }
+}
+
 type Mode = "login" | "signup" | "forgot";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(() => (isFirstVisit() ? "signup" : "login"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  // Kept in sync with fullName so the email-field autofill handler can read
+  // the freshest name even if autofill fills both fields in the same tick
+  // (React state updates from that tick may not have flushed yet).
+  const fullNameRef = useRef(fullName);
+  useEffect(() => { fullNameRef.current = fullName; }, [fullName]);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
@@ -180,6 +237,21 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  /* ── First-visit → Sign Up default ──────────────────────────────────────
+     mode was already lazily initialized to "signup" above if this looks
+     like a first visit; this effect just records the visit for next time
+     and logs the funnel event, since switchToSignup's own tracking only
+     fires on a manual tab click. */
+  useEffect(() => {
+    const firstVisit = isFirstVisit();
+    markVisited();
+    if (firstVisit && mode === "signup") {
+      void trackFunnel("signup_started", { method: "email", trigger: "first_visit_default" });
+    }
+    // Intentionally run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
@@ -191,13 +263,14 @@ export default function LoginPage() {
     };
   }, []);
 
-  const emailErr = touched.email ? emailError(email) : null;
+  const emailErr = touched.email ? (emailError(email) || (mode === "signup" ? disposableEmailError(email) : null)) : null;
   const passwordErr = touched.password && mode !== "forgot" ? passwordError(password, mode === "signup" ? "signup" : "login") : null;
 
   const canSubmit = useMemo(() => {
     if (loading) return false;
     if (!email) return false;
     if (emailError(email)) return false;
+    if (mode === "signup" && disposableEmailError(email)) return false;
     if (mode === "forgot") return true;
     if (!password) return false;
     if (mode === "signup" && password.length < 8) return false;
@@ -214,6 +287,7 @@ export default function LoginPage() {
       setFormError(null);
 
       if (emailError(email)) return;
+      if (mode === "signup" && disposableEmailError(email)) return;
       if (mode !== "forgot" && passwordError(password, mode === "signup" ? "signup" : "login")) return;
 
       if (mode === "signup" && !agreeToTerms) {
@@ -321,6 +395,12 @@ export default function LoginPage() {
   /* ── Shared form markup (rendered once, styled responsively) ────────── */
   const formBody = (
     <>
+      {mode === "signup" && (
+        <div className="signup-go-ahead" role="note">
+          <Check aria-hidden="true" style={{ width: "13px", height: "13px", flexShrink: 0 }} />
+          <span>Free to start · No credit card required</span>
+        </div>
+      )}
       {mode !== "forgot" && (
         <>
           <button
@@ -384,6 +464,17 @@ export default function LoginPage() {
                   placeholder="Alex Johnson"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  onAnimationStart={(e) => {
+                    // Same autofill-detection as the email field. Name alone
+                    // isn't reportable — reportPartialLead requires a valid
+                    // email — so this just makes sure the freshest
+                    // autofilled name is available if/when the email field
+                    // reports (whichever field's autofill animation fires
+                    // second will carry both values).
+                    if (e.animationName !== "onAutoFillStart") return;
+                    const filled = e.currentTarget.value;
+                    if (filled && filled !== fullName) setFullName(filled);
+                  }}
                   className="auth-input"
                   required
                 />
@@ -412,6 +503,21 @@ export default function LoginPage() {
                   // this field themselves, and only once per field-visit.
                   if (mode === "signup" && !emailError(email)) {
                     reportPartialLead(email, fullName);
+                  }
+                }}
+                onAnimationStart={(e) => {
+                  // Browser autofill filled this field without the user
+                  // focusing/blurring it. Treat autofill as "the visitor
+                  // supplied this" for capture purposes — same as typing it
+                  // — since it's still their own saved data, just filled by
+                  // the browser rather than the keyboard. Read straight off
+                  // the DOM node: autofill can update the value before
+                  // React's controlled state has caught up.
+                  if (e.animationName !== "onAutoFillStart") return;
+                  const filled = e.currentTarget.value;
+                  if (filled && filled !== email) setEmail(filled);
+                  if (mode === "signup" && !emailError(filled)) {
+                    reportPartialLead(filled, fullNameRef.current);
                   }
                 }}
                 className={`auth-input${emailErr ? " auth-input--error" : ""}`}
@@ -831,6 +937,14 @@ export default function LoginPage() {
         .auth-input--error {
           border-color: rgba(162,59,46,0.4);
         }
+        /* Autofill detection: browsers apply a transition/animation-name
+           change to autofilled inputs before any user interaction, which
+           lets us catch "filled by autofill but never blurred" cases that
+           a plain onBlur handler would miss entirely. */
+        @keyframes onAutoFillStart { from {} to {} }
+        @keyframes onAutoFillCancel { from {} to {} }
+        .auth-input:-webkit-autofill { animation-name: onAutoFillStart; }
+        .auth-input:not(:-webkit-autofill) { animation-name: onAutoFillCancel; }
         .auth-input--error:focus {
           border-color: var(--red);
           box-shadow: 0 0 0 3px var(--red-ring);
@@ -976,6 +1090,13 @@ export default function LoginPage() {
 
         .auth-security {
           margin-top: 18px;
+        }
+
+        .signup-go-ahead {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 12px; font-weight: 600; color: var(--good);
+          background: var(--good-soft); border: 1px solid rgba(47,107,79,0.2);
+          border-radius: 7px; padding: 7px 10px; margin-bottom: 14px;
         }
 
         /* ── Mobile (< 900px): single column, form-first ─────────────── */
