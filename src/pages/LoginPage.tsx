@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { trackFunnel } from "@/lib/funnel";
+import { trackFunnel, reportPartialLead } from "@/lib/funnel";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Mail,
@@ -406,7 +406,14 @@ export default function LoginPage() {
                 placeholder="you@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                onBlur={() => {
+                  setTouched((t) => ({ ...t, email: true }));
+                  // Only ever record what the visitor has actually typed into
+                  // this field themselves, and only once per field-visit.
+                  if (mode === "signup" && !emailError(email)) {
+                    reportPartialLead(email, fullName);
+                  }
+                }}
                 className={`auth-input${emailErr ? " auth-input--error" : ""}`}
                 autoCapitalize="off"
                 autoCorrect="off"
