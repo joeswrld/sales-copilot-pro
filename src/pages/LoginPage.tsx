@@ -74,7 +74,7 @@ function friendlyAuthError(raw: string): string {
     return "Too many attempts. Please wait a moment and try again.";
   }
   if (msg.includes("network") || msg.includes("fetch")) {
-    return "Connection issue — check your network and try again.";
+    return "Connection issue. Check your network and try again.";
   }
   return raw || "Something went wrong. Please try again.";
 }
@@ -1055,10 +1055,18 @@ export default function LoginPage() {
 
           <div className="lp-value-prop">
             <h1 className="lp-value-headline">
-              Continue where your meetings left off.
+              {mode === "login"
+                ? "Continue where your meetings left off."
+                : mode === "signup"
+                ? "Never take meeting notes again."
+                : "Reset your password."}
             </h1>
             <p className="lp-value-sub">
-              Every call, transcript, and summary is exactly where you left it. Sign in and pick up instantly.
+              {mode === "login"
+                ? "Every call, transcript, and summary is exactly where you left it. Sign in and pick up instantly."
+                : mode === "signup"
+                ? "5 meetings a month, free. No credit card, no setup call, ready in minutes."
+                : "Enter the email on your account and we'll send you a secure reset link."}
             </p>
           </div>
 
