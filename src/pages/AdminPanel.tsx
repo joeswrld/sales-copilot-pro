@@ -1303,6 +1303,8 @@ function VisitorsSection() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<VisitorSession | null>(null);
   const [tab, setTab] = useState<"sessions" | "leads">("sessions");
+  const [captureEnabled, setCaptureEnabled] = useState<boolean | null>(null);
+  const [toggling, setToggling] = useState(false);
   const PER = 25;
 
   const load = useCallback(async () => {
@@ -1310,7 +1312,7 @@ function VisitorsSection() {
     const days = RANGE_DAYS[range];
     const to = new Date();
     const from = new Date(Date.now() - days * 86400000);
-    const [f, s, l] = await Promise.all([
+    const [f, s, l, c] = await Promise.all([
       (supabase as any).rpc("admin_funnel_metrics", { _from: from.toISOString(), _to: to.toISOString() }),
       (supabase as any).rpc("admin_get_visitor_sessions", { p_days: days, p_limit: PER, p_offset: page * PER }),
       (supabase as any).from("funnel_events")
@@ -1320,6 +1322,7 @@ function VisitorsSection() {
         .gte("created_at", from.toISOString())
         .order("created_at", { ascending: false })
         .limit(100),
+      (supabase as any).rpc("is_partial_lead_capture_enabled"),
     ]);
     if (f.data?.[0]) setFunnel(f.data[0]);
     if (s.data) { setSessions((s.data as any).sessions || []); setTotal((s.data as any).total || 0); }
@@ -1329,10 +1332,27 @@ function VisitorsSection() {
         email: r.metadata?.partial_email, name: r.metadata?.partial_name ?? null,
       })).filter(r => r.email));
     }
+    if (typeof c.data === "boolean") setCaptureEnabled(c.data);
     setLoading(false);
   }, [range, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggleCapture = async () => {
+    if (captureEnabled === null) return;
+    const next = !captureEnabled;
+    setToggling(true);
+    try {
+      const { error } = await (supabase as any).rpc("admin_set_partial_lead_capture", { p_enabled: next });
+      if (error) throw error;
+      setCaptureEnabled(next);
+      toast.success(next ? "Partial-lead capture enabled" : "Partial-lead capture disabled");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update setting");
+    } finally {
+      setToggling(false);
+    }
+  };
 
   return (
     <div>
@@ -1394,24 +1414,58 @@ function VisitorsSection() {
           )}
 
           {tab === "leads" && (
-            <div className="table-wrap">
-              <table>
-                <thead><tr>{["Email", "Name", "Page", "Left the form", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {leads.map(l => (
-                    <tr key={`${l.session_id}-${l.created_at}`}>
-                      <td style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--text)" }}>{l.email}</td>
-                      <td style={{ fontSize: 12, color: "var(--text)" }}>{l.name || "—"}</td>
-                      <td style={{ fontSize: 11, color: "var(--muted)" }}>{l.path || "—"}</td>
-                      <td style={{ fontSize: 11, color: "var(--muted)" }}>{fmtTime(l.created_at)}</td>
-                      <td><a href={`mailto:${l.email}`} className="action-btn" title="Email this lead">✉</a></td>
-                    </tr>
-                  ))}
-                  {!leads.length && <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>No abandoned sign-ups with a captured email in this period</td></tr>}
-                </tbody>
-              </table>
-              <div style={{ padding: "10px 14px", fontSize: 11, color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
-                Only visitors who typed an email into the sign-up form themselves appear here. See the Privacy Policy's "Abandoned sign-ups" section.
+            <div>
+              <div className="card" style={{
+                padding: "14px 16px", marginBottom: 14, display: "flex", alignItems: "center",
+                justifyContent: "space-between", gap: 14, flexWrap: "wrap",
+                borderColor: captureEnabled ? "rgba(52,211,153,.35)" : "rgba(251,191,36,.35)",
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: captureEnabled ? "var(--green)" : "var(--yellow)", flexShrink: 0 }} />
+                    Partial-lead capture is {captureEnabled === null ? "…" : captureEnabled ? "ON" : "OFF"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, maxWidth: 480 }}>
+                    {captureEnabled
+                      ? "Emails typed into the sign-up form are being recorded when the visitor abandons sign-up."
+                      : "Off by default. Turn on only after the updated Privacy Policy (v2.2, \"Website Visitors & Abandoned Sign-ups\") has been live for at least 14 days per our own change-notice commitment."}
+                  </div>
+                </div>
+                <button
+                  className="action-btn"
+                  style={{ padding: "7px 14px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}
+                  disabled={captureEnabled === null || toggling}
+                  onClick={() => {
+                    if (!captureEnabled && !window.confirm(
+                      "Enable partial-lead capture?\n\nOnly do this once the updated Privacy Policy has been public for at least 14 days " +
+                      "(our own policy commits to that notice period for new data-collection categories). Continue?"
+                    )) return;
+                    toggleCapture();
+                  }}
+                >
+                  {toggling ? "…" : captureEnabled ? "Turn off" : "Turn on"}
+                </button>
+              </div>
+
+              <div className="table-wrap">
+                <table>
+                  <thead><tr>{["Email", "Name", "Page", "Left the form", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {leads.map(l => (
+                      <tr key={`${l.session_id}-${l.created_at}`}>
+                        <td style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--text)" }}>{l.email}</td>
+                        <td style={{ fontSize: 12, color: "var(--text)" }}>{l.name || "—"}</td>
+                        <td style={{ fontSize: 11, color: "var(--muted)" }}>{l.path || "—"}</td>
+                        <td style={{ fontSize: 11, color: "var(--muted)" }}>{fmtTime(l.created_at)}</td>
+                        <td><a href={`mailto:${l.email}`} className="action-btn" title="Email this lead">✉</a></td>
+                      </tr>
+                    ))}
+                    {!leads.length && <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: 24 }}>{captureEnabled ? "No abandoned sign-ups with a captured email in this period" : "Capture is off, so no emails are being recorded yet"}</td></tr>}
+                  </tbody>
+                </table>
+                <div style={{ padding: "10px 14px", fontSize: 11, color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                  Only visitors who typed an email into the sign-up form themselves appear here. See the Privacy Policy's "Website Visitors & Abandoned Sign-ups" section.
+                </div>
               </div>
             </div>
           )}
