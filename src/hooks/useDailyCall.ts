@@ -118,6 +118,33 @@ function isGenericDailyError(msg: string): boolean {
   return msg === "Unknown Daily.co error" || msg.includes("no details provided by Daily.co");
 }
 
+// Detects failure to fetch Daily's call-machine bundle. This is almost never
+// a problem with our room/auth — it means the browser could not reach any of
+// Daily's CDN hosts (c.daily.co, and its documented DNS-outage fallbacks
+// c.dailywebrtc.com / c.dailywebrtc.net — all three are legitimate Daily
+// infrastructure: https://docs.daily.co/guides/privacy-and-security/corporate-firewalls-nats-allowed-ip-list).
+// Common causes: a restrictive Content-Security-Policy missing daily.co /
+// dailywebrtc.com / dailywebrtc.net, a corporate firewall or proxy blocking
+// those hosts, an ad-blocker/privacy extension, or no network connectivity.
+// We surface a distinct, actionable message and skip the generic silent
+// retry, since retrying won't help if the request is being blocked upstream.
+function isBundleLoadError(err: unknown, msg: string): boolean {
+  const haystack = `${msg} ${(() => {
+    try { return JSON.stringify(err); } catch { return ""; }
+  })()}`.toLowerCase();
+  return (
+    haystack.includes("call object bundle") ||
+    haystack.includes("call-machine-object-bundle") ||
+    (haystack.includes("failed to fetch") && haystack.includes("daily"))
+  );
+}
+
+const BUNDLE_LOAD_ERROR_MESSAGE =
+  "Couldn't load the video call component from Daily's servers. This is usually caused by a " +
+  "firewall, proxy, VPN, or browser extension blocking daily.co/dailywebrtc.com/dailywebrtc.net, " +
+  "or a network connectivity issue. Try a different network, disable extensions or VPN for this " +
+  "site, then retry.";
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 export type CallQuality = "excellent" | "good" | "fair" | "poor" | "disconnected";
 export type DailyCallState = "idle" | "joining" | "joined" | "leaving" | "error";
@@ -459,6 +486,11 @@ export function useDailyCall({
       subscribeToTracksAutomatically: true,
       dailyConfig: {
         useDevicePreferenceCookies: false,
+        // Avoids daily-js's default Function()/eval code path for executing
+        // the fetched call-machine bundle, so our CSP script-src doesn't need
+        // 'unsafe-eval' — only 'wasm-unsafe-eval' for the WASM media pipeline.
+        // See: https://docs.daily.co/guides/privacy-and-security/content-security-policy
+        avoidEval: true,
       },
     } as any;
   }
@@ -845,10 +877,13 @@ export function useDailyCall({
       }
 
       const msg = extractDailyError(event?.error ?? event);
-      setError(msg);
+      setError(isBundleLoadError(event, msg) ? BUNDLE_LOAD_ERROR_MESSAGE : msg);
       setCallState("error");
       handlersRegisteredRef.current = false;
-      toast.error(`Meeting error: ${msg}`);
+      toast.error(
+        isBundleLoadError(event, msg) ? BUNDLE_LOAD_ERROR_MESSAGE : `Meeting error: ${msg}`,
+        { duration: isBundleLoadError(event, msg) ? 12000 : undefined },
+      );
     });
 
     callObj.on("call-instance-destroyed", () => {
@@ -1051,6 +1086,15 @@ export function useDailyCall({
       else msg = extractDailyError(err);
 
       console.error("[Daily] Join failed:", err);
+
+      if (isBundleLoadError(err, msg)) {
+        if (isOwnerRef.current) { await releaseCallObject(); isOwnerRef.current = false; }
+        setError(BUNDLE_LOAD_ERROR_MESSAGE);
+        setCallState("error");
+        handlersRegisteredRef.current = false;
+        toast.error(BUNDLE_LOAD_ERROR_MESSAGE, { duration: 12000 });
+        return false;
+      }
 
       if (!isRetry && isGenericDailyError(msg)) {
         console.warn("[Daily] Generic error — retrying once");
