@@ -1390,6 +1390,99 @@ function VisitorsSection() {
     }
   };
 
+  const csvCell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const downloadCsv = (filename: string, rows: (string | number)[][]) => {
+    const csv = rows.map(r => r.map(csvCell).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const [exporting, setExporting] = useState(false);
+
+  const exportSessions = async () => {
+    setExporting(true);
+    try {
+      const { from, to } = resolveVisitorRange(range);
+      // Export the full range, not just the current page — sessions table
+      // is paginated at 25/page and exporting only `sessions` state would
+      // silently under-report anything beyond page 1.
+      const CHUNK = 500;
+      let offset = 0;
+      let all: VisitorSession[] = [];
+      while (true) {
+        const { data, error } = await (supabase as any).rpc("admin_get_visitor_sessions", {
+          _from: from.toISOString(), _to: to.toISOString(), p_limit: CHUNK, p_offset: offset,
+        });
+        if (error) throw error;
+        const batch: VisitorSession[] = data?.sessions || [];
+        all = all.concat(batch);
+        if (batch.length < CHUNK) break;
+        offset += CHUNK;
+        if (offset > 50000) break; // sane hard stop
+      }
+      if (!all.length) {
+        toast.error("No sessions to export for this range");
+        return;
+      }
+      const rows: (string | number)[][] = [
+        ["Visitor Name", "Visitor Email", "Started At", "Last Seen At", "Duration (s)", "Page Views",
+         "Clicks", "Rage Clicks", "Dead Clicks", "Errors", "Max Scroll %", "Device", "Browser", "OS",
+         "Country", "Timezone", "Entry Path", "Exit Path", "Referrer", "Session ID"],
+        ...all.map(s => [
+          s.user_name || "", s.user_email || "", s.started_at, s.last_seen_at,
+          Math.round((s.duration_ms || 0) / 1000), s.page_views, s.clicks, s.rage_clicks,
+          s.dead_clicks, s.errors, s.max_scroll_pct, s.device || "", s.browser || "", s.os || "",
+          s.country || "", s.timezone || "", s.entry_path || "", s.exit_path || "", s.referrer || "",
+          s.id,
+        ]),
+      ];
+      downloadCsv(`fixsense-visitor-sessions-${range}-${Date.now()}.csv`, rows);
+      toast.success(`Exported ${all.length} session${all.length === 1 ? "" : "s"}`);
+    } catch (e: any) {
+      toast.error(e.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportLeads = async () => {
+    setExporting(true);
+    try {
+      const { from, to } = resolveVisitorRange(range);
+      const { data, error } = await (supabase as any).from("funnel_events")
+        .select("session_id, path, created_at, metadata")
+        .eq("event", "signup_started")
+        .not("metadata->>partial_email", "is", null)
+        .gte("created_at", from.toISOString())
+        .lte("created_at", to.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      const rows = (data as any[] || [])
+        .filter(r => r.metadata?.partial_email)
+        .map(r => ({
+          email: r.metadata.partial_email, name: r.metadata.partial_name ?? "",
+          path: r.path || "", created_at: r.created_at, session_id: r.session_id,
+        }));
+      if (!rows.length) {
+        toast.error("No abandoned sign-ups to export for this range");
+        return;
+      }
+      downloadCsv(`fixsense-abandoned-signups-${range}-${Date.now()}.csv`, [
+        ["Email", "Name", "Page", "Left the Form At", "Session ID"],
+        ...rows.map(r => [r.email, r.name, r.path, r.created_at, r.session_id]),
+      ]);
+      toast.success(`Exported ${rows.length} lead${rows.length === 1 ? "" : "s"}`);
+    } catch (e: any) {
+      toast.error(e.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
@@ -1397,10 +1490,20 @@ function VisitorsSection() {
           <button className={`an-tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>Sessions</button>
           <button className={`an-tab ${tab === "leads" ? "active" : ""}`} onClick={() => setTab("leads")}>Abandoned Sign-ups {leads.length > 0 && `(${leads.length})`}</button>
         </div>
-        <div className="range-tabs" style={{ flexWrap: "wrap", rowGap: 4 }}>
-          {(["today", "yesterday", "7d", "30d", "1y", "5y", "10y"] as VisitorRangeKey[]).map(r => (
-            <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => { setRange(r); setPage(0); }}>{VISITOR_RANGE_LABELS[r]}</button>
-          ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="range-tabs" style={{ flexWrap: "wrap", rowGap: 4 }}>
+            {(["today", "yesterday", "7d", "30d", "1y", "5y", "10y"] as VisitorRangeKey[]).map(r => (
+              <button key={r} className={`range-tab ${range === r ? "active" : ""}`} onClick={() => { setRange(r); setPage(0); }}>{VISITOR_RANGE_LABELS[r]}</button>
+            ))}
+          </div>
+          <button
+            className="export-btn"
+            disabled={exporting || loading}
+            onClick={() => (tab === "sessions" ? exportSessions() : exportLeads())}
+            title={tab === "sessions" ? "Download all sessions in this range as CSV" : "Download all abandoned sign-ups in this range as CSV"}
+          >
+            {exporting ? "…" : "⬇ Export CSV"}
+          </button>
         </div>
       </div>
 
