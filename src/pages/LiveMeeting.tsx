@@ -1071,7 +1071,13 @@ export default function LiveMeeting() {
   // ── Auto-reconnect ──────────────────────────────────────────────────────────
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
-    if (daily.callState === "error" && isLive && reconnectCount < 3 && roomName) {
+    // Don't auto-retry when the Daily SDK itself failed to load its call
+    // bundle (e.g. blocked by a CSP, firewall, proxy, VPN, or browser
+    // extension) — retrying within seconds won't succeed if the request is
+    // being blocked upstream, and it just delays showing the user an
+    // actionable message.
+    const isBundleFailure = !!daily.error?.includes("video call component");
+    if (daily.callState === "error" && isLive && reconnectCount < 3 && roomName && !isBundleFailure) {
       setReconnectCount((c) => c + 1);
       const delay = Math.min(1000 * Math.pow(2, reconnectCount), 8000);
       reconnectTimerRef.current = setTimeout(() => {
