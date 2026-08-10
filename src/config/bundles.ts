@@ -2,9 +2,12 @@
  * Extra minutes bundle definitions.
  * Prices are in USD — converted to NGN kobo at checkout.
  *
- * This is the frontend's fast-render cache of the same rows stored in the
- * `pricing_bundles` Supabase table (the backend reads that table directly
- * via supabase/functions/_shared/pricing.ts). Keep both in sync.
+ * SOURCE OF TRUTH DUPLICATION: these prices must exactly match
+ * VALID_BUNDLES in supabase/functions/purchase-minutes-bundle/index.ts.
+ * There is no shared config or DB table between frontend and edge
+ * function — if you change a price here, change it there too, or the
+ * checkout dialog's header price and its server-computed subtotal will
+ * disagree (as happened before).
  */
 
 export interface MinuteBundle {
