@@ -350,12 +350,12 @@ export function PlanBanner({ className }: PlanBannerProps) {
         background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.25)",
         borderRadius: 11,
       }}>
-        <AlertTriangle style={{ width: 15, height: 15, color: "#ef4444", flexShrink: 0 }} />
+        <AlertTriangle style={{ width: 15, height: 15, color: "#B3442F", flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#f0f6fc", fontFamily: "'DM Sans',sans-serif" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#17170F", fontFamily: "'Inter',sans-serif" }}>
             Monthly minute limit reached
           </span>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginLeft: 8, fontFamily: "'DM Sans',sans-serif" }}>
+          <span style={{ fontSize: 12, color: "rgba(23,23,15,.55)", marginLeft: 8, fontFamily: "'Inter',sans-serif" }}>
             Upgrade to continue making calls
           </span>
         </div>
@@ -363,9 +363,9 @@ export function PlanBanner({ className }: PlanBannerProps) {
           onClick={() => navigate("/billing")}
           style={{
             display: "flex", alignItems: "center", gap: 6,
-            background: "#ef4444", border: "none", borderRadius: 8,
+            background: "#B3442F", border: "none", borderRadius: 8,
             padding: "7px 14px", color: "#fff", fontSize: 12,
-            fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+            fontWeight: 700, cursor: "pointer", fontFamily: "'Inter',sans-serif",
             flexShrink: 0,
           }}
         >
@@ -379,19 +379,19 @@ export function PlanBanner({ className }: PlanBannerProps) {
     <div className={cn(className)} style={{
       display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
       padding: "10px 16px",
-      background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.2)",
+      background: "rgba(138,90,32,.08)", border: "1px solid rgba(138,90,32,.22)",
       borderRadius: 11,
     }}>
-      <AlertTriangle style={{ width: 14, height: 14, color: "#f59e0b", flexShrink: 0 }} />
-      <span style={{ flex: 1, fontSize: 12, color: "rgba(255,255,255,.7)", fontFamily: "'DM Sans',sans-serif" }}>
+      <AlertTriangle style={{ width: 14, height: 14, color: "#8A5A20", flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: 12, color: "rgba(23,23,15,.75)", fontFamily: "'Inter',sans-serif" }}>
         Only {fmtMins(minutesRemaining)} left this month on your {planName} plan
       </span>
       <button
         onClick={() => navigate("/billing")}
         style={{
-          background: "none", border: "1px solid rgba(245,158,11,.3)", borderRadius: 7,
-          padding: "5px 11px", color: "#f59e0b", fontSize: 11,
-          fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+          background: "none", border: "1px solid rgba(138,90,32,.3)", borderRadius: 7,
+          padding: "5px 11px", color: "#8A5A20", fontSize: 11,
+          fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',sans-serif",
           flexShrink: 0,
         }}
       >
@@ -408,10 +408,10 @@ export function PlanStatusBadge() {
   const { planName, planKey } = usePlanEnforcement();
 
   const colors: Record<string, { bg: string; color: string }> = {
-    free:    { bg: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.5)" },
-    starter: { bg: "rgba(96,165,250,.1)",   color: "#60a5fa" },
-    growth:  { bg: "rgba(14,245,212,.1)",   color: "#0ef5d4" },
-    scale:   { bg: "rgba(167,139,250,.1)",  color: "#a78bfa" },
+    free:    { bg: "rgba(23,23,15,.05)",   color: "rgba(23,23,15,.5)" },
+    starter: { bg: "rgba(34,49,92,.08)",   color: "#22315C" },
+    growth:  { bg: "rgba(47,107,79,.09)",  color: "#2F6B4F" },
+    scale:   { bg: "rgba(102,66,161,.09)", color: "#6642A1" },
   };
   const c = colors[planKey] ?? colors.free;
 
