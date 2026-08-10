@@ -70,7 +70,7 @@ function PipelineHealthCard() {
 
   const score = health.score;
   const color = score >= 75 ? "text-success" : score >= 55 ? "text-primary" : score >= 35 ? "text-accent" : "text-destructive";
-  const strokeColor = score >= 75 ? "hsl(152, 60%, 48%)" : score >= 55 ? "hsl(217, 91%, 65%)" : score >= 35 ? "hsl(38, 92%, 55%)" : "hsl(0, 72%, 50%)";
+  const strokeColor = score >= 75 ? "hsl(152, 40%, 30%)" : score >= 55 ? "hsl(224, 46%, 25%)" : score >= 35 ? "hsl(32, 62%, 33%)" : "hsl(6, 58%, 42%)";
   const borderColor = score >= 75 ? "border-success/20" : score >= 55 ? "border-primary/20" : score >= 35 ? "border-accent/20" : "border-destructive/20";
 
   const TrendIcon = health.trend === "up" ? ArrowUp : health.trend === "down" ? ArrowDown : Minus;
@@ -91,7 +91,7 @@ function PipelineHealthCard() {
       <div className="flex items-center gap-3 mb-3">
         <div className="relative w-14 h-14 shrink-0">
           <svg viewBox="0 0 60 60" className="w-14 h-14 -rotate-90">
-            <circle cx="30" cy="30" r={radius} fill="none" stroke="hsl(222, 30%, 18%)" strokeWidth="5" />
+            <circle cx="30" cy="30" r={radius} fill="none" stroke="hsl(68, 21%, 7%, 0.09)" strokeWidth="5" />
             <circle cx="30" cy="30" r={radius} fill="none" stroke={strokeColor} strokeWidth="5"
               strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
               style={{ transition: "stroke-dasharray 0.6s ease" }} />
