@@ -214,17 +214,18 @@ function MeetingCreatedPopup({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(23,23,15,0.45)", backdropFilter: "blur(8px)" }}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl border border-white/10 overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, #0f1117 0%, #141824 50%, #0f1117 100%)",
-          boxShadow: "0 0 0 1px rgba(99,102,241,0.2), 0 32px 80px rgba(0,0,0,0.6)",
+          background: "#FFFFFF",
+          border: "1px solid rgba(23,23,15,0.1)",
+          boxShadow: "0 0 0 1px rgba(34,49,92,0.12), 0 32px 80px -16px rgba(23,23,15,0.35)",
         }}
       >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-0.5 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
-        <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors z-10">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-0.5 bg-gradient-to-r from-transparent via-[#22315C] to-transparent opacity-60" />
+        <button onClick={onClose} className="absolute top-4 right-4 text-[rgba(23,23,15,0.3)] hover:text-[rgba(23,23,15,0.7)] transition-colors z-10">
           <X className="w-4 h-4" />
         </button>
 
@@ -232,29 +233,29 @@ function MeetingCreatedPopup({
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))", border: "1px solid rgba(99,102,241,0.3)" }}
+              style={{ background: "rgba(34,49,92,0.09)", border: "1px solid rgba(34,49,92,0.22)" }}
             >
-              <CheckCircle2 className="w-5 h-5 text-indigo-400" />
+              <CheckCircle2 className="w-5 h-5" style={{ color: "#22315C" }} />
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">Fixsense room ready</p>
-              <p className="text-xs text-white/40 mt-0.5 truncate max-w-[240px]">{meetingTitle}</p>
+              <p className="font-semibold text-[#17170F] text-sm tracking-[-0.01em]">Fixsense room ready</p>
+              <p className="text-xs text-[rgba(23,23,15,0.45)] mt-0.5 truncate max-w-[240px]">{meetingTitle}</p>
             </div>
           </div>
 
           <div
             className="rounded-xl p-3 flex items-center gap-2.5"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.08)" }}
           >
-            <Link2 className="w-3.5 h-3.5 text-white/30 shrink-0" />
-            <span className="text-xs text-white/60 flex-1 truncate font-mono">{shareLink}</span>
+            <Link2 className="w-3.5 h-3.5 text-[rgba(23,23,15,0.3)] shrink-0" />
+            <span className="text-xs text-[rgba(23,23,15,0.6)] flex-1 truncate font-mono">{shareLink}</span>
             <button
               onClick={copyLink}
               className={cn(
                 "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all shrink-0",
                 copied
-                  ? "text-green-400 bg-green-500/15 border border-green-500/25"
-                  : "text-indigo-300 bg-indigo-500/15 border border-indigo-500/25 hover:bg-indigo-500/25",
+                  ? "text-[#2F6B4F] bg-[rgba(47,107,79,0.1)] border border-[rgba(47,107,79,0.25)]"
+                  : "text-[#22315C] bg-[rgba(34,49,92,0.08)] border border-[rgba(34,49,92,0.22)] hover:bg-[rgba(34,49,92,0.14)]",
               )}
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -265,19 +266,19 @@ function MeetingCreatedPopup({
           <div className="space-y-2.5">
             <button
               onClick={onJoinAsHost}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)", boxShadow: "0 4px 20px rgba(99,102,241,0.3)" }}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-[#FAFAF8] transition-all hover:opacity-90"
+              style={{ background: "#22315C", boxShadow: "0 4px 20px rgba(34,49,92,0.25)" }}
             >
               <span className="flex items-center gap-2.5"><Video className="w-4 h-4" />Join as Host</span>
-              <ArrowRight className="w-4 h-4 opacity-60" />
+              <ArrowRight className="w-4 h-4 opacity-70" />
             </button>
             <button
               onClick={onSchedule}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-white/8"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-[rgba(23,23,15,0.05)]"
+              style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }}
             >
-              <span className="flex items-center gap-2.5 text-white/70"><CalendarPlus className="w-4 h-4" />Schedule this meeting</span>
-              <ArrowRight className="w-4 h-4 text-white/30" />
+              <span className="flex items-center gap-2.5 text-[rgba(23,23,15,0.65)]"><CalendarPlus className="w-4 h-4" />Schedule this meeting</span>
+              <ArrowRight className="w-4 h-4 text-[rgba(23,23,15,0.3)]" />
             </button>
            
           </div>
@@ -330,38 +331,37 @@ function ScheduleModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(23,23,15,0.45)", backdropFilter: "blur(8px)" }}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl border border-white/10 overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #0f1117 0%, #141824 100%)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}
+        className="relative w-full max-w-md rounded-2xl overflow-hidden"
+        style={{ background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.1)", boxShadow: "0 32px 80px -16px rgba(23,23,15,0.35)" }}
       >
-        <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/70 transition-colors">
+        <button onClick={onClose} className="absolute top-4 right-4 text-[rgba(23,23,15,0.3)] hover:text-[rgba(23,23,15,0.7)] transition-colors">
           <X className="w-4 h-4" />
         </button>
         <div className="p-6 space-y-4">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.25)" }}>
-              <CalendarPlus className="w-4 h-4 text-violet-400" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(102,66,161,0.1)", border: "1px solid rgba(102,66,161,0.25)" }}>
+              <CalendarPlus className="w-4 h-4" style={{ color: "#6642A1" }} />
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">Schedule Meeting</p>
-              <p className="text-xs text-white/40">Add to your Fixsense calendar</p>
+              <p className="font-semibold text-[#17170F] text-sm tracking-[-0.01em]">Schedule Meeting</p>
+              <p className="text-xs text-[rgba(23,23,15,0.45)]">Add to your Fixsense calendar</p>
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-white/50 font-medium mb-1.5 block flex items-center gap-1">
-              <Tag className="w-3 h-3" />Deal <span className="text-red-400">*</span>
+            <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block flex items-center gap-1">
+              <Tag className="w-3 h-3" />Deal <span className="text-[#B3442F]">*</span>
             </label>
             <select
               value={dealId}
               onChange={(e) => setDealId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none"
               style={{
-                background: "rgba(255,255,255,0.05)",
-                border: dealId ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(239,68,68,0.4)",
-                colorScheme: "dark",
+                background: "rgba(23,23,15,0.02)",
+                border: dealId ? "1px solid rgba(23,23,15,0.09)" : "1px solid rgba(179,68,47,0.4)",
               }}
             >
               <option value="">Select a deal…</option>
@@ -372,50 +372,50 @@ function ScheduleModal({
               ))}
             </select>
             {!dealId && (
-              <p className="text-[11px] text-red-400 mt-1">Required — a meeting can't be scheduled without a deal.</p>
+              <p className="text-[11px] text-[#B3442F] mt-1">Required — a meeting can't be scheduled without a deal.</p>
             )}
           </div>
 
           <div>
-            <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Title *</label>
+            <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block">Meeting Title *</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Acme Corp Demo"
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} />
+              className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none placeholder:text-[rgba(23,23,15,0.32)]"
+              style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }} />
           </div>
 
           {!prefillLink && (
             <div>
-              <label className="text-xs text-white/50 font-medium mb-1.5 block">Meeting Link (optional)</label>
+              <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block">Meeting Link (optional)</label>
               <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://fixsense.com.ng/..."
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none font-mono text-xs"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }} />
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none font-mono text-xs placeholder:text-[rgba(23,23,15,0.32)]"
+                style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }} />
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-white/50 font-medium mb-1.5 block">Date *</label>
+              <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block">Date *</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", colorScheme: "dark" }} />
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none"
+                style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }} />
             </div>
             <div>
-              <label className="text-xs text-white/50 font-medium mb-1.5 block">Time *</label>
+              <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block">Time *</label>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", colorScheme: "dark" }} />
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none"
+                style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }} />
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-white/50 font-medium mb-1.5 block flex items-center gap-1"><Tag className="w-3 h-3" />Type</label>
+            <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block flex items-center gap-1"><Tag className="w-3 h-3" />Type</label>
             <div className="flex flex-wrap gap-1.5">
               {MEETING_TYPES.map((t) => (
                 <button key={t.value} onClick={() => setMeetingType(t.value)}
                   className={cn("text-xs px-2.5 py-1 rounded-lg border transition-all",
                     meetingType === t.value
-                      ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
-                      : "border-white/8 bg-white/4 text-white/40 hover:text-white/60",
+                      ? "border-[rgba(34,49,92,0.4)] bg-[rgba(34,49,92,0.09)] text-[#22315C]"
+                      : "border-[rgba(23,23,15,0.08)] bg-[rgba(23,23,15,0.02)] text-[rgba(23,23,15,0.45)] hover:text-[rgba(23,23,15,0.7)]",
                   )}>
                   {t.emoji} {t.label}
                 </button>
@@ -424,8 +424,8 @@ function ScheduleModal({
           </div>
 
           <button onClick={handleSave} disabled={isSaving || !dealId}
-            className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+            className="w-full py-3 rounded-xl text-sm font-semibold text-[#FAFAF8] flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
+            style={{ background: "#22315C" }}>
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
             {isSaving ? "Scheduling…" : !dealId ? "Select a deal to continue" : "Schedule Meeting"}
           </button>
@@ -469,12 +469,12 @@ function NetworkBlockedCard({ shareLink, roomName, onRetry, onDismiss }: {
       </div>
 
       {shareLink && (
-        <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <Link2 className="w-3.5 h-3.5 text-white/30 shrink-0" />
-          <span className="text-xs text-white/60 flex-1 truncate font-mono">{shareLink}</span>
+        <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.08)" }}>
+          <Link2 className="w-3.5 h-3.5 text-[rgba(23,23,15,0.3)] shrink-0" />
+          <span className="text-xs text-[rgba(23,23,15,0.6)] flex-1 truncate font-mono">{shareLink}</span>
           <button onClick={copyLink}
             className={cn("flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all shrink-0",
-              copied ? "text-green-400 bg-green-500/15 border border-green-500/25" : "text-indigo-300 bg-indigo-500/15 border border-indigo-500/25")}>
+              copied ? "text-[#2F6B4F] bg-[rgba(47,107,79,0.1)] border border-[rgba(47,107,79,0.25)]" : "text-[#22315C] bg-[rgba(34,49,92,0.08)] border border-[rgba(34,49,92,0.22)]")}>
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
             {copied ? "Copied!" : "Copy link"}
           </button>
@@ -1029,7 +1029,7 @@ export default function LiveCall() {
             <button
               onClick={() => setPendingWhoCanJoin("anyone_with_link")}
               className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation"
-              style={{ background: pendingWhoCanJoin === "anyone_with_link" ? "rgba(99,102,241,0.1)" : "transparent" }}
+              style={{ background: pendingWhoCanJoin === "anyone_with_link" ? "rgba(34,49,92,0.08)" : "transparent" }}
             >
               <Link2 className={cn("w-4 h-4", pendingWhoCanJoin === "anyone_with_link" ? "text-primary" : "text-muted-foreground")} />
               <div className="flex-1">
@@ -1041,7 +1041,7 @@ export default function LiveCall() {
             <button
               onClick={() => setPendingWhoCanJoin("invited_only")}
               className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation border-t border-border"
-              style={{ background: pendingWhoCanJoin === "invited_only" ? "rgba(99,102,241,0.1)" : "transparent" }}
+              style={{ background: pendingWhoCanJoin === "invited_only" ? "rgba(34,49,92,0.08)" : "transparent" }}
             >
               <ShieldCheck className={cn("w-4 h-4", pendingWhoCanJoin === "invited_only" ? "text-primary" : "text-muted-foreground")} />
               <div className="flex-1">
@@ -1200,7 +1200,7 @@ export default function LiveCall() {
                   onClick={() => daily.startRecording()}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border bg-secondary/60"
                 >
-                  <span className="w-2 h-2 rounded-full bg-white/40" />Record
+                  <span className="w-2 h-2 rounded-full bg-[rgba(23,23,15,0.35)]" />Record
                 </button>
               )}
               <Link to={`/live/${callId}`}>
@@ -1502,7 +1502,7 @@ export default function LiveCall() {
                 </h2>
                 <div
                   className="flex items-center gap-2 p-2.5 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.07)" }}
                 >
                   <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="text-xs font-mono text-foreground/60 flex-1 truncate">{roomInfo.share_link}</span>
