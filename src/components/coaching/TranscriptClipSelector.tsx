@@ -151,14 +151,14 @@ export default function TranscriptClipSelector({
           transition: background .08s, border-color .08s;
         }
         .clip-line:hover {
-          background: rgba(255,255,255,.04) !important;
+          background: rgba(23,23,15,.035) !important;
         }
         .clip-line--selected {
-          background: rgba(124,58,237,.12) !important;
-          border-color: rgba(124,58,237,.3) !important;
+          background: rgba(34,49,92,.08) !important;
+          border-color: rgba(34,49,92,.28) !important;
         }
-        .clip-line--rep .cs-speaker      { color: #818cf8; }
-        .clip-line--prospect .cs-speaker { color: #2dd4bf; }
+        .clip-line--rep .cs-speaker      { color: #22315C; }
+        .clip-line--prospect .cs-speaker { color: #2F6B4F; }
       `}</style>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
@@ -169,16 +169,16 @@ export default function TranscriptClipSelector({
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <div style={{
             width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-            background: "rgba(124,58,237,.15)", border: "1px solid rgba(124,58,237,.3)",
+            background: "rgba(34,49,92,.09)", border: "1px solid rgba(34,49,92,.22)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <Scissors style={{ width: 15, height: 15, color: "#a78bfa" }} />
+            <Scissors style={{ width: 15, height: 15, color: "#22315C" }} />
           </div>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.9)", margin: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#17170F", margin: 0, fontFamily: "'Inter',sans-serif", letterSpacing: "-0.01em" }}>
               Clip Selector
             </p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", margin: 0 }}>
+            <p style={{ fontSize: 11, color: "rgba(23,23,15,.42)", margin: 0, fontFamily: "'Inter',sans-serif" }}>
               Click lines to select · Shift+click to extend · Drag to select range
             </p>
           </div>
@@ -187,8 +187,8 @@ export default function TranscriptClipSelector({
         {(existingClipCount + clipsJustCreated) > 0 && (
           <div style={{
             display: "flex", alignItems: "center", gap: 5,
-            background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.2)",
-            borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#4ade80",
+            background: "rgba(47,107,79,.09)", border: "1px solid rgba(47,107,79,.22)",
+            borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#2F6B4F",
           }}>
             <CheckCircle2 style={{ width: 11, height: 11 }} />
             {existingClipCount + clipsJustCreated} clip{existingClipCount + clipsJustCreated !== 1 ? "s" : ""} created
@@ -202,18 +202,18 @@ export default function TranscriptClipSelector({
           display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
           padding: "10px 14px", marginBottom: 12,
           background: durationOk
-            ? "linear-gradient(135deg, rgba(124,58,237,.18), rgba(109,40,217,.12))"
-            : "rgba(239,68,68,.08)",
-          border: `1px solid ${durationOk ? "rgba(124,58,237,.4)" : "rgba(239,68,68,.3)"}`,
+            ? "rgba(34,49,92,.07)"
+            : "rgba(179,68,47,.07)",
+          border: `1px solid ${durationOk ? "rgba(34,49,92,.28)" : "rgba(179,68,47,.28)"}`,
           borderRadius: 12,
           animation: "clipSelPop .18s ease",
         }}>
-          <Clock style={{ width: 13, height: 13, color: durationOk ? "#a78bfa" : "#f87171" }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: durationOk ? "#a78bfa" : "#f87171" }}>
+          <Clock style={{ width: 13, height: 13, color: durationOk ? "#22315C" : "#B3442F" }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: durationOk ? "#22315C" : "#B3442F", fontFamily: "'Inter',sans-serif" }}>
             {selectedExcerpt.length} line{selectedExcerpt.length !== 1 ? "s" : ""} · {formatDuration(selectionDuration)} selected
           </span>
           {!durationOk && selectionDuration > 0 && (
-            <span style={{ fontSize: 11, color: "#f87171" }}>
+            <span style={{ fontSize: 11, color: "#B3442F", fontFamily: "'Inter',sans-serif" }}>
               {selectionDuration < 5 ? "Select more (min 5s)" : "Too long (max 5 min)"}
             </span>
           )}
@@ -221,9 +221,9 @@ export default function TranscriptClipSelector({
             <button
               onClick={clearSelection}
               style={{
-                background: "transparent", border: "1px solid rgba(255,255,255,.15)",
-                borderRadius: 8, padding: "5px 12px", color: "rgba(255,255,255,.5)",
-                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                background: "transparent", border: "1px solid rgba(23,23,15,.14)",
+                borderRadius: 8, padding: "5px 12px", color: "rgba(23,23,15,.55)",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',sans-serif",
               }}
             >
               Clear
@@ -234,15 +234,15 @@ export default function TranscriptClipSelector({
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: durationOk
-                  ? "linear-gradient(135deg, #7c3aed, #6d28d9)"
-                  : "rgba(255,255,255,.08)",
+                  ? "#22315C"
+                  : "rgba(23,23,15,.08)",
                 border: "none", borderRadius: 8,
                 padding: "5px 14px",
-                color: durationOk ? "#fff" : "rgba(255,255,255,.3)",
+                color: durationOk ? "#FAFAF8" : "rgba(23,23,15,.32)",
                 fontSize: 12, fontWeight: 700,
                 cursor: durationOk ? "pointer" : "not-allowed",
-                fontFamily: "'DM Sans',sans-serif",
-                boxShadow: durationOk ? "0 3px 12px rgba(124,58,237,.4)" : "none",
+                fontFamily: "'Inter',sans-serif",
+                boxShadow: durationOk ? "0 3px 12px rgba(34,49,92,.28)" : "none",
               }}
             >
               <Scissors style={{ width: 12, height: 12 }} />
@@ -272,16 +272,16 @@ export default function TranscriptClipSelector({
                 borderRadius: 9, border: "1px solid transparent",
                 cursor: "crosshair",
                 borderLeft: !isMe
-                  ? "2px solid rgba(45,212,191,.25)"
+                  ? "2px solid rgba(47,107,79,.3)"
                   : "2px solid transparent",
               }}
             >
               {/* Speaker + timestamp */}
               <div style={{ minWidth: 90, flexShrink: 0 }}>
-                <span className="cs-speaker" style={{ fontSize: 11, fontWeight: 700 }}>
+                <span className="cs-speaker" style={{ fontSize: 11, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>
                   {line.speaker_name || line.speaker}
                 </span>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,.25)", marginTop: 1 }}>
+                <div style={{ fontSize: 10, color: "rgba(23,23,15,.32)", marginTop: 1, fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
                   {line.timestamp}
                 </div>
               </div>
@@ -289,8 +289,9 @@ export default function TranscriptClipSelector({
               {/* Text */}
               <p style={{
                 fontSize: 13,
-                color: sel ? "rgba(255,255,255,.9)" : "rgba(255,255,255,.65)",
+                color: sel ? "#17170F" : "rgba(23,23,15,.72)",
                 margin: 0, lineHeight: 1.55, flex: 1,
+                fontFamily: "'Inter',sans-serif",
               }}>
                 {line.text}
               </p>
@@ -299,7 +300,7 @@ export default function TranscriptClipSelector({
               {sel && (
                 <div style={{
                   width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                  background: "#a78bfa", margin: "auto 0",
+                  background: "#22315C", margin: "auto 0",
                 }} />
               )}
             </div>
