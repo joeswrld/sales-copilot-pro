@@ -276,18 +276,18 @@ function RescheduleModal({
   const [time, setTime] = useState(format(current, "HH:mm"));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(23,23,15,0.45)] backdrop-blur-sm">
       <div
-        className="w-full max-w-sm rounded-2xl border border-white/10 overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #0f1117 0%, #141824 100%)" }}
+        className="w-full max-w-sm rounded-2xl overflow-hidden"
+        style={{ background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.1)", boxShadow: "0 32px 80px -16px rgba(23,23,15,0.35)" }}
       >
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <CalendarClock className="w-4 h-4 text-indigo-400" />
-              <p className="font-semibold text-sm">Reschedule Meeting</p>
+              <CalendarClock className="w-4 h-4" style={{ color: "#22315C" }} />
+              <p className="font-semibold text-sm text-foreground">Reschedule Meeting</p>
             </div>
-            <button onClick={onClose} className="text-white/30 hover:text-white/70">
+            <button onClick={onClose} className="text-[rgba(23,23,15,0.3)] hover:text-[rgba(23,23,15,0.7)]">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -308,8 +308,7 @@ function RescheduleModal({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm bg-white/5 border border-white/8 outline-none"
-                style={{ colorScheme: "dark" }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm bg-[rgba(23,23,15,0.02)] border border-[rgba(23,23,15,0.09)] outline-none text-foreground"
               />
             </div>
             <div>
@@ -318,8 +317,7 @@ function RescheduleModal({
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm bg-white/5 border border-white/8 outline-none"
-                style={{ colorScheme: "dark" }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm bg-[rgba(23,23,15,0.02)] border border-[rgba(23,23,15,0.09)] outline-none text-foreground"
               />
             </div>
           </div>
@@ -330,8 +328,8 @@ function RescheduleModal({
               onSave(new Date(`${date}T${time}`).toISOString());
             }}
             disabled={isLoading}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-[#FAFAF8] flex items-center justify-center gap-2 disabled:opacity-50"
+            style={{ background: "#22315C" }}
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {isLoading ? "Rescheduling…" : "Confirm Reschedule"}
