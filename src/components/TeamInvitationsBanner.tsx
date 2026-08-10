@@ -65,8 +65,8 @@ export default function TeamInvitationsBanner() {
         <div
           key={inv.id}
           style={{
-            background: "rgba(14,245,212,.06)",
-            border: "1px solid rgba(14,245,212,.2)",
+            background: "rgba(34,49,92,.05)",
+            border: "1px solid rgba(34,49,92,.22)",
             borderRadius: 14,
             padding: "14px 16px",
             display: "flex",
@@ -81,33 +81,34 @@ export default function TeamInvitationsBanner() {
               height: 36,
               borderRadius: 9,
               flexShrink: 0,
-              background: "rgba(14,245,212,.12)",
-              border: "1px solid rgba(14,245,212,.2)",
+              background: "rgba(34,49,92,.09)",
+              border: "1px solid rgba(34,49,92,.22)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}>
-              <Users style={{ width: 17, height: 17, color: "#0ef5d4" }} />
+              <Users style={{ width: 17, height: 17, color: "#22315C" }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
                 margin: "0 0 3px",
                 fontSize: 13,
                 fontWeight: 700,
-                color: "#f0f6fc",
-                fontFamily: "'DM Sans',sans-serif",
+                color: "#17170F",
+                fontFamily: "'Inter',sans-serif",
+                letterSpacing: "-0.01em",
               }}>
                 Team invitation
               </p>
               <p style={{
                 margin: 0,
                 fontSize: 12,
-                color: "rgba(255,255,255,.55)",
-                fontFamily: "'DM Sans',sans-serif",
+                color: "rgba(23,23,15,.62)",
+                fontFamily: "'Inter',sans-serif",
                 lineHeight: 1.4,
               }}>
                 You've been invited to join{" "}
-                <strong style={{ color: "#0ef5d4" }}>{getTeamName(inv)}</strong>
+                <strong style={{ color: "#22315C" }}>{getTeamName(inv)}</strong>
                 {" "}as{" "}
                 <span style={{ textTransform: "capitalize" }}>{inv.role}</span>.
               </p>
@@ -128,11 +129,11 @@ export default function TeamInvitationsBanner() {
                 borderRadius: 8,
                 border: "none",
                 cursor: acting ? "not-allowed" : "pointer",
-                background: "rgba(14,245,212,.15)",
-                color: "#0ef5d4",
+                background: "#22315C",
+                color: "#FAFAF8",
                 fontSize: 12,
                 fontWeight: 700,
-                fontFamily: "'DM Sans',sans-serif",
+                fontFamily: "'Inter',sans-serif",
               }}
             >
               {acting === inv.id
@@ -153,13 +154,13 @@ export default function TeamInvitationsBanner() {
                   gap: 6,
                   padding: "7px 12px",
                   borderRadius: 8,
-                  border: "1px solid rgba(14,245,212,.2)",
+                  border: "1px solid rgba(34,49,92,.22)",
                   cursor: "pointer",
                   background: "transparent",
-                  color: "rgba(255,255,255,.5)",
+                  color: "rgba(23,23,15,.55)",
                   fontSize: 12,
                   fontWeight: 600,
-                  fontFamily: "'DM Sans',sans-serif",
+                  fontFamily: "'Inter',sans-serif",
                 }}
               >
                 <Copy style={{ width: 11, height: 11 }} />
@@ -177,12 +178,12 @@ export default function TeamInvitationsBanner() {
                 gap: 5,
                 padding: "7px 12px",
                 borderRadius: 8,
-                border: "1px solid rgba(255,255,255,.08)",
+                border: "1px solid rgba(23,23,15,.1)",
                 cursor: acting ? "not-allowed" : "pointer",
                 background: "transparent",
-                color: "rgba(255,255,255,.35)",
+                color: "rgba(23,23,15,.4)",
                 fontSize: 12,
-                fontFamily: "'DM Sans',sans-serif",
+                fontFamily: "'Inter',sans-serif",
               }}
             >
               <X style={{ width: 11, height: 11 }} />
