@@ -20,9 +20,9 @@ const TAG_PRESETS = [
   { label: "Pricing",   color: "#f59e0b", bg: "rgba(245,158,11,.12)" },
   { label: "Discovery", color: "#60a5fa", bg: "rgba(96,165,250,.12)" },
   { label: "Close",     color: "#22c55e", bg: "rgba(34,197,94,.12)" },
-  { label: "Rapport",   color: "#a78bfa", bg: "rgba(167,139,250,.12)" },
+  { label: "Rapport",   color: "#22315C", bg: "rgba(167,139,250,.12)" },
   { label: "Red Flag",  color: "#f97316", bg: "rgba(249,115,22,.12)" },
-  { label: "Best Practice", color: "#2dd4bf", bg: "rgba(45,212,191,.12)" },
+  { label: "Best Practice", color: "#2F6B4F", bg: "rgba(45,212,191,.12)" },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ export default function CreateClipModal({
       <style>{`
         .ccm-overlay {
           position: fixed; inset: 0; z-index: 9999;
-          background: rgba(0,0,0,.72); backdrop-filter: blur(10px);
+          background: rgba(23,23,15,.45); backdrop-filter: blur(10px);
           display: flex; align-items: center; justify-content: center; padding: 20px;
           animation: ccmFadeIn .15s ease;
         }
@@ -94,22 +94,22 @@ export default function CreateClipModal({
         @keyframes ccmSlideUp { from { opacity:0; transform:translateY(20px) scale(.97); } to { opacity:1; transform:none; } }
         .ccm-panel {
           width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
-          background: #0d1117; border: 1px solid rgba(255,255,255,.09);
+          background: #FFFFFF; border: 1px solid rgba(23,23,15,.1);
           border-radius: 18px; padding: 26px;
           animation: ccmSlideUp .18s ease;
-          box-shadow: 0 40px 100px rgba(0,0,0,.8);
+          box-shadow: 0 32px 80px -16px rgba(23,23,15,.35);
         }
         .ccm-tag { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all .12s; border: 1px solid transparent; }
         .ccm-tag--on { border-color: currentColor; }
-        .ccm-ta { width: 100%; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 11px 13px; color: #f0f6fc; font-size: 13px; font-family: 'DM Sans', sans-serif; resize: none; outline: none; line-height: 1.6; transition: border-color .13s; }
-        .ccm-ta:focus { border-color: rgba(124,58,237,.5); }
-        .ccm-ta::placeholder { color: rgba(255,255,255,.22); }
-        .ccm-input { width: 100%; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 9px; padding: 9px 12px; color: #f0f6fc; font-size: 12px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color .13s; }
-        .ccm-input:focus { border-color: rgba(124,58,237,.4); }
-        .ccm-input::placeholder { color: rgba(255,255,255,.2); }
-        .ccm-line { padding: 7px 10px; border-radius: 7px; border-left: 2px solid rgba(124,58,237,.3); margin-bottom: 4px; }
+        .ccm-ta { width: 100%; background: rgba(23,23,15,.02); border: 1px solid rgba(23,23,15,.1); border-radius: 10px; padding: 11px 13px; color: #17170F; font-size: 13px; font-family: 'Inter', sans-serif; resize: none; outline: none; line-height: 1.6; transition: border-color .13s; }
+        .ccm-ta:focus { border-color: rgba(34,49,92,.45); }
+        .ccm-ta::placeholder { color: rgba(23,23,15,.3); }
+        .ccm-input { width: 100%; background: rgba(23,23,15,.02); border: 1px solid rgba(23,23,15,.09); border-radius: 9px; padding: 9px 12px; color: #17170F; font-size: 12px; font-family: 'Inter', sans-serif; outline: none; transition: border-color .13s; }
+        .ccm-input:focus { border-color: rgba(34,49,92,.4); }
+        .ccm-input::placeholder { color: rgba(23,23,15,.3); }
+        .ccm-line { padding: 7px 10px; border-radius: 7px; border-left: 2px solid rgba(34,49,92,.3); margin-bottom: 4px; }
         .ccm-scrollbar::-webkit-scrollbar { width: 3px; }
-        .ccm-scrollbar::-webkit-scrollbar-thumb { background: rgba(124,58,237,.25); border-radius: 2px; }
+        .ccm-scrollbar::-webkit-scrollbar-thumb { background: rgba(34,49,92,.25); border-radius: 2px; }
       `}</style>
 
       <div className="ccm-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -119,24 +119,24 @@ export default function CreateClipModal({
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: 9,
-                background: "rgba(124,58,237,.18)", border: "1px solid rgba(124,58,237,.35)",
+                background: "rgba(34,49,92,.18)", border: "1px solid rgba(34,49,92,.35)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Scissors style={{ width: 15, height: 15, color: "#a78bfa" }} />
+                <Scissors style={{ width: 15, height: 15, color: "#22315C" }} />
               </div>
               <div>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#17170F", fontFamily: "'Inter',sans-serif" }}>
                   {createdClip ? "Clip Saved!" : "Create Coaching Clip"}
                 </p>
                 {callTitle && (
-                  <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.35)" }}>{callTitle}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(23,23,15,.42)" }}>{callTitle}</p>
                 )}
               </div>
             </div>
             <button onClick={onClose} style={{
-              background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)",
+              background: "rgba(23,23,15,.045)", border: "1px solid rgba(23,23,15,.1)",
               borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center",
-              justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,.4)",
+              justifyContent: "center", cursor: "pointer", color: "rgba(23,23,15,.45)",
             }}>
               <X style={{ width: 13, height: 13 }} />
             </button>
@@ -153,29 +153,29 @@ export default function CreateClipModal({
                   background: "rgba(34,197,94,.12)", border: "1px solid rgba(34,197,94,.25)",
                   display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px",
                 }}>
-                  <CheckCircle2 style={{ width: 26, height: 26, color: "#4ade80" }} />
+                  <CheckCircle2 style={{ width: 26, height: 26, color: "#2F6B4F" }} />
                 </div>
-                <p style={{ fontSize: 16, fontWeight: 700, color: "#f0f6fc", margin: "0 0 6px", fontFamily: "'Bricolage Grotesque',sans-serif" }}>
+                <p style={{ fontSize: 16, fontWeight: 700, color: "#17170F", margin: "0 0 6px", fontFamily: "'Inter',sans-serif" }}>
                   Clip created!
                 </p>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,.4)", margin: 0 }}>
+                <p style={{ fontSize: 12, color: "rgba(23,23,15,.45)", margin: 0 }}>
                   Share it with your team or anyone via the link below
                 </p>
               </div>
 
               <div style={{
-                background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)",
+                background: "rgba(23,23,15,.025)", border: "1px solid rgba(23,23,15,.08)",
                 borderRadius: 10, padding: "10px 13px", marginBottom: 14,
                 display: "flex", alignItems: "center", gap: 8,
               }}>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>
+                <span style={{ fontSize: 11, color: "rgba(23,23,15,.55)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>
                   {window.location.origin}/clip/{createdClip.share_token}
                 </span>
                 <button
                   onClick={() => copyShareLink(createdClip.share_token)}
                   style={{
-                    background: "rgba(124,58,237,.2)", border: "1px solid rgba(124,58,237,.3)",
-                    borderRadius: 7, padding: "4px 10px", color: "#a78bfa", fontSize: 11,
+                    background: "rgba(34,49,92,.2)", border: "1px solid rgba(34,49,92,.3)",
+                    borderRadius: 7, padding: "4px 10px", color: "#22315C", fontSize: 11,
                     fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
                     flexShrink: 0,
                   }}
@@ -189,9 +189,9 @@ export default function CreateClipModal({
                   onClick={() => window.open(`/clip/${createdClip.share_token}`, "_blank")}
                   style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)",
-                    borderRadius: 9, padding: "10px", color: "rgba(255,255,255,.7)", fontSize: 12,
-                    fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                    background: "rgba(23,23,15,.045)", border: "1px solid rgba(23,23,15,.1)",
+                    borderRadius: 9, padding: "10px", color: "rgba(23,23,15,.7)", fontSize: 12,
+                    fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',sans-serif",
                   }}
                 >
                   <ExternalLink style={{ width: 13, height: 13 }} /> Preview Clip
@@ -200,9 +200,9 @@ export default function CreateClipModal({
                   onClick={onClose}
                   style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "linear-gradient(135deg,#7c3aed,#6d28d9)", border: "none",
-                    borderRadius: 9, padding: "10px", color: "#fff", fontSize: 12,
-                    fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                    background: "#22315C", border: "none",
+                    borderRadius: 9, padding: "10px", color: "#FAFAF8", fontSize: 12,
+                    fontWeight: 700, cursor: "pointer", fontFamily: "'Inter',sans-serif",
                   }}
                 >
                   Done
@@ -218,8 +218,8 @@ export default function CreateClipModal({
               }}>
                 <div style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
-                  background: "rgba(124,58,237,.12)", border: "1px solid rgba(124,58,237,.25)",
-                  borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: "#a78bfa",
+                  background: "rgba(34,49,92,.12)", border: "1px solid rgba(34,49,92,.25)",
+                  borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: "#22315C",
                 }}>
                   <Clock style={{ width: 11, height: 11 }} />
                   {formatDur(duration)} clip · {transcriptExcerpt.length} lines
@@ -228,22 +228,22 @@ export default function CreateClipModal({
 
               {/* Transcript preview */}
               <div style={{
-                background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)",
+                background: "rgba(23,23,15,.02)", border: "1px solid rgba(23,23,15,.07)",
                 borderRadius: 11, padding: "12px", marginBottom: 16, maxHeight: 180, overflowY: "auto",
               }} className="ccm-scrollbar">
-                <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(23,23,15,.35)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
                   Selected excerpt
                 </p>
                 {transcriptExcerpt.map((line, i) => {
                   const isRep = line.speaker === "Rep" || line.speaker === "You";
                   return (
                     <div key={i} className="ccm-line" style={{
-                      borderLeftColor: isRep ? "rgba(129,140,248,.4)" : "rgba(45,212,191,.3)",
+                      borderLeftColor: isRep ? "rgba(34,49,92,.4)" : "rgba(47,107,79,.3)",
                     }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: isRep ? "#818cf8" : "#2dd4bf", marginRight: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isRep ? "#22315C" : "#2F6B4F", marginRight: 8 }}>
                         {line.speaker}
                       </span>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,.6)", lineHeight: 1.5 }}>
+                      <span style={{ fontSize: 12, color: "rgba(23,23,15,.68)", lineHeight: 1.5 }}>
                         {line.text}
                       </span>
                     </div>
@@ -253,7 +253,7 @@ export default function CreateClipModal({
 
               {/* Manager comment */}
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.45)", textTransform: "uppercase", letterSpacing: ".07em", display: "block", marginBottom: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,.5)", textTransform: "uppercase", letterSpacing: ".07em", display: "block", marginBottom: 6 }}>
                   Coaching comment *
                 </label>
                 <textarea
@@ -267,7 +267,7 @@ export default function CreateClipModal({
 
               {/* Tags */}
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.45)", textTransform: "uppercase", letterSpacing: ".07em", display: "block", marginBottom: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,.5)", textTransform: "uppercase", letterSpacing: ".07em", display: "block", marginBottom: 8 }}>
                   Tags (optional)
                 </label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -295,8 +295,8 @@ export default function CreateClipModal({
                     onClick={addCustomTag}
                     disabled={!customTag.trim()}
                     style={{
-                      background: "rgba(124,58,237,.15)", border: "1px solid rgba(124,58,237,.3)",
-                      borderRadius: 8, padding: "0 12px", color: "#a78bfa", cursor: "pointer",
+                      background: "rgba(34,49,92,.15)", border: "1px solid rgba(34,49,92,.3)",
+                      borderRadius: 8, padding: "0 12px", color: "#22315C", cursor: "pointer",
                       fontSize: 12, fontWeight: 600, opacity: customTag.trim() ? 1 : 0.4,
                     }}
                   >
@@ -308,12 +308,12 @@ export default function CreateClipModal({
                     {selectedTags.map(t => (
                       <span key={t} style={{
                         display: "inline-flex", alignItems: "center", gap: 4,
-                        background: "rgba(124,58,237,.15)", border: "1px solid rgba(124,58,237,.25)",
-                        borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 600, color: "#a78bfa",
+                        background: "rgba(34,49,92,.15)", border: "1px solid rgba(34,49,92,.25)",
+                        borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 600, color: "#22315C",
                       }}>
                         <Tag style={{ width: 9, height: 9 }} />
                         {t}
-                        <button onClick={() => toggleTag(t)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", padding: 0, lineHeight: 1 }}>×</button>
+                        <button onClick={() => toggleTag(t)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.45)", padding: 0, lineHeight: 1 }}>×</button>
                       </span>
                     ))}
                   </div>
@@ -328,13 +328,13 @@ export default function CreateClipModal({
                 style={{
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   background: comment.trim() && !createClip.isPending
-                    ? "linear-gradient(135deg,#7c3aed,#6d28d9)"
-                    : "rgba(255,255,255,.07)",
+                    ? "#22315C"
+                    : "rgba(23,23,15,.07)",
                   border: "none", borderRadius: 11, padding: "13px",
-                  color: comment.trim() ? "#fff" : "rgba(255,255,255,.25)",
+                  color: comment.trim() ? "#FAFAF8" : "rgba(23,23,15,.3)",
                   fontSize: 14, fontWeight: 700, cursor: comment.trim() ? "pointer" : "not-allowed",
-                  fontFamily: "'DM Sans',sans-serif",
-                  boxShadow: comment.trim() ? "0 4px 18px rgba(124,58,237,.45)" : "none",
+                  fontFamily: "'Inter',sans-serif",
+                  boxShadow: comment.trim() ? "0 4px 18px rgba(34,49,92,.45)" : "none",
                   transition: "all .15s",
                 }}
               >
