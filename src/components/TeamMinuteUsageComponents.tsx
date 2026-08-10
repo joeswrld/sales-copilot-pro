@@ -36,10 +36,10 @@ export function TeamUsageSidebarPill() {
     return (
       <div
         className="mx-3 mt-3 mb-1 px-3 py-1.5 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
-        style={{ background: "rgba(26,240,196,0.08)", border: "1px solid rgba(26,240,196,0.15)" }}
+        style={{ background: "rgba(34,49,92,0.07)", border: "1px solid rgba(34,49,92,0.18)" }}
         onClick={() => navigate("/billing")}
       >
-        <span className="text-[10px] font-semibold text-[#1af0c4] tracking-wide">
+        <span className="text-[10px] font-semibold text-[#22315C] tracking-wide">
           ∞ Unlimited minutes
           {pool.isTeamPlan && " · Team"}
         </span>
@@ -50,12 +50,15 @@ export function TeamUsageSidebarPill() {
   return (
     <div
       className="mx-3 mt-3 mb-1 px-3 py-2 rounded-md cursor-pointer hover:opacity-80 transition-opacity"
-      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+      style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.08)" }}
       onClick={() => navigate("/billing")}
     >
       {/* Header row */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] text-[rgba(255,255,255,0.38)] font-medium tracking-wide uppercase flex items-center gap-1">
+        <span
+          className="text-[10px] text-[rgba(23,23,15,0.42)] font-medium uppercase flex items-center gap-1"
+          style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", letterSpacing: "0.06em" }}
+        >
           {pool.isTeamPlan
             ? <><Users style={{ width: 9, height: 9 }} /> Team mins</>
             : <><Timer style={{ width: 9, height: 9 }} /> Minutes</>}
@@ -63,9 +66,9 @@ export function TeamUsageSidebarPill() {
         <span
           className={cn(
             "text-[11px] font-semibold tabular-nums",
-            pool.isAtLimit ? "text-red-400"
-              : pool.isNearLimit ? "text-amber-400"
-              : "text-[rgba(255,255,255,0.55)]",
+            pool.isAtLimit ? "text-[#B3442F]"
+              : pool.isNearLimit ? "text-[#8A5A20]"
+              : "text-[rgba(23,23,15,0.6)]",
           )}
         >
           {pool.hoursUsed}h / {pool.hoursTotal}h
@@ -73,13 +76,13 @@ export function TeamUsageSidebarPill() {
       </div>
 
       {/* Progress bar */}
-      <div className="h-[3px] rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+      <div className="h-[3px] rounded-full bg-[rgba(23,23,15,0.08)] overflow-hidden">
         <div
           className={cn(
             "h-full rounded-full transition-all duration-500",
-            pool.isAtLimit ? "bg-red-500"
-              : pool.isNearLimit ? "bg-amber-400"
-              : "bg-[#1af0c4]",
+            pool.isAtLimit ? "bg-[#B3442F]"
+              : pool.isNearLimit ? "bg-[#8A5A20]"
+              : "bg-[#22315C]",
           )}
           style={{ width: `${Math.min(pool.pct, 100)}%` }}
         />
@@ -90,9 +93,9 @@ export function TeamUsageSidebarPill() {
         <p
           className={cn(
             "text-[9.5px]",
-            pool.isAtLimit ? "text-red-400 font-medium"
-              : pool.isNearLimit ? "text-amber-400"
-              : "text-[rgba(255,255,255,0.22)]",
+            pool.isAtLimit ? "text-[#B3442F] font-medium"
+              : pool.isNearLimit ? "text-[#8A5A20]"
+              : "text-[rgba(23,23,15,0.35)]",
           )}
         >
           {pool.isAtLimit
@@ -101,7 +104,7 @@ export function TeamUsageSidebarPill() {
         </p>
         {/* Extra minutes badge */}
         {pool.extraMinutes > 0 && (
-          <span className="text-[9px] font-bold text-[#1af0c4] bg-[rgba(26,240,196,0.1)] border border-[rgba(26,240,196,0.2)] rounded-full px-1.5 py-0.5 flex items-center gap-0.5">
+          <span className="text-[9px] font-bold text-[#22315C] bg-[rgba(34,49,92,0.09)] border border-[rgba(34,49,92,0.22)] rounded-full px-1.5 py-0.5 flex items-center gap-0.5">
             <Plus style={{ width: 7, height: 7 }} />
             {pool.extraLabel}
           </span>
@@ -122,17 +125,17 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
 
   if (isLoading || !pool) return null;
 
-  const barColor = pool.isAtLimit ? "#ef4444"
-    : pool.isNearLimit ? "#f59e0b"
-    : "#1af0c4";
+  const barColor = pool.isAtLimit ? "#B3442F"
+    : pool.isNearLimit ? "#8A5A20"
+    : "#22315C";
 
   return (
     <div
       className={cn(
         "rounded-2xl border p-5 space-y-4",
-        pool.isAtLimit ? "border-red-500/25 bg-red-500/5"
-          : pool.isNearLimit ? "border-amber-400/25 bg-amber-400/5"
-          : "border-white/[0.07] bg-white/[0.03]",
+        pool.isAtLimit ? "border-[rgba(179,68,47,0.25)] bg-[rgba(179,68,47,0.04)]"
+          : pool.isNearLimit ? "border-[rgba(138,90,32,0.25)] bg-[rgba(138,90,32,0.04)]"
+          : "border-[rgba(23,23,15,0.08)] bg-[rgba(23,23,15,0.02)]",
         className,
       )}
     >
@@ -141,17 +144,17 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
         <div className="flex items-center gap-2.5">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: "rgba(26,240,196,0.12)", border: "1px solid rgba(26,240,196,0.2)" }}
+            style={{ background: "rgba(34,49,92,0.09)", border: "1px solid rgba(34,49,92,0.22)" }}
           >
             {pool.isTeamPlan
-              ? <Users style={{ width: 16, height: 16, color: "#1af0c4" }} />
-              : <Timer style={{ width: 16, height: 16, color: "#1af0c4" }} />}
+              ? <Users style={{ width: 16, height: 16, color: "#22315C" }} />
+              : <Timer style={{ width: 16, height: 16, color: "#22315C" }} />}
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-sm font-semibold text-[#17170F]">
               {pool.isTeamPlan ? "Team Meeting Minutes" : "Meeting Minutes"}
             </p>
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-[rgba(23,23,15,0.42)]">
               {pool.planName} plan{pool.isTeamPlan ? " · shared pool" : ""}
             </p>
           </div>
@@ -159,7 +162,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
         {pool.isAtLimit && pool.isAdmin && (
           <button
             onClick={() => navigate("/billing")}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#1af0c4]/10 border border-[#1af0c4]/25 text-[#1af0c4] hover:bg-[#1af0c4]/20 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[rgba(34,49,92,0.08)] border border-[rgba(34,49,92,0.25)] text-[#22315C] hover:bg-[rgba(34,49,92,0.14)] transition-colors"
           >
             <Zap style={{ width: 12, height: 12 }} /> Upgrade
           </button>
@@ -176,10 +179,10 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
           <div
             key={label}
             className="text-center rounded-xl p-3"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.07)" }}
           >
-            <div className="text-xl font-bold text-white">{val}</div>
-            <div className="text-[10px] text-white/35 uppercase tracking-wide">{label}</div>
+            <div className="text-xl font-bold text-[#17170F]">{val}</div>
+            <div className="text-[10px] text-[rgba(23,23,15,0.4)] uppercase tracking-wide">{label}</div>
           </div>
         ))}
       </div>
@@ -187,32 +190,32 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
       {/* ── Extra minutes row ── */}
       {!pool.isUnlimited && (
         <div className="rounded-xl px-4 py-3 flex items-center justify-between"
-          style={{ background: "rgba(26,240,196,0.05)", border: "1px solid rgba(26,240,196,0.12)" }}>
+          style={{ background: "rgba(34,49,92,0.04)", border: "1px solid rgba(34,49,92,0.12)" }}>
           <div>
-            <p className="text-xs font-semibold text-white/60">Plan base</p>
-            <p className="text-sm font-bold text-white/80">{(pool.baseMinutes / 60).toFixed(0)}h / month</p>
+            <p className="text-xs font-semibold text-[rgba(23,23,15,0.55)]">Plan base</p>
+            <p className="text-sm font-bold text-[rgba(23,23,15,0.8)]">{(pool.baseMinutes / 60).toFixed(0)}h / month</p>
           </div>
           <div className="text-center">
-            <p className="text-xs font-semibold text-[#1af0c4]/60">Extra purchased</p>
+            <p className="text-xs font-semibold text-[rgba(34,49,92,0.6)]">Extra purchased</p>
             {pool.extraMinutes > 0 ? (
               <>
-                <p className="text-sm font-bold text-[#1af0c4] flex items-center gap-1 justify-center">
+                <p className="text-sm font-bold text-[#22315C] flex items-center gap-1 justify-center">
                   <Sparkles style={{ width: 12, height: 12 }} />
                   {pool.extraLabel}
                 </p>
                 {pool.extraMinutesExpiresAt && (
-                  <p className="text-[10px] text-white/30 mt-0.5">
+                  <p className="text-[10px] text-[rgba(23,23,15,0.35)] mt-0.5">
                     until {format(new Date(pool.extraMinutesExpiresAt), "MMM d")}
                   </p>
                 )}
               </>
             ) : (
-              <p className="text-sm font-medium text-white/30">—</p>
+              <p className="text-sm font-medium text-[rgba(23,23,15,0.3)]">—</p>
             )}
           </div>
           <div className="text-right">
-            <p className="text-xs font-semibold text-white/60">Combined total</p>
-            <p className="text-sm font-bold text-white">{pool.hoursTotal}h</p>
+            <p className="text-xs font-semibold text-[rgba(23,23,15,0.55)]">Combined total</p>
+            <p className="text-sm font-bold text-[#17170F]">{pool.hoursTotal}h</p>
           </div>
         </div>
       )}
@@ -220,17 +223,17 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
       {/* Progress bar */}
       {!pool.isUnlimited && (
         <div className="space-y-1.5">
-          <div className="h-2.5 rounded-full bg-white/[0.06] overflow-hidden">
+          <div className="h-2.5 rounded-full bg-[rgba(23,23,15,0.07)] overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-700"
               style={{ width: `${Math.min(pool.pct, 100)}%`, background: barColor }}
             />
           </div>
-          <div className="flex justify-between text-xs text-white/35">
+          <div className="flex justify-between text-xs text-[rgba(23,23,15,0.4)]">
             <span>{Math.round(pool.pct)}% used this cycle</span>
             <span>
               {pool.isAtLimit
-                ? <span className="text-red-400 font-medium">Limit reached</span>
+                ? <span className="text-[#B3442F] font-medium">Limit reached</span>
                 : `${pool.remainingLabel} remaining`}
             </span>
           </div>
@@ -241,7 +244,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
       {pool.isNearLimit && !pool.isAtLimit && (
         <div
           className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-xs"
-          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#f59e0b" }}
+          style={{ background: "rgba(138,90,32,0.08)", border: "1px solid rgba(138,90,32,0.22)", color: "#8A5A20" }}
         >
           <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0, marginTop: 1 }} />
           <span>
@@ -259,7 +262,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
       {pool.isAtLimit && (
         <div
           className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-xs"
-          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+          style={{ background: "rgba(179,68,47,0.08)", border: "1px solid rgba(179,68,47,0.22)", color: "#B3442F" }}
         >
           <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0, marginTop: 1 }} />
           <span>
@@ -275,7 +278,7 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
         <div>
           <button
             onClick={() => setShowBreakdown((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/65 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-[rgba(23,23,15,0.42)] hover:text-[rgba(23,23,15,0.7)] transition-colors"
           >
             <TrendingUp style={{ width: 11, height: 11 }} />
             Usage by member
@@ -296,18 +299,18 @@ export function TeamUsageBillingCard({ className }: { className?: string }) {
                   <div key={m.user_id} className="flex items-center gap-2.5">
                     <div
                       className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0"
-                      style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}
+                      style={{ background: "rgba(102,66,161,0.12)", color: "#6642A1" }}
                     >
                       {name[0]?.toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between text-[11px] mb-0.5">
-                        <span className="text-white/65 truncate">{name}</span>
-                        <span className="text-white/35 tabular-nums shrink-0 ml-2">{hrs_used}h</span>
+                        <span className="text-[rgba(23,23,15,0.65)] truncate">{name}</span>
+                        <span className="text-[rgba(23,23,15,0.35)] tabular-nums shrink-0 ml-2">{hrs_used}h</span>
                       </div>
-                      <div className="h-[3px] rounded-full bg-white/[0.06] overflow-hidden">
+                      <div className="h-[3px] rounded-full bg-[rgba(23,23,15,0.07)] overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-[#7c3aed]"
+                          className="h-full rounded-full bg-[#6642A1]"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
