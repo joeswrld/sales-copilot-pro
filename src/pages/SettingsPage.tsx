@@ -140,16 +140,16 @@ function IntegrationCard({ provider, integration, onConnect, onDisconnect, isPen
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 16, padding: "16px 20px", borderRadius: 14,
-      background: comingSoon ? "rgba(255,255,255,.015)" : isConnected ? provider.accentBg : "rgba(255,255,255,.025)",
-      border: `1px solid ${comingSoon ? "rgba(255,255,255,.05)" : isConnected ? provider.accentBorder : "rgba(255,255,255,.07)"}`,
+      background: comingSoon ? "rgba(23,23,15,.015)" : isConnected ? provider.accentBg : "rgba(23,23,15,.025)",
+      border: `1px solid ${comingSoon ? "rgba(23,23,15,.05)" : isConnected ? provider.accentBorder : "rgba(23,23,15,.07)"}`,
       transition: "all .18s", opacity: comingSoon ? 0.7 : 1,
     }}>
-      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.09)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(23,23,15,.06)", border: "1px solid rgba(23,23,15,.09)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
         {provider.logo}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Bricolage Grotesque',sans-serif" }}>{provider.name}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#17170F", fontFamily: "'Inter',sans-serif" }}>{provider.name}</span>
           {comingSoon && <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.25)", borderRadius: 20, padding: "2px 8px" }}>🚧 Coming Soon</span>}
           {!comingSoon && isConnected && !needsReconnect && (
             <span style={{ fontSize: 10, fontWeight: 700, color: "#22c55e", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.22)", borderRadius: 20, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -157,12 +157,12 @@ function IntegrationCard({ provider, integration, onConnect, onDisconnect, isPen
             </span>
           )}
           {!comingSoon && needsReconnect && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.22)", borderRadius: 20, padding: "2px 8px" }}>Token expired</span>}
-          {!comingSoon && isConnected && accountLabel && <span style={{ fontSize: 10, color: "rgba(255,255,255,.45)", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "2px 8px", fontFamily: "monospace" }}>{accountLabel}</span>}
+          {!comingSoon && isConnected && accountLabel && <span style={{ fontSize: 10, color: "rgba(23,23,15,.45)", background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.08)", borderRadius: 20, padding: "2px 8px", fontFamily: "monospace" }}>{accountLabel}</span>}
         </div>
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: "rgba(255,255,255,.42)", lineHeight: 1.5 }}>{provider.description}</p>
+        <p style={{ margin: "0 0 8px", fontSize: 12, color: "rgba(23,23,15,.42)", lineHeight: 1.5 }}>{provider.description}</p>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {provider.features.map(f => (
-            <span key={f} style={{ fontSize: 10, color: isConnected ? provider.accentColor : comingSoon ? "rgba(167,139,250,.5)" : "rgba(255,255,255,.3)", background: isConnected ? provider.accentBg : comingSoon ? "rgba(167,139,250,.05)" : "rgba(255,255,255,.03)", border: `1px solid ${isConnected ? provider.accentBorder : comingSoon ? "rgba(167,139,250,.1)" : "rgba(255,255,255,.06)"}`, borderRadius: 20, padding: "2px 8px" }}>{f}</span>
+            <span key={f} style={{ fontSize: 10, color: isConnected ? provider.accentColor : comingSoon ? "rgba(167,139,250,.5)" : "rgba(23,23,15,.3)", background: isConnected ? provider.accentBg : comingSoon ? "rgba(167,139,250,.05)" : "rgba(23,23,15,.03)", border: `1px solid ${isConnected ? provider.accentBorder : comingSoon ? "rgba(167,139,250,.1)" : "rgba(23,23,15,.06)"}`, borderRadius: 20, padding: "2px 8px" }}>{f}</span>
           ))}
         </div>
         {!comingSoon && provider.helpContent}
@@ -399,7 +399,7 @@ export default function SettingsPage() {
         <section>
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display font-semibold">Integrations</h2>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,.3)", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "2px 10px" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(23,23,15,.3)", background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.08)", borderRadius: 20, padding: "2px 10px" }}>
               {connectedCount} connected
             </span>
           </div>
@@ -415,11 +415,11 @@ export default function SettingsPage() {
               />
             ))}
           </div>
-          <div style={{ marginTop: 14, padding: "14px 16px", borderRadius: 12, background: "rgba(59,130,246,.04)", border: "1px solid rgba(59,130,246,.12)", display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <Zap style={{ width: 14, height: 14, color: "#60a5fa", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ marginTop: 14, padding: "14px 16px", borderRadius: 12, background: "rgba(34,49,92,.05)", border: "1px solid rgba(34,49,92,.15)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <Zap style={{ width: 14, height: 14, color: "#22315C", flexShrink: 0, marginTop: 1 }} />
             <div>
-              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#60a5fa" }}>When integrations are connected</p>
-              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.38)", lineHeight: 1.55 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#22315C" }}>When integrations are connected</p>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(23,23,15,.38)", lineHeight: 1.55 }}>
                 Calendar events become calls automatically. HubSpot contacts and deals sync in real-time, and AI summaries are logged as Notes on matching Contacts and Deals.
               </p>
             </div>
