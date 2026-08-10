@@ -37,14 +37,14 @@ const NOTIF_ICON: Record<string, React.ElementType> = {
 };
 
 const NOTIF_COLOR: Record<string, { bg: string; icon: string }> = {
-  comment:  { bg: "rgba(14,245,212,.13)",  icon: "#0ef5d4" },
-  coaching: { bg: "rgba(34,197,94,.13)",   icon: "#22c55e" },
-  mention:  { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
-  system:   { bg: "rgba(148,163,184,.13)", icon: "#94a3b8" },
-  meeting:  { bg: "rgba(96,165,250,.13)",  icon: "#60a5fa" },
-  deal:     { bg: "rgba(167,139,250,.13)", icon: "#a78bfa" },
-  team:     { bg: "rgba(14,245,212,.13)",  icon: "#0ef5d4" },
-  call:     { bg: "rgba(251,191,36,.13)",  icon: "#fbbf24" },
+  comment:  { bg: "rgba(34,49,92,.09)",   icon: "#22315C" },
+  coaching: { bg: "rgba(47,107,79,.10)",  icon: "#2F6B4F" },
+  mention:  { bg: "rgba(138,90,32,.10)",  icon: "#8A5A20" },
+  system:   { bg: "rgba(23,23,15,.07)",   icon: "rgba(23,23,15,.5)" },
+  meeting:  { bg: "rgba(34,49,92,.09)",   icon: "#22315C" },
+  deal:     { bg: "rgba(102,66,161,.10)", icon: "#6642A1" },
+  team:     { bg: "rgba(34,49,92,.09)",   icon: "#22315C" },
+  call:     { bg: "rgba(138,90,32,.10)",  icon: "#8A5A20" },
 };
 
 function fmtNotifTime(d: string) {
@@ -81,7 +81,7 @@ const NOTIF_CSS = `
   .notif-sheet   { animation: notif-sheet   .32s cubic-bezier(.22,.68,0,1)  both; }
   .notif-backdrop{ animation: notif-backdrop .22s ease both; }
   .notif-row { -webkit-tap-highlight-color: transparent; }
-  .notif-row:active { background: rgba(26,240,196,.1) !important; }
+  .notif-row:active { background: rgba(34,49,92,.06) !important; }
 `;
 
 // ─── Notification item row ────────────────────────────────────────────────────
@@ -116,8 +116,8 @@ function NotifRow({
         display: "flex",
         gap: isMobile ? 14 : 12,
         padding: isMobile ? "15px 18px" : "13px 16px",
-        borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,.05)",
-        background: n.is_read ? "transparent" : "rgba(26,240,196,.04)",
+        borderBottom: isLast ? "none" : "1px solid rgba(23,23,15,.07)",
+        background: n.is_read ? "transparent" : "rgba(34,49,92,.035)",
         cursor: "pointer",
         transition: "background .12s",
         userSelect: "none",
@@ -137,9 +137,10 @@ function NotifRow({
           <p style={{
             fontSize: isMobile ? 13 : 12,
             margin: "0 0 2px", lineHeight: 1.3,
-            color: n.is_read ? "rgba(255,255,255,.65)" : "rgba(255,255,255,.95)",
+            color: n.is_read ? "rgba(23,23,15,.65)" : "rgba(23,23,15,.95)",
             fontWeight: 700,
-            fontFamily: "system-ui, sans-serif",
+            fontFamily: "'Inter', system-ui, sans-serif",
+            letterSpacing: "-0.01em",
           }}>
             {n.title}
           </p>
@@ -147,9 +148,9 @@ function NotifRow({
         <p style={{
           fontSize: isMobile ? 14 : 13,
           margin: "0 0 4px", lineHeight: 1.45,
-          color: n.is_read ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.92)",
+          color: n.is_read ? "rgba(23,23,15,.55)" : "rgba(23,23,15,.82)",
           fontWeight: n.is_read ? 400 : (n.title ? 400 : 600),
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "'Inter', system-ui, sans-serif",
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
         }}>
@@ -157,8 +158,8 @@ function NotifRow({
         </p>
         <span style={{
           fontSize: isMobile ? 12 : 11,
-          color: n.is_read ? "rgba(255,255,255,.22)" : "rgba(26,240,196,.75)",
-          fontFamily: "system-ui, sans-serif",
+          color: n.is_read ? "rgba(23,23,15,.32)" : "#22315C",
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}>
           {fmtNotifTime(n.created_at)}
         </span>
@@ -166,8 +167,8 @@ function NotifRow({
 
       <div style={{ display: "flex", alignItems: "flex-start", paddingTop: isMobile ? 5 : 3, flexShrink: 0 }}>
         {!n.is_read
-          ? <div style={{ width: isMobile ? 9 : 8, height: isMobile ? 9 : 8, borderRadius: "50%", background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,.55)", marginTop: 2 }} />
-          : <Check size={isMobile ? 14 : 12} color="rgba(255,255,255,.2)" />
+          ? <div style={{ width: isMobile ? 9 : 8, height: isMobile ? 9 : 8, borderRadius: "50%", background: "#22315C", boxShadow: "0 0 6px rgba(34,49,92,.35)", marginTop: 2 }} />
+          : <Check size={isMobile ? 14 : 12} color="rgba(23,23,15,.25)" />
         }
       </div>
     </div>
@@ -281,7 +282,7 @@ export function NotificationDropdown() {
   const PanelHeader = ({ mobile }: { mobile: boolean }) => (
     <div style={{
       padding: mobile ? "14px 18px" : "13px 16px",
-      borderBottom: "1px solid rgba(255,255,255,.08)",
+      borderBottom: "1px solid rgba(23,23,15,.09)",
       display: "flex", alignItems: "center", justifyContent: "space-between",
       flexShrink: 0, gap: 8,
     }}>
@@ -289,17 +290,17 @@ export function NotificationDropdown() {
         {mobile && (
           <button
             onClick={() => setOpen(false)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.5)", display: "flex", alignItems: "center", padding: 4, marginLeft: -4, borderRadius: 6, WebkitTapHighlightColor: "transparent" }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.5)", display: "flex", alignItems: "center", padding: 4, marginLeft: -4, borderRadius: 6, WebkitTapHighlightColor: "transparent" }}
             aria-label="Close notifications"
           >
             <ArrowLeft size={18} />
           </button>
         )}
-        <span style={{ fontSize: mobile ? 16 : 15, fontWeight: 700, color: "#f0f6fc", fontFamily: "system-ui, sans-serif" }}>
+        <span style={{ fontSize: mobile ? 16 : 15, fontWeight: 700, color: "#17170F", fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: "-0.02em" }}>
           Notifications
         </span>
         {unreadCount > 0 && (
-          <span style={{ fontSize: 10, fontWeight: 800, lineHeight: 1, background: "#1af0c4", color: "#060912", borderRadius: 20, padding: "2px 7px" }}>
+          <span style={{ fontSize: 10, fontWeight: 800, lineHeight: 1, background: "#22315C", color: "#FAFAF8", borderRadius: 20, padding: "2px 7px" }}>
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -311,10 +312,10 @@ export function NotificationDropdown() {
           disabled={markAllRead.isPending}
           style={{
             display: "flex", alignItems: "center", gap: 5,
-            background: "rgba(26,240,196,.1)", border: "1px solid rgba(26,240,196,.2)",
+            background: "rgba(34,49,92,.07)", border: "1px solid rgba(34,49,92,.22)",
             borderRadius: 8, padding: mobile ? "7px 12px" : "5px 10px",
             cursor: "pointer", fontSize: mobile ? 12 : 11, fontWeight: 600,
-            color: "#1af0c4", fontFamily: "system-ui, sans-serif", whiteSpace: "nowrap",
+            color: "#22315C", fontFamily: "'Inter', system-ui, sans-serif", whiteSpace: "nowrap",
             opacity: markAllRead.isPending ? 0.6 : 1, WebkitTapHighlightColor: "transparent",
           }}
         >
@@ -328,17 +329,17 @@ export function NotificationDropdown() {
     <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
       {notificationsLoading ? (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 140 }}>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2.5px solid rgba(26,240,196,.25)", borderTopColor: "#1af0c4", animation: "notif-spin .7s linear infinite" }} />
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "2.5px solid rgba(34,49,92,.2)", borderTopColor: "#22315C", animation: "notif-spin .7s linear infinite" }} />
         </div>
       ) : notifications.length === 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: mobile ? "60px 28px" : "52px 24px", gap: 14 }}>
-          <div style={{ width: mobile ? 60 : 52, height: mobile ? 60 : 52, borderRadius: 16, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Bell size={mobile ? 26 : 22} color="rgba(255,255,255,.2)" />
+          <div style={{ width: mobile ? 60 : 52, height: mobile ? 60 : 52, borderRadius: 16, background: "rgba(23,23,15,.04)", border: "1px solid rgba(23,23,15,.09)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Bell size={mobile ? 26 : 22} color="rgba(23,23,15,.25)" />
           </div>
-          <p style={{ fontSize: mobile ? 15 : 14, fontWeight: 600, color: "rgba(255,255,255,.4)", margin: 0, fontFamily: "system-ui, sans-serif" }}>
+          <p style={{ fontSize: mobile ? 15 : 14, fontWeight: 600, color: "rgba(23,23,15,.55)", margin: 0, fontFamily: "'Inter', system-ui, sans-serif" }}>
             You&apos;re all caught up!
           </p>
-          <p style={{ fontSize: mobile ? 13 : 12, color: "rgba(255,255,255,.22)", margin: 0, fontFamily: "system-ui, sans-serif", textAlign: "center", maxWidth: 240, lineHeight: 1.6 }}>
+          <p style={{ fontSize: mobile ? 13 : 12, color: "rgba(23,23,15,.35)", margin: 0, fontFamily: "'Inter', system-ui, sans-serif", textAlign: "center", maxWidth: 240, lineHeight: 1.6 }}>
             Coaching updates, team mentions and activity will appear here.
           </p>
         </div>
@@ -359,14 +360,14 @@ export function NotificationDropdown() {
     <div style={{
       padding: mobile ? "12px 18px" : "10px 16px",
       paddingBottom: mobile ? "calc(12px + env(safe-area-inset-bottom, 0px))" : "10px",
-      borderTop: "1px solid rgba(255,255,255,.06)",
+      borderTop: "1px solid rgba(23,23,15,.07)",
       display: "flex", justifyContent: "center", flexShrink: 0,
     }}>
       <button
         onClick={goToMessages}
-        style={{ fontSize: mobile ? 13 : 12, fontWeight: 500, color: "rgba(255,255,255,.38)", background: "none", border: "none", cursor: "pointer", fontFamily: "system-ui, sans-serif", padding: mobile ? "8px 12px" : "4px 8px", borderRadius: 6, transition: "color .12s", WebkitTapHighlightColor: "transparent" }}
-        onMouseEnter={e => (e.currentTarget.style.color = "#1af0c4")}
-        onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.38)")}
+        style={{ fontSize: mobile ? 13 : 12, fontWeight: 500, color: "rgba(23,23,15,.42)", background: "none", border: "none", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif", padding: mobile ? "8px 12px" : "4px 8px", borderRadius: 6, transition: "color .12s", WebkitTapHighlightColor: "transparent" }}
+        onMouseEnter={e => (e.currentTarget.style.color = "#22315C")}
+        onMouseLeave={e => (e.currentTarget.style.color = "rgba(23,23,15,.42)")}
       >
         View all in Messages →
       </button>
@@ -386,8 +387,8 @@ export function NotificationDropdown() {
         className={cn(
           "relative w-8 h-8 rounded-md flex items-center justify-center transition-colors",
           open
-            ? "bg-[rgba(255,255,255,0.1)] text-white"
-            : "text-[rgba(255,255,255,0.38)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.06)]"
+            ? "bg-[rgba(23,23,15,0.07)] text-[#17170F]"
+            : "text-[rgba(23,23,15,0.45)] hover:text-[rgba(23,23,15,0.85)] hover:bg-[rgba(23,23,15,0.05)]"
         )}
       >
         <Bell style={{ width: 15, height: 15 }} />
@@ -395,7 +396,7 @@ export function NotificationDropdown() {
           <span
             aria-hidden="true"
             className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full"
-            style={{ background: "#1af0c4", boxShadow: "0 0 6px rgba(26,240,196,0.65)" }}
+            style={{ background: "#22315C", boxShadow: "0 0 6px rgba(34,49,92,0.45)" }}
           />
         )}
       </button>
@@ -413,11 +414,11 @@ export function NotificationDropdown() {
             right: 0,
             width: "min(380px, calc(100vw - 24px))",
             maxHeight: "min(520px, calc(100vh - 80px))",
-            background: "#111827",
-            border: "1px solid rgba(255,255,255,.1)",
+            background: "#FFFFFF",
+            border: "1px solid rgba(23,23,15,.1)",
             borderRadius: 16,
             overflow: "hidden",
-            boxShadow: "0 24px 64px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.04)",
+            boxShadow: "0 1px 2px rgba(23,23,15,.04), 0 24px 64px -24px rgba(23,23,15,.35), 0 0 0 1px rgba(23,23,15,.04)",
             zIndex: 200,
             display: "flex",
             flexDirection: "column",
@@ -470,9 +471,9 @@ export function NotificationDropdown() {
               bottom: 0, left: 0, right: 0,
               // Tall enough to be useful, respects safe areas
               height: "min(88vh, 640px)",
-              background: "#111827",
+              background: "#FFFFFF",
               borderRadius: "22px 22px 0 0",
-              border: "1px solid rgba(255,255,255,.1)",
+              border: "1px solid rgba(23,23,15,.1)",
               borderBottom: "none",
               display: "flex",
               flexDirection: "column",
@@ -483,7 +484,7 @@ export function NotificationDropdown() {
           >
             {/* Drag handle */}
             <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 4px", flexShrink: 0, cursor: "grab" }}>
-              <div style={{ width: 44, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} />
+              <div style={{ width: 44, height: 4, borderRadius: 2, background: "rgba(23,23,15,.15)" }} />
             </div>
 
             <PanelHeader mobile={true} />
