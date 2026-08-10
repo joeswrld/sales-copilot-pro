@@ -56,17 +56,17 @@ import { toast } from "sonner";
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
 const T = {
-  bg:      "#080a12",
-  panel:   "rgba(12,14,22,0.96)",
-  card:    "rgba(255,255,255,0.04)",
-  border:  "rgba(255,255,255,0.07)",
-  accent:  "#6366f1",
-  text:    "rgba(255,255,255,0.85)",
-  muted:   "rgba(255,255,255,0.35)",
-  subtle:  "rgba(255,255,255,0.12)",
-  emerald: "#10b981",
-  amber:   "#f59e0b",
-  red:     "#ef4444",
+  bg:      "#FAFAF8",
+  panel:   "rgba(255,255,255,0.96)",
+  card:    "rgba(23,23,15,0.03)",
+  border:  "rgba(23,23,15,0.09)",
+  accent:  "#22315C",
+  text:    "rgba(23,23,15,0.85)",
+  muted:   "rgba(23,23,15,0.4)",
+  subtle:  "rgba(23,23,15,0.12)",
+  emerald: "#2F6B4F",
+  amber:   "#8A5A20",
+  red:     "#B3442F",
 };
 
 type MobilePanel = "none" | "people" | "chat" | "notes" | "more" | "settings";
@@ -127,7 +127,7 @@ const Ctrl = memo(({ icon: Icon, label, onClick, active = true, danger = false, 
       <span className={cn("font-medium", compact ? "text-[9px] opacity-60" : "text-[9px] sm:text-[10px] opacity-60 hidden xs:block")}>{label}</span>
     )}
     {badge != null && badge > 0 && (
-      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#22315C] text-white text-[9px] font-bold flex items-center justify-center">
         {badge > 9 ? "9+" : badge}
       </span>
     )}
@@ -146,9 +146,9 @@ const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
       className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full"
       style={{
         top: "max(10px, env(safe-area-inset-top))",
-        background: "rgba(79,70,229,0.94)",
+        background: "rgba(34,49,92,0.94)",
         backdropFilter: "blur(14px)",
-        boxShadow: "0 6px 20px rgba(79,70,229,0.4)",
+        boxShadow: "0 6px 20px rgba(34,49,92,0.4)",
       }}
     >
       <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" style={{ animation: "soundwave 1.1s ease-in-out infinite alternate" }} />
@@ -270,7 +270,7 @@ const DraggablePiP = memo(({
       style={{
         width: dims.w, height: dims.h,
         left: pos.x, top: pos.y,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+        boxShadow: "0 10px 30px rgba(23,23,15,0.16)",
         border: "1.5px solid rgba(255,255,255,0.16)",
         transition: draggingRef.current ? "none" : "left 0.22s cubic-bezier(.32,.72,0,1), top 0.22s cubic-bezier(.32,.72,0,1), width 0.18s ease, height 0.18s ease",
       }}
@@ -410,7 +410,7 @@ const MobileVideoStage = memo(({
                   width: "clamp(72px, 22vw, 104px)",
                   aspectRatio: "9 / 16",
                   boxShadow: isSpeaking
-                    ? "0 0 0 2px #6366f1, 0 0 14px rgba(99,102,241,0.55)"
+                    ? "0 0 0 2px #22315C, 0 0 14px rgba(34,49,92,0.55)"
                     : "0 0 0 1px rgba(255,255,255,0.15)",
                 }}
               >
@@ -453,13 +453,13 @@ const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
     <div className="px-2 sm:px-3 pt-2 space-y-2 shrink-0 z-30 relative">
       {requests.map((r: any) => (
         <div key={r.id} className="flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-xl"
-          style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+          style={{ background: "rgba(34,49,92,0.08)", border: "1px solid rgba(34,49,92,0.2)" }}>
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-            style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+            style={{ background: "linear-gradient(135deg,#22315C,#2A3F73)" }}>
             {(r.guest_name || "?")[0]?.toUpperCase()}
           </div>
-          <p className="text-xs flex-1 min-w-0 truncate" style={{ color: "rgba(255,255,255,0.7)" }}>
-            <span className="font-semibold text-white">{r.guest_name}</span>
+          <p className="text-xs flex-1 min-w-0 truncate" style={{ color: "rgba(23,23,15,0.65)" }}>
+            <span className="font-semibold text-[#17170F]">{r.guest_name}</span>
             <span className="hidden sm:inline"> wants to join</span>
           </p>
           <div className="flex gap-1.5 shrink-0">
@@ -470,7 +470,7 @@ const GuestBanner = memo(({ requests, admit, deny, loading }: any) => {
             </button>
             <button onClick={() => admit(r.id)} disabled={loading}
               className="h-9 px-2.5 sm:px-3 rounded-lg text-white font-medium flex items-center gap-1 text-xs touch-manipulation"
-              style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}>
+              style={{ background: "linear-gradient(135deg,#22315C,#2A3F73)" }}>
               <UserCheck className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Admit</span>
             </button>
@@ -520,11 +520,11 @@ const LeftPanel = memo(({
           return (
             <button key={tab.id} onClick={() => onTab(tab.id)}
               className="relative flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium border-b-2 transition-all min-w-[44px] touch-manipulation min-h-[44px]"
-              style={{ borderColor: activeTab === tab.id ? T.accent : "transparent", color: activeTab === tab.id ? "#a5b4fc" : T.muted }}>
+              style={{ borderColor: activeTab === tab.id ? T.accent : "transparent", color: activeTab === tab.id ? "#4A5D8F" : T.muted }}>
               <Icon className="w-3.5 h-3.5" />
               <span className="hidden lg:block text-[10px]">{tab.label}</span>
               {tab.badge != null && tab.badge > 0 && (
-                <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-indigo-500 text-white text-[8px] flex items-center justify-center font-bold">
+                <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#22315C] text-white text-[8px] flex items-center justify-center font-bold">
                   {tab.badge > 9 ? "9+" : tab.badge}
                 </span>
               )}
@@ -547,10 +547,10 @@ const LeftPanel = memo(({
             {participants.length === 0
               ? <div className="py-8 text-center"><Users className="w-8 h-8 mx-auto mb-2" style={{ color: T.subtle }} /><p className="text-xs" style={{ color: T.muted }}>No participants yet</p></div>
               : participants.map((p: DailyParticipant) => (
-                  <div key={p.session_id} className="relative flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                  <div key={p.session_id} className="relative flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2.5 rounded-xl hover:bg-[rgba(23,23,15,0.04)] transition-colors">
                     <div className="relative shrink-0">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                        style={{ background: p.session_id === activeSpeakerId ? "linear-gradient(135deg,#10b981,#059669)" : "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
+                        style={{ background: p.session_id === activeSpeakerId ? "linear-gradient(135deg,#2F6B4F,#25573F)" : "linear-gradient(135deg,#22315C,#2A3F73)" }}>
                         {(p.user_name || "?")[0]?.toUpperCase()}
                       </div>
                       {p.session_id === activeSpeakerId && (
@@ -586,7 +586,7 @@ const LeftPanel = memo(({
                       <div
                         onClick={(e) => e.stopPropagation()}
                         className="absolute right-2 top-11 z-40 w-40 rounded-xl overflow-hidden py-1"
-                        style={{ background: "#14161f", border: `1px solid ${T.border}`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}
+                        style={{ background: "#FFFFFF", border: `1px solid ${T.border}`, boxShadow: "0 8px 24px rgba(23,23,15,0.16)" }}
                       >
                         <button
                           onClick={() => { onMuteParticipant?.(p.session_id); setOpenMenuFor(null); }}
@@ -599,7 +599,7 @@ const LeftPanel = memo(({
                         <button
                           onClick={() => { onRemoveParticipant?.(p.session_id, p.user_name); setOpenMenuFor(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs touch-manipulation"
-                          style={{ color: "#f87171" }}
+                          style={{ color: "#B3442F" }}
                         >
                           <UserX className="w-3.5 h-3.5" /> Remove from meeting
                         </button>
@@ -615,7 +615,7 @@ const LeftPanel = memo(({
               {comments.map((c: any) => (
                 <div key={c.id} className="flex gap-2">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                    style={{ background: c.user_id === userId ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "linear-gradient(135deg,#8b5cf6,#ec4899)" }}>
+                    style={{ background: c.user_id === userId ? "linear-gradient(135deg,#22315C,#2A3F73)" : "linear-gradient(135deg,#2A3F73,#6642A1)" }}>
                     {((c.profile?.full_name ?? c.profile?.email ?? "?")[0] ?? "?").toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -623,7 +623,7 @@ const LeftPanel = memo(({
                       <span className="text-[11px] font-semibold" style={{ color: T.text }}>{c.profile?.full_name ?? c.profile?.email ?? "Someone"}</span>
                       <span className="text-[10px]" style={{ color: T.subtle }}>{new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
-                    <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>{c.comment_text}</p>
+                    <p className="text-xs leading-relaxed" style={{ color: "rgba(23,23,15,0.68)" }}>{c.comment_text}</p>
                   </div>
                 </div>
               ))}
@@ -637,7 +637,7 @@ const LeftPanel = memo(({
                   style={{ background: T.card, border: `1px solid ${T.border}`, color: T.text }} />
                 <button onClick={sendChat} disabled={!chatInput.trim()}
                   className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation shrink-0"
-                  style={{ background: chatInput.trim() ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : T.card }}>
+                  style={{ background: chatInput.trim() ? "linear-gradient(135deg,#22315C,#2A3F73)" : T.card }}>
                   <Send className="w-3.5 h-3.5 text-white" />
                 </button>
               </div>
@@ -652,7 +652,7 @@ const LeftPanel = memo(({
                 style={{ background: T.card, border: `1px solid ${T.border}`, color: T.text }} />
               <button onClick={async () => { if (noteInput.trim()) { await addNote(noteInput); setNoteInput(""); }}}
                 className="w-10 h-10 rounded-xl flex items-center justify-center self-start shrink-0 touch-manipulation"
-                style={{ background: noteInput.trim() ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : T.card }}>
+                style={{ background: noteInput.trim() ? "linear-gradient(135deg,#22315C,#2A3F73)" : T.card }}>
                 <Plus className="w-3.5 h-3.5 text-white" />
               </button>
             </div>
@@ -687,9 +687,9 @@ const LeftPanel = memo(({
           <div className="p-2 space-y-1.5">
             {notifications.slice(0, 20).map((n: any) => (
               <button key={n.id} onClick={() => !n.is_read && markRead.mutate(n.id)}
-                className="w-full text-left flex items-start gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] touch-manipulation min-h-[44px]"
+                className="w-full text-left flex items-start gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[rgba(23,23,15,0.04)] touch-manipulation min-h-[44px]"
                 style={{ opacity: n.is_read ? 0.5 : 1 }}>
-                <Bell className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: n.is_read ? T.muted : "#a5b4fc" }} />
+                <Bell className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: n.is_read ? T.muted : "#4A5D8F" }} />
                 <div className="flex-1 min-w-0">
                   {n.title && <p className="text-[11px] font-semibold mb-0.5" style={{ color: T.text }}>{n.title}</p>}
                   <p className="text-[11px]" style={{ color: T.muted }}>{n.message}</p>
@@ -822,7 +822,7 @@ const MeetingSettingsPanel = memo(({
       >
         {isLocked ? <Lock className="w-4 h-4 text-red-400" /> : <Unlock className="w-4 h-4" style={{ color: T.text }} />}
         <div className="flex-1">
-          <p className="text-sm font-medium" style={{ color: isLocked ? "#f87171" : T.text }}>
+          <p className="text-sm font-medium" style={{ color: isLocked ? "#B3442F" : T.text }}>
             {isLocked ? "Meeting locked" : "Lock meeting"}
           </p>
           <p className="text-[11px]" style={{ color: T.muted }}>
@@ -840,9 +840,9 @@ const MeetingSettingsPanel = memo(({
           onClick={() => onUpdate({ who_can_join: "anyone_with_link" })}
           disabled={isPending}
           className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation disabled:opacity-60"
-          style={{ background: whoCanJoin === "anyone_with_link" ? "rgba(99,102,241,0.1)" : "transparent" }}
+          style={{ background: whoCanJoin === "anyone_with_link" ? "rgba(34,49,92,0.1)" : "transparent" }}
         >
-          <Link2 className="w-4 h-4" style={{ color: whoCanJoin === "anyone_with_link" ? "#a5b4fc" : T.muted }} />
+          <Link2 className="w-4 h-4" style={{ color: whoCanJoin === "anyone_with_link" ? "#4A5D8F" : T.muted }} />
           <div className="flex-1">
             <p className="text-sm font-medium" style={{ color: T.text }}>Anyone with the link</p>
             <p className="text-[11px]" style={{ color: T.muted }}>Guests join instantly, no approval needed</p>
@@ -853,9 +853,9 @@ const MeetingSettingsPanel = memo(({
           onClick={() => onUpdate({ who_can_join: "invited_only" })}
           disabled={isPending}
           className="w-full flex items-center gap-3 px-4 py-3 text-left touch-manipulation disabled:opacity-60 border-t"
-          style={{ borderColor: T.border, background: whoCanJoin === "invited_only" ? "rgba(99,102,241,0.1)" : "transparent" }}
+          style={{ borderColor: T.border, background: whoCanJoin === "invited_only" ? "rgba(34,49,92,0.1)" : "transparent" }}
         >
-          <ShieldCheck className="w-4 h-4" style={{ color: whoCanJoin === "invited_only" ? "#a5b4fc" : T.muted }} />
+          <ShieldCheck className="w-4 h-4" style={{ color: whoCanJoin === "invited_only" ? "#4A5D8F" : T.muted }} />
           <div className="flex-1">
             <p className="text-sm font-medium" style={{ color: T.text }}>Require approval</p>
             <p className="text-[11px]" style={{ color: T.muted }}>Guests knock and you admit them one by one</p>
@@ -871,7 +871,7 @@ const MeetingSettingsPanel = memo(({
         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left touch-manipulation disabled:opacity-60"
         style={{ background: T.card, border: `1px solid ${T.border}` }}
       >
-        <MonitorPlay className="w-4 h-4" style={{ color: allowGuestScreenshare ? "#34d399" : T.muted }} />
+        <MonitorPlay className="w-4 h-4" style={{ color: allowGuestScreenshare ? "#2F6B4F" : T.muted }} />
         <div className="flex-1">
           <p className="text-sm font-medium" style={{ color: T.text }}>Guest screen sharing</p>
           <p className="text-[11px]" style={{ color: T.muted }}>
@@ -880,7 +880,7 @@ const MeetingSettingsPanel = memo(({
         </div>
         <div
           className="w-9 h-5 rounded-full shrink-0 relative transition-colors"
-          style={{ background: allowGuestScreenshare ? T.accent : "rgba(255,255,255,0.15)" }}
+          style={{ background: allowGuestScreenshare ? T.accent : "rgba(23,23,15,0.14)" }}
         >
           <div
             className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
@@ -1320,7 +1320,7 @@ export default function LiveMeeting() {
             <span className="text-[11px] font-bold text-red-400 uppercase tracking-widest hidden sm:block">Live</span>
           </div>
           <div className="h-4 w-px shrink-0 hidden sm:block" style={{ background: T.border }} />
-          <span className="text-xs sm:text-sm font-semibold text-white truncate max-w-[100px] xs:max-w-[160px] sm:max-w-none">
+          <span className="text-xs sm:text-sm font-semibold text-[#17170F] truncate max-w-[100px] xs:max-w-[160px] sm:max-w-none">
             {liveCall?.name || "Live Meeting"}
           </span>
         </div>
@@ -1328,7 +1328,7 @@ export default function LiveMeeting() {
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3" style={{ color: T.muted }} />
-            <span className="text-[11px] sm:text-xs font-mono font-semibold text-white tabular-nums">
+            <span className="text-[11px] sm:text-xs font-mono font-semibold text-[#17170F] tabular-nums">
               {fmt(daily.elapsedSeconds)}
             </span>
           </div>
@@ -1367,13 +1367,13 @@ export default function LiveMeeting() {
             onClick={() => (isMobile ? setMobilePanel(mobilePanel === "people" ? "none" : "people") : setDesktopPanel(desktopPanel === "people" ? "none" : "people"))}
             className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
             style={{
-              background: (isMobile ? mobilePanel === "people" : desktopPanel === "people") ? "rgba(99,102,241,0.2)" : T.card,
+              background: (isMobile ? mobilePanel === "people" : desktopPanel === "people") ? "rgba(34,49,92,0.2)" : T.card,
               border: `1px solid ${T.border}`,
             }}
           >
-            <Users className="w-4 h-4 text-white" />
+            <Users className="w-4 h-4 text-[#17170F]" />
             {(daily.participantCount > 0 || guestRequests.length > 0) && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#22315C] text-white text-[9px] font-bold flex items-center justify-center">
                 {guestRequests.length || daily.participantCount}
               </span>
             )}
@@ -1386,12 +1386,12 @@ export default function LiveMeeting() {
               onClick={() => (isMobile ? setMobilePanel(mobilePanel === "settings" ? "none" : "settings") : setDesktopPanel(desktopPanel === "settings" ? "none" : "settings"))}
               className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
               style={{
-                background: (isMobile ? mobilePanel === "settings" : desktopPanel === "settings") ? "rgba(99,102,241,0.2)" : T.card,
+                background: (isMobile ? mobilePanel === "settings" : desktopPanel === "settings") ? "rgba(34,49,92,0.2)" : T.card,
                 border: `1px solid ${isLocked ? "rgba(239,68,68,0.4)" : T.border}`,
               }}
               aria-label="Meeting settings"
             >
-              {isLocked ? <Lock className="w-4 h-4 text-red-400" /> : <Settings className="w-4 h-4 text-white" />}
+              {isLocked ? <Lock className="w-4 h-4 text-[#B3442F]" /> : <Settings className="w-4 h-4 text-[#17170F]" />}
             </button>
           )}
 
@@ -1402,11 +1402,11 @@ export default function LiveMeeting() {
             onClick={() => (isMobile ? setMobilePanel(mobilePanel === "more" ? "none" : "more") : setDesktopPanel(desktopPanel === "more" ? "none" : "more"))}
             className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
             style={{
-              background: (isMobile ? mobilePanel === "more" : desktopPanel === "more") ? "rgba(99,102,241,0.2)" : T.card,
+              background: (isMobile ? mobilePanel === "more" : desktopPanel === "more") ? "rgba(34,49,92,0.2)" : T.card,
               border: `1px solid ${T.border}`,
             }}
           >
-            <MoreHorizontal className="w-4 h-4 text-white" />
+            <MoreHorizontal className="w-4 h-4 text-[#17170F]" />
           </button>
         </div>
       </div>
@@ -1455,7 +1455,7 @@ export default function LiveMeeting() {
             style={{ height: "min(560px, calc(100% - 16px))", background: T.panel, border: `1px solid ${T.border}`, boxShadow: "0 12px 40px rgba(0,0,0,0.45)" }}
           >
             <div className="flex items-center justify-between px-3 py-2 border-b shrink-0" style={{ borderColor: T.border }}>
-              <span className="text-xs font-semibold text-white">
+              <span className="text-xs font-semibold text-[#17170F]">
                 {desktopPanel === "people" ? "Participants" : desktopPanel === "settings" ? "Meeting settings" : "More"}
               </span>
               <button onClick={() => setDesktopPanel("none")} className="w-6 h-6 rounded-lg flex items-center justify-center"
@@ -1543,7 +1543,7 @@ export default function LiveMeeting() {
             onClick={handleEnd}
             disabled={endCall.isPending}
             className="h-10 sm:h-12 px-3 sm:px-8 rounded-xl text-xs sm:text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
-            style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", boxShadow: "0 4px 16px rgba(220,38,38,.35)" }}
+            style={{ background: "linear-gradient(135deg,#B3442F,#8A3223)", boxShadow: "0 4px 16px rgba(179,68,47,.35)" }}
           >
             {endCall.isPending ? (
               <Loader2 className="w-4 h-4 animate-spin sm:hidden" />
