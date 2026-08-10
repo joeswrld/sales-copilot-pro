@@ -56,19 +56,19 @@ function NavLink({ item }: { item: NavItem }) {
       className={cn(
         "group relative flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 text-[13px] font-medium",
         isActive
-          ? "bg-[rgba(255,255,255,0.07)] text-white"
-          : "text-[rgba(255,255,255,0.45)] hover:text-[rgba(255,255,255,0.85)] hover:bg-[rgba(255,255,255,0.04)]"
+          ? "bg-[rgba(34,49,92,0.08)] text-[#17170F]"
+          : "text-[rgba(23,23,15,0.5)] hover:text-[#17170F] hover:bg-[rgba(23,23,15,0.035)]"
       )}
     >
       {isActive && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-r-full bg-[#4FFFFF] opacity-90" />
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-r-full bg-[#22315C] opacity-90" />
       )}
       <item.icon
         className={cn(
           "shrink-0 transition-colors",
           isActive
-            ? "text-[#4FFFFF]"
-            : "text-[rgba(255,255,255,0.35)] group-hover:text-[rgba(255,255,255,0.65)]"
+            ? "text-[#22315C]"
+            : "text-[rgba(23,23,15,0.35)] group-hover:text-[rgba(23,23,15,0.65)]"
         )}
         style={{ width: 15, height: 15 }}
       />
@@ -78,8 +78,8 @@ function NavLink({ item }: { item: NavItem }) {
           className={cn(
             "text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums",
             isActive
-              ? "bg-[rgba(79,255,255,0.15)] text-[#4FFFFF]"
-              : "bg-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.6)]"
+              ? "bg-[rgba(34,49,92,0.14)] text-[#22315C]"
+              : "bg-[rgba(23,23,15,0.07)] text-[rgba(23,23,15,0.55)]"
           )}
         >
           {item.badge}
@@ -91,7 +91,10 @@ function NavLink({ item }: { item: NavItem }) {
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.1em] uppercase text-[rgba(255,255,255,0.22)] select-none">
+    <p
+      className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase text-[rgba(23,23,15,0.32)] select-none"
+      style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", letterSpacing: "0.09em" }}
+    >
       {children}
     </p>
   );
@@ -135,14 +138,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   };
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full" style={{ fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif" }}>
+    <div className="flex flex-col h-full" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div className="px-4 pt-5 pb-4">
         <Link to="/dashboard" className="flex items-center gap-2.5 group">
           <FixsenseLogo size={28} />
-          <span className="text-[15px] font-bold tracking-[-0.03em] text-white">Fixsense</span>
+          <span className="text-[15px] font-bold tracking-[-0.03em] text-[#17170F]">Fixsense</span>
         </Link>
       </div>
-      <div className="mx-4 mb-1 h-px bg-[rgba(255,255,255,0.06)]" />
+      <div className="mx-4 mb-1 h-px bg-[rgba(23,23,15,0.08)]" />
 
       <TeamUsageSidebarPill />
 
@@ -156,9 +159,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </nav>
 
       {/* User card */}
-      <div className="mx-3 mb-4 mt-2 rounded-md overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="mx-3 mb-4 mt-2 rounded-md overflow-hidden" style={{ border: "1px solid rgba(23,23,15,0.1)" }}>
         <div
-          className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[rgba(255,255,255,0.04)] transition-colors cursor-pointer"
+          className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[rgba(23,23,15,0.035)] transition-colors cursor-pointer"
           onClick={handleSignOut}
         >
           {avatarUrl ? (
@@ -171,34 +174,34 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div
               className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 uppercase"
               style={{
-                background: "linear-gradient(135deg, rgba(26,240,196,0.2) 0%, rgba(11,191,160,0.2) 100%)",
-                border: "1px solid rgba(26,240,196,0.2)",
-                color: "#1af0c4",
+                background: "rgba(34,49,92,0.09)",
+                border: "1px solid rgba(34,49,92,0.22)",
+                color: "#22315C",
               }}
             >
               {emailInitial}
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold text-[rgba(255,255,255,0.85)] truncate leading-none mb-0.5">{displayName}</p>
-            <p className="text-[10px] text-[rgba(255,255,255,0.32)] truncate leading-none">{user?.email}</p>
+            <p className="text-[12px] font-semibold text-[rgba(23,23,15,0.85)] truncate leading-none mb-0.5">{displayName}</p>
+            <p className="text-[10px] text-[rgba(23,23,15,0.38)] truncate leading-none">{user?.email}</p>
           </div>
-          <LogOut style={{ width: 13, height: 13 }} className="text-[rgba(255,255,255,0.25)] shrink-0" />
+          <LogOut style={{ width: 13, height: 13 }} className="text-[rgba(23,23,15,0.3)] shrink-0" />
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#0a0e1a" }}>
+    <div className="min-h-screen flex" style={{ background: "#FAFAF8" }}>
       {/* Desktop sidebar */}
       <aside
         className="hidden md:flex w-[220px] flex-col shrink-0 relative"
-        style={{ background: "#0d1120", borderRight: "1px solid rgba(255,255,255,0.07)" }}
+        style={{ background: "#FAFAF8", borderRight: "1px solid rgba(23,23,15,0.09)" }}
       >
         <div
           className="absolute top-0 left-0 right-0 h-px"
-          style={{ background: "linear-gradient(90deg, transparent 0%, rgba(26,240,196,0.5) 40%, rgba(11,191,160,0.4) 60%, transparent 100%)" }}
+          style={{ background: "linear-gradient(90deg, transparent 0%, rgba(34,49,92,0.35) 40%, rgba(34,49,92,0.25) 60%, transparent 100%)" }}
         />
         <SidebarContent />
       </aside>
@@ -208,17 +211,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-50 md:hidden">
           <div
             className="absolute inset-0 backdrop-blur-sm"
-            style={{ background: "rgba(0,0,0,0.6)" }}
+            style={{ background: "rgba(23,23,15,0.45)" }}
             onClick={() => setMobileOpen(false)}
           />
           <aside
             className="absolute left-0 top-0 bottom-0 w-[220px] flex flex-col"
-            style={{ background: "#0d1120", borderRight: "1px solid rgba(255,255,255,0.08)" }}
+            style={{ background: "#FAFAF8", borderRight: "1px solid rgba(23,23,15,0.1)" }}
           >
             <div className="absolute top-3 right-3 z-10">
               <button
                 onClick={() => setMobileOpen(false)}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white hover:bg-[rgba(255,255,255,0.08)] transition-colors"
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[rgba(23,23,15,0.45)] hover:text-[#17170F] hover:bg-[rgba(23,23,15,0.07)] transition-colors"
               >
                 <X style={{ width: 14, height: 14 }} />
               </button>
@@ -234,15 +237,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <header
           className="h-12 flex items-center justify-between px-5 shrink-0 sticky top-0 z-30"
           style={{
-            background: "rgba(10,14,26,0.92)",
-            backdropFilter: "blur(20px)",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(250,250,248,0.86)",
+            backdropFilter: "blur(20px) saturate(180%)",
+            WebkitBackdropFilter: "blur(20px) saturate(180%)",
+            borderBottom: "1px solid rgba(23,23,15,0.08)",
           }}
         >
           <div className="flex items-center gap-3">
             {/* Mobile hamburger */}
             <button
-              className="md:hidden w-7 h-7 rounded-md flex items-center justify-center text-[rgba(255,255,255,0.5)] hover:text-white hover:bg-[rgba(255,255,255,0.07)] transition-colors"
+              className="md:hidden w-7 h-7 rounded-md flex items-center justify-center text-[rgba(23,23,15,0.55)] hover:text-[#17170F] hover:bg-[rgba(23,23,15,0.06)] transition-colors"
               onClick={() => setMobileOpen(true)}
             >
               <Menu style={{ width: 16, height: 16 }} />
@@ -250,7 +254,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {/* Mobile logo */}
             <div className="flex md:hidden items-center gap-2">
               <FixsenseLogo size={22} />
-              <span className="text-[13px] font-bold tracking-[-0.02em] text-white">Fixsense</span>
+              <span className="text-[13px] font-bold tracking-[-0.02em] text-[#17170F]">Fixsense</span>
             </div>
             {/* Desktop breadcrumb */}
             <div className="hidden md:block">
@@ -265,7 +269,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
             {/* User menu */}
             <button
-              className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+              className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-md transition-colors hover:bg-[rgba(23,23,15,0.05)]"
               onClick={() => navigate("/profile")}
             >
               {avatarUrl ? (
@@ -278,24 +282,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <div
                   className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[10px] font-bold uppercase"
                   style={{
-                    background: "rgba(26,240,196,0.15)",
-                    border: "1px solid rgba(26,240,196,0.2)",
-                    color: "#1af0c4",
+                    background: "rgba(34,49,92,0.09)",
+                    border: "1px solid rgba(34,49,92,0.22)",
+                    color: "#22315C",
                   }}
                 >
                   {emailInitial}
                 </div>
               )}
-              <span className="hidden sm:block text-[12px] font-medium text-[rgba(255,255,255,0.55)] max-w-[100px] truncate">
+              <span className="hidden sm:block text-[12px] font-medium text-[rgba(23,23,15,0.6)] max-w-[100px] truncate">
                 {displayName}
               </span>
-              <ChevronDown style={{ width: 12, height: 12 }} className="text-[rgba(255,255,255,0.25)] hidden sm:block" />
+              <ChevronDown style={{ width: 12, height: 12 }} className="text-[rgba(23,23,15,0.3)] hidden sm:block" />
             </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto" style={{ background: "#0a0e1a" }}>
+        <main className="flex-1 overflow-auto" style={{ background: "#FAFAF8" }}>
           <div className="p-5 md:p-7 min-h-full">{children}</div>
         </main>
       </div>
@@ -316,7 +320,7 @@ function BreadcrumbPath() {
   };
 
   if (segments.length === 1)
-    return <span className="text-[13px] font-semibold text-white tracking-[-0.01em]">Dashboard</span>;
+    return <span className="text-[13px] font-semibold text-[#17170F] tracking-[-0.01em]">Dashboard</span>;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -325,8 +329,8 @@ function BreadcrumbPath() {
         if (seg.includes("-") && seg.length > 20) return null;
         return (
           <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-[rgba(255,255,255,0.2)] text-[11px]">/</span>}
-            <span className={cn("text-[13px] tracking-[-0.01em]", isLast ? "font-semibold text-white" : "font-medium text-[rgba(255,255,255,0.35)]")}>
+            {i > 0 && <span className="text-[rgba(23,23,15,0.25)] text-[11px]">/</span>}
+            <span className={cn("text-[13px] tracking-[-0.01em]", isLast ? "font-semibold text-[#17170F]" : "font-medium text-[rgba(23,23,15,0.4)]")}>
               {labels[seg] || seg}
             </span>
           </span>
