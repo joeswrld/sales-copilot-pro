@@ -62,10 +62,10 @@ export default function PlanInheritanceBanner() {
   });
 
   const planColors: Record<string, { color: string; bg: string; border: string }> = {
-    free:    { color: "rgba(255,255,255,.5)",  bg: "rgba(255,255,255,.03)",  border: "rgba(255,255,255,.08)"  },
-    starter: { color: "#60a5fa",               bg: "rgba(96,165,250,.07)",   border: "rgba(96,165,250,.2)"    },
-    growth:  { color: "#0ef5d4",               bg: "rgba(14,245,212,.07)",   border: "rgba(14,245,212,.2)"    },
-    scale:   { color: "#a78bfa",               bg: "rgba(167,139,250,.07)",  border: "rgba(167,139,250,.2)"   },
+    free:    { color: "rgba(23,23,15,.5)", bg: "rgba(23,23,15,.03)",   border: "rgba(23,23,15,.09)"   },
+    starter: { color: "#22315C",           bg: "rgba(34,49,92,.06)",   border: "rgba(34,49,92,.2)"    },
+    growth:  { color: "#2F6B4F",           bg: "rgba(47,107,79,.07)",  border: "rgba(47,107,79,.2)"   },
+    scale:   { color: "#6642A1",           bg: "rgba(102,66,161,.07)", border: "rgba(102,66,161,.2)"  },
   };
   const colors = planColors[planKey] ?? planColors.free;
 
@@ -83,7 +83,7 @@ export default function PlanInheritanceBanner() {
         background: colors.bg,
         border: `1px solid ${colors.border}`,
         borderRadius: 12,
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: "'Inter', sans-serif",
       }}>
         <div style={{
           width: 34,
@@ -123,8 +123,8 @@ export default function PlanInheritanceBanner() {
               TEAM ACCESS
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.45)", lineHeight: 1.4 }}>
-            You have full access to <strong style={{ color: "rgba(255,255,255,.7)" }}>{planName}</strong> features
+          <p style={{ margin: 0, fontSize: 12, color: "rgba(23,23,15,.55)", lineHeight: 1.4 }}>
+            You have full access to <strong style={{ color: "rgba(23,23,15,.8)" }}>{planName}</strong> features
             through your team workspace — provided by {adminName}.
           </p>
         </div>
@@ -145,7 +145,7 @@ export default function PlanInheritanceBanner() {
             borderRadius: 8,
             transition: "background .12s",
             flexShrink: 0,
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: "'Inter', sans-serif",
           }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${colors.color}10`; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}
@@ -167,12 +167,12 @@ export default function PlanInheritanceBanner() {
         background: colors.bg,
         border: `1px solid ${colors.border}`,
         borderRadius: 12,
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: "'Inter', sans-serif",
       }}>
         <Users style={{ width: 15, height: 15, color: colors.color, flexShrink: 0 }} />
-        <p style={{ margin: 0, flex: 1, fontSize: 12, color: "rgba(255,255,255,.5)" }}>
+        <p style={{ margin: 0, flex: 1, fontSize: 12, color: "rgba(23,23,15,.55)" }}>
           Your <strong style={{ color: colors.color }}>{planName}</strong> plan features are shared with{" "}
-          <strong style={{ color: "rgba(255,255,255,.7)" }}>
+          <strong style={{ color: "rgba(23,23,15,.8)" }}>
             {teamMemberCount} teammate{(teamMemberCount ?? 0) !== 1 ? "s" : ""}
           </strong>{" "}
           in your workspace.
@@ -188,7 +188,7 @@ export default function PlanInheritanceBanner() {
             cursor: "pointer",
             padding: "4px 8px",
             borderRadius: 7,
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: "'Inter', sans-serif",
             flexShrink: 0,
           }}
         >
