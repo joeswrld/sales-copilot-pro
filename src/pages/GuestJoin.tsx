@@ -44,22 +44,22 @@ type JoinStep = "lobby" | "requesting" | "waiting" | "admitted" | "denied" | "lo
 
 // ─── Design tokens ───────────────────────────────────────────────────────────────
 const T = {
-  bg: "#080a12",
-  panel: "rgba(12,14,22,0.96)",
-  card: "rgba(255,255,255,0.04)",
-  border: "rgba(255,255,255,0.07)",
-  accent: "#6366f1",
-  text: "rgba(255,255,255,0.85)",
-  muted: "rgba(255,255,255,0.35)",
-  subtle: "rgba(255,255,255,0.12)",
+  bg: "#FAFAF8",
+  panel: "rgba(255,255,255,0.96)",
+  card: "rgba(23,23,15,0.03)",
+  border: "rgba(23,23,15,0.09)",
+  accent: "#22315C",
+  text: "rgba(23,23,15,0.85)",
+  muted: "rgba(23,23,15,0.4)",
+  subtle: "rgba(23,23,15,0.12)",
 };
 
 function qualityColor(q: CallQuality) {
   return q === "excellent" || q === "good"
-    ? "#10b981"
+    ? "#2F6B4F"
     : q === "fair"
-    ? "#f59e0b"
-    : "#ef4444";
+    ? "#8A5A20"
+    : "#B3442F";
 }
 function fmt(s: number) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -105,7 +105,7 @@ const LocalPreview = memo(
     return (
       <div
         className="relative w-full aspect-video rounded-2xl overflow-hidden"
-        style={{ background: "linear-gradient(135deg,#1a1d26,#0f1117)" }}
+        style={{ background: "linear-gradient(135deg,#FFFFFF,#FFFFFF)" }}
       >
         <video
           ref={videoRef}
@@ -123,8 +123,8 @@ const LocalPreview = memo(
               className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center font-bold text-xl sm:text-2xl text-white"
               style={{
                 background:
-                  "linear-gradient(135deg,rgba(99,102,241,0.4),rgba(139,92,246,0.4))",
-                border: "2px solid rgba(99,102,241,0.3)",
+                  "linear-gradient(135deg,rgba(34,49,92,0.4),rgba(102,66,161,0.4))",
+                border: "2px solid rgba(34,49,92,0.3)",
               }}
             >
               {getInitial(guestName) || "?"}
@@ -155,8 +155,8 @@ const LocalPreview = memo(
           <div
             className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-md"
             style={{
-              background: "rgba(239,68,68,0.2)",
-              border: "1px solid rgba(239,68,68,0.3)",
+              background: "rgba(179,68,47,0.2)",
+              border: "1px solid rgba(179,68,47,0.3)",
             }}
           >
             <VideoOff className="w-3 h-3 text-red-400" />
@@ -185,9 +185,9 @@ const PresentingBanner = memo(({ isSelfPresenting, presenterName, onStop }: {
       className="absolute z-30 left-1/2 -translate-x-1/2 flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full"
       style={{
         top: "max(10px, env(safe-area-inset-top))",
-        background: "rgba(79,70,229,0.94)",
+        background: "rgba(34,49,92,0.94)",
         backdropFilter: "blur(14px)",
-        boxShadow: "0 6px 20px rgba(79,70,229,0.4)",
+        boxShadow: "0 6px 20px rgba(34,49,92,0.4)",
       }}
     >
       <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" style={{ animation: "soundwave 1.1s ease-in-out infinite alternate" }} />
@@ -1012,13 +1012,13 @@ export default function GuestJoin() {
         >
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" }}
+            style={{ background: "rgba(138,90,32,0.12)", border: "1px solid rgba(138,90,32,0.3)" }}
           >
             <WifiOff className="w-7 h-7 text-amber-400" />
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-white mb-1">
+            <p className="text-sm font-semibold text-[#17170F] mb-1">
               You've been disconnected
             </p>
             <p className="text-xs max-w-xs" style={{ color: T.muted }}>
@@ -1038,7 +1038,7 @@ export default function GuestJoin() {
             <button
               onClick={handleRetryJoin}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation min-h-[48px]"
-              style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}
+              style={{ background: "linear-gradient(135deg,#22315C,#2A3F73)" }}
             >
               <RefreshCw className="w-4 h-4" /> Rejoin meeting
             </button>
@@ -1070,11 +1070,11 @@ export default function GuestJoin() {
           <div className="text-center mb-5 sm:mb-6">
             <div
               className="w-10 h-10 rounded-xl mx-auto mb-3 flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}
+              style={{ background: "linear-gradient(135deg,#22315C,#2A3F73)" }}
             >
               <Video className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg sm:text-xl font-bold text-white">Join Meeting</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-[#17170F]">Join Meeting</h1>
             {roomName && (
               <p className="text-xs mt-1" style={{ color: T.muted }}>
                 {roomName.replace(/-/g, " ")}
@@ -1098,13 +1098,13 @@ export default function GuestJoin() {
             {mediaError && (
               <div
                 className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
-                style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
+                style={{ background: "rgba(179,68,47,0.08)", border: "1px solid rgba(179,68,47,0.2)" }}
               >
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
-                <p className="text-[11px] leading-snug" style={{ color: "rgba(255,255,255,0.65)" }}>
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#B3442F" }} />
+                <p className="text-[11px] leading-snug" style={{ color: "rgba(23,23,15,0.62)" }}>
                   {mediaError}
                   {!localStream && (
-                    <span className="block mt-0.5 font-medium text-red-300">
+                    <span className="block mt-0.5 font-medium" style={{ color: "#8A3223" }}>
                       Tap Mic or Camera below to try again.
                     </span>
                   )}
@@ -1120,14 +1120,14 @@ export default function GuestJoin() {
                 style={
                   isAudioOn
                     ? {
-                        background: "rgba(255,255,255,0.08)",
+                        background: "rgba(23,23,15,0.03)",
                         border: `1px solid ${T.border}`,
-                        color: "#fff",
+                        color: "#17170F",
                       }
                     : {
-                        background: "rgba(239,68,68,0.12)",
-                        border: "1px solid rgba(239,68,68,0.3)",
-                        color: "#f87171",
+                        background: "rgba(179,68,47,0.08)",
+                        border: "1px solid rgba(179,68,47,0.25)",
+                        color: "#B3442F",
                       }
                 }
               >
@@ -1140,14 +1140,14 @@ export default function GuestJoin() {
                 style={
                   isVideoOn
                     ? {
-                        background: "rgba(255,255,255,0.08)",
+                        background: "rgba(23,23,15,0.03)",
                         border: `1px solid ${T.border}`,
-                        color: "#fff",
+                        color: "#17170F",
                       }
                     : {
-                        background: "rgba(239,68,68,0.12)",
-                        border: "1px solid rgba(239,68,68,0.3)",
-                        color: "#f87171",
+                        background: "rgba(179,68,47,0.08)",
+                        border: "1px solid rgba(179,68,47,0.25)",
+                        color: "#B3442F",
                       }
                 }
               >
@@ -1188,13 +1188,13 @@ export default function GuestJoin() {
               <div
                 className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{
-                  background: "rgba(99,102,241,0.08)",
-                  border: "1px solid rgba(99,102,241,0.2)",
+                  background: "rgba(34,49,92,0.08)",
+                  border: "1px solid rgba(34,49,92,0.2)",
                 }}
               >
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" style={{ color: "#22315C" }} />
                 <div>
-                  <p className="text-sm font-medium text-white">Waiting for the host</p>
+                  <p className="text-sm font-medium text-[#17170F]">Waiting for the host</p>
                   <p className="text-[11px]" style={{ color: T.muted }}>
                     The host will admit you shortly
                   </p>
@@ -1206,8 +1206,8 @@ export default function GuestJoin() {
               <div
                 className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.2)",
+                  background: "rgba(179,68,47,0.08)",
+                  border: "1px solid rgba(179,68,47,0.2)",
                 }}
               >
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -1224,8 +1224,8 @@ export default function GuestJoin() {
               <div
                 className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.2)",
+                  background: "rgba(179,68,47,0.08)",
+                  border: "1px solid rgba(179,68,47,0.2)",
                 }}
               >
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -1246,7 +1246,7 @@ export default function GuestJoin() {
                   !guestName.trim() || step === "requesting" || step === "waiting"
                 }
                 className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98] touch-manipulation disabled:opacity-50 disabled:pointer-events-none min-h-[48px]"
-                style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}
+                style={{ background: "linear-gradient(135deg,#22315C,#2A3F73)" }}
               >
                 {step === "requesting" ? (
                   <span className="flex items-center justify-center gap-2">
@@ -1263,7 +1263,7 @@ export default function GuestJoin() {
             ) : (
               <button
                 onClick={() => { setStep("lobby"); setRequestId(null); }}
-                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white touch-manipulation min-h-[48px]"
+                className="w-full py-3.5 rounded-xl text-sm font-semibold text-[#17170F] touch-manipulation min-h-[48px]"
                 style={{ background: T.card, border: `1px solid ${T.border}` }}
               >
                 Try again
@@ -1304,7 +1304,7 @@ export default function GuestJoin() {
             className="h-4 w-px shrink-0 hidden sm:block"
             style={{ background: T.border }}
           />
-          <span className="text-xs sm:text-sm font-semibold text-white truncate">
+          <span className="text-xs sm:text-sm font-semibold text-[#17170F] truncate">
             {roomName?.replace(/-/g, " ") || "Meeting"}
           </span>
         </div>
@@ -1312,7 +1312,7 @@ export default function GuestJoin() {
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <Clock className="w-3 h-3" style={{ color: T.muted }} />
-            <span className="text-[11px] sm:text-xs font-mono font-semibold text-white tabular-nums">
+            <span className="text-[11px] sm:text-xs font-mono font-semibold text-[#17170F] tabular-nums">
               {fmt(daily.elapsedSeconds)}
             </span>
           </div>
@@ -1320,7 +1320,7 @@ export default function GuestJoin() {
           {handRaiseCount > 0 && (
             <div
               className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg"
-              style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}
+              style={{ background: "rgba(138,90,32,0.12)", border: "1px solid rgba(138,90,32,0.25)" }}
             >
               <span className="text-xs">✋</span>
               <span className="text-[10px] font-bold text-amber-400">{handRaiseCount}</span>
@@ -1330,13 +1330,13 @@ export default function GuestJoin() {
             onClick={() => setShowPeople((v) => !v)}
             className="relative w-8 h-8 rounded-xl flex items-center justify-center touch-manipulation"
             style={{
-              background: showPeople ? "rgba(99,102,241,0.2)" : T.card,
+              background: showPeople ? "rgba(34,49,92,0.2)" : T.card,
               border: `1px solid ${T.border}`,
             }}
           >
-            <Users className="w-4 h-4 text-white" />
+            <Users className="w-4 h-4 text-[#17170F]" />
             {daily.participantCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#22315C] text-white text-[9px] font-bold flex items-center justify-center">
                 {daily.participantCount}
               </span>
             )}
@@ -1396,8 +1396,8 @@ export default function GuestJoin() {
             onClick={handleToggleMic}
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
-              background: isAudioOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)",
-              border: `1px solid ${isAudioOn ? T.border : "rgba(239,68,68,0.3)"}`,
+              background: isAudioOn ? "rgba(255,255,255,0.08)" : "rgba(179,68,47,0.15)",
+              border: `1px solid ${isAudioOn ? T.border : "rgba(179,68,47,0.3)"}`,
             }}
           >
             {isAudioOn ? (
@@ -1407,7 +1407,7 @@ export default function GuestJoin() {
             )}
             <span
               className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
-              style={{ color: isAudioOn ? T.muted : "#f87171" }}
+              style={{ color: isAudioOn ? T.muted : "#B3442F" }}
             >
               {isAudioOn ? "Mic" : "Muted"}
             </span>
@@ -1418,8 +1418,8 @@ export default function GuestJoin() {
             onClick={handleToggleCam}
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
-              background: isVideoOn ? "rgba(255,255,255,0.08)" : "rgba(239,68,68,0.15)",
-              border: `1px solid ${isVideoOn ? T.border : "rgba(239,68,68,0.3)"}`,
+              background: isVideoOn ? "rgba(255,255,255,0.08)" : "rgba(179,68,47,0.15)",
+              border: `1px solid ${isVideoOn ? T.border : "rgba(179,68,47,0.3)"}`,
             }}
           >
             {isVideoOn ? (
@@ -1429,7 +1429,7 @@ export default function GuestJoin() {
             )}
             <span
               className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
-              style={{ color: isVideoOn ? T.muted : "#f87171" }}
+              style={{ color: isVideoOn ? T.muted : "#B3442F" }}
             >
               {isVideoOn ? "Cam" : "Off"}
             </span>
@@ -1460,9 +1460,9 @@ export default function GuestJoin() {
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
               background: daily.isScreenSharing
-                ? "rgba(99,102,241,0.2)"
+                ? "rgba(34,49,92,0.2)"
                 : "rgba(255,255,255,0.08)",
-              border: `1px solid ${daily.isScreenSharing ? "rgba(99,102,241,0.4)" : T.border}`,
+              border: `1px solid ${daily.isScreenSharing ? "rgba(34,49,92,0.4)" : T.border}`,
               opacity: !daily.isScreenSharing && daily.screenShareUnavailableReason ? 0.45 : 1,
             }}
           >
@@ -1473,7 +1473,7 @@ export default function GuestJoin() {
             )}
             <span
               className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
-              style={{ color: daily.isScreenSharing ? "#a5b4fc" : T.muted }}
+              style={{ color: daily.isScreenSharing ? "#4A5D8F" : T.muted }}
             >
               {daily.isScreenSharing ? "Stop" : "Share"}
             </span>
@@ -1484,14 +1484,14 @@ export default function GuestJoin() {
             onClick={handleHandRaise}
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all touch-manipulation"
             style={{
-              background: isHandRaised ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
-              border: `1px solid ${isHandRaised ? "rgba(245,158,11,0.4)" : T.border}`,
+              background: isHandRaised ? "rgba(138,90,32,0.2)" : "rgba(255,255,255,0.08)",
+              border: `1px solid ${isHandRaised ? "rgba(138,90,32,0.4)" : T.border}`,
             }}
           >
             <Hand className={cn("w-4 h-4 sm:w-5 sm:h-5", isHandRaised ? "text-amber-400" : "text-white")} />
             <span
               className="text-[8px] sm:text-[9px] font-medium hidden xs:block"
-              style={{ color: isHandRaised ? "#fbbf24" : T.muted }}
+              style={{ color: isHandRaised ? "#8A5A20" : T.muted }}
             >
               {isHandRaised ? "Lower" : "Raise"}
             </span>
@@ -1502,8 +1502,8 @@ export default function GuestJoin() {
             onClick={handleLeave}
             className="h-10 sm:h-12 px-3 sm:px-8 rounded-xl text-xs sm:text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95 touch-manipulation"
             style={{
-              background: "linear-gradient(135deg,#dc2626,#b91c1c)",
-              boxShadow: "0 4px 16px rgba(220,38,38,.35)",
+              background: "linear-gradient(135deg,#B3442F,#8A3223)",
+              boxShadow: "0 4px 16px rgba(179,68,47,.35)",
             }}
           >
             <PhoneOff className="w-4 h-4 sm:hidden" />
@@ -1520,7 +1520,7 @@ export default function GuestJoin() {
             {daily.participants.map((p) => (
               <div
                 key={p.session_id}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] active:bg-white/[0.06] cursor-pointer transition-colors touch-manipulation"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[rgba(23,23,15,0.04)] active:bg-[rgba(23,23,15,0.06)] cursor-pointer transition-colors touch-manipulation"
                 onClick={() => {
                   setPinnedId(pinnedId === p.session_id ? null : p.session_id);
                   setShowPeople(false);
@@ -1532,8 +1532,8 @@ export default function GuestJoin() {
                     style={{
                       background:
                         p.session_id === daily.activeSpeakerId
-                          ? "linear-gradient(135deg,#10b981,#059669)"
-                          : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                          ? "linear-gradient(135deg,#2F6B4F,#25573F)"
+                          : "linear-gradient(135deg,#22315C,#2A3F73)",
                     }}
                   >
                     {getInitial(p.user_name)}
@@ -1589,7 +1589,7 @@ export default function GuestJoin() {
               style={{ background: T.panel, border: `1px solid ${T.border}`, backdropFilter: "blur(20px)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)", maxHeight: "70vh" }}
             >
               <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
-                <span className="text-sm font-semibold text-white">Participants ({daily.participantCount})</span>
+                <span className="text-sm font-semibold text-[#17170F]">Participants ({daily.participantCount})</span>
                 <button
                   onClick={() => setShowPeople(false)}
                   className="w-7 h-7 rounded-lg flex items-center justify-center touch-manipulation"
