@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { Download, WifiOff, Bell, BellOff, X } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function PWABanner() {
   const {
@@ -21,9 +22,20 @@ export default function PWABanner() {
     enablePush,
     disablePush,
   } = usePWA();
+  const { user } = useAuth();
 
   const [dismissed, setDismissed] = useState(false);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
+
+  // The install/push prompts only make sense for someone who's already
+  // signed up and using the product — showing "Install Fixsense" to an
+  // anonymous landing-page visitor (who may have just landed from a
+  // marketing email) has no context and, worse, was stacking directly on
+  // top of the cookie consent banner within seconds of page load. Chrome
+  // fires `beforeinstallprompt` purely off its own engagement heuristics,
+  // with no awareness of auth state, so `isInstallable` needs to be gated
+  // here rather than relying on the browser event alone.
+  const canShowPwaPrompts = !!user;
 
   // After first call analysis, auto-prompt for push
   // (call this from CallDetail after summary loads)
@@ -62,7 +74,7 @@ export default function PWABanner() {
       )}
 
       {/* Install to Home Screen prompt */}
-      {isInstallable && !dismissed && (
+      {canShowPwaPrompts && isInstallable && !dismissed && (
         <div style={{
           position: 'fixed',
           bottom: 80,
@@ -140,7 +152,7 @@ export default function PWABanner() {
       )}
 
       {/* Push notification opt-in (shown after first call completes) */}
-      {isPushSupported && !isPushEnabled && showPushPrompt && (
+      {canShowPwaPrompts && isPushSupported && !isPushEnabled && showPushPrompt && (
         <div style={{
           position: 'fixed',
           bottom: isInstallable && !dismissed ? 200 : 80,
