@@ -49,7 +49,6 @@ import ClipSharePage from "@/pages/ClipSharePage";
 import PWABanner from "@/components/PWABanner";
 import CookieConsent from "@/components/CookieConsent";
 import DealsPage from "@/pages/DealsPage";
-import IntegrationsDashboardPage from "./components/IntegrationsPage";
 import Changelogpage from "./pages/Changelogpage";
 import InviteLanding from "./pages/InviteLanding";
 import DealDetailPage from "./pages/DealDetailPage";
@@ -315,17 +314,6 @@ function AppRoutes() {
               <ProtectedRoute>
                 <ErrorBoundary>
                   <SettingsPage />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/dashboard/integrations"
-            element={
-              <ProtectedRoute>
-                <ErrorBoundary>
-                  <IntegrationsDashboardPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }
