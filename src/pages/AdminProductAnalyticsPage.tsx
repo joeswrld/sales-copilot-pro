@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import {
@@ -15,7 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, RefreshCw, PlayCircle, MousePointerClick, AlertTriangle,
-  Flame, Timer, Users, TrendingDown, Download,
+  Flame, Timer, Users, TrendingDown, Download, Sparkles, ThumbsUp, ThumbsDown,
+  Lightbulb, Loader2,
 } from "lucide-react";
 import {
   rangeFromPreset, RANGE_LABELS, type RangePreset, type AnalyticsRange,
@@ -23,6 +24,7 @@ import {
 import {
   useProductAnalytics, emptyFilters, type PAFilters,
 } from "@/hooks/useProductAnalytics";
+import { useProductAnalyticsAiReport, type ProductAiReport } from "@/hooks/useProductAnalyticsAiReport";
 import { exportCsv, exportJson } from "@/lib/adminExport";
 
 const ALL = "__all__";
@@ -98,6 +100,141 @@ function HeatCanvas({ points }: { points: { gx: number; gy: number; kind: string
   );
 }
 
+const CONFIDENCE_TONE: Record<string, string> = {
+  high: "text-emerald-500 border-emerald-500/40",
+  medium: "text-amber-500 border-amber-500/40",
+  low: "text-muted-foreground border-border",
+};
+
+function AiReportPanel({
+  report, loading, error, cached, generatedAt, onGenerate, rangeLabel,
+}: {
+  report: ProductAiReport | null;
+  loading: boolean;
+  error: string | null;
+  cached: boolean;
+  generatedAt?: string;
+  onGenerate: (opts?: { forceRefresh?: boolean }) => void;
+  rangeLabel: string;
+}) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Why users stayed & why they left
+            </CardTitle>
+            <CardDescription className="text-xs">
+              AI analysis of frontend activity (sessions, pages, friction, journeys) and backend
+              activity (signups, subscriptions, churn, calls) for {rangeLabel}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            {report && !loading && (
+              <Badge variant="outline" className="text-xs">
+                {cached ? "Cached" : "Fresh"}{generatedAt ? ` · ${format(new Date(generatedAt), "PPp")}` : ""}
+              </Badge>
+            )}
+            <Button size="sm" onClick={() => onGenerate({ forceRefresh: !!report })} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {report ? "Regenerate" : "Generate report"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && <p className="text-sm text-destructive mb-3">{error}</p>}
+          {!report && !loading && !error && (
+            <p className="text-sm text-muted-foreground">
+              Click "Generate report" to have AI explain retention and churn drivers for the
+              current time frame and filters, using the exact data shown on this page.
+            </p>
+          )}
+          {loading && <p className="text-sm text-muted-foreground">Analyzing activity…</p>}
+          {report && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-2">
+                <p className="text-sm">{report.summary}</p>
+                {report.confidence && (
+                  <Badge variant="outline" className={`text-[10px] shrink-0 ${CONFIDENCE_TONE[report.confidence] ?? ""}`}>
+                    {report.confidence} confidence
+                  </Badge>
+                )}
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-500">
+                    <ThumbsUp className="h-4 w-4" /> Why users stayed
+                  </div>
+                  {report.why_users_stayed.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No clear retention signal in this window.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {report.why_users_stayed.map((r, i) => (
+                        <li key={i} className="text-xs text-muted-foreground rounded-md border border-border px-2.5 py-1.5">{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                    <ThumbsDown className="h-4 w-4" /> Why users left
+                  </div>
+                  {report.why_users_left.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No clear churn signal in this window.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {report.why_users_left.map((r, i) => (
+                        <li key={i} className="text-xs text-muted-foreground rounded-md border border-border px-2.5 py-1.5">{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {(report.frontend_findings.length > 0 || report.backend_findings.length > 0) && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Frontend findings</p>
+                    <ul className="space-y-1.5">
+                      {report.frontend_findings.map((r, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">• {r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Backend findings</p>
+                    <ul className="space-y-1.5">
+                      {report.backend_findings.map((r, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">• {r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {report.recommended_actions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <Lightbulb className="h-4 w-4 text-amber-500" /> Recommended actions
+                  </div>
+                  <ol className="space-y-1.5 list-decimal list-inside">
+                    {report.recommended_actions.map((r, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">{r}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminProductAnalyticsPage() {
   const [preset, setPreset] = useState<RangePreset>("7d");
   const [custom, setCustom] = useState({
@@ -116,6 +253,27 @@ export default function AdminProductAnalyticsPage() {
 
   const a = useProductAnalytics(range, filters, heatPath);
 
+  const { generate: generateAiReport } = useProductAnalyticsAiReport();
+  const [aiReport, setAiReport] = useState<ProductAiReport | null>(null);
+  const [aiCached, setAiCached] = useState(false);
+  const [aiGeneratedAt, setAiGeneratedAt] = useState<string | undefined>(undefined);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const runAiReport = (opts?: { forceRefresh?: boolean }) => {
+    setAiError(null);
+    generateAiReport.mutate(
+      { range, filters, useCache: !opts?.forceRefresh },
+      {
+        onSuccess: (res) => {
+          setAiReport(res.report);
+          setAiCached(res.cached);
+          setAiGeneratedAt(res.generated_at);
+        },
+        onError: (err: unknown) => setAiError(err instanceof Error ? err.message : "Failed to generate AI report"),
+      },
+    );
+  };
+
   const setF = (k: keyof PAFilters, v: any) => setFilters((p) => ({ ...p, [k]: v }));
   const pathOptions = useMemo(
     () => Array.from(new Set([...(a.options.paths ?? []), ...a.pages.map((p) => p.path)])).filter(Boolean).sort(),
@@ -126,6 +284,13 @@ export default function AdminProductAnalyticsPage() {
     () => [...a.pages].sort((x, y) => y.exit_rate - x.exit_rate).slice(0, 8),
     [a.pages],
   );
+
+  // The AI report is tied to a specific range+filters; once either changes
+  // the previously generated report no longer describes what's on screen.
+  useEffect(() => {
+    setAiReport(null);
+    setAiError(null);
+  }, [range.from, range.to, filters.device, filters.browser, filters.country, filters.path]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -255,6 +420,9 @@ export default function AdminProductAnalyticsPage() {
             <TabsTrigger value="friction">Friction</TabsTrigger>
             <TabsTrigger value="ignored">Ignored buttons</TabsTrigger>
             <TabsTrigger value="journeys">User journeys</TabsTrigger>
+            <TabsTrigger value="ai-report">
+              <Sparkles className="h-3.5 w-3.5 mr-1" />AI Insights
+            </TabsTrigger>
           </TabsList>
 
           {/* ── SESSION REPLAYS ─────────────────────────────────── */}
@@ -502,6 +670,19 @@ export default function AdminProductAnalyticsPage() {
                 })}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── AI INSIGHTS ─────────────────────────────────────── */}
+          <TabsContent value="ai-report" className="mt-4">
+            <AiReportPanel
+              report={aiReport}
+              loading={generateAiReport.isPending}
+              error={aiError}
+              cached={aiCached}
+              generatedAt={aiGeneratedAt}
+              onGenerate={runAiReport}
+              rangeLabel={preset === "custom" ? `${custom.from} → ${custom.to}` : RANGE_LABELS[preset as keyof typeof RANGE_LABELS]}
+            />
           </TabsContent>
         </Tabs>
       </main>
