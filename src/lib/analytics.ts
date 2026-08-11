@@ -156,6 +156,23 @@ function interactiveAncestor(el: Element | null): Element | null {
   return null;
 }
 
+/** Snapshot of the state-bearing attributes on a clicked element, used to
+ * detect toggle/switch/menu-style UI changes that a dead-click check based
+ * only on innerHTML length would otherwise miss. */
+function elementStateSnapshot(el: Element | null): string {
+  if (!el) return "";
+  return [
+    el.className,
+    el.getAttribute("aria-expanded"),
+    el.getAttribute("aria-checked"),
+    el.getAttribute("aria-pressed"),
+    el.getAttribute("aria-selected"),
+    el.getAttribute("data-state"),
+    el.hasAttribute("disabled") ? "disabled" : "",
+    (el as HTMLInputElement).checked !== undefined ? String((el as HTMLInputElement).checked) : "",
+  ].join("|");
+}
+
 /* ── tracker core ────────────────────────────────────────────── */
 
 let buffer: QueuedEvent[] = [];
@@ -221,6 +238,47 @@ export function paPageView(path: string) {
   void flush();
 }
 
+/**
+ * Filters out errors that don't originate from this app's own bundled code.
+ * Browser extensions (password managers, wallets, ad blockers, etc.) run
+ * content scripts in the page context and throw errors that bubble to
+ * `window` just like real app errors — e.g. the well-known extension
+ * bridge error "Object Not Found Matching Id:N, MethodName:update,
+ * ParamCount:N". These are not actionable and were flooding this
+ * dashboard, so we only keep errors whose source file is same-origin
+ * (i.e. actually part of our build), or that have no filename/stack at
+ * all but a message that looks like a real runtime error rather than an
+ * extension artifact.
+ */
+function isOwnAppError(source: string, message: string): boolean {
+  if (/extension:\/\//i.test(source)) return false;
+  if (/Object Not Found Matching Id/i.test(message)) return false;
+  if (/^ResizeObserver loop/i.test(message)) return false; // benign browser noise
+  if (!source) {
+    // No filename/stack — most likely a cross-origin script error
+    // ("Script error." with no detail) or an extension artifact.
+    // Real same-origin errors always carry a filename/stack.
+    return !/^script error\.?$/i.test(message.trim()) && message.trim().length > 0;
+  }
+  try {
+    const url = new URL(source, window.location.href);
+    return url.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/* debounce rapid-fire error flushes so a noisy loop (extension or
+   otherwise) can't hammer the ingest endpoint with a flush call per event */
+let errorFlushTimer = 0;
+function scheduleErrorFlush() {
+  if (errorFlushTimer) return;
+  errorFlushTimer = window.setTimeout(() => {
+    errorFlushTimer = 0;
+    void flush();
+  }, 1000);
+}
+
 function scrollPct(): number {
   const doc = document.documentElement;
   const total = doc.scrollHeight - window.innerHeight;
@@ -264,19 +322,30 @@ export function startProductAnalytics() {
 
       paTrack("click", base);
 
-      // dead click: nothing changed 700ms after clicking an interactive-looking element
+      // dead click: nothing changed ~1.2s after clicking an interactive-looking element.
+      // We check DOM length, scroll, route, AND a snapshot of state-bearing attributes
+      // (aria-*, data-state, class, disabled, checked) on the clicked element itself,
+      // since a toggle/switch/menu can change meaningfully without moving the DOM
+      // length by more than a few chars. 700ms was also too tight for anything that
+      // waits on a network round-trip (e.g. a Supabase call) before updating the UI.
       const pathBefore = location.pathname;
       const htmlLen = document.body.innerHTML.length;
       const scrollBefore = window.scrollY;
+      const elStateBefore = elementStateSnapshot(el);
       const isInteractive = !!interactiveAncestor(target);
       window.setTimeout(() => {
         if (!isInteractive) return;
+        const stillAttached = document.contains(el);
         const unchanged =
           location.pathname === pathBefore &&
           Math.abs(document.body.innerHTML.length - htmlLen) < 40 &&
-          Math.abs(window.scrollY - scrollBefore) < 10;
+          Math.abs(window.scrollY - scrollBefore) < 10 &&
+          // if the element itself is gone (e.g. modal/menu closed or item removed),
+          // that IS a change — don't call it dead
+          stillAttached &&
+          elementStateSnapshot(el) === elStateBefore;
         if (unchanged) paTrack("dead_click", base);
-      }, 700);
+      }, 1200);
     },
     true,
   );
@@ -333,24 +402,29 @@ export function startProductAnalytics() {
 
   /* errors */
   window.addEventListener("error", (ev) => {
+    const filename = String((ev as ErrorEvent).filename ?? "");
+    const message = String(ev.message ?? "");
+    if (!isOwnAppError(filename, message)) return;
     paTrack("error", {
       label: (ev.message ?? "Error").slice(0, 120),
       metadata: {
-        message: String(ev.message ?? "").slice(0, 300),
-        source: String((ev as ErrorEvent).filename ?? "").slice(0, 200),
+        message: message.slice(0, 300),
+        source: filename.slice(0, 200),
         line: (ev as ErrorEvent).lineno ?? null,
       },
     });
-    void flush();
+    scheduleErrorFlush();
   });
   window.addEventListener("unhandledrejection", (ev) => {
     const reason = (ev as PromiseRejectionEvent).reason;
     const message = reason instanceof Error ? reason.message : String(reason ?? "");
+    const stack = reason instanceof Error ? String(reason.stack ?? "") : "";
+    if (!isOwnAppError(stack, message)) return;
     paTrack("error", {
       label: message.slice(0, 120),
       metadata: { message: message.slice(0, 300), kind: "unhandledrejection" },
     });
-    void flush();
+    scheduleErrorFlush();
   });
 
   /* periodic + lifecycle flush */
