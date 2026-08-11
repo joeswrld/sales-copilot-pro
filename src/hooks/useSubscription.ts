@@ -325,12 +325,17 @@ export function useSubscription() {
       ? "past_due"
       : "inactive";
 
-    // The plan the user is ACTUALLY on — prefer subscription row's active_plan
-    // field; fall back to plan_name; then to profile plan_type.
+    // The plan the user is ACTUALLY on. plan_name is written by the checkout
+    // functions at both "pending" and "verified" time, so it's the freshest
+    // signal of what plan was actually paid for — prefer it whenever it
+    // resolves to a real plan. active_plan is a secondary/cached field that
+    // can go stale if a sync ever fails to write it (e.g. after a plan
+    // change), so it's only used as a fallback, never as an override.
     // This is NEVER cleared on payment cancellation.
+    const planNameKey = isReallyActive ? normalizePlanKey(sub?.plan_name ?? "") : null;
     const activePlanKey =
+      planNameKey ??
       sub?.active_plan ??
-      (isReallyActive ? normalizePlanKey(sub?.plan_name ?? "") : null) ??
       planType ??
       "free";
 
