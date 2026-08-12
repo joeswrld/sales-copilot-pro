@@ -103,14 +103,6 @@ const USE_CASES = [
   { icon: "coffee", title: "One-on-ones", desc: "Everyday conversations, check-ins, and brainstorms captured as reliably as your most important calls." },
 ];
 
-const FIRST_MINUTES = [
-  { icon: "user-plus", title: "Create your account", desc: "Sign up with just an email address. No credit card, no setup call, no approval to wait on." },
-  { icon: "link", title: "Connect or start a meeting", desc: "Paste your usual Zoom, Meet, or Teams link, or start a Fixsense room directly. Nothing for guests to install." },
-  { icon: "mic", title: "Record the conversation", desc: "Fixsense listens in the background and identifies each speaker automatically as the meeting happens." },
-  { icon: "file-text", title: "Get your transcript", desc: "A full, speaker-labeled transcript is ready within minutes of the call ending." },
-  { icon: "file-text", title: "Receive the AI summary", desc: "A plain-language recap and a list of action items with owners, ready to copy or share." },
-];
-
 const SECURITY_ITEMS = [
   { icon: "lock", title: "Encrypted in transit and at rest", desc: "Recordings and transcripts are encrypted end to end using industry-standard protocols." },
   { icon: "shield", title: "Built for GDPR", desc: "Data minimization, explicit consent, and the right to be forgotten are part of the design, not an add-on." },
@@ -246,6 +238,349 @@ function ProductMock() {
 // ─────────────────────────────────────────────────────────────────────────
 // MAIN LANDING PAGE
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// "See how Fixsense works" — interactive, auto-playing product walkthrough
+// ─────────────────────────────────────────────────────────────────────────
+
+type Stage = {
+  label: string;
+  eyebrow: string;
+  title: string;
+  desc: string;
+  frameLabel: string;
+};
+
+const STAGES: Stage[] = [
+  {
+    label: "Start meeting",
+    eyebrow: "Step 1 · Start your meeting",
+    title: "Start or connect your meeting.",
+    desc: "Fixsense captures the conversation without interrupting your workflow — join from your existing calendar link, no separate app to open.",
+    frameLabel: "live meeting · fixsense.app",
+  },
+  {
+    label: "Capture",
+    eyebrow: "Step 2 · Fixsense captures the conversation",
+    title: "Speakers are identified automatically.",
+    desc: "While the conversation happens, Fixsense transcribes it in real time and attributes every line to the right speaker — no manual tagging.",
+    frameLabel: "transcript · fixsense.app",
+  },
+  {
+    label: "AI understands",
+    eyebrow: "Step 3 · AI understands what happened",
+    title: "The conversation becomes structure.",
+    desc: "Fixsense processes what was said into a summary, decisions, action items with owners and deadlines, and the key moments worth revisiting.",
+    frameLabel: "analysis · fixsense.app",
+  },
+  {
+    label: "Meeting record",
+    eyebrow: "Step 4 · Your meeting becomes a record",
+    title: "Every call, permanently searchable.",
+    desc: "The finished Call Details page holds the summary, action items, decisions, and full transcript — nothing lives only in someone's memory.",
+    frameLabel: "call details · fixsense.app",
+  },
+  {
+    label: "Keep it moving",
+    eyebrow: "Step 5 · Keep the conversation moving",
+    title: "Your meeting doesn't end when the call does.",
+    desc: "Decisions, commitments, and follow-ups flow straight into Messages and Deals — connected to the people and work they belong to.",
+    frameLabel: "messages · fixsense.app",
+  },
+];
+
+const AUTOPLAY_MS = 4200;
+
+function TypingCaption() {
+  const text = "So the main blocker right now is getting sign-off from legal on the new terms.";
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    setShown(0);
+    const id = setInterval(() => {
+      setShown((n) => {
+        if (n >= text.length) { clearInterval(id); return n; }
+        return n + 1;
+      });
+    }, 32);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="s1-caption-text">
+      {text.slice(0, shown)}
+      <span className="s1-caret" />
+    </div>
+  );
+}
+
+function StageOne() {
+  return (
+    <div className="panel show">
+      <div className="s1-callbar">
+        <div className="s1-rec"><span className="s1-rec-dot" />REC</div>
+        <div className="s1-timer">00:00:14</div>
+      </div>
+      <div className="s1-tiles">
+        <div className="s1-tile speaking">
+          <div className="s1-avatar">MC</div>
+          <div className="s1-name-tag">Maria Chen</div>
+          <div className="s1-wave"><span /><span /><span /><span /></div>
+        </div>
+        <div className="s1-tile">
+          <div className="s1-avatar">DO</div>
+          <div className="s1-name-tag">Daniel Osei</div>
+        </div>
+      </div>
+      <div className="s1-controls">
+        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /></svg></div>
+        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg></div>
+        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg></div>
+      </div>
+      <div className="s1-caption-row">
+        <div className="s1-caption-label">Live caption</div>
+        <TypingCaption />
+      </div>
+    </div>
+  );
+}
+
+function StageTwo() {
+  const lines = [
+    { n: "Maria Chen", i: "MC", t: "00:12:04", x: "So the main blocker right now is getting sign-off from legal on the new terms." },
+    { n: "Daniel Osei", i: "DO", t: "00:12:19", x: "I can follow up with them this afternoon and get a timeline." },
+    { n: "Priya Nair", i: "PN", t: "00:12:31", x: "Great, let's revisit this in Thursday's sync once you hear back." },
+  ];
+  return (
+    <div className="panel show">
+      <div className="s2-head">Live transcript</div>
+      <div className="s2-list">
+        {lines.map((l, i) => (
+          <div key={i} className="s2-line in" style={{ animationDelay: `${i * 260}ms` }}>
+            <div className="s2-avatar">{l.i}</div>
+            <div className="s2-body">
+              <div className="s2-meta"><span className="s2-name">{l.n}</span><span className="s2-time">{l.t}</span></div>
+              <div className="s2-text">{l.x}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StageThree() {
+  const cards = [
+    { icon: "file-text", label: "Summary", val: "Legal sign-off is the sole blocker to close.", big: false },
+    { icon: "check-square", label: "Decisions", val: "2", big: true },
+    { icon: "trending", label: "Action items", val: "4", big: true },
+    { icon: "clock", label: "Deadlines", val: "Thu sync", big: false },
+  ];
+  return (
+    <div className="panel show">
+      <div className="s3-head"><span className="s3-spinner" /> Fixsense is analyzing</div>
+      <div className="s3-grid">
+        {cards.map((c, i) => (
+          <div key={i} className="s3-card in" style={{ animationDelay: `${i * 220}ms` }}>
+            <div className="s3-card-label"><Icon name={c.icon} size={12} strokeWidth={1.8} />{c.label}</div>
+            <div className={c.big ? "s3-card-val num" : "s3-card-val"}>{c.val}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StageFour() {
+  const stats: [string, string][] = [["4", "Action items"], ["2", "Decisions"], ["3", "Participants"], ["34m", "Transcript"]];
+  const items: [string, string][] = [
+    ["Daniel to follow up with legal on contract terms", "Owner: Daniel Osei · Due Thu"],
+    ["Priya to prep renewal numbers for next sync", "Owner: Priya Nair · Due Thu"],
+    ["Send updated MSA redline to Acme legal team", "Owner: Maria Chen · Due Fri"],
+  ];
+  return (
+    <div className="panel show">
+      <div className="s4-top">
+        <div>
+          <div className="s4-title">Pipeline review — Acme Corp</div>
+          <div className="s4-meta">Aug 12, 2026 · 34 min · 3 participants</div>
+        </div>
+        <div className="s4-badge">Complete</div>
+      </div>
+      <div className="s4-stats">
+        {stats.map(([v, l], i) => (
+          <div key={i} className="s4-stat">
+            <div className="s4-stat-val" style={{ animationDelay: `${i * 90}ms` }}>{v}</div>
+            <div className="s4-stat-label">{l}</div>
+          </div>
+        ))}
+      </div>
+      <div className="s4-rows">
+        {items.map(([t, m], i) => (
+          <div key={i} className="s4-row in" style={{ animationDelay: `${i * 200}ms` }}>
+            <div className="s4-check"><Icon name="check" size={8} strokeWidth={2.6} /></div>
+            <div><div className="s4-row-text">{t}</div><div className="s4-row-meta">{m}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StageFive() {
+  const nodes: [string, string][] = [["file-text", "Meeting"], ["trending", "Summary"], ["check-square", "Action items"], ["message", "Team chat"]];
+  return (
+    <div className="panel show">
+      <div className="s5-flow">
+        {nodes.map((n, i) => (
+          <div key={i} style={{ display: "contents" }}>
+            <div className="s5-node in" style={{ animationDelay: `${i * 200}ms` }}>
+              <div className="s5-node-icon"><Icon name={n[0]} size={16} strokeWidth={1.7} /></div>
+              <div className="s5-node-label">{n[1]}</div>
+            </div>
+            {i < nodes.length - 1 && <div className="s5-arrow" />}
+          </div>
+        ))}
+      </div>
+      <div className="s5-thread in" style={{ animationDelay: "900ms" }}>
+        <div className="s5-msg">
+          <div className="s5-msg-avatar">FX</div>
+          <div><div className="s5-msg-name">Fixsense</div><div className="s5-msg-text">4 action items posted from "Pipeline review — Acme Corp." Daniel is owner on 2.</div></div>
+        </div>
+        <div className="s5-msg">
+          <div className="s5-msg-avatar">DO</div>
+          <div><div className="s5-msg-name">Daniel Osei</div><div className="s5-msg-text">On it — following up with legal now.</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const STAGE_COMPONENTS = [StageOne, StageTwo, StageThree, StageFour, StageFive];
+
+function HowItWorksInteractive() {
+  // Autoplay is the default, continuous experience — it loops forever (stage 5 → stage 1)
+  // until the visitor explicitly pauses it or clicks a stage/nav control themselves.
+  const [current, setCurrent] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef<number>();
+  const startRef = useRef<number>(0);
+
+  // Pause autoplay only while the section is actually on screen isn't required here —
+  // IntersectionObserver could be added later, but requestAnimationFrame already stays
+  // cheap (a single style write per tick) so it's safe to run continuously.
+  const goTo = useCallback((i: number) => {
+    setCurrent(i);
+    setProgress(0);
+  }, []);
+
+  const stopAutoplay = useCallback(() => {
+    setAutoplay(false);
+    setProgress(0);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const startAutoplay = useCallback(() => {
+    setAutoplay(true);
+  }, []);
+
+  useEffect(() => {
+    if (!autoplay) return;
+    startRef.current = performance.now();
+    function frame(now: number) {
+      const elapsed = now - startRef.current;
+      const pct = Math.min(100, (elapsed / AUTOPLAY_MS) * 100);
+      setProgress(pct);
+      if (elapsed >= AUTOPLAY_MS) {
+        setCurrent((c) => (c === STAGES.length - 1 ? 0 : c + 1));
+        startRef.current = now;
+        setProgress(0);
+      }
+      rafRef.current = requestAnimationFrame(frame);
+    }
+    rafRef.current = requestAnimationFrame(frame);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [autoplay]);
+
+  const StageVisual = STAGE_COMPONENTS[current];
+  const s = STAGES[current];
+
+  return (
+    <section className="section" id="how-it-works">
+      <div className="section-inner">
+        <Reveal>
+          <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <div className="kicker" style={{ justifyContent: "center" }}>See how Fixsense works</div>
+            <h2 className="section-h" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>
+              From conversation to useful follow-up, automatically.
+            </h2>
+            <p className="section-sub" style={{ textAlign: "center", margin: "0 auto" }}>
+              Click through each stage below, or let it play. This is the actual product experience — start to finish, in under 30 seconds.
+            </p>
+          </div>
+        </Reveal>
+
+        <div className="stage-rail">
+          {STAGES.map((st, i) => (
+            <div key={i} style={{ display: "contents" }}>
+              <button
+                className={`stage-btn${current === i ? " active" : ""}${current > i ? " done" : ""}`}
+                onClick={() => { stopAutoplay(); goTo(i); }}
+              >
+                <span className="stage-num">{i + 1}</span>
+                <span className="stage-label">{st.label}</span>
+              </button>
+              {i < STAGES.length - 1 && <div className="stage-connector" />}
+            </div>
+          ))}
+        </div>
+
+        <div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
+        <div className="autoplay-row">
+          <button className="autoplay-btn" onClick={() => (autoplay ? stopAutoplay() : startAutoplay())}>
+            {autoplay ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+            ) : (
+              <Icon name="play" size={12} />
+            )}
+            {autoplay ? "Pause" : "Play walkthrough"}
+          </button>
+        </div>
+
+        <div className="stage-panel">
+          <div className="stage-copy">
+            <div className="stage-eyebrow">{s.eyebrow}</div>
+            <h3 className="stage-title">{s.title}</h3>
+            <p className="stage-desc">{s.desc}</p>
+          </div>
+          <div className="stage-visual">
+            <div className="frame">
+              <div className="frame-bar">
+                <div className="frame-dots"><span /><span /><span /></div>
+                <span className="frame-label">{s.frameLabel}</span>
+              </div>
+              <div className="frame-body" key={current}>
+                <StageVisual />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="stage-nav">
+          <button className="nav-btn" disabled={current === 0} onClick={() => { stopAutoplay(); goTo(Math.max(0, current - 1)); }}>Back</button>
+          <button className="nav-btn" onClick={() => { stopAutoplay(); goTo(current === STAGES.length - 1 ? 0 : current + 1); }}>
+            {current === STAGES.length - 1 ? "Restart" : "Next stage"}
+          </button>
+        </div>
+
+        <div className="hiw-cta">
+          <div className="hiw-cta-h">Your first meeting can look like this.</div>
+          <a href="/signup" className="btn-hero">Start your free trial</a>
+          <div className="hiw-cta-note">No credit card required.</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   const { user } = useAuth();
   const [scrolled, setScrolled] = useState(false);
@@ -478,6 +813,140 @@ export default function LandingPage() {
     @media(max-width:560px){
       .steps-row{grid-template-columns:40px 1fr;gap:12px;}
       .steps-num{width:26px;height:26px;font-size:11px;}
+    }
+
+    /* ══════════════════════════════════════════
+       HOW IT WORKS — interactive walkthrough
+    ══════════════════════════════════════════ */
+    .hiw-cta{text-align:center;margin-top:56px;padding-top:44px;border-top:1px solid var(--border);}
+    .hiw-cta-h{font-size:clamp(18px,2vw,22px);font-weight:700;letter-spacing:-.015em;margin-bottom:18px;}
+    .hiw-cta-note{font-size:12px;color:var(--faint);margin-top:12px;}
+
+    .stage-rail{display:flex;align-items:center;justify-content:center;gap:6px;margin:44px 0 28px;flex-wrap:wrap;}
+    .stage-btn{display:flex;align-items:center;gap:9px;padding:9px 14px 9px 10px;border-radius:100px;border:1px solid var(--border);background:var(--paper);cursor:pointer;transition:border-color .2s,background .2s;font-family:var(--fb);}
+    .stage-btn:hover{border-color:var(--border-strong);}
+    .stage-btn.active{border-color:var(--accent);background:var(--accent-soft);}
+    .stage-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:10.5px;font-weight:600;background:var(--paper2);color:var(--muted);flex-shrink:0;transition:background .2s,color .2s;}
+    .stage-btn.active .stage-num{background:var(--accent);color:var(--accent-ink);}
+    .stage-btn.done .stage-num{background:var(--good-soft);color:var(--good);}
+    .stage-label{font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;}
+    .stage-btn.active .stage-label{color:var(--ink);}
+    .stage-connector{width:16px;height:1px;background:var(--border);flex-shrink:0;}
+    @media (max-width:820px){.stage-connector{display:none;} .stage-rail{gap:8px;}}
+
+    .progress-track{max-width:640px;margin:0 auto 4px;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .progress-fill{height:100%;background:var(--accent);width:0%;transition:width .05s linear;}
+    .autoplay-row{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:40px;}
+    .autoplay-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink2);background:none;border:none;cursor:pointer;font-family:var(--fb);padding:4px 8px;}
+    .autoplay-btn:hover{color:var(--ink);}
+
+    .stage-panel{display:grid;grid-template-columns:1fr 1.3fr;gap:48px;align-items:center;}
+    @media (max-width:860px){.stage-panel{grid-template-columns:1fr;gap:28px;}}
+    .stage-copy{}
+    .stage-eyebrow{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+    .stage-title{font-size:clamp(19px,2.2vw,24px);font-weight:700;letter-spacing:-.015em;line-height:1.24;margin-bottom:10px;}
+    .stage-desc{font-size:14.5px;color:var(--ink2);line-height:1.68;max-width:380px;}
+    .stage-visual{position:relative;}
+
+    .frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);}
+    .frame-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
+    .frame-dots{display:flex;gap:6px;}
+    .frame-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.14);}
+    .frame-label{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex:1;text-align:center;}
+    .frame-body{min-height:290px;position:relative;overflow:hidden;}
+
+    .panel{padding:20px 22px;opacity:0;transform:translateY(6px);animation:panelIn .35s cubic-bezier(.16,1,.3,1) forwards;}
+    .panel.show{opacity:1;transform:translateY(0);}
+    @keyframes panelIn{to{opacity:1;transform:translateY(0)}}
+
+    .s1-callbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+    .s1-rec{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#E8998A;font-family:var(--fm);}
+    .s1-rec-dot{width:6px;height:6px;border-radius:50%;background:#E8998A;animation:pulse 1.4s ease-in-out infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    .s1-timer{font-size:11px;color:rgba(255,255,255,.3);font-family:var(--fm);}
+    .s1-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+    .s1-tile{aspect-ratio:16/10;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;position:relative;}
+    .s1-avatar{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;}
+    .s1-name-tag{position:absolute;bottom:7px;left:8px;font-size:10px;color:rgba(255,255,255,.55);background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;}
+    .s1-tile.speaking{border-color:rgba(143,166,214,.5);}
+    .s1-wave{position:absolute;bottom:7px;right:8px;display:flex;gap:2px;align-items:flex-end;height:12px;}
+    .s1-wave span{width:2px;background:#8FA6D6;border-radius:1px;animation:wv 0.9s ease-in-out infinite;}
+    .s1-wave span:nth-child(1){height:5px;animation-delay:0s}
+    .s1-wave span:nth-child(2){height:10px;animation-delay:.15s}
+    .s1-wave span:nth-child(3){height:7px;animation-delay:.3s}
+    .s1-wave span:nth-child(4){height:11px;animation-delay:.45s}
+    @keyframes wv{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+    .s1-controls{display:flex;align-items:center;justify-content:center;gap:10px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);}
+    .s1-ctl{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;}
+    .s1-caption-row{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);}
+    .s1-caption-label{font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;font-family:var(--fm);}
+    .s1-caption-text{font-size:13px;color:rgba(255,255,255,.75);line-height:1.5;min-height:20px;}
+    .s1-caret{display:inline-block;width:2px;height:12px;background:#8FA6D6;margin-left:2px;vertical-align:-2px;animation:mockblink 1s step-end infinite;}
+
+    .s2-head{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px;font-family:var(--fm);}
+    .s2-list{display:flex;flex-direction:column;gap:15px;}
+    .s2-line{display:flex;gap:11px;opacity:0;transform:translateY(4px);}
+    .s2-line.in{animation:lineIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    @keyframes lineIn{to{opacity:1;transform:translateY(0)}}
+    .s2-avatar{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;}
+    .s2-body{flex:1;min-width:0;}
+    .s2-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
+    .s2-name{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85);}
+    .s2-time{font-size:10.5px;color:rgba(255,255,255,.3);font-family:var(--fm);}
+    .s2-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.55;}
+
+    .s3-head{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px;font-family:var(--fm);}
+    .s3-spinner{width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(143,166,214,.25);border-top-color:#8FA6D6;animation:spin .8s linear infinite;display:inline-block;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .s3-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .s3-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 13px;opacity:0;transform:scale(.96);}
+    .s3-card.in{animation:cardIn .45s cubic-bezier(.16,1,.3,1) forwards;}
+    @keyframes cardIn{to{opacity:1;transform:scale(1)}}
+    .s3-card-label{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.5);margin-bottom:6px;}
+    .s3-card-label svg{color:rgba(255,255,255,.5);}
+    .s3-card-val{font-size:13px;color:rgba(255,255,255,.85);line-height:1.4;}
+    .s3-card-val.num{font-size:20px;font-weight:700;color:#fff;}
+
+    .s4-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.07);}
+    .s4-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
+    .s4-meta{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);}
+    .s4-badge{font-size:10.5px;font-weight:600;color:#8FA6D6;background:rgba(143,166,214,.12);padding:4px 9px;border-radius:100px;}
+    .s4-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:18px;}
+    .s4-stat{padding-right:10px;}
+    .s4-stat-val{font-size:19px;font-weight:700;color:#fff;letter-spacing:-.01em;margin-bottom:2px;opacity:0;animation:fadeUp .4s cubic-bezier(.16,1,.3,1) forwards;}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+    .s4-stat-label{font-size:10px;color:rgba(255,255,255,.38);}
+    .s4-rows{display:flex;flex-direction:column;gap:9px;}
+    .s4-row{display:flex;align-items:flex-start;gap:9px;opacity:0;transform:translateY(4px);}
+    .s4-row.in{animation:lineIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    .s4-check{width:14px;height:14px;border-radius:4px;background:rgba(47,107,79,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1.5px;}
+    .s4-check svg{stroke:#7FC79E;}
+    .s4-row-text{font-size:12.5px;color:rgba(255,255,255,.8);line-height:1.5;}
+    .s4-row-meta{font-size:10.5px;color:rgba(255,255,255,.35);margin-top:1px;}
+
+    .s5-flow{display:flex;align-items:center;gap:0;margin-bottom:20px;flex-wrap:wrap;}
+    .s5-node{display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0;transform:scale(.92);}
+    .s5-node.in{animation:cardIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    .s5-node-icon{width:36px;height:36px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;}
+    .s5-node-icon svg{color:rgba(255,255,255,.75);}
+    .s5-node-label{font-size:10px;color:rgba(255,255,255,.45);text-align:center;white-space:nowrap;}
+    .s5-arrow{flex:1;min-width:14px;height:1px;background:rgba(255,255,255,.14);position:relative;margin:0 4px 22px;}
+    .s5-arrow::after{content:'';position:absolute;right:0;top:-3px;width:6px;height:6px;border-top:1px solid rgba(255,255,255,.3);border-right:1px solid rgba(255,255,255,.3);transform:rotate(45deg);}
+    .s5-thread{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 13px;opacity:0;transform:translateY(6px);}
+    .s5-thread.in{animation:lineIn .45s cubic-bezier(.16,1,.3,1) forwards;}
+    .s5-msg{display:flex;gap:9px;margin-bottom:9px;}
+    .s5-msg:last-child{margin-bottom:0;}
+    .s5-msg-avatar{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0;}
+    .s5-msg-name{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:2px;}
+    .s5-msg-text{font-size:12px;color:rgba(255,255,255,.6);line-height:1.45;}
+
+    .stage-nav{display:flex;justify-content:center;gap:10px;margin-top:28px;}
+    .nav-btn{font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--paper);border:1px solid var(--border-strong);padding:8px 16px;border-radius:100px;cursor:pointer;font-family:var(--fb);transition:border-color .15s,color .15s;}
+    .nav-btn:hover{color:var(--ink);border-color:var(--ink);}
+    .nav-btn:disabled{opacity:.35;cursor:default;}
+
+    @media (prefers-reduced-motion: reduce){
+      .s1-rec-dot,.s1-wave span,.s3-spinner,.stage-panel *{animation-duration:.001ms!important;}
     }
 
     /* ══════════════════════════════════════════
@@ -780,34 +1249,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* HOW IT WORKS / FIRST 5 MINUTES */}
-      <section className="section" id="how-it-works">
-        <div className="section-inner">
-          <Reveal>
-            <div className="kicker">Your first five minutes</div>
-            <h2 className="section-h">From sign-up to your first AI summary.</h2>
-            <p className="section-sub">No setup call, no onboarding specialist, no waiting on IT. Here is exactly what happens after you create an account.</p>
-          </Reveal>
-          <div className="steps-rail">
-            {FIRST_MINUTES.map((s, i) => (
-              <Reveal key={i} delay={i * 60}>
-                <div className="steps-row">
-                  <div className="steps-num-col">
-                    <div className="steps-num">{String(i + 1).padStart(2, "0")}</div>
-                  </div>
-                  <div className="steps-body">
-                    <div className="steps-icon"><Icon name={s.icon} size={16} /></div>
-                    <div className="steps-text">
-                      <div className="steps-title">{s.title}</div>
-                      <div className="steps-desc">{s.desc}</div>
-                    </div>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* HOW IT WORKS — interactive, auto-playing product walkthrough */}
+      <HowItWorksInteractive />
 
       {/* PRODUCT SHOWCASE — deep dive on the three core outputs */}
       <section className="section" style={{ background: "var(--paper2)" }}>
