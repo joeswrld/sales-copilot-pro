@@ -19,17 +19,17 @@ type Stage = {
 const STAGES: Stage[] = [
   {
     label: "Start meeting",
-    eyebrow: "Step 1 · Start your meeting",
+    eyebrow: "Step 1 · Start your meeting with Fixsense.",
     title: "Start your meeting.",
-    desc: "Fixsense captures the conversation without interrupting your workflow — join from your existing calendar link, no separate app to open.",
-    frameLabel: "live meeting · fixsense.app",
+    desc: "Start a meeting from your Fixsense workspace, invite your participants, and join the live meeting. Fixsense records and transcribes the conversation automatically, so you can focus on the discussion instead of taking notes.",
+    frameLabel: "live meeting · fixsense.com.ng",
   },
   {
     label: "Capture",
     eyebrow: "Step 2 · Fixsense captures the conversation",
     title: "Speakers are identified automatically.",
     desc: "While the conversation happens, Fixsense transcribes it in real time and attributes every line to the right speaker — no manual tagging.",
-    frameLabel: "transcript · fixsense.app",
+    frameLabel: "transcript · fixsense.com.ng",
   },
   {
     label: "AI understands",
@@ -43,14 +43,14 @@ const STAGES: Stage[] = [
     eyebrow: "Step 4 · Your meeting becomes a record",
     title: "Every call, permanently searchable.",
     desc: "The finished Call Details page holds the summary, action items, decisions, and full transcript — nothing lives only in someone's memory.",
-    frameLabel: "call details · fixsense.app",
+    frameLabel: "call details · fixsense.com.ng",
   },
   {
     label: "Keep it moving",
     eyebrow: "Step 5 · Keep the conversation moving",
     title: "Your meeting doesn't end when the call does.",
     desc: "Decisions, commitments, and follow-ups flow straight into Messages and Deals — connected to the people and work they belong to.",
-    frameLabel: "messages · fixsense.app",
+    frameLabel: "messages · fixsense.com.ng",
   },
 ];
 
@@ -339,7 +339,7 @@ export function HowItWorksInteractive() {
 
         <div className="hiw-cta">
           <div className="hiw-cta-h">Your first meeting can look like this.</div>
-          <a href="/signup" className="btn-hero">Start your free trial</a>
+          <a href="/login" className="btn-hero">Start for free</a>
           <div className="hiw-cta-note">No credit card required.</div>
         </div>
       </div>
