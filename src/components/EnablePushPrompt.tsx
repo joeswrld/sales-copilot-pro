@@ -53,22 +53,28 @@ export default function EnablePushPrompt({ context = "" }: Props) {
         padding: "10px 14px",
         margin: "0 0 12px 0",
         borderRadius: 12,
-        background:
-          "linear-gradient(135deg, rgba(96,165,250,.10), rgba(124,58,237,.10))",
-        border: "1px solid rgba(96,165,250,.25)",
-        fontFamily: "'DM Sans', sans-serif",
+        // Fixsense's app shell is a light theme (#FAFAF8 paper, #17170F ink —
+        // see src/index.css). This banner previously used colors tuned for a
+        // dark shell (near-white text, translucent-white icon/border), which
+        // made it render as light text on a light background — effectively
+        // invisible on both the Live Call and Messages pages. Every color
+        // below now matches the same light-theme tokens the rest of the app
+        // uses (ink #17170F, accent navy #22315C).
+        background: "linear-gradient(135deg, rgba(34,49,92,.06), rgba(34,49,92,.10))",
+        border: "1px solid rgba(34,49,92,.22)",
+        fontFamily: "'Inter', system-ui, sans-serif",
       }}
     >
-      <Bell style={{ width: 18, height: 18, color: "#60a5fa", flexShrink: 0 }} />
+      <Bell style={{ width: 18, height: 18, color: "#22315C", flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f0f6fc" }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#17170F" }}>
           Turn on push notifications
         </p>
         <p
           style={{
             margin: 0,
             fontSize: 11,
-            color: "rgba(255,255,255,.55)",
+            color: "rgba(23,23,15,.6)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -80,9 +86,9 @@ export default function EnablePushPrompt({ context = "" }: Props) {
       <button
         onClick={subscribe}
         style={{
-          background: "rgba(96,165,250,.18)",
-          border: "1px solid rgba(96,165,250,.35)",
-          color: "#bfdbfe",
+          background: "rgba(34,49,92,.10)",
+          border: "1px solid rgba(34,49,92,.35)",
+          color: "#22315C",
           fontSize: 12,
           fontWeight: 700,
           padding: "6px 12px",
@@ -99,7 +105,7 @@ export default function EnablePushPrompt({ context = "" }: Props) {
         style={{
           background: "transparent",
           border: "none",
-          color: "rgba(255,255,255,.4)",
+          color: "rgba(23,23,15,.35)",
           cursor: "pointer",
           padding: 4,
           flexShrink: 0,
