@@ -1156,7 +1156,7 @@ export default function LandingPage() {
               Every meeting captured. Every decision remembered. Nothing important gets lost.
             </h1>
             <p className="hero-sub">
-              Fixsense records and transcribes your meetings, identifies who said what, and turns the conversation into summaries, decisions, and action items your team can actually follow.”
+              Fixsense records and transcribes your meetings, identifies who said what, and turns the conversation into summaries, decisions, and action items your team can actually follow.
             </p>
             <div className="hero-ctas">
               <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
