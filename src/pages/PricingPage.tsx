@@ -95,8 +95,8 @@ export default function PricingPage() {
   }, []);
 
   const handleCta = (planKey: string) => {
-    if (planKey === "free") { user ? navigate("/dashboard") : navigate("/login"); return; }
-    if (!user) { navigate("/login"); return; }
+    if (planKey === "free") { user ? navigate("/dashboard") : navigate("/login?mode=signup"); return; }
+    if (!user) { navigate("/login?mode=signup"); return; }
     if (planKey === currentPlan) { navigate("/dashboard"); return; }
     subscribe.mutate(planKey);
   };
@@ -348,8 +348,8 @@ export default function PricingPage() {
               <Link to="/dashboard" className="btn-cta">Dashboard →</Link>
             ) : (
               <>
-                <Link to="/login" className="btn-ghost">Sign in</Link>
-                <Link to="/login" className="btn-cta">Start Free →</Link>
+                <Link to="/login?mode=login" className="btn-ghost">Sign in</Link>
+                <Link to="/login?mode=signup" className="btn-cta">Start Free →</Link>
               </>
             )}
           </div>
@@ -546,7 +546,7 @@ export default function PricingPage() {
             <h2 className="final-h">Start free.<br /><span className="c">Scale when you're ready.</span></h2>
             <p className="final-p">No setup. No IT tickets. Most teams are running live calls in minutes, and move to Growth before the week is out.</p>
             <div className="final-btns">
-              <Link to={user ? "/dashboard" : "/login"} className="btn-main">
+              <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-main">
                 Start Free Trial
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </Link>
