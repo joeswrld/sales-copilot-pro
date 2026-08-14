@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { trackFunnel, reportPartialLead } from "@/lib/funnel";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -173,7 +173,22 @@ function markVisited(): void {
 type Mode = "login" | "signup" | "forgot";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>(() => (isFirstVisit() ? "signup" : "login"));
+  // Mode resolution order:
+  //   1. Explicit ?mode=signup / ?mode=login in the URL — set by the landing
+  //      page's own CTAs (see LandingPage.tsx: "Start free trial" always
+  //      links here with ?mode=signup, "Sign in" always links with
+  //      ?mode=login). This is authoritative: a link that says "Start free"
+  //      should always open signup, regardless of what this browser did on
+  //      a previous visit.
+  //   2. Fall back to the old isFirstVisit() localStorage heuristic, for any
+  //      link that still points at bare /login with no query param (e.g.
+  //      old bookmarks, external links).
+  const [searchParams] = useSearchParams();
+  const modeParam = searchParams.get("mode");
+  const [mode, setMode] = useState<Mode>(() => {
+    if (modeParam === "signup" || modeParam === "login") return modeParam;
+    return isFirstVisit() ? "signup" : "login";
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -237,16 +252,17 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  /* ── First-visit → Sign Up default ──────────────────────────────────────
-     mode was already lazily initialized to "signup" above if this looks
-     like a first visit; this effect just records the visit for next time
-     and logs the funnel event, since switchToSignup's own tracking only
-     fires on a manual tab click. */
+  /* ── Landing-page CTA / first-visit → Sign Up default ───────────────────
+     mode was already lazily initialized above (URL ?mode= param, else the
+     isFirstVisit() heuristic); this effect just records the visit for next
+     time and logs the funnel event, since switchToSignup's own tracking
+     only fires on a manual tab click. */
   useEffect(() => {
     const firstVisit = isFirstVisit();
     markVisited();
-    if (firstVisit && mode === "signup") {
-      void trackFunnel("signup_started", { method: "email", trigger: "first_visit_default" });
+    if (mode === "signup") {
+      const trigger = modeParam === "signup" ? "landing_cta" : firstVisit ? "first_visit_default" : null;
+      if (trigger) void trackFunnel("signup_started", { method: "email", trigger });
     }
     // Intentionally run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
