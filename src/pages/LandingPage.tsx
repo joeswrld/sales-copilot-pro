@@ -573,7 +573,7 @@ function HowItWorksInteractive() {
 
         <div className="hiw-cta">
           <div className="hiw-cta-h">Your first meeting can look like this.</div>
-          <a href="/login" className="btn-hero">Start for free</a>
+          <a href="/login?mode=signup" className="btn-hero">Start for free</a>
           <div className="hiw-cta-note">No credit card required.</div>
         </div>
       </div>
@@ -1115,8 +1115,8 @@ export default function LandingPage() {
               </Link>
             ) : (
               <>
-                <Link to="/login" className="btn-ghost">Sign in</Link>
-                <Link to="/login" className="btn-primary">Start free</Link>
+                <Link to="/login?mode=login" className="btn-ghost">Sign in</Link>
+                <Link to="/login?mode=signup" className="btn-primary">Start free</Link>
               </>
             )}
             <button
@@ -1141,8 +1141,8 @@ export default function LandingPage() {
             <Link to="/dashboard" className="btn-hero" onClick={closeMobile}>Dashboard</Link>
           ) : (
             <>
-              <Link to="/login" className="btn-hero-outline" onClick={closeMobile}>Sign in</Link>
-              <Link to="/login" className="btn-hero" onClick={closeMobile}>Start free</Link>
+              <Link to="/login?mode=login" className="btn-hero-outline" onClick={closeMobile}>Sign in</Link>
+              <Link to="/login?mode=signup" className="btn-hero" onClick={closeMobile}>Start free</Link>
             </>
           )}
         </div>
@@ -1153,13 +1153,13 @@ export default function LandingPage() {
         <div className="hero-inner">
           <div className="hero-top">
             <h1 className="hero-h">
-              Every meeting captured. Every decision remembered. Nothing important gets lost.
+              Every meeting, captured, transcribed, and turned into a record you can trust.
             </h1>
             <p className="hero-sub">
-              Fixsense records and transcribes your meetings, identifies who said what, and turns the conversation into summaries, decisions, and action items your team can actually follow.
+              Fixsense joins your calls, transcribes every word, and turns the conversation into a clear summary and action list, ready before the meeting is even over. No memory required, no notes to rebuild.
             </p>
             <div className="hero-ctas">
-              <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
+              <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero">
                 Start free
                 <Icon name="arrow-right" size={14} />
               </Link>
@@ -1473,7 +1473,7 @@ export default function LandingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link to={user ? "/dashboard" : "/login"} className={`plan-cta ${p.highlight ? "primary" : ""}`}>
+                  <Link to={user ? "/dashboard" : "/login?mode=signup"} className={`plan-cta ${p.highlight ? "primary" : ""}`}>
                     {p.price_usd === 0 ? "Start free" : "Choose plan"}
                   </Link>
                 </div>
@@ -1522,7 +1522,7 @@ export default function LandingPage() {
             <h2 className="final-h">Stop taking notes. Start having the meeting.</h2>
             <p className="final-sub">Try Fixsense free on your next meeting. No credit card required, no bot for anyone to notice, and your first summary ready in minutes.</p>
             <div className="final-ctas">
-              <Link to={user ? "/dashboard" : "/login"} className="btn-hero">
+              <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero">
                 Start free
                 <Icon name="arrow-right" size={14} />
               </Link>
