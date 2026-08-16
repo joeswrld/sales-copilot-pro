@@ -603,7 +603,9 @@ export default function LandingPage() {
   const plans = [PLAN_CONFIG.free, PLAN_CONFIG.starter, PLAN_CONFIG.growth, PLAN_CONFIG.scale];
 
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&family=IBM+Plex+Mono:wght@500&display=swap');
+    /* Font is loaded from index.html (blocking @import removed — it was
+       delaying first paint of this whole page while the CSS parser waited
+       on a round trip to fonts.googleapis.com). */
 
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
