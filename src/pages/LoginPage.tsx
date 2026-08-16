@@ -268,16 +268,9 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&family=IBM+Plex+Mono:wght@500&display=swap";
-    document.head.appendChild(link);
-    return () => {
-      document.head.removeChild(link);
-    };
-  }, []);
+  // Font is now loaded from index.html directly, so it's already downloading
+  // before this component ever mounts — no more flash of unstyled text while
+  // waiting for a post-mount effect to inject the <link>.
 
   const emailErr = touched.email ? (emailError(email) || (mode === "signup" ? disposableEmailError(email) : null)) : null;
   const passwordErr = touched.password && mode !== "forgot" ? passwordError(password, mode === "signup" ? "signup" : "login") : null;
