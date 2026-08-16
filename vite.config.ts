@@ -18,4 +18,18 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the big, stable vendor libraries into their own chunk so
+        // browsers cache them independently of app code that changes every
+        // deploy. Keeps the entry chunk (what landing/login actually need)
+        // smaller and improves repeat-visit load times.
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-supabase": ["@supabase/supabase-js"],
+        },
+      },
+    },
+  },
 }));
