@@ -43,6 +43,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
+    <!-- App font, loaded here (not via @import or JS injection) so it starts
+         downloading immediately instead of blocking on CSS parse or a mount
+         effect. font-display=swap avoids blocking text render while it loads.
+         Previously: LandingPage.tsx used a render-blocking @import inside a
+         <style> tag, and LoginPage.tsx injected this same <link> in a
+         useEffect (after mount), causing a flash of unstyled text. Both now
+         rely on this single shared load. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&family=IBM+Plex+Mono:wght@500&display=swap"
+    />
+
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
