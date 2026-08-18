@@ -672,6 +672,13 @@ export default function LoginPage() {
               </>
             )}
           </button>
+
+          {mode === "signup" && (
+            <p className="signup-verify-notice">
+              We'll email a confirmation link to verify your address — click it to activate your
+              account. Prefer to skip that? <button type="button" className="mode-link" onClick={handleGoogleSignIn}>Sign up with Google</button> instead.
+            </p>
+          )}
         </form>
       )}
 
@@ -701,7 +708,7 @@ export default function LoginPage() {
 
       {mode === "signup" && (
         <div className="auth-perks">
-          {["5 meetings/month free, no credit card", "AI transcription and summaries included", "Up and running in under 5 minutes"].map(
+          {["30 min/month free, no credit card", "AI transcription and summaries included", "Up and running in under 5 minutes"].map(
             (p) => (
               <div key={p} className="auth-perk">
                 <div className="perk-icon">
@@ -1081,6 +1088,12 @@ export default function LoginPage() {
           min-height: 20px;
         }
         .mode-link:hover { opacity: 0.65; }
+
+        .signup-verify-notice {
+          margin-top: 14px; font-size: 12px; line-height: 1.55;
+          color: var(--muted); text-align: center;
+        }
+        .signup-verify-notice .mode-link { font-size: 12px; }
 
         .auth-perks {
           margin-top: 18px; padding-top: 16px;
