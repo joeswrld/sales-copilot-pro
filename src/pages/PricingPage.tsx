@@ -307,7 +307,7 @@ export default function PricingPage() {
     {
       key: "growth", name: PLAN_CONFIG.growth.name, price: `$${PLAN_CONFIG.growth.price_usd}`, badge: "Most Popular", badgeClass: "badge-growth",
       mins: `${formatMinutes(PLAN_CONFIG.growth.minute_quota)} of AI-Powered calls/month${planHours.growth}`, tagline: "Best for growing teams",
-      ctaText: "Start Free Trial", ctaClass: "cta-fill",
+      ctaText: "Sign Up Free", ctaClass: "cta-fill",
       cardClass: "plan-card-growth", priceClass: "plan-price-growth", minsClass: "",
       feats: ["Everything in Starter", "Deal Timeline + AI Intel", "Coaching Clips", "Team messages", "Up to 10 members", "Action Layer + CRM push"],
     },
@@ -410,7 +410,7 @@ export default function PricingPage() {
               <div className="kicker">Plans & Pricing</div>
               <h2 className="sec-title">Choose your plan</h2>
               <p style={{ fontSize: 16, color: "var(--ink2)", lineHeight: 1.7, maxWidth: 480, margin: "0 auto" }}>
-                All plans include a 30-minute free trial. No credit card required to start.
+                Start on the free plan — 30 minutes a month, no credit card. Upgrade anytime.
               </p>
             </div>
           </FadeIn>
@@ -547,7 +547,7 @@ export default function PricingPage() {
             <p className="final-p">No setup. No IT tickets. Most teams are running live calls in minutes, and move to Growth before the week is out.</p>
             <div className="final-btns">
               <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-main">
-                Start Free Trial
+                Start Free
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </Link>
               <Link to="/testimonials" className="btn-sec">See customer stories →</Link>
