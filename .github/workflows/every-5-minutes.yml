@@ -1,4 +1,4 @@
-name: Every 5 Minutes
+name: Automated Daily Commits
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  empty-commit:
+  commit:
     runs-on: ubuntu-latest
 
     permissions:
@@ -16,12 +16,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check today's automated commits
+        id: check
+        run: |
+          COUNT=$(git log \
+            --since="$(date -u +%Y-%m-%d) 00:00:00" \
+            --author="github-actions[bot]" \
+            --format="%H" | wc -l)
+
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
       - name: Configure Git
+        if: steps.check.outputs.count < 10
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Create empty commit
+        if: steps.check.outputs.count < 10
         run: |
-          git commit --allow-empty -m "chore: automated update"
+          git commit --allow-empty \
+            -m "chore: automated daily update #$((${{ steps.check.outputs.count }} + 1))"
           git push
