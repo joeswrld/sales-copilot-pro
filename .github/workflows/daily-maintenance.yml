@@ -2,7 +2,7 @@ name: Repository Heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,23 +16,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update heartbeat
+      - name: Generate heartbeat report
         run: |
-          echo "Last update: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" > heartbeat.txt
+          mkdir -p .github/maintenance
 
-      - name: Configure Git
+          REPO_STATUS=$(git status --short | wc -l)
+          COMMITS_24H=$(git log --since="24 hours ago" --oneline | wc -l)
+          BRANCH=$(git branch --show-current)
+          LATEST_COMMIT=$(git log -1 --pretty=format:'%h - %s')
+          NODE_VERSION=$(node --version)
+          NPM_VERSION=$(npm --version)
+
+          cat > .github/maintenance/heartbeat.md <<EOF
+          # Repository Heartbeat
+
+          > Automated repository health snapshot.
+
+          **Last updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          ## Repository Status
+
+          | Metric | Value |
+          |---|---|
+          | Branch | \`$BRANCH\` |
+          | Working tree changes | $REPO_STATUS |
+          | Commits in last 24h | $COMMITS_24H |
+          | Node.js | \`$NODE_VERSION\` |
+          | npm | \`$NPM_VERSION\` |
+
+          ## Latest Commit
+
+          \`$LATEST_COMMIT\`
+
+          ## Maintenance
+
+          This report is automatically refreshed every 30 minutes.
+
+          The purpose of this heartbeat is to provide a lightweight,
+          continuously updated snapshot of repository activity and health.
+          EOF
+
+      - name: Commit heartbeat
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit heartbeat
-        run: |
-          git add heartbeat.txt
+          git add .github/maintenance/heartbeat.md
 
           if git diff --cached --quiet; then
-            echo "Nothing changed."
+            echo "No changes to heartbeat."
             exit 0
           fi
 
-          git commit -m "chore: update heartbeat"
+          git commit -m "chore: update repository heartbeat"
           git push
