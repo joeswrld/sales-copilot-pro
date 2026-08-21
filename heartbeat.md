@@ -6,7 +6,7 @@
 
 | Metric | Value |
 |---|---|
-| Last update | 2026-08-21T00:10:07.861Z |
+| Last update | 2026-08-21T00:11:24.494Z |
 | Branch | `main` |
 | Commits in last 24h | 1 |
 | Total commits | 1 |
@@ -15,7 +15,7 @@
 
 ## Latest Commit
 
-`84bdea3 - Update DashboardLayout.tsx`
+`16459e5 - Create CandidatesPage.tsx`
 
 ## Repository Activity
 
