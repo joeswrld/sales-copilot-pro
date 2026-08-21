@@ -65,6 +65,8 @@ const DealsPage = lazy(() => import("@/pages/DealsPage"));
 const Changelogpage = lazy(() => import("./pages/Changelogpage"));
 const InviteLanding = lazy(() => import("./pages/InviteLanding"));
 const DealDetailPage = lazy(() => import("./pages/DealDetailPage"));
+const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
+const CandidateDetailPage = lazy(() => import("@/pages/CandidateDetailPage"));
 const SecurityCompliancePage = lazy(() => import("./pages/SecurityCompliancePage"));
 
 const PrivacyPage = lazy(() => import("./pages/LegalPages").then((m) => ({ default: m.PrivacyPage })));
@@ -309,6 +311,27 @@ function AppRoutes() {
               <ProtectedRoute>
                 <ErrorBoundary>
                   <DealDetailPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/candidates"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <CandidatesPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/candidates/:id"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <CandidateDetailPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }
