@@ -6,7 +6,7 @@
 
 | Metric | Value |
 |---|---|
-| Last update | 2026-08-21T00:11:24.494Z |
+| Last update | 2026-08-21T00:14:00.710Z |
 | Branch | `main` |
 | Commits in last 24h | 1 |
 | Total commits | 1 |
@@ -15,7 +15,7 @@
 
 ## Latest Commit
 
-`16459e5 - Create CandidatesPage.tsx`
+`83fd80e - Create CandidateDetailPage.tsx`
 
 ## Repository Activity
 
