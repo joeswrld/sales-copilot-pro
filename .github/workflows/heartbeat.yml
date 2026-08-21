@@ -34,7 +34,7 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "joeswrld200"
+          git config user.name "joeswrld"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Commit heartbeat
