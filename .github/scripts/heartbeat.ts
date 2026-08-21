@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-function command(command: string): string {
+function run(command: string): string {
   try {
     return execSync(command, {
       encoding: "utf8",
@@ -14,19 +14,24 @@ function command(command: string): string {
 
 const now = new Date();
 
-const branch = command("git branch --show-current");
-const latestCommit = command(
+const branch = run("git branch --show-current");
+
+const latestCommit = run(
   'git log -1 --pretty=format:"%h - %s"'
 );
-const commits24h = command(
+
+const commits24h = run(
   'git log --since="24 hours ago" --oneline | wc -l'
 );
-const totalCommits = command(
+
+const totalCommits = run(
   "git rev-list --count HEAD"
 );
-const contributors = command(
+
+const contributors = run(
   "git shortlog -sne HEAD | wc -l"
 );
+
 const nodeVersion = process.version;
 
 const heartbeat = `# Repository Heartbeat
@@ -37,6 +42,7 @@ const heartbeat = `# Repository Heartbeat
 
 | Metric | Value |
 |---|---|
+| Maintainer | @joeswrld |
 | Last update | ${now.toISOString()} |
 | Branch | \`${branch}\` |
 | Commits in last 24h | ${commits24h} |
@@ -50,16 +56,16 @@ const heartbeat = `# Repository Heartbeat
 
 ## Repository Activity
 
-This page is automatically refreshed every 30 minutes by GitHub Actions.
+This heartbeat is automatically generated every 30 minutes.
 
-The heartbeat tracks repository activity and provides a lightweight
+It tracks repository activity and provides a lightweight
 snapshot of the project's current state.
 
 ---
 
-_This file is generated automatically. Manual edits may be overwritten._
+_Automatically maintained._
 `;
 
 writeFileSync("heartbeat.md", heartbeat);
 
-console.log("Heartbeat updated successfully.");
+console.log("Heartbeat generated successfully.");
