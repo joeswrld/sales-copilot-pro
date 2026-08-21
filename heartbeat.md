@@ -6,7 +6,7 @@
 
 | Metric | Value |
 |---|---|
-| Last update | 2026-08-21T00:14:00.710Z |
+| Last update | 2026-08-21T00:55:05.150Z |
 | Branch | `main` |
 | Commits in last 24h | 1 |
 | Total commits | 1 |
@@ -15,7 +15,7 @@
 
 ## Latest Commit
 
-`83fd80e - Create CandidateDetailPage.tsx`
+`8ce63eb - chore: repository heartbeat update`
 
 ## Repository Activity
 
