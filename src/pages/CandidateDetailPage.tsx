@@ -7,8 +7,22 @@
  * go through confirm_candidate_ai_extraction / edit_candidate_ai_extraction /
  * reject_candidate_ai_extraction RPCs — never write ai_extractions directly.
  *
- * No Edge Functions: CV parsing status stays "pending" until an external
- * parser is connected in a later phase; nothing here fakes AI output.
+ * Phase 5: also surfaces this candidate's job pipelines (candidate_jobs),
+ * and — per selected pipeline — interviews, AI interview feedback,
+ * submissions, and client feedback. All state changes for those go through
+ * the existing Phase 5 RPCs (schedule_interview, confirm_interview_feedback,
+ * advance_candidate_pipeline_stage, create_submission, send_submission,
+ * record_client_feedback) — nothing here writes those tables directly.
+ * The unified timeline calls get_candidate_job_timeline for the selected
+ * pipeline instead of querying recruiting_timeline_events directly, so it
+ * shows the same cross-entity history the Pipeline/Submissions pages rely on.
+ *
+ * No Edge Functions added. CV parsing goes through the existing
+ * parse-candidate-cv function; nothing here fakes AI output.
+ *
+ * Responsive: the two-column desktop layout (content + timeline sidebar)
+ * collapses to a single stacked column below the mobile breakpoint via
+ * useIsMobile(), matching the convention already used in PipelinePage.tsx.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -16,13 +30,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/hooks/useTeam";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   ArrowLeft, Loader2, Mail, Phone, MapPin, Briefcase, Building2,
   DollarSign, Calendar, FileText, Upload, Check, X, Edit3, ChevronDown,
   ChevronUp, Sparkles, Clock, Plus, RefreshCw, AlertCircle, CheckCircle2,
-  XCircle, User, Tag,
+  XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -104,6 +119,89 @@ interface TimelineEvent {
   created_at: string;
 }
 
+// ── Phase 5 types ────────────────────────────────────────────────────────────
+
+interface CandidateJobRow {
+  id: string;
+  job_id: string;
+  pipeline_stage: string;
+  status: string;
+  match_score: number | null;
+  rejection_reason: string | null;
+  placed_at: string | null;
+  placement_salary: number | null;
+  placement_salary_currency: string | null;
+  placement_fee: number | null;
+  placement_fee_currency: string | null;
+  placement_notes: string | null;
+  job: { id: string; title: string; client_id: string | null } | null;
+}
+
+interface InterviewRow {
+  id: string;
+  candidate_job_id: string;
+  interview_stage: string;
+  scheduled_at: string | null;
+  occurred_at: string | null;
+  interviewer_names: string[] | null;
+  status: string;
+}
+
+interface InterviewFeedbackRow {
+  id: string;
+  interview_id: string;
+  candidate_job_id: string;
+  overall_outcome: string | null;
+  technical_strengths: string[];
+  weaknesses: string[];
+  concerns: string[];
+  recommended_next_step: string | null;
+  status: string;
+  confirmed_at: string | null;
+}
+
+interface SubmissionRow {
+  id: string;
+  candidate_job_id: string;
+  status: string;
+  relevance_explanation: string | null;
+  submitted_at: string | null;
+  created_at: string;
+}
+
+interface ClientFeedbackRow {
+  id: string;
+  candidate_job_id: string;
+  feedback_text: string;
+  sentiment: string | null;
+  created_at: string;
+}
+
+interface UnifiedTimelineEvent {
+  occurred_at: string;
+  event_type: string;
+  title: string;
+  description: string | null;
+  source: string;
+}
+
+const PIPELINE_STAGES: { key: string; label: string; color: string }[] = [
+  { key: "sourced", label: "New", color: "#94a3b8" },
+  { key: "screening", label: "Screening", color: "#60a5fa" },
+  { key: "shortlisted", label: "Shortlisted", color: "#818cf8" },
+  { key: "submitted", label: "Submitted", color: "#a78bfa" },
+  { key: "client_review", label: "Client Review", color: "#f472b6" },
+  { key: "interview", label: "Interview", color: "#fb923c" },
+  { key: "final_interview", label: "Final Interview", color: "#f59e0b" },
+  { key: "offer", label: "Offer", color: "#facc15" },
+  { key: "placed", label: "Placed", color: "#22c55e" },
+  { key: "rejected", label: "Rejected", color: "#ef4444" },
+];
+
+function getStageCfg(stage: string) {
+  return PIPELINE_STAGES.find(s => s.key === stage) ?? { key: stage, label: stage, color: "#94a3b8" };
+}
+
 const STATUSES = [
   { key: "active", label: "Active", color: "#22c55e" },
   { key: "passive", label: "Passive", color: "#fbbf24" },
@@ -181,6 +279,7 @@ function CandidateDetailPageInner() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { teamId } = useTeam();
+  const isMobile = useIsMobile();
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [skills, setSkills] = useState<CandidateSkill[]>([]);
@@ -198,18 +297,34 @@ function CandidateDetailPageInner() {
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Phase 5 state ──────────────────────────────────────────────────────────
+  const [candidateJobs, setCandidateJobs] = useState<CandidateJobRow[]>([]);
+  const [selectedCjId, setSelectedCjId] = useState<string | null>(null);
+  const [interviews, setInterviews] = useState<InterviewRow[]>([]);
+  const [interviewFeedback, setInterviewFeedback] = useState<InterviewFeedbackRow[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+  const [clientFeedback, setClientFeedback] = useState<ClientFeedbackRow[]>([]);
+  const [unifiedTimeline, setUnifiedTimeline] = useState<UnifiedTimelineEvent[]>([]);
+  const [pipelineBusy, setPipelineBusy] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
   const load = useCallback(async () => {
     if (!id || !teamId) return;
     setLoading(true);
     setError(null);
     try {
-      const [candRes, skillsRes, cvRes, callsRes, extRes, timelineRes] = await Promise.all([
+      const [candRes, skillsRes, cvRes, callsRes, extRes, timelineRes, cjRes] = await Promise.all([
         (supabase as any).from("candidates").select("*").eq("id", id).single(),
         (supabase as any).from("candidate_skills").select("*").eq("candidate_id", id).order("skill_name"),
         (supabase as any).from("candidate_cv_files").select("id, file_path, file_name, parsing_status, created_at").eq("candidate_id", id).order("created_at", { ascending: false }),
         (supabase as any).from("recruiting_calls").select("id, call_type, title, scheduled_at, occurred_at, status").eq("candidate_id", id).order("created_at", { ascending: false }),
         (supabase as any).from("ai_extractions").select("*").eq("entity_type", "candidate").eq("entity_id", id).order("created_at", { ascending: false }),
         (supabase as any).from("recruiting_timeline_events").select("id, event_type, title, created_at").eq("entity_type", "candidate").eq("entity_id", id).order("created_at", { ascending: false }).limit(20),
+        (supabase as any)
+          .from("candidate_jobs")
+          .select("id, job_id, pipeline_stage, status, match_score, rejection_reason, placed_at, placement_salary, placement_salary_currency, placement_fee, placement_fee_currency, placement_notes, job:jobs(id, title, client_id)")
+          .eq("candidate_id", id)
+          .order("updated_at", { ascending: false }),
       ]);
 
       if (candRes.error) throw candRes.error;
@@ -219,6 +334,9 @@ function CandidateDetailPageInner() {
       setCalls(callsRes.data ?? []);
       setExtractions(extRes.data ?? []);
       setTimeline(timelineRes.data ?? []);
+      const cjRows: CandidateJobRow[] = cjRes.data ?? [];
+      setCandidateJobs(cjRows);
+      setSelectedCjId(prev => (prev && cjRows.some(r => r.id === prev)) ? prev : (cjRows[0]?.id ?? null));
     } catch (e: any) {
       setError(e.message ?? "Failed to load candidate");
     } finally {
@@ -227,6 +345,112 @@ function CandidateDetailPageInner() {
   }, [id, teamId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load everything scoped to the currently-selected job pipeline
+  // (interviews, AI feedback, submissions, client feedback, unified timeline).
+  const loadPipelineDetail = useCallback(async () => {
+    if (!selectedCjId) {
+      setInterviews([]); setInterviewFeedback([]); setSubmissions([]);
+      setClientFeedback([]); setUnifiedTimeline([]);
+      return;
+    }
+    try {
+      const [ivRes, fbRes, subRes, cfRes, tlRes] = await Promise.all([
+        (supabase as any).from("interviews").select("id, candidate_job_id, interview_stage, scheduled_at, occurred_at, interviewer_names, status").eq("candidate_job_id", selectedCjId).order("scheduled_at", { ascending: false }),
+        (supabase as any).from("interview_feedback").select("id, interview_id, candidate_job_id, overall_outcome, technical_strengths, weaknesses, concerns, recommended_next_step, status, confirmed_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
+        (supabase as any).from("submissions").select("id, candidate_job_id, status, relevance_explanation, submitted_at, created_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
+        (supabase as any).from("client_feedback").select("id, candidate_job_id, feedback_text, sentiment, created_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
+        (supabase as any).rpc("get_candidate_job_timeline", { p_candidate_job_id: selectedCjId }),
+      ]);
+      setInterviews(ivRes.data ?? []);
+      setInterviewFeedback(fbRes.data ?? []);
+      setSubmissions(subRes.data ?? []);
+      setClientFeedback(cfRes.data ?? []);
+      setUnifiedTimeline(tlRes.data ?? []);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to load pipeline detail");
+    }
+  }, [selectedCjId]);
+
+  useEffect(() => { loadPipelineDetail(); }, [loadPipelineDetail]);
+
+  const selectedCj = candidateJobs.find(cj => cj.id === selectedCjId) ?? null;
+
+  // ── Phase 5 actions ─────────────────────────────────────────────────────────
+  const moveStage = async (newStage: string, extra: Record<string, any> = {}) => {
+    if (!selectedCjId) return;
+    setPipelineBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc("advance_candidate_pipeline_stage", {
+        p_candidate_job_id: selectedCjId, p_new_stage: newStage, ...extra,
+      });
+      if (error) throw error;
+      toast.success(`Moved to ${getStageCfg(newStage).label}`);
+      load();
+      loadPipelineDetail();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to move candidate");
+    } finally {
+      setPipelineBusy(false);
+    }
+  };
+
+  const scheduleInterview = async (stage: string, scheduledAt: string, interviewers: string[]) => {
+    if (!selectedCjId) return;
+    try {
+      const { error } = await (supabase as any).rpc("schedule_interview", {
+        p_candidate_job_id: selectedCjId,
+        p_interview_stage: stage,
+        p_scheduled_at: scheduledAt || null,
+        p_interviewer_names: interviewers.length ? interviewers : null,
+      });
+      if (error) throw error;
+      toast.success("Interview scheduled");
+      setShowScheduleModal(false);
+      load();
+      loadPipelineDetail();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to schedule interview");
+    }
+  };
+
+  const confirmFeedback = async (feedbackId: string, outcome: string) => {
+    try {
+      const { error } = await (supabase as any).rpc("confirm_interview_feedback", {
+        p_interview_feedback_id: feedbackId, p_overall_outcome: outcome,
+      });
+      if (error) throw error;
+      toast.success("Feedback confirmed");
+      loadPipelineDetail();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to confirm feedback");
+    }
+  };
+
+  const createSubmission = async (explanation: string) => {
+    if (!selectedCjId) return;
+    try {
+      const { error } = await (supabase as any).rpc("create_submission", {
+        p_candidate_job_id: selectedCjId, p_relevance_explanation: explanation || null,
+      });
+      if (error) throw error;
+      toast.success("Draft submission created");
+      loadPipelineDetail();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to create submission");
+    }
+  };
+
+  const sendSubmission = async (submissionId: string) => {
+    try {
+      const { error } = await (supabase as any).rpc("send_submission", { p_submission_id: submissionId });
+      if (error) throw error;
+      toast.success("Submission sent to client");
+      loadPipelineDetail();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to send submission");
+    }
+  };
 
   // ── Field editing ──────────────────────────────────────────────────────────
   const updateField = async (field: keyof Candidate, value: any) => {
@@ -529,13 +753,204 @@ function CandidateDetailPageInner() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(240px, 300px)", gap: 16, alignItems: "start" }}>
+      {/* Job pipelines for this candidate */}
+      <Section title={`Job Pipelines (${candidateJobs.length})`} icon={Kanban} accent="#22315C" defaultOpen={candidateJobs.length > 0}>
+        {candidateJobs.length === 0 ? (
+          <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)" }}>Not yet added to a job pipeline. Add this candidate to a job from the Pipeline board.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {candidateJobs.map(cj => {
+              const stageCfg = getStageCfg(cj.pipeline_stage);
+              const isSelected = cj.id === selectedCjId;
+              return (
+                <div
+                  key={cj.id}
+                  onClick={() => setSelectedCjId(cj.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+                    background: isSelected ? "rgba(34,49,92,0.07)" : "rgba(23,23,15,0.03)",
+                    border: isSelected ? "1.5px solid rgba(34,49,92,0.3)" : "1px solid transparent",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Briefcase style={{ width: 13, height: 13, color: "#22315C", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#17170F", flex: 1, minWidth: 120 }}>{cj.job?.title ?? "Unknown job"}</span>
+                  {cj.match_score !== null && (
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: cj.match_score >= 70 ? "rgba(34,197,94,0.12)" : "rgba(251,191,36,0.15)", color: cj.match_score >= 70 ? "#16a34a" : "#b45309" }}>
+                      {cj.match_score}% match
+                    </span>
+                  )}
+                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: stageCfg.color + "18", color: stageCfg.color, flexShrink: 0 }}>
+                    {stageCfg.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {selectedCj && selectedCj.pipeline_stage === "placed" && (
+          <div style={{ marginTop: 12, padding: 12, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", marginBottom: 6 }}>Placed</div>
+            <div style={{ fontSize: 11.5, color: "rgba(23,23,15,0.6)", display: "flex", flexDirection: "column", gap: 3 }}>
+              {selectedCj.placement_salary && <span>Salary: {formatMoney(selectedCj.placement_salary, selectedCj.placement_salary_currency)}</span>}
+              {selectedCj.placement_fee && <span>Fee: {formatMoney(selectedCj.placement_fee, selectedCj.placement_fee_currency)}</span>}
+              {selectedCj.placement_notes && <span>{selectedCj.placement_notes}</span>}
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {selectedCj && (
+        <>
+          {/* Interviews */}
+          <Section title={`Interviews (${interviews.length})`} icon={Video} accent="#22315C" right={
+            <button
+              onClick={() => setShowScheduleModal(true)}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 11px", background: "#22315C", border: "none", borderRadius: 8, color: "#FAFAF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+            >
+              <Plus style={{ width: 11, height: 11 }} />Schedule
+            </button>
+          }>
+            {interviews.length === 0 ? (
+              <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)" }}>No interviews scheduled yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {interviews.map(iv => (
+                  <div key={iv.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9, flexWrap: "wrap" }}>
+                    <Video style={{ width: 12, height: 12, color: "#22315C", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12.5, color: "#17170F", flex: 1, minWidth: 100, textTransform: "capitalize" }}>{iv.interview_stage.replace(/_/g, " ")}</span>
+                    {iv.scheduled_at && <span style={{ fontSize: 11, color: "rgba(23,23,15,0.45)" }}>{format(new Date(iv.scheduled_at), "MMM d, h:mm a")}</span>}
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "capitalize", flexShrink: 0 }}>{iv.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* AI interview feedback */}
+          <Section title={`Interview Feedback (${interviewFeedback.length})`} icon={Sparkles} accent="#22315C" defaultOpen={interviewFeedback.some(f => f.status === "pending_review")}>
+            {interviewFeedback.length === 0 ? (
+              <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)" }}>No interview feedback yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {interviewFeedback.map(fb => (
+                  <div key={fb.id} style={{ background: fb.status === "pending_review" ? "rgba(99,102,241,0.05)" : "#FFFFFF", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 10, padding: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,0.5)", textTransform: "capitalize" }}>{fb.overall_outcome ?? "pending"}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: fb.status === "confirmed" ? "rgba(34,197,94,0.12)" : "rgba(99,102,241,0.12)", color: fb.status === "confirmed" ? "#16a34a" : "#4c3ea8" }}>
+                        {fb.status === "confirmed" ? "Confirmed" : "Pending review"}
+                      </span>
+                    </div>
+                    {fb.technical_strengths?.length > 0 && (
+                      <p style={{ fontSize: 12, color: "rgba(23,23,15,0.6)", margin: "0 0 4px" }}><b>Strengths:</b> {fb.technical_strengths.join(", ")}</p>
+                    )}
+                    {fb.concerns?.length > 0 && (
+                      <p style={{ fontSize: 12, color: "rgba(23,23,15,0.6)", margin: "0 0 4px" }}><b>Concerns:</b> {fb.concerns.join(", ")}</p>
+                    )}
+                    {fb.recommended_next_step && (
+                      <p style={{ fontSize: 12, color: "rgba(23,23,15,0.6)", margin: "0 0 8px" }}><b>Next step:</b> {fb.recommended_next_step}</p>
+                    )}
+                    {fb.status === "pending_review" && (
+                      <button
+                        onClick={() => confirmFeedback(fb.id, fb.overall_outcome ?? "pending")}
+                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 8, color: "#16a34a", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        <ThumbsUp style={{ width: 11, height: 11 }} />Confirm feedback
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* Submissions */}
+          <Section title={`Submissions (${submissions.length})`} icon={Send} accent="#22315C">
+            {submissions.length === 0 ? (
+              <div>
+                <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)", marginBottom: 8 }}>No submissions yet for this pipeline.</p>
+                <button
+                  onClick={() => createSubmission("")}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", background: "#22315C", border: "none", borderRadius: 8, color: "#FAFAF8", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  <Plus style={{ width: 12, height: 12 }} />Create Draft Submission
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {submissions.map(s => (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9, flexWrap: "wrap" }}>
+                    <Send style={{ width: 12, height: 12, color: "#22315C", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: "rgba(23,23,15,0.6)", flex: 1, minWidth: 100 }}>
+                      {s.submitted_at ? `Submitted ${formatDistanceToNow(new Date(s.submitted_at), { addSuffix: true })}` : `Created ${formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}`}
+                    </span>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "capitalize", flexShrink: 0 }}>{s.status.replace(/_/g, " ")}</span>
+                    {s.status === "draft" && (
+                      <button onClick={() => sendSubmission(s.id)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 9px", background: "#22315C", border: "none", borderRadius: 7, color: "#FAFAF8", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
+                        <Send style={{ width: 10, height: 10 }} />Send
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* Client feedback */}
+          <Section title={`Client Feedback (${clientFeedback.length})`} icon={MessageSquare} accent="#22315C" defaultOpen={clientFeedback.length > 0}>
+            {clientFeedback.length === 0 ? (
+              <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)" }}>No client feedback recorded yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {clientFeedback.map(cf => (
+                  <div key={cf.id} style={{ padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "capitalize", color: cf.sentiment === "positive" ? "#16a34a" : cf.sentiment === "negative" ? "#dc2626" : "#b45309" }}>{cf.sentiment ?? "neutral"}</span>
+                      <span style={{ fontSize: 10, color: "rgba(23,23,15,0.35)" }}>{formatDistanceToNow(new Date(cf.created_at), { addSuffix: true })}</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: "#17170F", margin: 0 }}>{cf.feedback_text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* Pipeline stage controls */}
+          <Section title="Move Pipeline Stage" icon={Kanban} accent="#22315C" defaultOpen={false}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {PIPELINE_STAGES.filter(s => s.key !== selectedCj.pipeline_stage).map(s => (
+                <button
+                  key={s.key}
+                  disabled={pipelineBusy}
+                  onClick={() => {
+                    if (s.key === "rejected") {
+                      const reason = window.prompt("Rejection reason (required): skills_gap, salary_mismatch, location, availability, client_rejected, interview_performance, candidate_withdrew, other");
+                      if (!reason) return;
+                      moveStage("rejected", { p_rejection_reason: reason });
+                    } else if (s.key === "placed") {
+                      toast.info("Use the Pipeline board to record placement details (salary, fee, notes).");
+                    } else {
+                      moveStage(s.key);
+                    }
+                  }}
+                  style={{ fontSize: 11, fontWeight: 600, padding: "7px 11px", borderRadius: 8, border: "1px solid rgba(23,23,15,0.1)", background: "rgba(23,23,15,0.03)", color: "#17170F", cursor: pipelineBusy ? "default" : "pointer", opacity: pipelineBusy ? 0.6 : 1 }}
+                >
+                  → {s.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        </>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) minmax(240px, 300px)", gap: 16, alignItems: "start" }}>
         {/* LEFT: main content */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
 
           {/* Overview */}
           <Section title="Overview" icon={User} accent="#22315C">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 4 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginTop: 4 }}>
               <div>
                 <label style={labelStyle}>Email</label>
                 <input style={inputStyle} defaultValue={candidate.email ?? ""} onBlur={e => e.target.value !== (candidate.email ?? "") && updateField("email", e.target.value || null)} />
@@ -671,29 +1086,114 @@ function CandidateDetailPageInner() {
 
         {/* RIGHT: timeline */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-          <div style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.06)", borderRadius: 14, padding: 14 }}>
+          <div style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.06)", borderRadius: 14, padding: 14, maxHeight: isMobile ? 420 : "calc(100vh - 220px)", overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,0.25)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Timeline</div>
-              <button onClick={load} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.3)", padding: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,0.25)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                {selectedCj ? "Pipeline Timeline" : "Timeline"}
+              </div>
+              <button onClick={() => { load(); loadPipelineDetail(); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.3)", padding: 2 }}>
                 <RefreshCw style={{ width: 12, height: 12 }} />
               </button>
             </div>
-            {timeline.length === 0 ? (
-              <p style={{ fontSize: 12, color: "rgba(23,23,15,0.25)" }}>No activity yet.</p>
-            ) : (
-              timeline.map((e, i) => (
-                <div key={e.id} style={{ display: "flex", gap: 9, paddingBottom: 10, position: "relative" }}>
-                  {i < timeline.length - 1 && <div style={{ position: "absolute", left: 5, top: 16, bottom: 0, width: 1, background: "rgba(23,23,15,0.06)" }} />}
-                  <div style={{ width: 11, height: 11, borderRadius: "50%", background: "rgba(96,165,250,0.3)", border: "1px solid rgba(96,165,250,0.4)", flexShrink: 0, marginTop: 2, zIndex: 1 }} />
-                  <div>
-                    <div style={{ fontSize: 12, color: "rgba(23,23,15,0.65)" }}>{e.title}</div>
-                    <div style={{ fontSize: 10, color: "rgba(23,23,15,0.25)", marginTop: 2 }}>{formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}</div>
+
+            {selectedCj ? (
+              unifiedTimeline.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(23,23,15,0.25)" }}>No activity yet for this pipeline.</p>
+              ) : (
+                unifiedTimeline.map((e, i) => (
+                  <div key={`${e.event_type}-${e.occurred_at}-${i}`} style={{ display: "flex", gap: 9, paddingBottom: 10, position: "relative" }}>
+                    {i < unifiedTimeline.length - 1 && <div style={{ position: "absolute", left: 5, top: 16, bottom: 0, width: 1, background: "rgba(23,23,15,0.06)" }} />}
+                    <div style={{ width: 11, height: 11, borderRadius: "50%", background: "rgba(96,165,250,0.3)", border: "1px solid rgba(96,165,250,0.4)", flexShrink: 0, marginTop: 2, zIndex: 1 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: "rgba(23,23,15,0.65)" }}>{e.title}</div>
+                      {e.description && <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)", marginTop: 2 }}>{e.description}</div>}
+                      <div style={{ fontSize: 10, color: "rgba(23,23,15,0.25)", marginTop: 2 }}>{formatDistanceToNow(new Date(e.occurred_at), { addSuffix: true })}</div>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
+              )
+            ) : (
+              timeline.length === 0 ? (
+                <p style={{ fontSize: 12, color: "rgba(23,23,15,0.25)" }}>No activity yet.</p>
+              ) : (
+                timeline.map((e, i) => (
+                  <div key={e.id} style={{ display: "flex", gap: 9, paddingBottom: 10, position: "relative" }}>
+                    {i < timeline.length - 1 && <div style={{ position: "absolute", left: 5, top: 16, bottom: 0, width: 1, background: "rgba(23,23,15,0.06)" }} />}
+                    <div style={{ width: 11, height: 11, borderRadius: "50%", background: "rgba(96,165,250,0.3)", border: "1px solid rgba(96,165,250,0.4)", flexShrink: 0, marginTop: 2, zIndex: 1 }} />
+                    <div>
+                      <div style={{ fontSize: 12, color: "rgba(23,23,15,0.65)" }}>{e.title}</div>
+                      <div style={{ fontSize: 10, color: "rgba(23,23,15,0.25)", marginTop: 2 }}>{formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}</div>
+                    </div>
+                  </div>
+                ))
+              )
             )}
           </div>
         </div>
+      </div>
+
+      {showScheduleModal && selectedCjId && (
+        <ScheduleInterviewModal onClose={() => setShowScheduleModal(false)} onSubmit={scheduleInterview} />
+      )}
+    </div>
+  );
+}
+
+// ─── Schedule interview modal ────────────────────────────────────────────────
+
+function ScheduleInterviewModal({ onClose, onSubmit }: {
+  onClose: () => void; onSubmit: (stage: string, scheduledAt: string, interviewers: string[]) => Promise<void>;
+}) {
+  const [stage, setStage] = useState("interview");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [interviewerInput, setInterviewerInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
+      const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
+      await onSubmit(stage, iso, interviewers);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "9px 11px", background: "rgba(23,23,15,0.03)",
+    border: "1px solid rgba(23,23,15,0.1)", borderRadius: 8, color: "#17170F",
+    fontSize: 13, fontFamily: "'Inter', sans-serif", outline: "none", boxSizing: "border-box",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,0.4)", marginBottom: 5, display: "block",
+    textTransform: "uppercase", letterSpacing: "0.05em",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20, width: "100%", maxWidth: 480, fontFamily: "'Inter', sans-serif", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: "#17170F", margin: 0 }}>Schedule Interview</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.4)" }}><X style={{ width: 18, height: 18 }} /></button>
+        </div>
+
+        <label style={labelStyle}>Stage</label>
+        <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
+          <option value="screening_call">Screening call</option>
+          <option value="interview">Interview</option>
+          <option value="final_interview">Final interview</option>
+        </select>
+
+        <label style={labelStyle}>Scheduled at</label>
+        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+
+        <label style={labelStyle}>Interviewers (comma-separated, optional)</label>
+        <input value={interviewerInput} onChange={e => setInterviewerInput(e.target.value)} style={{ ...inputStyle, marginBottom: 16 }} placeholder="Jane Doe, John Smith" />
+
+        <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
+          {saving ? "Scheduling…" : "Schedule Interview"}
+        </button>
       </div>
     </div>
   );
