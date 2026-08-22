@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
+  Kanban, Send,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -122,6 +123,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Calls", icon: Phone, href: "/calls" },
     { label: "Deals", icon: Building2, href: "/deals" },
     { label: "Candidates", icon: Users, href: "/candidates" },
+    { label: "Pipeline", icon: Kanban, href: "/pipeline" },
+    { label: "Submissions", icon: Send, href: "/submissions" },
     { label: "AI Coach", icon: Bot, href: "/coach" },
   ];
   const workspaceNav: NavItem[] = [
