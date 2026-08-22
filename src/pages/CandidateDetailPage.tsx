@@ -127,6 +127,18 @@ interface CandidateJobRow {
   pipeline_stage: string;
   status: string;
   match_score: number | null;
+  match_explanation: {
+    matched_requirements?: string[];
+    missing_requirements?: string[];
+    relevant_experience?: string | null;
+    relevant_skills?: string[];
+    potential_concerns?: string[];
+    salary_compatibility?: string;
+    location_compatibility?: string;
+    availability_notice?: string | null;
+    overall_recommendation?: string | null;
+    computed_at?: string;
+  } | null;
   rejection_reason: string | null;
   placed_at: string | null;
   placement_salary: number | null;
@@ -307,6 +319,7 @@ function CandidateDetailPageInner() {
   const [unifiedTimeline, setUnifiedTimeline] = useState<UnifiedTimelineEvent[]>([]);
   const [pipelineBusy, setPipelineBusy] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [runningAiMatch, setRunningAiMatch] = useState(false);
 
   const load = useCallback(async () => {
     if (!id || !teamId) return;
@@ -322,7 +335,7 @@ function CandidateDetailPageInner() {
         (supabase as any).from("recruiting_timeline_events").select("id, event_type, title, created_at").eq("entity_type", "candidate").eq("entity_id", id).order("created_at", { ascending: false }).limit(20),
         (supabase as any)
           .from("candidate_jobs")
-          .select("id, job_id, pipeline_stage, status, match_score, rejection_reason, placed_at, placement_salary, placement_salary_currency, placement_fee, placement_fee_currency, placement_notes, job:jobs(id, title, client_id)")
+          .select("id, job_id, pipeline_stage, status, match_score, match_explanation, rejection_reason, placed_at, placement_salary, placement_salary_currency, placement_fee, placement_fee_currency, placement_notes, job:jobs(id, title, client_id)")
           .eq("candidate_id", id)
           .order("updated_at", { ascending: false }),
       ]);
@@ -395,22 +408,64 @@ function CandidateDetailPageInner() {
     }
   };
 
-  const scheduleInterview = async (stage: string, scheduledAt: string, interviewers: string[]) => {
+  const scheduleInterview = async (
+    stage: string, scheduledAt: string, interviewers: string[],
+    meetingLink: string, instructions: string, messageToCandidate: string,
+  ) => {
     if (!selectedCjId) return;
     try {
-      const { error } = await (supabase as any).rpc("schedule_interview", {
+      const { data: interview, error } = await (supabase as any).rpc("schedule_interview", {
         p_candidate_job_id: selectedCjId,
         p_interview_stage: stage,
         p_scheduled_at: scheduledAt || null,
         p_interviewer_names: interviewers.length ? interviewers : null,
+        p_meeting_link: meetingLink || null,
+        p_interview_instructions: instructions || null,
+        p_message_to_candidate: messageToCandidate || null,
       });
       if (error) throw error;
       toast.success("Interview scheduled");
       setShowScheduleModal(false);
       load();
       loadPipelineDetail();
+
+      // Best-effort candidate email — the interview itself is already saved
+      // regardless of whether this succeeds (e.g. RESEND_API_KEY not yet
+      // configured on the project); surface a distinct toast either way so
+      // the recruiter knows whether the candidate was actually notified.
+      try {
+        const { data: notifyData, error: notifyErr } = await supabase.functions.invoke("send-interview-invitation", {
+          body: { interview_id: interview?.id },
+        });
+        if (notifyErr || (notifyData as any)?.error) {
+          const msg = (notifyData as any)?.error ?? notifyErr?.message ?? "Could not email the candidate";
+          toast.warning(msg);
+        } else {
+          toast.success("Candidate notified by email");
+        }
+      } catch {
+        toast.warning("Interview saved, but the candidate email could not be sent");
+      }
     } catch (e: any) {
       toast.error(e.message ?? "Failed to schedule interview");
+    }
+  };
+
+  const runAiMatch = async () => {
+    if (!selectedCjId) return;
+    setRunningAiMatch(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("parse-candidate-cv", {
+        body: { mode: "candidate_job_match", candidate_job_id: selectedCjId },
+      });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error ?? error?.message);
+      toast.success(`AI match: ${(data as any).match_score}%`);
+      loadPipelineDetail();
+      load();
+    } catch (e: any) {
+      toast.error(e.message ?? "AI match failed");
+    } finally {
+      setRunningAiMatch(false);
     }
   };
 
@@ -802,6 +857,68 @@ function CandidateDetailPageInner() {
       </Section>
 
       {selectedCj && (
+        <Section title="AI Match" icon={Sparkles} accent="#7c3aed" defaultOpen right={
+          <button
+            onClick={runAiMatch}
+            disabled={runningAiMatch}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 8, color: "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+          >
+            {runningAiMatch ? <Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> : <Sparkles style={{ width: 12, height: 12 }} />}
+            {selectedCj.match_score !== null ? "Re-run AI Match" : "Run AI Match"}
+          </button>
+        }>
+          {selectedCj.match_score === null ? (
+            <p style={{ fontSize: 12, color: "rgba(23,23,15,0.3)" }}>No AI match computed yet for this pipeline. Click "Run AI Match" to compare this candidate against the job's requirements.</p>
+          ) : (
+            <div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 14 }}>
+                <span style={{ fontSize: 30, fontWeight: 800, color: selectedCj.match_score >= 75 ? "#16a34a" : selectedCj.match_score >= 50 ? "#b45309" : "#dc2626" }}>
+                  {selectedCj.match_score}%
+                </span>
+                <span style={{ fontSize: 12, color: "rgba(23,23,15,0.4)" }}>match</span>
+              </div>
+
+              {!!selectedCj.match_explanation?.matched_requirements?.length && (
+                <MatchList label="Strong matches" items={selectedCj.match_explanation.matched_requirements} icon="✓" color="#16a34a" />
+              )}
+              {!!selectedCj.match_explanation?.missing_requirements?.length && (
+                <MatchList label="Missing requirements" items={selectedCj.match_explanation.missing_requirements} icon="✗" color="#dc2626" />
+              )}
+              {!!selectedCj.match_explanation?.relevant_skills?.length && (
+                <MatchList label="Relevant skills" items={selectedCj.match_explanation.relevant_skills} icon="•" color="#22315C" />
+              )}
+              {selectedCj.match_explanation?.relevant_experience && (
+                <MatchField label="Relevant experience" value={selectedCj.match_explanation.relevant_experience} />
+              )}
+              {!!selectedCj.match_explanation?.potential_concerns?.length && (
+                <MatchList label="Potential concerns" items={selectedCj.match_explanation.potential_concerns} icon="⚠" color="#b45309" />
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "10px 0" }}>
+                {selectedCj.match_explanation?.salary_compatibility && (
+                  <MatchField label="Salary" value={humanizeCompat(selectedCj.match_explanation.salary_compatibility)} />
+                )}
+                {selectedCj.match_explanation?.location_compatibility && (
+                  <MatchField label="Location" value={humanizeCompat(selectedCj.match_explanation.location_compatibility)} />
+                )}
+              </div>
+              {selectedCj.match_explanation?.availability_notice && (
+                <MatchField label="Availability / notice" value={selectedCj.match_explanation.availability_notice} />
+              )}
+              {selectedCj.match_explanation?.overall_recommendation && (
+                <div style={{ marginTop: 10, padding: 12, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.18)", borderRadius: 10 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+                    Recommendation for the recruiter
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "#17170F", lineHeight: 1.6 }}>{selectedCj.match_explanation.overall_recommendation}</div>
+                </div>
+              )}
+              <p style={{ fontSize: 10.5, color: "rgba(23,23,15,0.3)", marginTop: 10 }}>
+                This is an AI-generated recommendation only. You make the final decision.
+              </p>
+            </div>
+          )}
+        </Section>
+      )}
         <>
           {/* Interviews */}
           <Section title={`Interviews (${interviews.length})`} icon={Video} accent="#22315C" right={
@@ -1142,11 +1259,18 @@ function CandidateDetailPageInner() {
 // ─── Schedule interview modal ────────────────────────────────────────────────
 
 function ScheduleInterviewModal({ onClose, onSubmit }: {
-  onClose: () => void; onSubmit: (stage: string, scheduledAt: string, interviewers: string[]) => Promise<void>;
+  onClose: () => void;
+  onSubmit: (
+    stage: string, scheduledAt: string, interviewers: string[],
+    meetingLink: string, instructions: string, messageToCandidate: string,
+  ) => Promise<void>;
 }) {
   const [stage, setStage] = useState("interview");
   const [scheduledAt, setScheduledAt] = useState("");
   const [interviewerInput, setInterviewerInput] = useState("");
+  const [meetingLink, setMeetingLink] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [messageToCandidate, setMessageToCandidate] = useState("");
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -1154,7 +1278,7 @@ function ScheduleInterviewModal({ onClose, onSubmit }: {
     try {
       const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
       const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
-      await onSubmit(stage, iso, interviewers);
+      await onSubmit(stage, iso, interviewers, meetingLink.trim(), instructions.trim(), messageToCandidate.trim());
     } finally {
       setSaving(false);
     }
@@ -1172,27 +1296,36 @@ function ScheduleInterviewModal({ onClose, onSubmit }: {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20, width: "100%", maxWidth: 480, fontFamily: "'Inter', sans-serif", boxSizing: "border-box" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", fontFamily: "'Inter', sans-serif", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 800, color: "#17170F", margin: 0 }}>Schedule Interview</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: "#17170F", margin: 0 }}>Invite to Interview</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.4)" }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
 
-        <label style={labelStyle}>Stage</label>
+        <label style={labelStyle}>Interview type</label>
         <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
           <option value="screening_call">Screening call</option>
           <option value="interview">Interview</option>
           <option value="final_interview">Final interview</option>
         </select>
 
-        <label style={labelStyle}>Scheduled at</label>
+        <label style={labelStyle}>Date/time</label>
         <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
 
         <label style={labelStyle}>Interviewers (comma-separated, optional)</label>
-        <input value={interviewerInput} onChange={e => setInterviewerInput(e.target.value)} style={{ ...inputStyle, marginBottom: 16 }} placeholder="Jane Doe, John Smith" />
+        <input value={interviewerInput} onChange={e => setInterviewerInput(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} placeholder="Jane Doe, John Smith" />
+
+        <label style={labelStyle}>Meeting link</label>
+        <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} placeholder="https://meet.google.com/… or a Fixsense room link" />
+
+        <label style={labelStyle}>Interview instructions</label>
+        <textarea value={instructions} onChange={e => setInstructions(e.target.value)} style={{ ...inputStyle, marginBottom: 10, minHeight: 60, resize: "vertical" }} placeholder="What to prepare, format, duration…" />
+
+        <label style={labelStyle}>Message to candidate (optional)</label>
+        <textarea value={messageToCandidate} onChange={e => setMessageToCandidate(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 60, resize: "vertical" }} placeholder="A personal note included in the invitation email" />
 
         <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
-          {saving ? "Scheduling…" : "Schedule Interview"}
+          {saving ? "Sending invitation…" : "Send Interview Invitation"}
         </button>
       </div>
     </div>
