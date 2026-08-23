@@ -2,9 +2,12 @@
  * PublicJobApplicationPage.tsx
  *
  * Public job + application page at /apply/:slug — no auth required.
- * Mirrors ClipSharePage.tsx's public-page conventions (dark theme, inline
- * CSS string, unauthenticated Supabase Edge Function calls via raw fetch
- * since there is no user session to attach a JWT to).
+ * Visually matches LandingPage.tsx's design system (cream/paper background,
+ * navy accent, Inter font, bordered cards, pill tags) rather than a
+ * standalone dark theme, so a candidate's experience feels continuous with
+ * the marketing site they may have arrived from. Step transitions use
+ * framer-motion springs (critically damped, no overshoot — per the
+ * apple-design house style) instead of hard cuts between job/form/success.
  *
  * Talks only to the public-job-application Edge Function:
  *   - action: "get"    → job/company/form config (blocked states are
@@ -18,10 +21,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Loader2, AlertCircle, CheckCircle2, Building2, MapPin, Briefcase,
-  Clock, DollarSign, Upload, FileText, X, Zap, ChevronLeft, ChevronRight,
+  Clock, DollarSign, Upload, FileText, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 // public-job-application has verify_jwt=false and never requires a session —
@@ -227,56 +231,73 @@ export default function PublicJobApplicationPage() {
     }
   };
 
+  const prefersReducedMotion = useReducedMotion();
+
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    .pj-root{min-height:100vh;background:#060912;color:#f0f6fc;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;}
-    .pj-nav{display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,.06);}
-    .pj-nav-brand{display:flex;align-items:center;gap:8px;text-decoration:none;}
-    .pj-logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
-    .pj-company-logo img{width:100%;height:100%;object-fit:cover;}
-    .pj-brand-name{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#f0f6fc;letter-spacing:-.03em;}
-    .pj-content{max-width:680px;margin:0 auto;padding:40px 20px 80px;}
-    .pj-eyebrow{font-size:11px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
-    .pj-title{font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(24px,4vw,34px);font-weight:800;color:#f0f6fc;letter-spacing:-.04em;line-height:1.15;margin-bottom:10px;}
-    .pj-meta-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:22px;}
-    .pj-meta-item{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.55);}
-    .pj-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;margin-bottom:18px;}
-    .pj-card h3{font-size:13px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;}
-    .pj-card p, .pj-card li{font-size:14px;color:rgba(255,255,255,.65);line-height:1.7;}
+    :root{
+      --paper:#FAFAF8;--paper2:#F3F2ED;
+      --ink:#17170F;--ink2:rgba(23,23,15,0.66);--muted:rgba(23,23,15,0.42);--faint:rgba(23,23,15,0.28);
+      --border:rgba(23,23,15,0.11);--border-strong:rgba(23,23,15,0.18);
+      --accent:#22315C;--accent-ink:#FAFAF8;--accent-soft:rgba(34,49,92,0.07);--accent-border:rgba(34,49,92,0.22);
+      --bad:#b3432f;--bad-soft:rgba(179,67,47,0.08);--bad-border:rgba(179,67,47,0.22);
+      --good:#2F6B4F;
+      --fb:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --fm:'IBM Plex Mono',ui-monospace,monospace;
+      --radius-s:6px;--radius-m:10px;--radius-l:14px;
+    }
+    .pj-root{min-height:100vh;background:var(--paper);color:var(--ink);font-family:var(--fb);-webkit-font-smoothing:antialiased;font-feature-settings:"cv02","cv03","cv04";}
+    @media (prefers-reduced-motion: reduce){
+      .pj-root *{animation-duration:.001ms!important;animation-iteration-count:1!important;}
+    }
+    .pj-nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;height:60px;padding:0 22px;background:rgba(250,250,248,0.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
+    .pj-nav-inner{max-width:720px;width:100%;margin:0 auto;display:flex;align-items:center;}
+    .pj-nav-brand{display:flex;align-items:center;gap:9px;}
+    .pj-logo{width:26px;height:26px;border-radius:7px;background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+    .pj-logo img{width:100%;height:100%;object-fit:cover;}
+    .pj-brand-name{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.01em;}
+    .pj-content{max-width:680px;margin:0 auto;padding:44px 20px 80px;}
+    .pj-eyebrow{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;margin-bottom:14px;display:flex;align-items:center;gap:7px;}
+    .pj-title{font-size:clamp(24px,4vw,34px);font-weight:700;color:var(--ink);letter-spacing:-.03em;line-height:1.12;margin-bottom:14px;}
+    .pj-meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
+    .pj-meta-item{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--ink2);background:var(--paper2);border:1px solid var(--border);border-radius:100px;padding:6px 12px 6px 10px;}
+    .pj-meta-item svg{color:var(--muted);flex-shrink:0;}
+    .pj-card{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-l);padding:22px;margin-bottom:16px;}
+    .pj-card h3{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.07em;}
+    .pj-card p, .pj-card li{font-size:14px;color:var(--ink2);line-height:1.7;}
     .pj-card ul{padding-left:18px;}
-    .pj-tag{display:inline-block;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;color:#a78bfa;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);margin:0 6px 6px 0;}
-    .pj-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:12px;padding:14px 20px;font-size:15px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 18px rgba(124,58,237,.35);transition:transform .12s;}
-    .pj-cta:hover{transform:translateY(-1px);}
-    .pj-cta:disabled{opacity:.55;cursor:not-allowed;transform:none;}
-    .pj-cta-secondary{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);box-shadow:none;}
+    .pj-tag{display:inline-block;font-size:12px;font-weight:500;padding:5px 12px;border-radius:100px;color:var(--ink2);background:var(--paper2);border:1px solid var(--border);margin:0 6px 6px 0;}
+    .pj-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);border-radius:var(--radius-s);padding:14px 20px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--fb);transition:opacity .15s;min-height:48px;}
+    .pj-cta:hover{opacity:.9;}
+    .pj-cta:active{transform:scale(.985);}
+    .pj-cta:disabled{opacity:.5;cursor:not-allowed;transform:none;}
     .pj-error-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:40px 20px;}
-    .pj-form-section{margin-bottom:26px;}
-    .pj-form-section h4{font-size:12px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;}
+    .pj-form-section{margin-bottom:28px;}
+    .pj-form-section h4{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;}
     .pj-field{margin-bottom:14px;}
-    .pj-field label{display:block;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:6px;}
-    .pj-field label .req{color:#f87171;margin-left:3px;}
-    .pj-input, .pj-textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:11px 13px;color:#f0f6fc;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .12s;}
-    .pj-input:focus, .pj-textarea:focus{border-color:rgba(124,58,237,.55);}
+    .pj-field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:6px;}
+    .pj-field label .req{color:var(--bad);margin-left:3px;}
+    .pj-input, .pj-textarea{width:100%;background:var(--paper);border:1px solid var(--border-strong);border-radius:var(--radius-s);padding:11px 13px;color:var(--ink);font-size:14px;font-family:var(--fb);outline:none;transition:border-color .15s,background .15s;}
+    .pj-input:focus, .pj-textarea:focus{border-color:var(--accent);background:#fff;}
     .pj-textarea{resize:vertical;min-height:90px;}
-    .pj-field-error{font-size:11.5px;color:#f87171;margin-top:5px;}
+    .pj-field-error{font-size:11.5px;color:var(--bad);margin-top:5px;}
     .pj-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-    .pj-dropzone{border:1.5px dashed rgba(255,255,255,.18);border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:border-color .12s, background .12s;}
-    .pj-dropzone:hover{border-color:rgba(124,58,237,.4);background:rgba(124,58,237,.04);}
-    .pj-file-chip{display:flex;align-items:center;gap:8px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.25);border-radius:9px;padding:10px 13px;font-size:13px;color:rgba(255,255,255,.85);}
-    .pj-consent{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.6;margin:20px 0;}
+    .pj-dropzone{border:1.5px dashed var(--border-strong);border-radius:var(--radius-m);padding:22px;text-align:center;cursor:pointer;transition:border-color .15s, background .15s;}
+    .pj-dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
+    .pj-file-chip{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-s);padding:10px 13px;font-size:13px;color:var(--ink);}
+    .pj-consent{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:var(--ink2);line-height:1.6;margin:20px 0;}
     .pj-consent input{margin-top:2px;flex-shrink:0;}
     .pj-success{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px;}
-    .pj-back{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.5);background:none;border:none;cursor:pointer;margin-bottom:18px;font-family:'DM Sans',sans-serif;}
-    .pj-back:hover{color:rgba(255,255,255,.8);}
+    .pj-back{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--muted);background:none;border:none;cursor:pointer;margin-bottom:20px;font-family:var(--fb);padding:6px 0;transition:color .15s;}
+    .pj-back:hover{color:var(--ink);}
     @keyframes spin{to{transform:rotate(360deg)}}
   `;
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#060912", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ minHeight: "100vh", background: "#FAFAF8", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <style>{css}</style>
-        <Loader2 style={{ width: 28, height: 28, color: "#7c3aed", animation: "spin 1s linear infinite" }} />
+        <Loader2 style={{ width: 26, height: 26, color: "#22315C", animation: "spin 1s linear infinite" }} />
       </div>
     );
   }
@@ -285,47 +306,60 @@ export default function PublicJobApplicationPage() {
   const companyName = jobData?.company?.name || "Careers";
   const companyLogo = jobData?.company?.logo_url;
 
+  // Critically damped by default (damping 1.0-equivalent bounce:0), per the
+  // apple-design house style — motion here is state-driven navigation, not
+  // a flick/drag gesture, so no overshoot.
+  const stepTransition = prefersReducedMotion
+    ? { duration: 0.2 }
+    : { type: "spring" as const, bounce: 0, duration: 0.4 };
+  const stepMotionProps = prefersReducedMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -10 } };
+
   return (
     <div className="pj-root">
       <style>{css}</style>
       <nav className="pj-nav">
-        <div className="pj-nav-brand">
-          <div className="pj-logo pj-company-logo">
-            {companyLogo ? (
-              <img src={companyLogo} alt={companyName} />
-            ) : (
-              <Zap style={{ width: 14, height: 14, color: "#fff" }} />
-            )}
+        <div className="pj-nav-inner">
+          <div className="pj-nav-brand">
+            <div className="pj-logo">
+              {companyLogo ? (
+                <img src={companyLogo} alt={companyName} />
+              ) : (
+                <Building2 style={{ width: 13, height: 13, color: "#22315C" }} />
+              )}
+            </div>
+            <span className="pj-brand-name">{companyName}</span>
           </div>
-          <span className="pj-brand-name">{companyName}</span>
         </div>
       </nav>
 
       <div className="pj-content">
-        {blocked ? (
-          <div className="pj-error-screen">
-            <AlertCircle style={{ width: 40, height: 40, color: "rgba(239,68,68,.6)", marginBottom: 16 }} />
-            <h2 style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Bricolage Grotesque',sans-serif", marginBottom: 8 }}>
-              {jobData?.status === "closed" ? "Role no longer accepting applications" : "Application unavailable"}
-            </h2>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 340, lineHeight: 1.6 }}>
-              {BLOCKED_MESSAGES[jobData?.status ?? "not_found"]}
-            </p>
-          </div>
-        ) : step === "success" ? (
-          <div className="pj-success">
-            <CheckCircle2 style={{ width: 46, height: 46, color: "#4ade80", marginBottom: 18 }} />
-            <h2 style={{ fontSize: 22, fontWeight: 800, fontFamily: "'Bricolage Grotesque',sans-serif", marginBottom: 10 }}>
-              Application received
-            </h2>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,.55)", maxWidth: 380, lineHeight: 1.7 }}>
-              Thanks for applying to <strong style={{ color: "rgba(255,255,255,.8)" }}>{jobData?.job?.title}</strong> at{" "}
-              <strong style={{ color: "rgba(255,255,255,.8)" }}>{jobData?.company?.name}</strong>. The recruiting team
-              will review your application and reach out if there's a fit.
-            </p>
-          </div>
-        ) : step === "job" ? (
-          <>
+        <AnimatePresence mode="wait">
+          {blocked ? (
+            <motion.div key="blocked" {...stepMotionProps} transition={stepTransition} className="pj-error-screen">
+              <AlertCircle style={{ width: 38, height: 38, color: "#b3432f", marginBottom: 16 }} />
+              <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.02em", marginBottom: 8 }}>
+                {jobData?.status === "closed" ? "Role no longer accepting applications" : "Application unavailable"}
+              </h2>
+              <p style={{ fontSize: 13, color: "rgba(23,23,15,0.45)", maxWidth: 340, lineHeight: 1.6 }}>
+                {BLOCKED_MESSAGES[jobData?.status ?? "not_found"]}
+              </p>
+            </motion.div>
+          ) : step === "success" ? (
+            <motion.div key="success" {...stepMotionProps} transition={stepTransition} className="pj-success">
+              <CheckCircle2 style={{ width: 44, height: 44, color: "#2F6B4F", marginBottom: 18 }} />
+              <h2 style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-.02em", marginBottom: 10 }}>
+                Application received
+              </h2>
+              <p style={{ fontSize: 14, color: "rgba(23,23,15,0.55)", maxWidth: 380, lineHeight: 1.7 }}>
+                Thanks for applying to <strong style={{ color: "#17170F" }}>{jobData?.job?.title}</strong> at{" "}
+                <strong style={{ color: "#17170F" }}>{jobData?.company?.name}</strong>. The recruiting team
+                will review your application and reach out if there's a fit.
+              </p>
+            </motion.div>
+          ) : step === "job" ? (
+            <motion.div key="job" {...stepMotionProps} transition={stepTransition}>
             <div className="pj-eyebrow">
               <Building2 style={{ width: 12, height: 12 }} />
               {jobData?.company?.name}
@@ -387,9 +421,9 @@ export default function PublicJobApplicationPage() {
             <button className="pj-cta" onClick={() => setStep("form")}>
               Apply for this role <ChevronRight style={{ width: 16, height: 16 }} />
             </button>
-          </>
+          </motion.div>
         ) : (
-          <>
+          <motion.div key="form" {...stepMotionProps} transition={stepTransition}>
             <button className="pj-back" onClick={() => setStep("job")}>
               <ChevronLeft style={{ width: 14, height: 14 }} /> Back to role details
             </button>
@@ -449,14 +483,14 @@ export default function PublicJobApplicationPage() {
               <Field label="CV / Resume" required={jobData?.form?.require_cv} error={fieldErrors.cvFile}>
                 {cvFile ? (
                   <div className="pj-file-chip">
-                    <FileText style={{ width: 15, height: 15, color: "#a78bfa" }} />
+                    <FileText style={{ width: 15, height: 15, color: "#22315C" }} />
                     <span style={{ flex: 1 }}>{cvFile.name}</span>
                     <X style={{ width: 14, height: 14, cursor: "pointer" }} onClick={() => setCvFile(null)} />
                   </div>
                 ) : (
                   <label className="pj-dropzone">
-                    <Upload style={{ width: 18, height: 18, color: "rgba(255,255,255,.35)", marginBottom: 6 }} />
-                    <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)" }}>PDF, DOC or DOCX, up to 10MB</div>
+                    <Upload style={{ width: 18, height: 18, color: "rgba(23,23,15,0.3)", marginBottom: 6 }} />
+                    <div style={{ fontSize: 12.5, color: "rgba(23,23,15,0.45)" }}>PDF, DOC or DOCX, up to 10MB</div>
                     <input
                       type="file"
                       accept=".pdf,.doc,.docx"
@@ -519,12 +553,12 @@ export default function PublicJobApplicationPage() {
               <span>
                 I consent to {jobData?.company?.name ?? "the hiring team"} and its recruiting partner processing my
                 personal information and CV for the purpose of evaluating this application.
-                {fieldErrors.consent && <span style={{ color: "#f87171", display: "block", marginTop: 4 }}>{fieldErrors.consent}</span>}
+                {fieldErrors.consent && <span style={{ color: "#b3432f", display: "block", marginTop: 4 }}>{fieldErrors.consent}</span>}
               </span>
             </label>
 
             {submitError && (
-              <div style={{ background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 9, padding: "10px 13px", fontSize: 13, color: "#fca5a5", marginBottom: 16 }}>
+              <div style={{ background: "rgba(179,67,47,0.08)", border: "1px solid rgba(179,67,47,0.22)", borderRadius: 9, padding: "10px 13px", fontSize: 13, color: "#b3432f", marginBottom: 16 }}>
                 {submitError}
               </div>
             )}
@@ -532,8 +566,9 @@ export default function PublicJobApplicationPage() {
             <button className="pj-cta" onClick={handleSubmit} disabled={submitting}>
               {submitting ? <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} /> : "Submit application"}
             </button>
-          </>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     </div>
   );
