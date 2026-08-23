@@ -857,6 +857,7 @@ function CandidateDetailPageInner() {
       </Section>
 
       {selectedCj && (
+        <>
         <Section title="AI Match" icon={Sparkles} accent="#7c3aed" defaultOpen right={
           <button
             onClick={runAiMatch}
@@ -918,7 +919,6 @@ function CandidateDetailPageInner() {
             </div>
           )}
         </Section>
-      )}
         <>
           {/* Interviews */}
           <Section title={`Interviews (${interviews.length})`} icon={Video} accent="#22315C" right={
@@ -1058,6 +1058,7 @@ function CandidateDetailPageInner() {
               ))}
             </div>
           </Section>
+        </>
         </>
       )}
 
