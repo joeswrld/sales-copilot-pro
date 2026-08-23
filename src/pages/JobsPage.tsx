@@ -31,7 +31,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { toast } from "sonner";
 import {
   Plus, Loader2, Search, X, ChevronRight, Briefcase, Building2,
-  MapPin, RefreshCw, CheckCircle2,
+  MapPin, RefreshCw, CheckCircle2, Upload, Image as ImageIcon,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ interface Job {
   title: string;
   location: string | null;
   work_arrangement: string | null;
+  employment_type: string | null;
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string | null;
@@ -56,6 +57,31 @@ interface Job {
 interface ClientOpt {
   id: string;
   name: string;
+  logo_url?: string | null;
+}
+
+// ─── Employment type config ─────────────────────────────────────────────────
+
+const EMPLOYMENT_TYPES = [
+  { key: "permanent", label: "Permanent" },
+  { key: "part_time", label: "Part-time" },
+  { key: "contract", label: "Contract" },
+  { key: "temporary", label: "Temporary" },
+  { key: "internship", label: "Internship" },
+];
+
+// Logo files land in the public "company-logos" bucket at
+// {team_id}/{client_id}-{timestamp}.{ext} — RLS mirrors candidate-cvs
+// (recruiting_is_team_member(team_id) on the folder segment), and the
+// bucket itself is public so the logo can render on the unauthenticated
+// PublicJobApplicationPage without a signed URL.
+async function uploadClientLogo(file: File, teamId: string, clientId: string): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const path = `${teamId}/${clientId}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("company-logos").upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from("company-logos").getPublicUrl(path);
+  return data.publicUrl;
 }
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -146,11 +172,13 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
   clients: ClientOpt[]; onClientCreated: (c: ClientOpt) => void;
 }) {
   const [form, setForm] = useState({
-    title: "", client_id: "", location: "", work_arrangement: "",
-    salary_min: "", salary_max: "", salary_currency: "GBP", headcount: "1",
+    title: "", client_id: "", location: "", work_arrangement: "", employment_type: "",
+    description: "", salary_min: "", salary_max: "", salary_currency: "GBP", headcount: "1",
   });
   const [newClientMode, setNewClientMode] = useState(false);
   const [newClientName, setNewClientName] = useState("");
+  const [newClientLogoFile, setNewClientLogoFile] = useState<File | null>(null);
+  const [newClientLogoPreview, setNewClientLogoPreview] = useState<string | null>(null);
   const [savingClient, setSavingClient] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -163,12 +191,27 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
     try {
       const { data, error } = await (supabase as any).from("recruiting_clients").insert({
         team_id: teamId, owner_id: userId, name: newClientName.trim(), status: "active",
-      }).select("id, name").single();
+      }).select("id, name, logo_url").single();
       if (error) throw error;
-      onClientCreated(data);
+
+      let logoUrl: string | null = null;
+      if (newClientLogoFile) {
+        try {
+          logoUrl = await uploadClientLogo(newClientLogoFile, teamId, data.id);
+          const { error: logoErr } = await (supabase as any).from("recruiting_clients")
+            .update({ logo_url: logoUrl }).eq("id", data.id);
+          if (logoErr) throw logoErr;
+        } catch (e: any) {
+          toast.error(e.message ?? "Client added, but logo upload failed");
+        }
+      }
+
+      onClientCreated({ ...data, logo_url: logoUrl ?? data.logo_url });
       setForm(f => ({ ...f, client_id: data.id }));
       setNewClientMode(false);
       setNewClientName("");
+      setNewClientLogoFile(null);
+      setNewClientLogoPreview(null);
       toast.success("Client added");
     } catch (e: any) {
       toast.error(e.message ?? "Failed to create client");
@@ -189,8 +232,10 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
         owner_id: userId,
         assigned_recruiter_id: userId,
         title: form.title.trim(),
+        description: form.description.trim() || null,
         location: form.location.trim() || null,
         work_arrangement: form.work_arrangement || null,
+        employment_type: form.employment_type || null,
         salary_min: form.salary_min ? Number(form.salary_min) : null,
         salary_max: form.salary_max ? Number(form.salary_max) : null,
         salary_currency: form.salary_currency,
@@ -201,7 +246,7 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
       toast.success("Job created");
       onCreated(data.id);
       onClose();
-      setForm({ title: "", client_id: "", location: "", work_arrangement: "", salary_min: "", salary_max: "", salary_currency: "GBP", headcount: "1" });
+      setForm({ title: "", client_id: "", location: "", work_arrangement: "", employment_type: "", description: "", salary_min: "", salary_max: "", salary_currency: "GBP", headcount: "1" });
     } catch (e: any) {
       toast.error(e.message ?? "Failed to create job");
     } finally {
@@ -252,14 +297,39 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
           <div>
             <label style={labelStyle}>Client</label>
             {newClientMode ? (
-              <div style={{ display: "flex", gap: 8 }}>
-                <input style={inputStyle} value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Acme Ltd" autoFocus />
-                <button onClick={handleCreateClient} disabled={savingClient} style={{ padding: "0 14px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 12, fontWeight: 700, cursor: savingClient ? "default" : "pointer", flexShrink: 0 }}>
-                  {savingClient ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : "Add"}
-                </button>
-                <button onClick={() => { setNewClientMode(false); setNewClientName(""); }} style={{ padding: "0 10px", background: "rgba(23,23,15,0.06)", border: "none", borderRadius: 10, color: "rgba(23,23,15,0.5)", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
-                  Cancel
-                </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <label style={{
+                    width: 40, height: 40, borderRadius: 10, flexShrink: 0, cursor: "pointer",
+                    border: "1.5px dashed rgba(23,23,15,0.18)", background: "rgba(23,23,15,0.03)",
+                    display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                  }} title="Company logo">
+                    {newClientLogoPreview ? (
+                      <img src={newClientLogoPreview} alt="Logo preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <ImageIcon style={{ width: 15, height: 15, color: "rgba(23,23,15,0.3)" }} />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      style={{ display: "none" }}
+                      onChange={e => {
+                        const f = e.target.files?.[0] ?? null;
+                        setNewClientLogoFile(f);
+                        setNewClientLogoPreview(f ? URL.createObjectURL(f) : null);
+                      }}
+                    />
+                  </label>
+                  <input style={{ ...inputStyle, flex: 1 }} value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Acme Ltd" autoFocus />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={handleCreateClient} disabled={savingClient} style={{ flex: 1, padding: "10px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 12, fontWeight: 700, cursor: savingClient ? "default" : "pointer" }}>
+                    {savingClient ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : "Add client"}
+                  </button>
+                  <button onClick={() => { setNewClientMode(false); setNewClientName(""); setNewClientLogoFile(null); setNewClientLogoPreview(null); }} style={{ padding: "0 14px", background: "rgba(23,23,15,0.06)", border: "none", borderRadius: 10, color: "rgba(23,23,15,0.5)", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             ) : (
               <div style={{ display: "flex", gap: 8 }}>
@@ -279,6 +349,16 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
             <input style={inputStyle} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Lagos, Nigeria" />
           </div>
 
+          <div>
+            <label style={labelStyle}>Job description</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "'Inter', sans-serif" }}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="What this role involves, responsibilities, and what a great candidate looks like…"
+            />
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={labelStyle}>Work arrangement</label>
@@ -290,9 +370,17 @@ function CreateJobModal({ open, onClose, onCreated, teamId, userId, clients, onC
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Headcount</label>
-              <input style={inputStyle} type="number" min={1} value={form.headcount} onChange={e => setForm(f => ({ ...f, headcount: e.target.value }))} />
+              <label style={labelStyle}>Employment type</label>
+              <select style={{ ...inputStyle, cursor: "pointer" }} value={form.employment_type} onChange={e => setForm(f => ({ ...f, employment_type: e.target.value }))}>
+                <option value="">—</option>
+                {EMPLOYMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Headcount</label>
+            <input style={inputStyle} type="number" min={1} value={form.headcount} onChange={e => setForm(f => ({ ...f, headcount: e.target.value }))} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -357,12 +445,12 @@ export default function JobsPage() {
       const [jobsRes, clientsRes] = await Promise.all([
         (supabase as any)
           .from("jobs")
-          .select("id, title, location, work_arrangement, salary_min, salary_max, salary_currency, status, headcount, positions_filled, client_id, created_at, updated_at, recruiting_clients(name)")
+          .select("id, title, location, work_arrangement, employment_type, salary_min, salary_max, salary_currency, status, headcount, positions_filled, client_id, created_at, updated_at, recruiting_clients(name)")
           .eq("team_id", teamId)
           .order("updated_at", { ascending: false }),
         (supabase as any)
           .from("recruiting_clients")
-          .select("id, name")
+          .select("id, name, logo_url")
           .eq("team_id", teamId)
           .order("name"),
       ]);
