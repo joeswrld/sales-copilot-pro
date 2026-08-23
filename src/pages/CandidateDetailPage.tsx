@@ -37,7 +37,7 @@ import {
   ArrowLeft, Loader2, Mail, Phone, MapPin, Briefcase, Building2,
   DollarSign, Calendar, FileText, Upload, Check, X, Edit3, ChevronDown,
   ChevronUp, Sparkles, Clock, Plus, RefreshCw, AlertCircle, CheckCircle2,
-  XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp,
+  XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp, ExternalLink,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -659,6 +659,30 @@ function CandidateDetailPageInner() {
     }
   };
 
+  // AI-extracted skills (candidate.skills, confirmed via ai_extractions) are a
+  // separate source from the manually-tracked candidate_skills rows above —
+  // this promotes one into a tracked skill (source: "ai_extraction") without
+  // touching the others, then drops it from the suggestion list.
+  const [addingAiSkill, setAddingAiSkill] = useState<string | null>(null);
+  const addAiSkill = async (skillName: string) => {
+    if (!candidate) return;
+    setAddingAiSkill(skillName);
+    try {
+      const { error } = await (supabase as any).from("candidate_skills").insert({
+        team_id: candidate.team_id,
+        candidate_id: candidate.id,
+        skill_name: skillName,
+        source: "ai_extraction",
+      });
+      if (error) throw error;
+      await load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to add skill");
+    } finally {
+      setAddingAiSkill(null);
+    }
+  };
+
   // ── AI extraction review ─────────────────────────────────────────────────
   const pendingExtractions = extractions.filter(e => e.status === "pending_review");
 
@@ -1198,12 +1222,16 @@ function CandidateDetailPageInner() {
                   const st = statusMap[f.parsing_status] ?? statusMap.pending;
                   const StIcon = st.icon;
                   return (
-                    <div key={f.id} onClick={() => openCv(f.file_path)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9, cursor: "pointer" }}>
+                    <div key={f.id} onClick={() => openCv(f.file_path)} title="Click to open CV" style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9, cursor: "pointer" }}>
                       <FileText style={{ width: 13, height: 13, color: "rgba(23,23,15,0.35)", flexShrink: 0 }} />
-                      <span style={{ fontSize: 12.5, color: "#17170F", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.file_name}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, color: "#17170F", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.file_name}</div>
+                        <div style={{ fontSize: 10.5, color: "rgba(23,23,15,0.35)" }}>{formatDistanceToNow(new Date(f.created_at), { addSuffix: true })}</div>
+                      </div>
                       <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: st.color, flexShrink: 0 }}>
                         <StIcon style={{ width: 10, height: 10 }} />{st.label}
                       </span>
+                      <ExternalLink style={{ width: 12, height: 12, color: "rgba(23,23,15,0.3)", flexShrink: 0 }} />
                     </div>
                   );
                 })}
@@ -1213,6 +1241,31 @@ function CandidateDetailPageInner() {
 
           {/* Skills */}
           <Section title={`Skills (${skills.length})`} icon={Tag} accent="#22315C">
+            {!!candidate.skills?.length && (() => {
+              const trackedNames = new Set(skills.map(s => s.skill_name.trim().toLowerCase()));
+              const suggested = candidate.skills.filter(sk => !trackedNames.has(sk.trim().toLowerCase()));
+              if (!suggested.length) return null;
+              return (
+                <div style={{ marginBottom: 14, padding: "10px 12px", background: "rgba(34,49,92,0.05)", border: "1px solid rgba(34,49,92,0.14)", borderRadius: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontSize: 10.5, fontWeight: 700, color: "#22315C", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <Sparkles style={{ width: 11, height: 11 }} /> From CV / AI extraction
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {suggested.map(sk => (
+                      <button
+                        key={sk}
+                        onClick={() => addAiSkill(sk)}
+                        disabled={addingAiSkill === sk}
+                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: "#FAFAF8", border: "1px dashed rgba(34,49,92,0.3)", borderRadius: 8, fontSize: 12, color: "#17170F", cursor: addingAiSkill === sk ? "default" : "pointer" }}
+                      >
+                        {addingAiSkill === sk ? <Loader2 style={{ width: 10, height: 10, animation: "spin 1s linear infinite" }} /> : <Plus style={{ width: 10, height: 10, color: "#22315C" }} />}
+                        {sk}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
               <input
                 value={newSkill}
