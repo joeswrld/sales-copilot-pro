@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Loader2, AlertCircle, CheckCircle2, Building2, MapPin, Briefcase,
@@ -126,6 +126,7 @@ export default function PublicJobApplicationPage() {
   const [currentEmployer, setCurrentEmployer] = useState("");
   const [coverLetter, setCoverLetter] = useState("");
   const [salaryExpectation, setSalaryExpectation] = useState("");
+  const [salaryCurrency, setSalaryCurrency] = useState("NGN");
   const [noticePeriod, setNoticePeriod] = useState("");
   const [availability, setAvailability] = useState("");
   const [workAuthorization, setWorkAuthorization] = useState("");
@@ -140,6 +141,7 @@ export default function PublicJobApplicationPage() {
     setLoading(true);
     const { data } = await callPublicApplicationFn({ action: "get", slug });
     setJobData(data);
+    if (data?.job?.salary_currency) setSalaryCurrency(data.job.salary_currency);
     setLoading(false);
   }, [slug]);
 
@@ -197,7 +199,7 @@ export default function PublicJobApplicationPage() {
         current_employer: currentEmployer.trim() || null,
         cover_letter: coverLetter.trim() || null,
         salary_expectation: salaryExpectation ? Number(salaryExpectation) : null,
-        salary_expectation_currency: "NGN",
+        salary_expectation_currency: salaryCurrency,
         notice_period: noticePeriod.trim() || null,
         availability: availability.trim() || null,
         work_authorization: workAuthorization.trim() || null,
@@ -231,7 +233,8 @@ export default function PublicJobApplicationPage() {
     .pj-root{min-height:100vh;background:#060912;color:#f0f6fc;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;}
     .pj-nav{display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,.06);}
     .pj-nav-brand{display:flex;align-items:center;gap:8px;text-decoration:none;}
-    .pj-logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;}
+    .pj-logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+    .pj-company-logo img{width:100%;height:100%;object-fit:cover;}
     .pj-brand-name{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#f0f6fc;letter-spacing:-.03em;}
     .pj-content{max-width:680px;margin:0 auto;padding:40px 20px 80px;}
     .pj-eyebrow{font-size:11px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
@@ -279,15 +282,23 @@ export default function PublicJobApplicationPage() {
   }
 
   const blocked = !jobData || jobData.status !== "open";
+  const companyName = jobData?.company?.name || "Careers";
+  const companyLogo = jobData?.company?.logo_url;
 
   return (
     <div className="pj-root">
       <style>{css}</style>
       <nav className="pj-nav">
-        <Link to="/" className="pj-nav-brand">
-          <div className="pj-logo"><Zap style={{ width: 14, height: 14, color: "#fff" }} /></div>
-          <span className="pj-brand-name">Fixsense</span>
-        </Link>
+        <div className="pj-nav-brand">
+          <div className="pj-logo pj-company-logo">
+            {companyLogo ? (
+              <img src={companyLogo} alt={companyName} />
+            ) : (
+              <Zap style={{ width: 14, height: 14, color: "#fff" }} />
+            )}
+          </div>
+          <span className="pj-brand-name">{companyName}</span>
+        </div>
       </nav>
 
       <div className="pj-content">
@@ -458,8 +469,16 @@ export default function PublicJobApplicationPage() {
               <Field label="Cover letter" required={jobData?.form?.require_cover_letter} error={fieldErrors.coverLetter}>
                 <textarea className="pj-textarea" value={coverLetter} onChange={e => setCoverLetter(e.target.value)} />
               </Field>
-              <Field label="Salary expectation (NGN)" required={jobData?.form?.require_salary_expectation} error={fieldErrors.salaryExpectation}>
-                <input className="pj-input" type="number" min="0" value={salaryExpectation} onChange={e => setSalaryExpectation(e.target.value)} />
+              <Field label="Salary expectation" required={jobData?.form?.require_salary_expectation} error={fieldErrors.salaryExpectation}>
+                <div className="pj-row2" style={{ gridTemplateColumns: "1fr 100px" }}>
+                  <input className="pj-input" type="number" min="0" value={salaryExpectation} onChange={e => setSalaryExpectation(e.target.value)} placeholder="Amount" />
+                  <select className="pj-input" value={salaryCurrency} onChange={e => setSalaryCurrency(e.target.value)}>
+                    <option value="NGN">NGN</option>
+                    <option value="USD">USD</option>
+                    <option value="GBP">GBP</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
               </Field>
               <div className="pj-row2">
                 <Field label="Notice period">
