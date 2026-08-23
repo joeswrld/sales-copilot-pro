@@ -69,6 +69,7 @@ const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
 const CandidateDetailPage = lazy(() => import("@/pages/CandidateDetailPage"));
 const PipelinePage = lazy(() => import("@/pages/PipelinePage"));
 const SubmissionsPage = lazy(() => import("@/pages/SubmissionsPage"));
+const JobsPage = lazy(() => import("@/pages/JobsPage"));
 const JobDetailPage = lazy(() => import("@/pages/JobDetailPage"));
 const PublicJobApplicationPage = lazy(() => import("@/pages/PublicJobApplicationPage"));
 const SecurityCompliancePage = lazy(() => import("./pages/SecurityCompliancePage"));
@@ -356,6 +357,16 @@ function AppRoutes() {
               <ProtectedRoute>
                 <ErrorBoundary>
                   <SubmissionsPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/jobs"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <JobsPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }
