@@ -251,6 +251,26 @@ function formatMoney(value: number | null, currency: string | null) {
   return `${symbol}${value.toLocaleString()}`;
 }
 
+// humanizeCompat turns a snake/kebab-case compatibility code from the AI
+// match (e.g. "good_fit", "strong-match", "mismatch") into a readable label.
+// Falls back to a plain word-split for any code not in the known set, so an
+// unexpected value from the model never breaks rendering.
+const COMPAT_LABELS: Record<string, string> = {
+  match: "Match", good_fit: "Good fit", strong_match: "Strong match",
+  within_range: "Within range", above_range: "Above range", below_range: "Below range",
+  stretch: "Stretch", mismatch: "Mismatch", unknown: "Unknown", not_specified: "Not specified",
+};
+
+function humanizeCompat(value: string | null | undefined): string {
+  if (!value) return "";
+  const key = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (COMPAT_LABELS[key]) return COMPAT_LABELS[key];
+  return value
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 // ─── Collapsible section ────────────────────────────────────────────────────
 
 function Section({ title, icon: Icon, defaultOpen = true, accent, right, children }: {
@@ -268,6 +288,45 @@ function Section({ title, icon: Icon, defaultOpen = true, accent, right, childre
         {right}
       </div>
       {open && <div style={{ padding: "0 16px 14px" }}>{children}</div>}
+    </div>
+  );
+}
+
+// ─── AI Match helpers ────────────────────────────────────────────────────────
+// MatchList renders one labeled group of bullet items from match_explanation
+// (matched/missing requirements, relevant skills, concerns). MatchField
+// renders a single labeled value (salary/location compatibility, notice,
+// relevant experience). Both were referenced by the AI Match section but
+// never defined — that's what threw "MatchList is not defined".
+
+function MatchList({ label, items, icon, color }: {
+  label: string; items: string[]; icon: string; color: string;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 12.5, color: "rgba(23,23,15,0.75)", lineHeight: 1.5 }}>
+            <span style={{ color, flexShrink: 0, fontWeight: 700 }}>{icon}</span>
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MatchField({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 12.5, color: "rgba(23,23,15,0.75)", lineHeight: 1.5 }}>{value}</div>
     </div>
   );
 }
