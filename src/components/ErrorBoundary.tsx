@@ -9,9 +9,41 @@
  *      with a fire-and-forget pattern so logging failures never affect UX.
  */
 
-import React, { Component, ErrorInfo, ReactNode, useEffect } from "react";
+import React, { Component, ErrorInfo, ReactNode, useEffect, useState } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
+
+// ─── Design tokens ──────────────────────────────────────────────────────────
+// Mirrors the cream/navy system from LandingPage.tsx so a crashed panel
+// still feels like part of the same product, not a foreign dev-tool alert.
+
+const T = {
+  paper: "#FAFAF8",
+  paper2: "#F3F2ED",
+  ink: "#17170F",
+  ink2: "rgba(23,23,15,0.66)",
+  muted: "rgba(23,23,15,0.42)",
+  faint: "rgba(23,23,15,0.28)",
+  border: "rgba(23,23,15,0.11)",
+  borderStrong: "rgba(23,23,15,0.18)",
+  accent: "#22315C",
+  accentInk: "#FAFAF8",
+  accentSoft: "rgba(34,49,92,0.07)",
+  accentBorder: "rgba(34,49,92,0.22)",
+  warn: "#8A5A20",
+  warnSoft: "rgba(138,90,32,0.09)",
+  fb: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  fm: "'IBM Plex Mono',ui-monospace,monospace",
+  radiusS: 6,
+  radiusM: 10,
+  radiusL: 14,
+};
+
+// Critically damped by default (Apple's "response over duration" spring —
+// no bounce for a state that just appeared, matching the landing page's
+// non-gestural reveals).
+const settle = { type: "spring" as const, bounce: 0, duration: 0.4 };
 
 // ─── Logging helper ────────────────────────────────────────────────────────────
 
@@ -51,6 +83,49 @@ interface State {
 
 // ─── Default Fallback UI ──────────────────────────────────────────────────────
 
+function RetryButton({
+  onClick,
+  variant,
+  children,
+}: {
+  onClick:  () => void;
+  variant:  "primary" | "outline";
+  children: ReactNode;
+}) {
+  // Feedback on press, not release — kill latency per the Apple spring
+  // rules (§1 Response). The scale reads instantly under the pointer.
+  const [pressed, setPressed] = useState(false);
+  const isPrimary = variant === "primary";
+  return (
+    <motion.button
+      onClick={onClick}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      animate={{ scale: pressed ? 0.97 : 1 }}
+      transition={{ type: "spring", bounce: 0, duration: 0.25 }}
+      style={{
+        display:       "inline-flex",
+        alignItems:    "center",
+        justifyContent: "center",
+        gap:            7,
+        padding:       "10px 18px",
+        background:    isPrimary ? T.accent : "transparent",
+        border:        `1px solid ${isPrimary ? T.accent : T.borderStrong}`,
+        borderRadius:   T.radiusS,
+        color:         isPrimary ? T.accentInk : T.ink,
+        fontSize:       13.5,
+        fontWeight:     600,
+        fontFamily:     T.fb,
+        cursor:        "pointer",
+        minHeight:      44,
+      }}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
 function DefaultFallback({
   error,
   compact,
@@ -62,42 +137,48 @@ function DefaultFallback({
 }) {
   if (compact) {
     return (
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={settle}
         style={{
           display:      "flex",
           alignItems:   "center",
           gap:           10,
           padding:      "12px 16px",
-          background:   "rgba(239,68,68,.08)",
-          border:       "1px solid rgba(239,68,68,.2)",
-          borderRadius:  10,
-          fontFamily:   "system-ui, sans-serif",
+          background:   T.warnSoft,
+          border:       `1px solid rgba(138,90,32,0.22)`,
+          borderRadius:  T.radiusM,
+          fontFamily:   T.fb,
         }}
       >
-        <AlertTriangle style={{ width: 16, height: 16, color: "#ef4444", flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: "rgba(255,255,255,.7)" }}>
+        <AlertTriangle style={{ width: 16, height: 16, color: T.warn, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: T.ink2, fontWeight: 500 }}>
           Something went wrong.
         </span>
-        <button
+        <motion.button
           onClick={onReset}
+          whileTap={{ scale: 0.96 }}
+          transition={{ type: "spring", bounce: 0, duration: 0.25 }}
           style={{
             marginLeft:   "auto",
             display:      "flex",
             alignItems:   "center",
             gap:           5,
-            padding:      "5px 10px",
-            background:   "rgba(239,68,68,.1)",
-            border:       "1px solid rgba(239,68,68,.25)",
-            borderRadius:  7,
-            color:        "#f87171",
+            padding:      "6px 11px",
+            background:   T.paper,
+            border:       `1px solid ${T.borderStrong}`,
+            borderRadius:  100,
+            color:        T.ink,
             fontSize:      12,
             fontWeight:    600,
+            fontFamily:    T.fb,
             cursor:       "pointer",
           }}
         >
           <RefreshCw style={{ width: 12, height: 12 }} /> Retry
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
     );
   }
 
@@ -111,104 +192,101 @@ function DefaultFallback({
         justifyContent: "center",
         padding:        "40px 20px",
         textAlign:      "center",
-        fontFamily:     "system-ui, sans-serif",
+        fontFamily:     T.fb,
+        background:     T.paper,
       }}
     >
-      <div
-        style={{
-          width:          64,
-          height:         64,
-          borderRadius:   16,
-          background:     "rgba(239,68,68,.08)",
-          border:         "1px solid rgba(239,68,68,.2)",
-          display:        "flex",
-          alignItems:     "center",
-          justifyContent: "center",
-          marginBottom:   20,
-        }}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={settle}
+        style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
       >
-        <AlertTriangle style={{ width: 28, height: 28, color: "#ef4444" }} />
-      </div>
+        <div
+          style={{
+            width:          56,
+            height:         56,
+            borderRadius:   T.radiusL,
+            background:     T.warnSoft,
+            border:         `1px solid rgba(138,90,32,0.2)`,
+            display:        "flex",
+            alignItems:     "center",
+            justifyContent: "center",
+            marginBottom:   22,
+          }}
+        >
+          <AlertTriangle style={{ width: 24, height: 24, color: T.warn }} strokeWidth={1.6} />
+        </div>
 
-      <h2
-        style={{
-          fontSize:      20,
-          fontWeight:    700,
-          color:         "rgba(255,255,255,.85)",
-          marginBottom:  8,
-          letterSpacing: "-0.03em",
-        }}
-      >
-        Something went wrong
-      </h2>
+        <div
+          style={{
+            fontFamily:    T.fm,
+            fontSize:      11,
+            fontWeight:    600,
+            color:         T.faint,
+            textTransform: "uppercase",
+            letterSpacing: "0.09em",
+            marginBottom:  10,
+          }}
+        >
+          Unexpected error
+        </div>
 
-      <p
-        style={{
-          fontSize:     13,
-          color:        "rgba(255,255,255,.4)",
-          maxWidth:     380,
-          lineHeight:   1.6,
-          marginBottom: 28,
-        }}
-      >
-        An unexpected error occurred. The team has been notified.
+        <h2
+          style={{
+            fontSize:      21,
+            fontWeight:    700,
+            color:         T.ink,
+            marginBottom:  10,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          Something went wrong
+        </h2>
+
+        <p
+          style={{
+            fontSize:     14,
+            color:        T.ink2,
+            maxWidth:     400,
+            lineHeight:   1.6,
+            marginBottom: error?.message ? 14 : 28,
+          }}
+        >
+          This part of the page hit a snag. The team's already been notified — try again, or head back to safe ground.
+        </p>
+
         {error?.message && (
-          <>
-            {" "}
-            <br />
-            <span
-              style={{
-                fontFamily: "monospace",
-                fontSize:   11,
-                color:      "rgba(239,68,68,.7)",
-              }}
-            >
-              {error.message.length > 100
-                ? error.message.slice(0, 100) + "…"
-                : error.message}
-            </span>
-          </>
+          <div
+            style={{
+              fontFamily:   T.fm,
+              fontSize:     11.5,
+              color:        T.warn,
+              background:   T.paper2,
+              border:       `1px solid ${T.border}`,
+              borderRadius:  T.radiusS,
+              padding:      "8px 12px",
+              maxWidth:     420,
+              marginBottom: 28,
+              textAlign:    "left",
+              wordBreak:    "break-word",
+            }}
+          >
+            {error.message.length > 140
+              ? error.message.slice(0, 140) + "…"
+              : error.message}
+          </div>
         )}
-      </p>
 
-      <div style={{ display: "flex", gap: 10 }}>
-        <button
-          onClick={onReset}
-          style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:           7,
-            padding:      "10px 18px",
-            background:   "rgba(255,255,255,.06)",
-            border:       "1px solid rgba(255,255,255,.1)",
-            borderRadius:  10,
-            color:        "rgba(255,255,255,.7)",
-            fontSize:      13,
-            fontWeight:    600,
-            cursor:       "pointer",
-          }}
-        >
-          <RefreshCw style={{ width: 14, height: 14 }} /> Try again
-        </button>
-        <button
-          onClick={() => (window.location.href = "/dashboard")}
-          style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:           7,
-            padding:      "10px 18px",
-            background:   "linear-gradient(135deg, #3b82f6, #6366f1)",
-            border:       "none",
-            borderRadius:  10,
-            color:        "#fff",
-            fontSize:      13,
-            fontWeight:    600,
-            cursor:       "pointer",
-          }}
-        >
-          <Home style={{ width: 14, height: 14 }} /> Go to Dashboard
-        </button>
-      </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+          <RetryButton onClick={onReset} variant="outline">
+            <RefreshCw style={{ width: 14, height: 14 }} /> Try again
+          </RetryButton>
+          <RetryButton onClick={() => (window.location.href = "/dashboard")} variant="primary">
+            <Home style={{ width: 14, height: 14 }} /> Go to Dashboard
+          </RetryButton>
+        </div>
+      </motion.div>
     </div>
   );
 }
