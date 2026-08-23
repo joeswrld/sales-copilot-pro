@@ -22,7 +22,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   Loader2, Link as LinkIcon, Copy, Power, Calendar, Users, Sparkles,
   ChevronRight, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
-  Send, Pencil, Archive, RotateCcw,
+  Send, Pencil, Archive, RotateCcw, Image as ImageIcon, Building2,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -64,10 +64,12 @@ interface PipelineCandidate {
 interface JobSummary {
   job: {
     id: string; title: string; status: string; client_id: string;
-    location: string | null; work_arrangement: string | null;
+    description: string | null;
+    location: string | null; work_arrangement: string | null; employment_type: string | null;
     salary_min: number | null; salary_max: number | null; salary_currency: string | null;
     headcount: number; positions_filled: number;
   };
+  client?: { id: string; name: string; logo_url: string | null } | null;
   links: ApplicationLink[];
   application_count: number;
   candidate_count: number;
@@ -76,6 +78,23 @@ interface JobSummary {
   offer_count: number;
   placed_count: number;
   pipeline: PipelineCandidate[];
+}
+
+const EMPLOYMENT_TYPES = [
+  { key: "permanent", label: "Permanent" },
+  { key: "part_time", label: "Part-time" },
+  { key: "contract", label: "Contract" },
+  { key: "temporary", label: "Temporary" },
+  { key: "internship", label: "Internship" },
+];
+
+async function uploadClientLogo(file: File, teamId: string, clientId: string): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const path = `${teamId}/${clientId}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("company-logos").upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from("company-logos").getPublicUrl(path);
+  return data.publicUrl;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -97,6 +116,7 @@ export default function JobDetailPage() {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [extendingLinkId, setExtendingLinkId] = useState<string | null>(null);
+  const [companyEditOpen, setCompanyEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -194,6 +214,29 @@ export default function JobDetailPage() {
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
             <div>
+              <button
+                onClick={() => setCompanyEditOpen(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+                  background: "none", border: "none", cursor: "pointer", padding: 0,
+                }}
+                title="Edit company name & logo"
+              >
+                <div style={{
+                  width: 26, height: 26, borderRadius: 7, flexShrink: 0, overflow: "hidden",
+                  background: "rgba(34,49,92,0.08)", display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {summary.client?.logo_url ? (
+                    <img src={summary.client.logo_url} alt={summary.client?.name ?? "Company"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <Building2 style={{ width: 13, height: 13, color: "#22315C" }} />
+                  )}
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(23,23,15,0.55)" }}>
+                  {summary.client?.name ?? "No client"}
+                </span>
+                <Pencil style={{ width: 11, height: 11, color: "rgba(23,23,15,0.25)" }} />
+              </button>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#17170F", margin: 0 }}>{summary.job.title}</h1>
               <span style={{ fontSize: 12.5, color: "rgba(23,23,15,0.45)", textTransform: "capitalize" }}>{summary.job.status}</span>
             </div>
@@ -302,8 +345,117 @@ export default function JobDetailPage() {
             onSaved={() => { setEditOpen(false); load(); }}
           />
         )}
+
+        {companyEditOpen && summary.client && (
+          <CompanyEditModal
+            client={summary.client}
+            onClose={() => setCompanyEditOpen(false)}
+            onSaved={() => { setCompanyEditOpen(false); load(); }}
+          />
+        )}
       </DashboardLayout>
     </ErrorBoundary>
+  );
+}
+
+// Company (recruiting_clients) name + logo editor, opened from the job
+// header. Logo goes to the public "company-logos" bucket (RLS mirrors
+// candidate-cvs via recruiting_is_team_member(team_id)) so it's reachable,
+// unauthenticated, from PublicJobApplicationPage.
+function CompanyEditModal({ client, onClose, onSaved }: {
+  client: { id: string; name: string; logo_url: string | null };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(client.name);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(client.logo_url);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) { toast.error("Company name required"); return; }
+    setSaving(true);
+    try {
+      let logoUrl = client.logo_url;
+      if (logoFile) {
+        // team_id isn't in scope here — recruiting_clients RLS already
+        // scopes the row update to the caller's team, and the storage path
+        // only needs to start with a team_id the caller belongs to. We
+        // fetch it once from the client row itself via a minimal select.
+        const { data: clientRow, error: clientErr } = await (supabase as any)
+          .from("recruiting_clients").select("team_id").eq("id", client.id).single();
+        if (clientErr) throw clientErr;
+        const ext = logoFile.name.split(".").pop()?.toLowerCase() || "png";
+        const path = `${clientRow.team_id}/${client.id}-${Date.now()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from("company-logos").upload(path, logoFile, { upsert: true });
+        if (uploadErr) throw uploadErr;
+        logoUrl = supabase.storage.from("company-logos").getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await (supabase as any).from("recruiting_clients")
+        .update({ name: name.trim(), logo_url: logoUrl }).eq("id", client.id);
+      if (error) throw error;
+      toast.success("Company updated");
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update company");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(23,23,15,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={onClose}>
+      <div
+        style={{ width: "100%", maxWidth: 420, background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.1)", borderRadius: 16, padding: 24 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: "#17170F" }}>Edit company</span>
+          <X style={{ width: 18, height: 18, cursor: "pointer", color: "rgba(23,23,15,0.4)" }} onClick={onClose} />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+          <label style={{
+            width: 64, height: 64, borderRadius: 14, flexShrink: 0, cursor: "pointer", overflow: "hidden",
+            border: "1.5px dashed rgba(23,23,15,0.18)", background: "rgba(23,23,15,0.03)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {logoPreview ? (
+              <img src={logoPreview} alt="Logo preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <ImageIcon style={{ width: 20, height: 20, color: "rgba(23,23,15,0.3)" }} />
+            )}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              style={{ display: "none" }}
+              onChange={e => {
+                const f = e.target.files?.[0] ?? null;
+                setLogoFile(f);
+                setLogoPreview(f ? URL.createObjectURL(f) : logoPreview);
+              }}
+            />
+          </label>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(23,23,15,0.55)", display: "block", marginBottom: 4 }}>Company name</label>
+            <input
+              style={{ width: "100%", padding: "10px 12px", background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.1)", borderRadius: 10, color: "#17170F", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{ width: "100%", padding: "12px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -545,8 +697,10 @@ function EditJobModal({ job, onClose, onSaved }: {
 }) {
   const [form, setForm] = useState({
     title: job.title,
+    description: job.description ?? "",
     location: job.location ?? "",
     work_arrangement: job.work_arrangement ?? "",
+    employment_type: job.employment_type ?? "",
     salary_min: job.salary_min?.toString() ?? "",
     salary_max: job.salary_max?.toString() ?? "",
     salary_currency: job.salary_currency ?? "GBP",
@@ -569,8 +723,10 @@ function EditJobModal({ job, onClose, onSaved }: {
     try {
       const { error } = await (supabase as any).from("jobs").update({
         title: form.title.trim(),
+        description: form.description.trim() || null,
         location: form.location.trim() || null,
         work_arrangement: form.work_arrangement || null,
+        employment_type: form.employment_type || null,
         salary_min: form.salary_min ? Number(form.salary_min) : null,
         salary_max: form.salary_max ? Number(form.salary_max) : null,
         salary_currency: form.salary_currency,
@@ -608,6 +764,16 @@ function EditJobModal({ job, onClose, onSaved }: {
             <input style={inputStyle} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Lagos, Nigeria" />
           </div>
 
+          <div>
+            <label style={labelStyle}>Job description</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="What this role involves, responsibilities, and what a great candidate looks like…"
+            />
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={labelStyle}>Work arrangement</label>
@@ -619,9 +785,17 @@ function EditJobModal({ job, onClose, onSaved }: {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Headcount</label>
-              <input style={inputStyle} type="number" min={1} value={form.headcount} onChange={e => setForm(f => ({ ...f, headcount: e.target.value }))} />
+              <label style={labelStyle}>Employment type</label>
+              <select style={{ ...inputStyle, cursor: "pointer" }} value={form.employment_type} onChange={e => setForm(f => ({ ...f, employment_type: e.target.value }))}>
+                <option value="">—</option>
+                {EMPLOYMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
             </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Headcount</label>
+            <input style={inputStyle} type="number" min={1} value={form.headcount} onChange={e => setForm(f => ({ ...f, headcount: e.target.value }))} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
