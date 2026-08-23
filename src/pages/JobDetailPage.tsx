@@ -19,12 +19,51 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatDistanceToNow, format } from "date-fns";
+import { motion } from "framer-motion";
 import {
   Loader2, Link as LinkIcon, Copy, Power, Calendar, Users, Sparkles,
-  ChevronRight, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
+  ChevronRight, ChevronLeft, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
   Send, Pencil, Archive, RotateCcw, Image as ImageIcon, Building2,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+// ─── Back to Jobs ───────────────────────────────────────────────────────────
+// Same wayfinding pattern as the landing page's nav: quiet by default, a
+// touch of motion under the pointer, never a dead click. Apple's "response"
+// rule — feedback fires on press, not on release.
+function BackToJobs() {
+  const navigate = useNavigate();
+  const [pressed, setPressed] = useState(false);
+  return (
+    <motion.button
+      onClick={() => navigate("/jobs")}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      animate={{ scale: pressed ? 0.97 : 1, x: pressed ? -1 : 0 }}
+      whileHover={{ x: -2 }}
+      transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "8px 12px 8px 8px",
+        marginBottom: 14,
+        background: "transparent",
+        border: "none",
+        borderRadius: 8,
+        color: "rgba(23,23,15,0.55)",
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "'Inter', sans-serif",
+        cursor: "pointer",
+      }}
+    >
+      <ChevronLeft style={{ width: 15, height: 15 }} strokeWidth={2} />
+      Back to Jobs
+    </motion.button>
+  );
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -197,11 +236,58 @@ export default function JobDetailPage() {
   };
 
   if (loading) {
-    return <DashboardLayout><div style={{ padding: 40, display: "flex", justifyContent: "center" }}><Loader2 style={{ width: 24, height: 24, color: "#22315C", animation: "spin 1s linear infinite" }} /></div></DashboardLayout>;
+    return (
+      <DashboardLayout>
+        <div style={{ padding: "24px 20px 0", maxWidth: 980, margin: "0 auto" }}>
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+          <BackToJobs />
+          <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
+            <Loader2 style={{ width: 24, height: 24, color: "#22315C", animation: "spin 1s linear infinite" }} />
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   if (!summary) {
-    return <DashboardLayout><div style={{ padding: 40 }}>Job not found.</div></DashboardLayout>;
+    return (
+      <DashboardLayout>
+        <div style={{ padding: "24px 20px 60px", maxWidth: 980, margin: "0 auto" }}>
+          <BackToJobs />
+          <div
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              padding: "56px 20px", textAlign: "center", background: "#F3F2ED",
+              border: "1px solid rgba(23,23,15,0.11)", borderRadius: 14,
+            }}
+          >
+            <div
+              style={{
+                width: 48, height: 48, borderRadius: 12, background: "rgba(138,90,32,0.09)",
+                border: "1px solid rgba(138,90,32,0.2)", display: "flex", alignItems: "center",
+                justifyContent: "center", marginBottom: 16,
+              }}
+            >
+              <Building2 style={{ width: 20, height: 20, color: "#8A5A20" }} strokeWidth={1.6} />
+            </div>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#17170F", marginBottom: 6 }}>Job not found</h2>
+            <p style={{ fontSize: 13.5, color: "rgba(23,23,15,0.5)", marginBottom: 20, maxWidth: 320, lineHeight: 1.5 }}>
+              This job may have been deleted, or the link is out of date.
+            </p>
+            <button
+              onClick={() => navigate("/jobs")}
+              style={{
+                display: "flex", alignItems: "center", gap: 7, padding: "10px 18px",
+                background: "#22315C", border: "none", borderRadius: 8, color: "#FAFAF8",
+                fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              <ChevronLeft style={{ width: 14, height: 14 }} /> Back to Jobs
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   const sortedPipeline = [...summary.pipeline].sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
@@ -211,6 +297,8 @@ export default function JobDetailPage() {
       <DashboardLayout>
         <div style={{ padding: "24px 20px 60px", maxWidth: 980, margin: "0 auto", fontFamily: "'Inter', sans-serif" }}>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+          <BackToJobs />
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
             <div>
