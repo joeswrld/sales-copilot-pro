@@ -22,7 +22,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   Loader2, Link as LinkIcon, Copy, Power, Calendar, Users, Sparkles,
   ChevronRight, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
-  Send,
+  Send, Pencil, Archive, RotateCcw,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -62,7 +62,12 @@ interface PipelineCandidate {
 }
 
 interface JobSummary {
-  job: { id: string; title: string; status: string };
+  job: {
+    id: string; title: string; status: string; client_id: string;
+    location: string | null; work_arrangement: string | null;
+    salary_min: number | null; salary_max: number | null; salary_currency: string | null;
+    headcount: number; positions_filled: number;
+  };
   links: ApplicationLink[];
   application_count: number;
   candidate_count: number;
@@ -87,6 +92,8 @@ export default function JobDetailPage() {
   const [summary, setSummary] = useState<JobSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [createLinkOpen, setCreateLinkOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [extendingLinkId, setExtendingLinkId] = useState<string | null>(null);
@@ -149,6 +156,26 @@ export default function JobDetailPage() {
     }
   };
 
+  // Archive/close and reopen are direct updates to public.jobs (same
+  // RLS-is-enough pattern JobsPage.tsx uses for creation): the "team
+  // members can write jobs" policy covers UPDATE, and trg_jobs_updated_at
+  // keeps updated_at correct regardless of write path. No RPC exists for
+  // job status changes, so this doesn't skip one — there isn't one to skip.
+  const setJobStatus = async (status: string) => {
+    if (!id) return;
+    setArchiving(true);
+    try {
+      const { error } = await (supabase as any).from("jobs").update({ status }).eq("id", id);
+      if (error) throw error;
+      toast.success(status === "closed" ? "Job archived" : "Job reopened");
+      load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update job status");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   if (loading) {
     return <DashboardLayout><div style={{ padding: 40, display: "flex", justifyContent: "center" }}><Loader2 style={{ width: 24, height: 24, color: "#22315C", animation: "spin 1s linear infinite" }} /></div></DashboardLayout>;
   }
@@ -165,17 +192,42 @@ export default function JobDetailPage() {
         <div style={{ padding: "24px 20px 60px", maxWidth: 980, margin: "0 auto", fontFamily: "'Inter', sans-serif" }}>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#17170F", margin: 0 }}>{summary.job.title}</h1>
               <span style={{ fontSize: 12.5, color: "rgba(23,23,15,0.45)", textTransform: "capitalize" }}>{summary.job.status}</span>
             </div>
-            <button
-              onClick={() => setCreateLinkOpen(true)}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-            >
-              <Plus style={{ width: 15, height: 15 }} /> Create application link
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setEditOpen(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "rgba(23,23,15,0.06)", border: "none", borderRadius: 10, color: "#17170F", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                <Pencil style={{ width: 14, height: 14 }} /> Edit
+              </button>
+              {summary.job.status === "closed" ? (
+                <button
+                  onClick={() => setJobStatus("open")}
+                  disabled={archiving}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "rgba(34,197,94,0.12)", border: "none", borderRadius: 10, color: "#16803c", fontSize: 13, fontWeight: 700, cursor: archiving ? "default" : "pointer", opacity: archiving ? 0.6 : 1 }}
+                >
+                  <RotateCcw style={{ width: 14, height: 14 }} /> Reopen
+                </button>
+              ) : (
+                <button
+                  onClick={() => setJobStatus("closed")}
+                  disabled={archiving}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "rgba(23,23,15,0.06)", border: "none", borderRadius: 10, color: "rgba(23,23,15,0.7)", fontSize: 13, fontWeight: 700, cursor: archiving ? "default" : "pointer", opacity: archiving ? 0.6 : 1 }}
+                >
+                  <Archive style={{ width: 14, height: 14 }} /> Archive
+                </button>
+              )}
+              <button
+                onClick={() => setCreateLinkOpen(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                <Plus style={{ width: 15, height: 15 }} /> Create application link
+              </button>
+            </div>
           </div>
 
           {/* Stats row */}
@@ -240,6 +292,14 @@ export default function JobDetailPage() {
             jobId={id!}
             onClose={() => setCreateLinkOpen(false)}
             onCreated={() => { setCreateLinkOpen(false); load(); }}
+          />
+        )}
+
+        {editOpen && (
+          <EditJobModal
+            job={summary.job}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => { setEditOpen(false); load(); }}
           />
         )}
       </DashboardLayout>
@@ -469,6 +529,128 @@ function CreateLinkModal({ jobId, onClose, onCreated }: { jobId: string; onClose
           style={{ width: "100%", marginTop: 8, padding: "12px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}
         >
           {creating ? "Creating…" : "Create link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Direct update to public.jobs — same RLS-is-enough reasoning JobsPage.tsx
+// uses for creation. trg_jobs_updated_at (BEFORE UPDATE) keeps updated_at
+// correct; there's no UPDATE-time timeline/audit trigger on jobs to skip.
+function EditJobModal({ job, onClose, onSaved }: {
+  job: JobSummary["job"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    title: job.title,
+    location: job.location ?? "",
+    work_arrangement: job.work_arrangement ?? "",
+    salary_min: job.salary_min?.toString() ?? "",
+    salary_max: job.salary_max?.toString() ?? "",
+    salary_currency: job.salary_currency ?? "GBP",
+    headcount: job.headcount.toString(),
+  });
+  const [saving, setSaving] = useState(false);
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "10px 12px", background: "rgba(23,23,15,0.03)",
+    border: "1px solid rgba(23,23,15,0.1)", borderRadius: 10, color: "#17170F",
+    fontSize: 13, outline: "none", boxSizing: "border-box",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11.5, fontWeight: 600, color: "rgba(23,23,15,0.55)", display: "block", marginBottom: 4,
+  };
+
+  const save = async () => {
+    if (!form.title.trim()) { toast.error("Job title required"); return; }
+    setSaving(true);
+    try {
+      const { error } = await (supabase as any).from("jobs").update({
+        title: form.title.trim(),
+        location: form.location.trim() || null,
+        work_arrangement: form.work_arrangement || null,
+        salary_min: form.salary_min ? Number(form.salary_min) : null,
+        salary_max: form.salary_max ? Number(form.salary_max) : null,
+        salary_currency: form.salary_currency,
+        headcount: form.headcount ? Number(form.headcount) : 1,
+      }).eq("id", job.id);
+      if (error) throw error;
+      toast.success("Job updated");
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update job");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(23,23,15,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={onClose}>
+      <div
+        style={{ width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.1)", borderRadius: 16, padding: 24 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: "#17170F" }}>Edit job</span>
+          <X style={{ width: 18, height: 18, cursor: "pointer", color: "rgba(23,23,15,0.4)" }} onClick={onClose} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Job title</label>
+            <input style={inputStyle} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} autoFocus />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Location</label>
+            <input style={inputStyle} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Lagos, Nigeria" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>Work arrangement</label>
+              <select style={{ ...inputStyle, cursor: "pointer" }} value={form.work_arrangement} onChange={e => setForm(f => ({ ...f, work_arrangement: e.target.value }))}>
+                <option value="">—</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">Onsite</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Headcount</label>
+              <input style={inputStyle} type="number" min={1} value={form.headcount} onChange={e => setForm(f => ({ ...f, headcount: e.target.value }))} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>Salary min</label>
+              <input style={inputStyle} type="number" value={form.salary_min} onChange={e => setForm(f => ({ ...f, salary_min: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>Salary max</label>
+              <input style={inputStyle} type="number" value={form.salary_max} onChange={e => setForm(f => ({ ...f, salary_max: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>Currency</label>
+              <select style={{ ...inputStyle, cursor: "pointer" }} value={form.salary_currency} onChange={e => setForm(f => ({ ...f, salary_currency: e.target.value }))}>
+                <option value="GBP">GBP</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="NGN">NGN</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{ width: "100%", marginTop: 18, padding: "12px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? "Saving…" : "Save changes"}
         </button>
       </div>
     </div>
