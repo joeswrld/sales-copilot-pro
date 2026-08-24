@@ -30,6 +30,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/hooks/useTeam";
+import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { formatDistanceToNow, format } from "date-fns";
@@ -37,7 +38,7 @@ import {
   ArrowLeft, Loader2, Mail, Phone, MapPin, Briefcase, Building2,
   DollarSign, Calendar, FileText, Upload, Check, X, Edit3, ChevronDown,
   ChevronUp, Sparkles, Clock, Plus, RefreshCw, AlertCircle, CheckCircle2,
-  XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp, ExternalLink,
+  XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp, ExternalLink, Copy,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -146,7 +147,7 @@ interface CandidateJobRow {
   placement_fee: number | null;
   placement_fee_currency: string | null;
   placement_notes: string | null;
-  job: { id: string; title: string; client_id: string | null } | null;
+  job: { id: string; title: string; client_id: string | null; client: { id: string; name: string } | null } | null;
 }
 
 interface InterviewRow {
@@ -157,6 +158,10 @@ interface InterviewRow {
   occurred_at: string | null;
   interviewer_names: string[] | null;
   status: string;
+  meeting_link: string | null;
+  call_id: string | null;
+  interview_instructions: string | null;
+  candidate_notified_at: string | null;
 }
 
 interface InterviewFeedbackRow {
@@ -349,7 +354,8 @@ function DetailSkeleton() {
 function CandidateDetailPageInner() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { teamId } = useTeam();
+  const { teamId, team } = useTeam();
+  const { user } = useAuth();
   const isMobile = useIsMobile();
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
@@ -394,7 +400,7 @@ function CandidateDetailPageInner() {
         (supabase as any).from("recruiting_timeline_events").select("id, event_type, title, created_at").eq("entity_type", "candidate").eq("entity_id", id).order("created_at", { ascending: false }).limit(20),
         (supabase as any)
           .from("candidate_jobs")
-          .select("id, job_id, pipeline_stage, status, match_score, match_explanation, rejection_reason, placed_at, placement_salary, placement_salary_currency, placement_fee, placement_fee_currency, placement_notes, job:jobs(id, title, client_id)")
+          .select("id, job_id, pipeline_stage, status, match_score, match_explanation, rejection_reason, placed_at, placement_salary, placement_salary_currency, placement_fee, placement_fee_currency, placement_notes, job:jobs(id, title, client_id, client:recruiting_clients(id, name))")
           .eq("candidate_id", id)
           .order("updated_at", { ascending: false }),
       ]);
@@ -428,7 +434,7 @@ function CandidateDetailPageInner() {
     }
     try {
       const [ivRes, fbRes, subRes, cfRes, tlRes] = await Promise.all([
-        (supabase as any).from("interviews").select("id, candidate_job_id, interview_stage, scheduled_at, occurred_at, interviewer_names, status").eq("candidate_job_id", selectedCjId).order("scheduled_at", { ascending: false }),
+        (supabase as any).from("interviews").select("id, candidate_job_id, interview_stage, scheduled_at, occurred_at, interviewer_names, status, meeting_link, call_id, interview_instructions, candidate_notified_at").eq("candidate_job_id", selectedCjId).order("scheduled_at", { ascending: false }),
         (supabase as any).from("interview_feedback").select("id, interview_id, candidate_job_id, overall_outcome, technical_strengths, weaknesses, concerns, recommended_next_step, status, confirmed_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
         (supabase as any).from("submissions").select("id, candidate_job_id, status, relevance_explanation, submitted_at, created_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
         (supabase as any).from("client_feedback").select("id, candidate_job_id, feedback_text, sentiment, created_at").eq("candidate_job_id", selectedCjId).order("created_at", { ascending: false }),
@@ -467,48 +473,138 @@ function CandidateDetailPageInner() {
     }
   };
 
-  const scheduleInterview = async (
-    stage: string, scheduledAt: string, interviewers: string[],
-    meetingLink: string, instructions: string, messageToCandidate: string,
-  ) => {
-    if (!selectedCjId) return;
+  const copyMeetingLink = async (link: string) => {
     try {
-      const { data: interview, error } = await (supabase as any).rpc("schedule_interview", {
+      await navigator.clipboard.writeText(link);
+      toast.success("Meeting link copied");
+    } catch {
+      toast.info(link, { duration: 8000 });
+    }
+  };
+
+  // ── Invite to Interview ──────────────────────────────────────────────────
+  // Always creates a native Fixsense Meeting (never Google Meet/Zoom/Teams/
+  // a manually typed URL) by reusing the exact same infrastructure the Live
+  // Call / Meeting Control OS page uses: a `calls` row + create-daily-room.
+  // The resulting branded share_link is what gets stored on interviews.meeting_link
+  // and is the only link ever shown to or emailed to the candidate.
+  //
+  // After scheduling, also calls the existing create_recruiting_call RPC
+  // (call_type='interview', candidate_job_id, linked_call_id=the new calls
+  // row) so the already-built post-interview pipeline — recording ->
+  // transcript -> AI interview feedback -> recruiter confirmation ->
+  // candidate timeline — fires automatically once the meeting completes.
+  // Nothing about that pipeline is reimplemented here.
+  const createFixsenseMeetingForInterview = async (title: string): Promise<{ callId: string; shareLink: string }> => {
+    if (!user) throw new Error("Not authenticated");
+
+    const { data: callRow, error: callErr } = await supabase.from("calls").insert({
+      user_id: user.id,
+      name: title,
+      status: "scheduled",
+      meeting_type: "interview",
+      date: new Date().toISOString(),
+    } as any).select().single();
+    if (callErr) throw callErr;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) throw new Error("Not authenticated");
+
+    const { data: roomData, error: roomErr } = await supabase.functions.invoke("create-daily-room", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: {
+        call_id: callRow.id,
+        title,
+        meeting_type: "interview",
+        exp_minutes: 1440, // 24h — interviews are scheduled ahead, not started immediately
+        privacy: "public",
+        app_origin: typeof window !== "undefined" ? window.location.origin : "https://fixsense.com.ng",
+      },
+    });
+    if (roomErr) throw new Error(roomErr.message ?? "Failed to create the Fixsense Meeting");
+    const room = roomData as { error?: string; share_link?: string } | null;
+    if (room?.error) throw new Error(room.error);
+
+    const shareLink = room?.share_link;
+    if (!shareLink) throw new Error("Fixsense Meeting was created but returned no link");
+
+    return { callId: callRow.id as string, shareLink };
+  };
+
+  const scheduleInterview = async (
+    stage: string, scheduledAt: string, timezone: string, interviewers: string[],
+    instructions: string, messageToCandidate: string,
+  ): Promise<{ interviewId: string; meetingLink: string } | null> => {
+    if (!selectedCjId || !selectedCj || !teamId) return null;
+    const candidateName = candidate?.full_name ?? "Candidate";
+    const jobTitle = selectedCj.job?.title ?? "the role";
+    try {
+      const meetingTitle = `Interview — ${candidateName} — ${jobTitle}`;
+      const { callId, shareLink } = await createFixsenseMeetingForInterview(meetingTitle);
+
+      // create_recruiting_call links this Fixsense Meeting to the
+      // Candidate -> Job -> Client -> Interview -> Recruiter chain and its
+      // own trigger (trg_ensure_interview_and_feedback_draft) creates the
+      // canonical interviews row + a draft interview_feedback row — the
+      // same single source of truth used by the post-interview AI pipeline.
+      // That trigger defaults status/occurred_at as if the call already
+      // happened (its original use is post-hoc linking), so
+      // finalize_scheduled_interview_meeting immediately corrects those two
+      // fields and fills in the recruiter's actual scheduling details on
+      // that exact same row — never a second interviews row.
+      const { data: recruitingCall, error: linkErr } = await (supabase as any).rpc("create_recruiting_call", {
+        p_linked_call_id: callId,
+        p_team_id: teamId,
+        p_call_type: "interview",
         p_candidate_job_id: selectedCjId,
-        p_interview_stage: stage,
+        p_title: meetingTitle,
+      });
+      if (linkErr) throw linkErr;
+
+      const combinedInstructions = instructions
+        ? (timezone ? `${instructions}\n\nTimezone: ${timezone}` : instructions)
+        : (timezone ? `Timezone: ${timezone}` : null);
+
+      const { data: interview, error } = await (supabase as any).rpc("finalize_scheduled_interview_meeting", {
+        p_recruiting_call_id: recruitingCall.id,
         p_scheduled_at: scheduledAt || null,
         p_interviewer_names: interviewers.length ? interviewers : null,
-        p_meeting_link: meetingLink || null,
-        p_interview_instructions: instructions || null,
+        p_meeting_link: shareLink,
+        p_interview_instructions: combinedInstructions,
         p_message_to_candidate: messageToCandidate || null,
       });
       if (error) throw error;
-      toast.success("Interview scheduled");
-      setShowScheduleModal(false);
+
+      toast.success("Fixsense Meeting created and interview scheduled");
       load();
       loadPipelineDetail();
-
-      // Best-effort candidate email — the interview itself is already saved
-      // regardless of whether this succeeds (e.g. RESEND_API_KEY not yet
-      // configured on the project); surface a distinct toast either way so
-      // the recruiter knows whether the candidate was actually notified.
-      try {
-        const { data: notifyData, error: notifyErr } = await supabase.functions.invoke("send-interview-invitation", {
-          body: { interview_id: interview?.id },
-        });
-        if (notifyErr || (notifyData as any)?.error) {
-          const msg = (notifyData as any)?.error ?? notifyErr?.message ?? "Could not email the candidate";
-          toast.warning(msg);
-        } else {
-          toast.success("Candidate notified by email");
-        }
-      } catch {
-        toast.warning("Interview saved, but the candidate email could not be sent");
-      }
+      return { interviewId: (interview as any)?.id, meetingLink: shareLink };
     } catch (e: any) {
       toast.error(e.message ?? "Failed to schedule interview");
+      return null;
     }
   };
+
+  const notifyCandidateByEmail = async (interviewId: string) => {
+    try {
+      const { data: notifyData, error: notifyErr } = await supabase.functions.invoke("send-interview-invitation", {
+        body: { interview_id: interviewId },
+      });
+      const notifyResult = notifyData as { error?: string } | null;
+      if (notifyErr || notifyResult?.error) {
+        const msg = notifyResult?.error ?? notifyErr?.message ?? "Could not email the candidate";
+        toast.warning(msg);
+      } else {
+        toast.success("Candidate notified by email");
+      }
+      load();
+      loadPipelineDetail();
+    } catch {
+      toast.warning("Could not send the candidate email");
+    }
+  };
+
 
   const runAiMatch = async () => {
     if (!selectedCjId) return;
@@ -1017,11 +1113,35 @@ function CandidateDetailPageInner() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {interviews.map(iv => (
-                  <div key={iv.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9, flexWrap: "wrap" }}>
-                    <Video style={{ width: 12, height: 12, color: "#22315C", flexShrink: 0 }} />
-                    <span style={{ fontSize: 12.5, color: "#17170F", flex: 1, minWidth: 100, textTransform: "capitalize" }}>{iv.interview_stage.replace(/_/g, " ")}</span>
-                    {iv.scheduled_at && <span style={{ fontSize: 11, color: "rgba(23,23,15,0.45)" }}>{format(new Date(iv.scheduled_at), "MMM d, h:mm a")}</span>}
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "capitalize", flexShrink: 0 }}>{iv.status}</span>
+                  <div key={iv.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "9px 11px", background: "rgba(23,23,15,0.03)", borderRadius: 9 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <Video style={{ width: 12, height: 12, color: "#22315C", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, color: "#17170F", flex: 1, minWidth: 100, textTransform: "capitalize" }}>{iv.interview_stage.replace(/_/g, " ")}</span>
+                      {iv.scheduled_at && <span style={{ fontSize: 11, color: "rgba(23,23,15,0.45)" }}>{format(new Date(iv.scheduled_at), "MMM d, h:mm a")}</span>}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "capitalize", flexShrink: 0 }}>{iv.status}</span>
+                    </div>
+                    {iv.meeting_link && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 20 }}>
+                        <span style={{ fontSize: 11, color: "rgba(23,23,15,0.45)", fontFamily: "monospace", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{iv.meeting_link}</span>
+                        <button
+                          onClick={() => copyMeetingLink(iv.meeting_link!)}
+                          title="Copy Fixsense Meeting link"
+                          style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, background: "transparent", border: "1px solid rgba(23,23,15,0.12)", borderRadius: 6, cursor: "pointer", color: "rgba(23,23,15,0.5)", flexShrink: 0 }}
+                        >
+                          <Copy style={{ width: 11, height: 11 }} />
+                        </button>
+                        <a
+                          href={iv.meeting_link} target="_blank" rel="noopener noreferrer"
+                          title="Open Fixsense Meeting"
+                          style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, background: "transparent", border: "1px solid rgba(23,23,15,0.12)", borderRadius: 6, color: "rgba(23,23,15,0.5)", flexShrink: 0 }}
+                        >
+                          <ExternalLink style={{ width: 11, height: 11 }} />
+                        </a>
+                        {iv.candidate_notified_at && (
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: "#2F6B4F", flexShrink: 0 }}>Candidate notified</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1363,39 +1483,62 @@ function CandidateDetailPageInner() {
       </div>
 
       {showScheduleModal && selectedCjId && (
-        <ScheduleInterviewModal onClose={() => setShowScheduleModal(false)} onSubmit={scheduleInterview} />
+        <ScheduleInterviewModal
+          onClose={() => setShowScheduleModal(false)}
+          onSubmit={scheduleInterview}
+          onSendInvitation={notifyCandidateByEmail}
+          candidateName={candidate?.full_name ?? "Candidate"}
+          candidateEmail={candidate?.email ?? null}
+          jobTitle={selectedCj?.job?.title ?? "the role"}
+          companyName={selectedCj?.job?.client?.name ?? team?.name ?? "our team"}
+          recruiterName={(user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? "Your recruiter"}
+        />
       )}
     </div>
   );
 }
 
 // ─── Schedule interview modal ────────────────────────────────────────────────
-
-function ScheduleInterviewModal({ onClose, onSubmit }: {
+// Invite to Interview flow: date/time/timezone/instructions -> create a
+// native Fixsense Meeting -> get its unique URL -> show an editable
+// invitation preview -> "Send Invitation" opens a mailto with the
+// recipient/subject/body pre-filled AND persists the invitation by emailing
+// through the existing send-interview-invitation function. The interview,
+// meeting, and Fixsense-meeting linkage (Candidate -> Job -> Client ->
+// Interview -> Recruiter) are all already persisted by the time this step
+// is reached — sending the invitation is a follow-up action on top of an
+// already-saved interview, never a prerequisite for it.
+function ScheduleInterviewModal({
+  onClose, onSubmit, onSendInvitation,
+  candidateName, candidateEmail, jobTitle, companyName, recruiterName,
+}: {
   onClose: () => void;
   onSubmit: (
-    stage: string, scheduledAt: string, interviewers: string[],
-    meetingLink: string, instructions: string, messageToCandidate: string,
-  ) => Promise<void>;
+    stage: string, scheduledAt: string, timezone: string, interviewers: string[],
+    instructions: string, messageToCandidate: string,
+  ) => Promise<{ interviewId: string; meetingLink: string } | null>;
+  onSendInvitation: (interviewId: string) => Promise<void>;
+  candidateName: string;
+  candidateEmail: string | null;
+  jobTitle: string;
+  companyName: string;
+  recruiterName: string;
 }) {
   const [stage, setStage] = useState("interview");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [timezone] = useState(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
+  });
   const [interviewerInput, setInterviewerInput] = useState("");
-  const [meetingLink, setMeetingLink] = useState("");
   const [instructions, setInstructions] = useState("");
   const [messageToCandidate, setMessageToCandidate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const submit = async () => {
-    setSaving(true);
-    try {
-      const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
-      const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
-      await onSubmit(stage, iso, interviewers, meetingLink.trim(), instructions.trim(), messageToCandidate.trim());
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Step 2 state — populated once the Fixsense Meeting + interview are created.
+  const [result, setResult] = useState<{ interviewId: string; meetingLink: string } | null>(null);
+  const [invitationBody, setInvitationBody] = useState("");
+  const [invitationSubject, setInvitationSubject] = useState("");
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "9px 11px", background: "rgba(23,23,15,0.03)",
@@ -1407,6 +1550,66 @@ function ScheduleInterviewModal({ onClose, onSubmit }: {
     textTransform: "uppercase", letterSpacing: "0.05em",
   };
 
+  const buildInvitation = (meetingLink: string, scheduledIso: string) => {
+    const when = scheduledIso
+      ? new Date(scheduledIso).toLocaleString(undefined, {
+          weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+        })
+      : "a time to be confirmed";
+    const subject = `Interview invitation — ${jobTitle} at ${companyName}`;
+    const body = [
+      `Hi ${candidateName},`,
+      ``,
+      `We'd like to invite you to an interview for the ${jobTitle} role at ${companyName}.`,
+      ``,
+      `Date/time: ${when} (${timezone})`,
+      `Meeting link (Fixsense Meeting): ${meetingLink}`,
+      instructions ? `\nWhat to prepare: ${instructions}` : "",
+      messageToCandidate ? `\n${messageToCandidate}` : "",
+      ``,
+      `What to expect: join the link a few minutes before the scheduled time. You'll connect directly through Fixsense — no separate app or download is required. The conversation will be recorded for internal review, and we'll follow up with next steps afterward.`,
+      ``,
+      `Looking forward to speaking with you.`,
+      ``,
+      recruiterName,
+      companyName,
+    ].filter(l => l !== "").join("\n");
+    return { subject, body };
+  };
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
+      const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
+      const created = await onSubmit(stage, iso, timezone, interviewers, instructions.trim(), messageToCandidate.trim());
+      if (created) {
+        setResult(created);
+        const { subject, body } = buildInvitation(created.meetingLink, iso);
+        setInvitationSubject(subject);
+        setInvitationBody(body);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendInvitation = async () => {
+    if (!result) return;
+    setSending(true);
+    try {
+      // mailto opens with the (possibly recruiter-edited) recipient/subject/body.
+      const mailto = `mailto:${encodeURIComponent(candidateEmail ?? "")}?subject=${encodeURIComponent(invitationSubject)}&body=${encodeURIComponent(invitationBody)}`;
+      window.location.href = mailto;
+      // Persists the invitation (send-interview-invitation, already-built,
+      // reused as-is) and marks the interview/candidate as notified.
+      await onSendInvitation(result.interviewId);
+      onClose();
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", fontFamily: "'Inter', sans-serif", boxSizing: "border-box" }}>
@@ -1415,31 +1618,73 @@ function ScheduleInterviewModal({ onClose, onSubmit }: {
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.4)" }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
 
-        <label style={labelStyle}>Interview type</label>
-        <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
-          <option value="screening_call">Screening call</option>
-          <option value="interview">Interview</option>
-          <option value="final_interview">Final interview</option>
-        </select>
+        {!result ? (
+          <>
+            <label style={labelStyle}>Interview type</label>
+            <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
+              <option value="screening_call">Screening call</option>
+              <option value="interview">Interview</option>
+              <option value="final_interview">Final interview</option>
+            </select>
 
-        <label style={labelStyle}>Date/time</label>
-        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+            <label style={labelStyle}>Date/time</label>
+            <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
 
-        <label style={labelStyle}>Interviewers (comma-separated, optional)</label>
-        <input value={interviewerInput} onChange={e => setInterviewerInput(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} placeholder="Jane Doe, John Smith" />
+            <label style={labelStyle}>Timezone</label>
+            <div style={{ ...inputStyle, marginBottom: 10, color: "rgba(23,23,15,0.6)" }}>{timezone} (detected from your browser)</div>
 
-        <label style={labelStyle}>Meeting link</label>
-        <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} placeholder="https://meet.google.com/… or a Fixsense room link" />
+            <label style={labelStyle}>Interviewers (comma-separated, optional)</label>
+            <input value={interviewerInput} onChange={e => setInterviewerInput(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} placeholder="Jane Doe, John Smith" />
 
-        <label style={labelStyle}>Interview instructions</label>
-        <textarea value={instructions} onChange={e => setInstructions(e.target.value)} style={{ ...inputStyle, marginBottom: 10, minHeight: 60, resize: "vertical" }} placeholder="What to prepare, format, duration…" />
+            <label style={labelStyle}>Meeting</label>
+            <div style={{ ...inputStyle, marginBottom: 10, display: "flex", alignItems: "center", gap: 8, color: "rgba(23,23,15,0.6)" }}>
+              <Video style={{ width: 13, height: 13, flexShrink: 0 }} />
+              A native Fixsense Meeting will be created automatically with a unique link.
+            </div>
 
-        <label style={labelStyle}>Message to candidate (optional)</label>
-        <textarea value={messageToCandidate} onChange={e => setMessageToCandidate(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 60, resize: "vertical" }} placeholder="A personal note included in the invitation email" />
+            <label style={labelStyle}>Interview instructions</label>
+            <textarea value={instructions} onChange={e => setInstructions(e.target.value)} style={{ ...inputStyle, marginBottom: 10, minHeight: 60, resize: "vertical" }} placeholder="What to prepare, format, duration…" />
 
-        <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
-          {saving ? "Sending invitation…" : "Send Interview Invitation"}
-        </button>
+            <label style={labelStyle}>Message to candidate (optional)</label>
+            <textarea value={messageToCandidate} onChange={e => setMessageToCandidate(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 60, resize: "vertical" }} placeholder="A personal note included in the invitation email" />
+
+            <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {saving ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Creating Fixsense Meeting…</>) : "Create Meeting & Continue"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", background: "rgba(47,107,79,0.08)", borderRadius: 8, marginBottom: 12 }}>
+              <Video style={{ width: 13, height: 13, color: "#2F6B4F", flexShrink: 0 }} />
+              <span style={{ fontSize: 11.5, color: "#2F6B4F", fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.meetingLink}</span>
+              <button
+                onClick={async () => { try { await navigator.clipboard.writeText(result.meetingLink); toast.success("Copied"); } catch { /* noop */ } }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, background: "transparent", border: "1px solid rgba(47,107,79,0.25)", borderRadius: 6, cursor: "pointer", color: "#2F6B4F", flexShrink: 0 }}
+              >
+                <Copy style={{ width: 11, height: 11 }} />
+              </button>
+            </div>
+
+            <label style={labelStyle}>Candidate email</label>
+            <div style={{ ...inputStyle, marginBottom: 10, color: candidateEmail ? "#17170F" : "#B23A3A" }}>
+              {candidateEmail ?? "No email on file — add one to the candidate record before sending"}
+            </div>
+
+            <label style={labelStyle}>Subject (editable)</label>
+            <input value={invitationSubject} onChange={e => setInvitationSubject(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+
+            <label style={labelStyle}>Invitation (editable)</label>
+            <textarea value={invitationBody} onChange={e => setInvitationBody(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 220, resize: "vertical", fontFamily: "'Inter', sans-serif", lineHeight: 1.5 }} />
+
+            <button
+              onClick={sendInvitation}
+              disabled={sending || !candidateEmail}
+              style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: (sending || !candidateEmail) ? "default" : "pointer", opacity: (sending || !candidateEmail) ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            >
+              {sending ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Sending…</>) : (<><Send style={{ width: 14, height: 14 }} /> Send Invitation</>)}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
