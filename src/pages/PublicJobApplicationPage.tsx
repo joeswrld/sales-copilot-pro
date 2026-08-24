@@ -19,7 +19,7 @@
  * an anonymous applicant (see submit_public_application's revoked grants).
  */
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -151,29 +151,79 @@ export default function PublicJobApplicationPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const validate = (): boolean => {
+  // Order matters here: it's also the order handleSubmit walks to find the
+  // first error to scroll/focus to, so it should roughly follow the visual
+  // top-to-bottom layout of the form.
+  const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     const form = jobData?.form;
     if (!firstName.trim()) errs.firstName = "Required";
     if (!lastName.trim()) errs.lastName = "Required";
     if (!email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errs.email = "Enter a valid email";
-    if (form?.require_phone && !phone.trim()) errs.phone = "Required";
-    if (form?.require_location && !location.trim()) errs.location = "Required";
-    if (form?.require_cover_letter && !coverLetter.trim()) errs.coverLetter = "Required";
-    if (form?.require_salary_expectation && !salaryExpectation.trim()) errs.salaryExpectation = "Required";
+    if (!phone.trim()) errs.phone = "Required";
+    if (!location.trim()) errs.location = "Required";
+    if (!currentRole.trim()) errs.currentRole = "Required";
+    if (!currentEmployer.trim()) errs.currentEmployer = "Required";
+    if (!yearsExperience.trim()) errs.yearsExperience = "Required";
+    if (!skillsInput.trim()) errs.skillsInput = "Required";
+    if (!linkedinUrl.trim()) errs.linkedinUrl = "Required";
+    if (!portfolioUrl.trim()) errs.portfolioUrl = "Required";
     if (form?.require_cv && !cvFile) errs.cvFile = "Please attach your CV";
+    // Cover letter is the one field whose requiredness is the recruiter's
+    // call (form.require_cover_letter) — everything else on this form is
+    // always required.
+    if (form?.require_cover_letter && !coverLetter.trim()) errs.coverLetter = "Required";
+    if (!salaryExpectation.trim()) errs.salaryExpectation = "Required";
+    if (!noticePeriod.trim()) errs.noticePeriod = "Required";
+    if (!availability.trim()) errs.availability = "Required";
+    if (!workAuthorization.trim()) errs.workAuthorization = "Required";
+    if (!workPreference.trim()) errs.workPreference = "Required";
     if (form?.custom_questions) {
       for (const q of form.custom_questions) {
         if (q.required && !customAnswers[q.id]?.trim()) errs[`q_${q.id}`] = "Required";
       }
     }
     if (!consentGiven) errs.consent = "Please confirm to continue";
-    setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+    return errs;
+  };
+
+  // Field-key -> the DOM id Field derives from its label, so we can jump
+  // straight to whichever input the recruiter/candidate needs to fix.
+  const FIELD_LABELS: Record<string, string> = {
+    firstName: "First name", lastName: "Last name", email: "Email", phone: "Phone",
+    location: "Location", currentRole: "Current / most recent role", currentEmployer: "Current employer",
+    yearsExperience: "Years of experience", skillsInput: "Skills (comma-separated)",
+    linkedinUrl: "LinkedIn URL", portfolioUrl: "Portfolio URL", cvFile: "CV / Resume",
+    coverLetter: "Cover letter", salaryExpectation: "Salary expectation", noticePeriod: "Notice period",
+    availability: "Availability", workAuthorization: "Work authorization", workPreference: "Remote / work preference",
+  };
+
+  const idFromLabel = (label: string) => "pj-f-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  // Jumps to and highlights the first invalid field so the candidate sees
+  // exactly what needs fixing instead of a generic "check your answers".
+  const scrollToFirstError = (errs: Record<string, string>) => {
+    const order = [...Object.keys(FIELD_LABELS), ...(jobData?.form?.custom_questions ?? []).map(q => `q_${q.id}`), "consent"];
+    const firstKey = order.find(k => errs[k]);
+    if (!firstKey) return;
+    const domId = firstKey === "consent" ? "pj-consent-checkbox"
+      : firstKey.startsWith("q_") ? `pj-f-${firstKey}`
+      : idFromLabel(FIELD_LABELS[firstKey] ?? firstKey);
+    const el = document.getElementById(domId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof (el as HTMLElement).focus === "function") (el as HTMLElement).focus({ preventScroll: true });
+    }
   };
 
   const handleSubmit = async () => {
-    if (!slug || !validate()) return;
+    if (!slug) return;
+    const errs = validate();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      scrollToFirstError(errs);
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -279,14 +329,18 @@ export default function PublicJobApplicationPage() {
     .pj-field label .req{color:var(--bad);margin-left:3px;}
     .pj-input, .pj-textarea{width:100%;background:var(--paper);border:1px solid var(--border-strong);border-radius:var(--radius-s);padding:11px 13px;color:var(--ink);font-size:14px;font-family:var(--fb);outline:none;transition:border-color .15s,background .15s;}
     .pj-input:focus, .pj-textarea:focus{border-color:var(--accent);background:#fff;}
+    .pj-input.pj-input-error, .pj-textarea.pj-input-error{border-color:var(--bad);background:var(--bad-soft);}
+    .pj-input.pj-input-error:focus, .pj-textarea.pj-input-error:focus{border-color:var(--bad);}
     .pj-textarea{resize:vertical;min-height:90px;}
     .pj-field-error{font-size:11.5px;color:var(--bad);margin-top:5px;}
+    .pj-dropzone.pj-input-error{border-color:var(--bad);background:var(--bad-soft);}
     .pj-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
     .pj-dropzone{border:1.5px dashed var(--border-strong);border-radius:var(--radius-m);padding:22px;text-align:center;cursor:pointer;transition:border-color .15s, background .15s;}
     .pj-dropzone:hover{border-color:var(--accent);background:var(--accent-soft);}
     .pj-file-chip{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-s);padding:10px 13px;font-size:13px;color:var(--ink);}
     .pj-consent{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:var(--ink2);line-height:1.6;margin:20px 0;}
     .pj-consent input{margin-top:2px;flex-shrink:0;}
+    .pj-consent-error{outline:1.5px solid var(--bad);outline-offset:6px;border-radius:6px;}
     .pj-success{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px;}
     .pj-back{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--muted);background:none;border:none;cursor:pointer;margin-bottom:20px;font-family:var(--fb);padding:6px 0;transition:color .15s;}
     .pj-back:hover{color:var(--ink);}
@@ -444,35 +498,35 @@ export default function PublicJobApplicationPage() {
               <Field label="Email" required error={fieldErrors.email}>
                 <input className="pj-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
               </Field>
-              <Field label="Phone" required={jobData?.form?.require_phone} error={fieldErrors.phone}>
+              <Field label="Phone" required error={fieldErrors.phone}>
                 <input className="pj-input" value={phone} onChange={e => setPhone(e.target.value)} />
               </Field>
-              <Field label="Location" required={jobData?.form?.require_location} error={fieldErrors.location}>
+              <Field label="Location" required error={fieldErrors.location}>
                 <input className="pj-input" placeholder="City, Country" value={location} onChange={e => setLocation(e.target.value)} />
               </Field>
             </div>
 
             <div className="pj-form-section">
               <h4>Professional information</h4>
-              <Field label="Current / most recent role">
+              <Field label="Current / most recent role" required error={fieldErrors.currentRole}>
                 <input className="pj-input" value={currentRole} onChange={e => setCurrentRole(e.target.value)} />
               </Field>
               <div className="pj-row2">
-                <Field label="Current employer">
+                <Field label="Current employer" required error={fieldErrors.currentEmployer}>
                   <input className="pj-input" value={currentEmployer} onChange={e => setCurrentEmployer(e.target.value)} />
                 </Field>
-                <Field label="Years of experience">
+                <Field label="Years of experience" required error={fieldErrors.yearsExperience}>
                   <input className="pj-input" type="number" min="0" value={yearsExperience} onChange={e => setYearsExperience(e.target.value)} />
                 </Field>
               </div>
-              <Field label="Skills (comma-separated)">
+              <Field label="Skills (comma-separated)" required error={fieldErrors.skillsInput}>
                 <input className="pj-input" placeholder="React, TypeScript, AWS" value={skillsInput} onChange={e => setSkillsInput(e.target.value)} />
               </Field>
               <div className="pj-row2">
-                <Field label="LinkedIn URL">
+                <Field label="LinkedIn URL" required error={fieldErrors.linkedinUrl}>
                   <input className="pj-input" value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)} />
                 </Field>
-                <Field label="Portfolio URL">
+                <Field label="Portfolio URL" required error={fieldErrors.portfolioUrl}>
                   <input className="pj-input" value={portfolioUrl} onChange={e => setPortfolioUrl(e.target.value)} />
                 </Field>
               </div>
@@ -480,21 +534,23 @@ export default function PublicJobApplicationPage() {
 
             <div className="pj-form-section">
               <h4>Application</h4>
-              <Field label="CV / Resume" required={jobData?.form?.require_cv} error={fieldErrors.cvFile}>
+              <Field label="CV / Resume" required error={fieldErrors.cvFile} noAutoBind>
                 {cvFile ? (
-                  <div className="pj-file-chip">
+                  <div className="pj-file-chip" id="pj-f-cv-resume">
                     <FileText style={{ width: 15, height: 15, color: "#22315C" }} />
                     <span style={{ flex: 1 }}>{cvFile.name}</span>
                     <X style={{ width: 14, height: 14, cursor: "pointer" }} onClick={() => setCvFile(null)} />
                   </div>
                 ) : (
-                  <label className="pj-dropzone">
+                  <label className={"pj-dropzone" + (fieldErrors.cvFile ? " pj-input-error" : "")} id="pj-f-cv-resume">
                     <Upload style={{ width: 18, height: 18, color: "rgba(23,23,15,0.3)", marginBottom: 6 }} />
                     <div style={{ fontSize: 12.5, color: "rgba(23,23,15,0.45)" }}>PDF, DOC or DOCX, up to 10MB</div>
                     <input
                       type="file"
                       accept=".pdf,.doc,.docx"
                       style={{ display: "none" }}
+                      aria-invalid={fieldErrors.cvFile ? true : undefined}
+                      aria-describedby={fieldErrors.cvFile ? "pj-f-cv-resume-error" : undefined}
                       onChange={e => setCvFile(e.target.files?.[0] ?? null)}
                     />
                   </label>
@@ -503,9 +559,16 @@ export default function PublicJobApplicationPage() {
               <Field label="Cover letter" required={jobData?.form?.require_cover_letter} error={fieldErrors.coverLetter}>
                 <textarea className="pj-textarea" value={coverLetter} onChange={e => setCoverLetter(e.target.value)} />
               </Field>
-              <Field label="Salary expectation" required={jobData?.form?.require_salary_expectation} error={fieldErrors.salaryExpectation}>
+              <Field label="Salary expectation" required={jobData?.form?.require_salary_expectation} error={fieldErrors.salaryExpectation} noAutoBind>
                 <div className="pj-row2" style={{ gridTemplateColumns: "1fr 100px" }}>
-                  <input className="pj-input" type="number" min="0" value={salaryExpectation} onChange={e => setSalaryExpectation(e.target.value)} placeholder="Amount" />
+                  <input
+                    id="pj-f-salary-expectation"
+                    className={"pj-input" + (fieldErrors.salaryExpectation ? " pj-input-error" : "")}
+                    type="number" min="0" value={salaryExpectation} onChange={e => setSalaryExpectation(e.target.value)}
+                    placeholder="Amount"
+                    aria-invalid={fieldErrors.salaryExpectation ? true : undefined}
+                    aria-describedby={fieldErrors.salaryExpectation ? "pj-f-salary-expectation-error" : undefined}
+                  />
                   <select className="pj-input" value={salaryCurrency} onChange={e => setSalaryCurrency(e.target.value)}>
                     <option value="NGN">NGN</option>
                     <option value="USD">USD</option>
@@ -536,7 +599,7 @@ export default function PublicJobApplicationPage() {
               <div className="pj-form-section">
                 <h4>Additional questions</h4>
                 {jobData.form.custom_questions.map(q => (
-                  <Field key={q.id} label={q.question} required={q.required} error={fieldErrors[`q_${q.id}`]}>
+                  <Field key={q.id} label={q.question} required={q.required} error={fieldErrors[`q_${q.id}`]} id={`pj-f-q_${q.id}`}>
                     <textarea
                       className="pj-textarea"
                       style={{ minHeight: 70 }}
@@ -548,8 +611,8 @@ export default function PublicJobApplicationPage() {
               </div>
             )}
 
-            <label className="pj-consent">
-              <input type="checkbox" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} />
+            <label className={"pj-consent" + (fieldErrors.consent ? " pj-consent-error" : "")}>
+              <input id="pj-consent-checkbox" type="checkbox" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} />
               <span>
                 I consent to {jobData?.company?.name ?? "the hiring team"} and its recruiting partner processing my
                 personal information and CV for the purpose of evaluating this application.
@@ -574,12 +637,29 @@ export default function PublicJobApplicationPage() {
   );
 }
 
-function Field({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: React.ReactNode }) {
+function Field({ label, required, error, noAutoBind, id, children }: { label: string; required?: boolean; error?: string; noAutoBind?: boolean; id?: string; children: React.ReactElement }) {
+  // Derive a stable id from the label so the error can be linked via
+  // aria-describedby and so handleSubmit can scroll/focus straight to the
+  // first invalid field without every call site wiring this up by hand.
+  // An explicit id overrides the derived one (used for custom questions,
+  // whose label text is recruiter-authored and not a safe/stable id source).
+  // noAutoBind is for fields whose immediate child isn't the actual input
+  // (CV dropzone, salary amount+currency pair) — those wire id/aria/error
+  // styling onto the real control themselves.
+  const fieldId = id ?? ("pj-f-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+  const child = !noAutoBind && React.isValidElement(children)
+    ? React.cloneElement(children as React.ReactElement<any>, {
+        id: fieldId,
+        className: [(children.props as any).className, error ? "pj-input-error" : ""].filter(Boolean).join(" "),
+        "aria-invalid": error ? true : undefined,
+        "aria-describedby": error ? `${fieldId}-error` : undefined,
+      })
+    : children;
   return (
     <div className="pj-field">
-      <label>{label}{required && <span className="req">*</span>}</label>
-      {children}
-      {error && <div className="pj-field-error">{error}</div>}
+      <label htmlFor={fieldId}>{label}{required && <span className="req">*</span>}</label>
+      {child}
+      {error && <div className="pj-field-error" id={`${fieldId}-error`}>{error}</div>}
     </div>
   );
 }
