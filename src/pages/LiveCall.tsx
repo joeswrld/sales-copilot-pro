@@ -22,7 +22,7 @@ import EnablePushPrompt from "@/components/EnablePushPrompt";
 import { NetworkQualityBanner } from "@/components/NetworkQualityBanner";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Loader2, Copy, Check, ExternalLink, Calendar,
   Plus, ChevronRight, Radio, Eye, Link2, Mic,
@@ -51,6 +51,164 @@ import { MeetingNotificationBanner, NotificationStatusPill } from "@/components/
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNetworkQuality } from "@/hooks/useNetworkQuality";
+
+// ─── Recruiting Interviews — Fixsense Meetings created for candidate interviews ──
+// Extends this page (Meeting Control OS / Live Call) with a live list of every
+// native Fixsense Meeting created via the Candidate Details "Invite to
+// Interview" flow. Reuses the exact same tables the rest of this page and
+// CandidateDetailPage already read/write (interviews, recruiting_calls,
+// calls, native_meeting_rooms) — no new table, RPC, or edge function.
+// Candidate -> Job -> Client -> Interview -> Recruiter is preserved end to
+// end via interviews.candidate_job_id and recruiting_calls.recruiter_id.
+interface RecruitingInterviewRow {
+  interview_id: string;
+  candidate_name: string;
+  job_title: string;
+  scheduled_at: string | null;
+  interview_status: string;
+  meeting_link: string | null;
+  created_at: string | null;
+  room_status: string | null;
+  expires_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+function deriveMeetingState(row: RecruitingInterviewRow): { label: string; color: string } {
+  const now = Date.now();
+  if (row.interview_status === "cancelled") return { label: "Cancelled", color: "#9CA3AF" };
+  if (row.room_status === "ended" || row.ended_at) return { label: "Completed", color: "#2F6B4F" };
+  if (row.room_status === "deleted") return { label: "Cancelled", color: "#9CA3AF" };
+  if (row.started_at && !row.ended_at) return { label: "Active", color: "#B45309" };
+  if (row.expires_at && new Date(row.expires_at).getTime() < now) return { label: "Expired", color: "#B23A3A" };
+  if (row.interview_status === "completed") return { label: "Completed", color: "#2F6B4F" };
+  return { label: "Upcoming", color: "#22315C" };
+}
+
+function useRecruitingInterviewMeetings(teamId: string | null) {
+  return useQuery({
+    queryKey: ["recruiting-interview-meetings", teamId],
+    queryFn: async (): Promise<RecruitingInterviewRow[]> => {
+      if (!teamId) return [];
+
+      const { data: interviews, error } = await supabase
+        .from("interviews")
+        .select("id, scheduled_at, status, meeting_link, created_at, call_id, candidate_job_id, candidate_jobs:candidate_job_id(candidates:candidate_id(full_name), jobs:job_id(title))")
+        .eq("team_id", teamId)
+        .not("call_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      if (!interviews?.length) return [];
+
+      const recruitingCallIds = Array.from(new Set(interviews.map((iv: any) => iv.call_id).filter(Boolean)));
+      const { data: recruitingCalls } = await supabase
+        .from("recruiting_calls")
+        .select("id, linked_call_id")
+        .in("id", recruitingCallIds);
+      const linkedCallIdByRecruitingCallId = new Map((recruitingCalls ?? []).map((rc: any) => [rc.id, rc.linked_call_id]));
+
+      const fixsenseCallIds = Array.from(new Set(Array.from(linkedCallIdByRecruitingCallId.values()).filter(Boolean)));
+      const { data: rooms } = fixsenseCallIds.length
+        ? await supabase
+            .from("native_meeting_rooms")
+            .select("call_id, status, expires_at, started_at, ended_at")
+            .in("call_id", fixsenseCallIds)
+        : { data: [] as any[] };
+      const roomByCallId = new Map((rooms ?? []).map((r: any) => [r.call_id, r]));
+
+      return interviews.map((iv: any): RecruitingInterviewRow => {
+        const linkedCallId = linkedCallIdByRecruitingCallId.get(iv.call_id);
+        const room = linkedCallId ? roomByCallId.get(linkedCallId) : null;
+        return {
+          interview_id: iv.id,
+          candidate_name: iv.candidate_jobs?.candidates?.full_name ?? "Candidate",
+          job_title: iv.candidate_jobs?.jobs?.title ?? "Role",
+          scheduled_at: iv.scheduled_at,
+          interview_status: iv.status,
+          meeting_link: iv.meeting_link,
+          created_at: iv.created_at,
+          room_status: room?.status ?? null,
+          expires_at: room?.expires_at ?? null,
+          started_at: room?.started_at ?? null,
+          ended_at: room?.ended_at ?? null,
+        };
+      });
+    },
+    enabled: !!teamId,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+function RecruitingInterviewsPanel() {
+  const { teamId } = useTeam();
+  const { data: meetings, isLoading, refetch } = useRecruitingInterviewMeetings(teamId ?? null);
+
+  const copyLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Meeting link copied");
+    } catch {
+      toast.info(link, { duration: 8000 });
+    }
+  };
+
+  return (
+    <div className="glass rounded-xl border border-border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5" />Recruiting Interviews
+        </h2>
+        <button onClick={() => refetch()} className="text-muted-foreground hover:text-foreground">
+          <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-6 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+        </div>
+      ) : !meetings?.length ? (
+        <p className="text-xs text-muted-foreground py-2">
+          No Fixsense Meetings created for candidate interviews yet. Use "Invite to Interview" on a candidate's page to create one.
+        </p>
+      ) : (
+        <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
+          {meetings.map((m) => {
+            const state = deriveMeetingState(m);
+            return (
+              <div key={m.interview_id} className="p-2.5 rounded-lg" style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.07)" }}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-medium text-foreground truncate">{m.candidate_name}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wide shrink-0" style={{ color: state.color }}>{state.label}</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate mb-1.5">{m.job_title}</div>
+                <div className="flex items-center gap-2 text-[10.5px] text-muted-foreground mb-2">
+                  <Calendar className="w-3 h-3 shrink-0" />
+                  {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not scheduled"}
+                  <span className="opacity-50">•</span>
+                  created {m.created_at ? new Date(m.created_at).toLocaleDateString() : "—"}
+                </div>
+                {m.meeting_link && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10.5px] font-mono text-muted-foreground/70 flex-1 truncate">{m.meeting_link}</span>
+                    <button onClick={() => copyLink(m.meeting_link!)} className="text-muted-foreground hover:text-foreground shrink-0">
+                      <Copy className="w-3 h-3" />
+                    </button>
+                    <a href={m.meeting_link} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground shrink-0">
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1577,6 +1735,8 @@ export default function LiveCall() {
                 ))}
               </div>
             </div>
+
+            <RecruitingInterviewsPanel />
           </div>
 
         </div>
