@@ -590,7 +590,18 @@ export default function PublicJobApplicationPage() {
                   <input className="pj-input" value={workAuthorization} onChange={e => setWorkAuthorization(e.target.value)} />
                 </Field>
                 <Field label="Remote / work preference">
-                  <input className="pj-input" placeholder="e.g. Hybrid" value={workPreference} onChange={e => setWorkPreference(e.target.value)} />
+                  {/* Must match candidates.work_arrangement_preference's CHECK
+                      constraint exactly (remote|hybrid|on_site|flexible) — a
+                      free-text input here previously caused every submission
+                      with a value like "Hybrid" or "Remote work" to fail the
+                      constraint and roll back with a generic SUBMISSION_FAILED. */}
+                  <select className="pj-input" value={workPreference} onChange={e => setWorkPreference(e.target.value)}>
+                    <option value="">Select…</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="on_site">On-site</option>
+                    <option value="flexible">Flexible</option>
+                  </select>
                 </Field>
               </div>
             </div>
