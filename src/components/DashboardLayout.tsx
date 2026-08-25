@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
-  Kanban, Send, Briefcase,
+  Kanban, Send, Briefcase, Calendar,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -119,13 +119,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const primaryNav: NavItem[] = [
     { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-    { label: "Live Call", icon: Radio, href: "/live" },
     { label: "Calls", icon: Phone, href: "/calls" },
-    { label: "Deals", icon: Building2, href: "/deals" },
     { label: "Jobs", icon: Briefcase, href: "/jobs" },
     { label: "Candidates", icon: Users, href: "/candidates" },
     { label: "Pipeline", icon: Kanban, href: "/pipeline" },
     { label: "Submissions", icon: Send, href: "/submissions" },
+    { label: "Interviews", icon: Calendar, href: "/interviews" },
+    { label: "Live Calls", icon: Radio, href: "/live" },
+    { label: "CRM", icon: Building2, href: "/crm" },
     { label: "AI Coach", icon: Bot, href: "/coach" },
   ];
   const workspaceNav: NavItem[] = [
@@ -136,6 +137,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const systemNav: NavItem[] = [
     { label: "Billing",  icon: CreditCard, href: "/billing" },
     { label: "Settings", icon: Settings,   href: "/settings" },
+    // Legacy sales-Deals UI — kept reachable but demoted out of primary nav
+    // until the CRM conversion is confirmed fully functional (do not remove).
+    { label: "Deals (legacy)", icon: Phone, href: "/deals" },
   ];
 
   const handleSignOut = async () => {
@@ -321,7 +325,9 @@ function BreadcrumbPath() {
     dashboard: "Dashboard", calls: "Calls",   live: "Live Call",
     analytics: "Analytics", team: "Team",     messages: "Messages",
     settings:  "Settings",  billing: "Billing", coach: "AI Coach",
-    profile:   "Profile",   deals: "Deals",
+    profile:   "Profile",   deals: "Deals",     crm: "CRM",
+    jobs: "Jobs", candidates: "Candidates", pipeline: "Pipeline",
+    submissions: "Submissions", interviews: "Interviews",
   };
 
   if (segments.length === 1)
