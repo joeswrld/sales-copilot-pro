@@ -1616,8 +1616,8 @@ function ScheduleInterviewModal({
       // mailto opens with the (possibly recruiter-edited) recipient/subject/body.
       const mailto = `mailto:${encodeURIComponent(candidateEmail ?? "")}?subject=${encodeURIComponent(invitationSubject)}&body=${encodeURIComponent(invitationBody)}`;
       window.location.href = mailto;
-      // Persists the invitation (send-interview-invitation, already-built,
-      // reused as-is) and marks the interview/candidate as notified.
+      // Records the invitation (mark_interview_candidate_notified) and
+      // marks the interview/candidate as notified.
       await onSendInvitation(result.interviewId);
       onClose();
     } finally {
