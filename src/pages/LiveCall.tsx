@@ -30,7 +30,7 @@ import {
   RefreshCw, WifiOff, CheckCircle2,
   X, CalendarPlus, Sparkles, Shield, ShieldCheck,
   ArrowRight, Tag, FileText, Zap, Wifi,
-  Trash2, UserCheck, Globe,
+  Trash2, UserCheck, Globe, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,78 +60,122 @@ import { useNetworkQuality } from "@/hooks/useNetworkQuality";
 // calls, native_meeting_rooms) — no new table, RPC, or edge function.
 // Candidate -> Job -> Client -> Interview -> Recruiter is preserved end to
 // end via interviews.candidate_job_id and recruiting_calls.recruiter_id.
-interface RecruitingInterviewRow {
-  interview_id: string;
-  candidate_name: string;
-  job_title: string;
+interface RecruitingCallRow {
+  recruiting_call_id: string;
+  call_type: "candidate_screening" | "client_intake" | "interview" | "other";
+  title: string | null;
+  candidate_name: string | null;
+  job_title: string | null;
+  client_name: string | null;
   scheduled_at: string | null;
-  interview_status: string;
-  meeting_link: string | null;
+  occurred_at: string | null;
   created_at: string | null;
+  call_status: string;
+  extraction_status: string;
+  meeting_link: string | null;
   room_status: string | null;
   expires_at: string | null;
   started_at: string | null;
   ended_at: string | null;
+  interview_status: string | null;
 }
 
-function deriveMeetingState(row: RecruitingInterviewRow): { label: string; color: string } {
+const RECRUITING_CALL_TYPE_LABEL: Record<string, string> = {
+  candidate_screening: "Screening",
+  client_intake: "Client Intake",
+  interview: "Interview",
+  other: "Follow-up",
+};
+
+function deriveMeetingState(row: RecruitingCallRow): { label: string; color: string } {
   const now = Date.now();
   if (row.interview_status === "cancelled") return { label: "Cancelled", color: "#9CA3AF" };
   if (row.room_status === "ended" || row.ended_at) return { label: "Completed", color: "#2F6B4F" };
   if (row.room_status === "deleted") return { label: "Cancelled", color: "#9CA3AF" };
   if (row.started_at && !row.ended_at) return { label: "Active", color: "#B45309" };
   if (row.expires_at && new Date(row.expires_at).getTime() < now) return { label: "Expired", color: "#B23A3A" };
-  if (row.interview_status === "completed") return { label: "Completed", color: "#2F6B4F" };
+  if (row.interview_status === "completed" || row.call_status === "completed") return { label: "Completed", color: "#2F6B4F" };
   return { label: "Upcoming", color: "#22315C" };
 }
 
-function useRecruitingInterviewMeetings(teamId: string | null) {
+function extractionStatusLabel(status: string): { label: string; color: string } {
+  switch (status) {
+    case "completed": return { label: "AI done", color: "#2F6B4F" };
+    case "processing": return { label: "AI extracting…", color: "#B45309" };
+    case "failed": return { label: "AI failed", color: "#B23A3A" };
+    default: return { label: "AI pending", color: "#9CA3AF" };
+  }
+}
+
+// Covers every recruiting call type — candidate screenings, client intake,
+// interviews, and follow-ups — each with its own Fixsense Meeting link (a
+// candidate accumulates one recruiting_calls row per stage of their
+// pipeline, so "all created links" means every recruiting_calls row with a
+// linked meeting, not just interview-type ones). Reads recruiting_calls,
+// candidates, jobs, recruiting_clients, interviews, native_meeting_rooms —
+// all tables that already exist and are already written to by
+// CandidateDetailPage's screening/intake/interview flows and
+// create_recruiting_call. No new tables or RPCs.
+function useRecruitingCallMeetings(teamId: string | null) {
   return useQuery({
-    queryKey: ["recruiting-interview-meetings", teamId],
-    queryFn: async (): Promise<RecruitingInterviewRow[]> => {
+    queryKey: ["recruiting-call-meetings", teamId],
+    queryFn: async (): Promise<RecruitingCallRow[]> => {
       if (!teamId) return [];
 
-      const { data: interviews, error } = await supabase
-        .from("interviews")
-        .select("id, scheduled_at, status, meeting_link, created_at, call_id, candidate_job_id, candidate_jobs:candidate_job_id(candidates:candidate_id(full_name), jobs:job_id(title))")
+      const { data: calls, error } = await (supabase as any)
+        .from("recruiting_calls")
+        .select(`
+          id, call_type, title, scheduled_at, occurred_at, created_at, status, extraction_status,
+          linked_call_id, candidate_id, client_id, job_id, candidate_job_id,
+          candidates:candidate_id(full_name),
+          recruiting_clients:client_id(name),
+          jobs:job_id(title),
+          candidate_jobs:candidate_job_id(
+            candidates:candidate_id(full_name),
+            jobs:job_id(title, recruiting_clients:client_id(name))
+          )
+        `)
         .eq("team_id", teamId)
-        .not("call_id", "is", null)
+        .not("linked_call_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      if (!interviews?.length) return [];
+      if (!calls?.length) return [];
 
-      const recruitingCallIds = Array.from(new Set(interviews.map((iv: any) => iv.call_id).filter(Boolean)));
-      const { data: recruitingCalls } = await supabase
-        .from("recruiting_calls")
-        .select("id, linked_call_id")
-        .in("id", recruitingCallIds);
-      const linkedCallIdByRecruitingCallId = new Map((recruitingCalls ?? []).map((rc: any) => [rc.id, rc.linked_call_id]));
+      const recruitingCallIds = calls.map((c: any) => c.id);
+      const [{ data: interviews }, { data: rooms }] = await Promise.all([
+        (supabase as any).from("interviews").select("call_id, status, meeting_link").in("call_id", recruitingCallIds),
+        (supabase as any).from("native_meeting_rooms").select("call_id, status, expires_at, started_at, ended_at").in("call_id", calls.map((c: any) => c.linked_call_id).filter(Boolean)),
+      ]);
+      const interviewByCallId = new Map<string, any>((interviews ?? []).map((iv: any) => [iv.call_id, iv]));
+      const roomByLinkedCallId = new Map<string, any>((rooms ?? []).map((r: any) => [r.call_id, r]));
 
-      const fixsenseCallIds = Array.from(new Set(Array.from(linkedCallIdByRecruitingCallId.values()).filter(Boolean)));
-      const { data: rooms } = fixsenseCallIds.length
-        ? await supabase
-            .from("native_meeting_rooms")
-            .select("call_id, status, expires_at, started_at, ended_at")
-            .in("call_id", fixsenseCallIds)
-        : { data: [] as any[] };
-      const roomByCallId = new Map((rooms ?? []).map((r: any) => [r.call_id, r]));
-
-      return interviews.map((iv: any): RecruitingInterviewRow => {
-        const linkedCallId = linkedCallIdByRecruitingCallId.get(iv.call_id);
-        const room = linkedCallId ? roomByCallId.get(linkedCallId) : null;
+      return calls.map((c: any): RecruitingCallRow => {
+        const interview = interviewByCallId.get(c.id);
+        const room = c.linked_call_id ? roomByLinkedCallId.get(c.linked_call_id) : null;
+        const cjCandidate = c.candidate_jobs?.candidates;
+        const cjJob = c.candidate_jobs?.jobs;
+        const candidateName = c.candidates?.full_name ?? cjCandidate?.full_name ?? null;
+        const jobTitle = c.jobs?.title ?? cjJob?.title ?? null;
+        const clientName = c.recruiting_clients?.name ?? cjJob?.recruiting_clients?.name ?? null;
         return {
-          interview_id: iv.id,
-          candidate_name: iv.candidate_jobs?.candidates?.full_name ?? "Candidate",
-          job_title: iv.candidate_jobs?.jobs?.title ?? "Role",
-          scheduled_at: iv.scheduled_at,
-          interview_status: iv.status,
-          meeting_link: iv.meeting_link,
-          created_at: iv.created_at,
+          recruiting_call_id: c.id,
+          call_type: c.call_type,
+          title: c.title,
+          candidate_name: candidateName,
+          job_title: jobTitle,
+          client_name: clientName,
+          scheduled_at: interview?.scheduled_at ?? c.scheduled_at ?? null,
+          occurred_at: c.occurred_at,
+          created_at: c.created_at,
+          call_status: c.status,
+          extraction_status: c.extraction_status,
+          meeting_link: interview?.meeting_link ?? null,
           room_status: room?.status ?? null,
           expires_at: room?.expires_at ?? null,
           started_at: room?.started_at ?? null,
           ended_at: room?.ended_at ?? null,
+          interview_status: interview?.status ?? null,
         };
       });
     },
@@ -143,7 +187,7 @@ function useRecruitingInterviewMeetings(teamId: string | null) {
 
 function RecruitingInterviewsPanel() {
   const { teamId } = useTeam();
-  const { data: meetings, isLoading, refetch } = useRecruitingInterviewMeetings(teamId ?? null);
+  const { data: meetings, isLoading, refetch } = useRecruitingCallMeetings(teamId ?? null);
 
   const copyLink = async (link: string) => {
     try {
@@ -158,7 +202,7 @@ function RecruitingInterviewsPanel() {
     <div className="glass rounded-xl border border-border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5" />Recruiting Interviews
+          <Users className="w-3.5 h-3.5" />Recruiting Calls
         </h2>
         <button onClick={() => refetch()} className="text-muted-foreground hover:text-foreground">
           <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
@@ -171,24 +215,45 @@ function RecruitingInterviewsPanel() {
         </div>
       ) : !meetings?.length ? (
         <p className="text-xs text-muted-foreground py-2">
-          No Fixsense Meetings created for candidate interviews yet. Use "Invite to Interview" on a candidate's page to create one.
+          No Fixsense Meetings created for recruiting calls yet. Use "Invite to Interview" (or start a screening/client call) from a candidate's page to create one.
         </p>
       ) : (
         <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
           {meetings.map((m) => {
             const state = deriveMeetingState(m);
+            const extraction = extractionStatusLabel(m.extraction_status);
             return (
-              <div key={m.interview_id} className="p-2.5 rounded-lg" style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.07)" }}>
+              <div key={m.recruiting_call_id} className="p-2.5 rounded-lg" style={{ background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.07)" }}>
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-medium text-foreground truncate">{m.candidate_name}</span>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="text-[9px] font-bold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(34,49,92,0.08)", color: "#22315C" }}
+                    >
+                      {RECRUITING_CALL_TYPE_LABEL[m.call_type] ?? m.call_type}
+                    </span>
+                    <span className="text-xs font-medium text-foreground truncate">
+                      {m.candidate_name ?? m.title ?? "Recruiting call"}
+                    </span>
+                  </span>
                   <span className="text-[10px] font-bold uppercase tracking-wide shrink-0" style={{ color: state.color }}>{state.label}</span>
                 </div>
-                <div className="text-[11px] text-muted-foreground truncate mb-1.5">{m.job_title}</div>
-                <div className="flex items-center gap-2 text-[10.5px] text-muted-foreground mb-2">
+                {(m.job_title || m.client_name) && (
+                  <div className="text-[11px] text-muted-foreground truncate mb-1.5 flex items-center gap-1">
+                    {m.job_title && <span>{m.job_title}</span>}
+                    {m.job_title && m.client_name && <span className="opacity-50">•</span>}
+                    {m.client_name && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{m.client_name}</span>}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-[10.5px] text-muted-foreground mb-1 flex-wrap">
                   <Calendar className="w-3 h-3 shrink-0" />
-                  {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not scheduled"}
+                  {m.scheduled_at
+                    ? new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                    : m.occurred_at
+                    ? `Occurred ${new Date(m.occurred_at).toLocaleDateString()}`
+                    : "Not scheduled"}
                   <span className="opacity-50">•</span>
-                  created {m.created_at ? new Date(m.created_at).toLocaleDateString() : "—"}
+                  <span style={{ color: extraction.color }}>{extraction.label}</span>
                 </div>
                 {m.meeting_link && (
                   <div className="flex items-center gap-1.5">
