@@ -4,16 +4,21 @@ import TeamInvitationsBanner from "@/components/TeamInvitationsBanner";
 import PlanInheritanceBanner from "@/components/PlanInheritanceBanner";
 import { PlanBanner } from "@/components/plan/PlanGate";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
-import { Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus } from "lucide-react";
+import {
+  Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus,
+  Briefcase, UserPlus, ClipboardCheck, Video, PhoneCall, Send, ListTodo, Award, PartyPopper,
+} from "lucide-react";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTeam } from "@/hooks/useTeam";
 
 const statusColors: Record<string, string> = {
   "Won": "bg-success/10 text-success",
@@ -126,6 +131,235 @@ function PipelineHealthCard() {
   );
 }
 
+// ─── Recruiting overview ──────────────────────────────────────────────────
+// This dashboard already covers sales (deals/win-rate/pipeline health via
+// PipelineHealthCard above). This panel adds the recruiting-side "what
+// needs my attention today" view, reading directly from the existing
+// recruiting tables (jobs, job_applications, candidates, candidate_jobs,
+// interviews, recruiting_calls, submissions, client_feedback,
+// recruiting_tasks) — no new tables or RPCs. Only rendered when the team
+// actually has recruiting data, so a pure-sales team's dashboard is
+// unchanged.
+interface RecruitingOverviewData {
+  openJobs: number;
+  newApplications: number;
+  candidatesNeedingReview: number;
+  upcomingInterviews: { id: string; candidate_name: string; job_title: string; scheduled_at: string | null; candidate_id: string }[];
+  todaysCalls: { id: string; call_type: string; title: string | null; scheduled_at: string | null; candidate_id: string | null }[];
+  submissionsAwaitingFeedback: number;
+  openFollowUps: number;
+  offers: number;
+  placements: number;
+  hasAnyRecruitingData: boolean;
+}
+
+function useRecruitingDashboard(teamId: string | null) {
+  return useQuery({
+    queryKey: ["recruiting-dashboard", teamId],
+    queryFn: async (): Promise<RecruitingOverviewData | null> => {
+      if (!teamId) return null;
+
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+      const sevenDaysOut = new Date(Date.now() + 7 * 86400_000).toISOString();
+
+      const [
+        jobsRes, applicationsRes, extractionsRes, interviewsRes, callsRes,
+        submissionsRes, tasksRes, candidateJobsRes,
+      ] = await Promise.all([
+        supabase.from("jobs" as any).select("id", { count: "exact", head: true }).eq("team_id", teamId).eq("status", "open"),
+        supabase.from("job_applications" as any).select("id", { count: "exact", head: true }).eq("team_id", teamId).gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString()),
+        supabase.from("ai_extractions" as any).select("id", { count: "exact", head: true }).eq("team_id", teamId).eq("status", "pending_review"),
+        supabase.from("interviews" as any)
+          .select("id, scheduled_at, candidate_job_id, candidate_jobs:candidate_job_id(candidate_id, candidates:candidate_id(full_name), jobs:job_id(title))")
+          .eq("team_id", teamId).eq("status", "scheduled")
+          .not("scheduled_at", "is", null)
+          .lte("scheduled_at", sevenDaysOut)
+          .order("scheduled_at", { ascending: true })
+          .limit(8),
+        supabase.from("recruiting_calls" as any)
+          .select("id, call_type, title, scheduled_at, candidate_id")
+          .eq("team_id", teamId)
+          .gte("scheduled_at", todayStart.toISOString())
+          .lte("scheduled_at", todayEnd.toISOString())
+          .order("scheduled_at", { ascending: true }),
+        supabase.from("submissions" as any)
+          .select("id, candidate_job_id")
+          .eq("team_id", teamId)
+          .in("status", ["submitted", "client_reviewing"]),
+        supabase.from("recruiting_tasks" as any).select("id", { count: "exact", head: true }).eq("team_id", teamId).eq("status", "open"),
+        supabase.from("candidate_jobs" as any).select("id, pipeline_stage", { count: "exact" }).eq("team_id", teamId).in("pipeline_stage", ["offer", "placed"]),
+      ]);
+
+      // "Submissions awaiting feedback" = sent to client, no client_feedback row yet.
+      const submissionRows = (submissionsRes.data ?? []) as unknown as { id: string; candidate_job_id: string }[];
+      let submissionsAwaitingFeedback = 0;
+      if (submissionRows.length) {
+        const { data: fbRows } = await supabase
+          .from("client_feedback" as any)
+          .select("submission_id")
+          .in("submission_id", submissionRows.map(s => s.id));
+        const withFeedback = new Set(((fbRows ?? []) as unknown as { submission_id: string }[]).map(f => f.submission_id));
+        submissionsAwaitingFeedback = submissionRows.filter(s => !withFeedback.has(s.id)).length;
+      }
+
+      const cjRows = (candidateJobsRes.data ?? []) as unknown as { id: string; pipeline_stage: string }[];
+      const offers = cjRows.filter(c => c.pipeline_stage === "offer").length;
+      const placements = cjRows.filter(c => c.pipeline_stage === "placed").length;
+
+      const upcomingInterviews = ((interviewsRes.data ?? []) as any[]).map(iv => ({
+        id: iv.id,
+        candidate_name: iv.candidate_jobs?.candidates?.full_name ?? "Candidate",
+        job_title: iv.candidate_jobs?.jobs?.title ?? "Role",
+        scheduled_at: iv.scheduled_at,
+        candidate_id: iv.candidate_jobs?.candidate_id ?? "",
+      }));
+
+      const todaysCalls = ((callsRes.data ?? []) as any[]).map(c => ({
+        id: c.id,
+        call_type: c.call_type,
+        title: c.title,
+        scheduled_at: c.scheduled_at,
+        candidate_id: c.candidate_id,
+      }));
+
+      const openJobs = jobsRes.count ?? 0;
+      const newApplications = applicationsRes.count ?? 0;
+      const candidatesNeedingReview = extractionsRes.count ?? 0;
+      const submissionsTotal = submissionRows.length;
+      const openFollowUps = tasksRes.count ?? 0;
+
+      const hasAnyRecruitingData = !!(
+        openJobs || newApplications || candidatesNeedingReview || upcomingInterviews.length ||
+        todaysCalls.length || submissionsTotal || openFollowUps || offers || placements
+      );
+
+      return {
+        openJobs, newApplications, candidatesNeedingReview, upcomingInterviews, todaysCalls,
+        submissionsAwaitingFeedback, openFollowUps, offers, placements, hasAnyRecruitingData,
+      };
+    },
+    enabled: !!teamId,
+    staleTime: 30_000,
+  });
+}
+
+const CALL_TYPE_LABEL: Record<string, string> = {
+  candidate_screening: "Screening",
+  client_intake: "Client Intake",
+  interview: "Interview",
+  other: "Call",
+};
+
+function RecruitingOverview() {
+  const { teamId } = useTeam();
+  const navigate = useNavigate();
+  const { data, isLoading } = useRecruitingDashboard(teamId ?? null);
+
+  if (isLoading) {
+    return (
+      <div className="glass rounded-xl p-4 border border-border space-y-3">
+        <Skeleton className="h-4 w-40" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !data.hasAnyRecruitingData) return null;
+
+  const metrics = [
+    { label: "Open Jobs", value: data.openJobs, icon: Briefcase, color: "text-primary", to: "/jobs" },
+    { label: "New Applications", value: data.newApplications, icon: UserPlus, color: "text-accent", to: "/candidates" },
+    { label: "Need Review", value: data.candidatesNeedingReview, icon: ClipboardCheck, color: data.candidatesNeedingReview > 0 ? "text-destructive" : "text-muted-foreground", to: "/candidates" },
+    { label: "Follow-ups", value: data.openFollowUps, icon: ListTodo, color: "text-accent", to: "/interviews" },
+    { label: "Submissions Awaiting Feedback", value: data.submissionsAwaitingFeedback, icon: Send, color: data.submissionsAwaitingFeedback > 0 ? "text-accent" : "text-muted-foreground", to: "/candidates" },
+    { label: "Offers Out", value: data.offers, icon: Award, color: "text-primary", to: "/candidates" },
+    { label: "Placements", value: data.placements, icon: PartyPopper, color: "text-success", to: "/candidates" },
+  ];
+
+  return (
+    <div className="glass rounded-xl overflow-hidden border border-border">
+      <div className="p-4 border-b border-border">
+        <h2 className="font-display font-semibold">Recruiting Overview</h2>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
+        {metrics.map(m => (
+          <Link key={m.label} to={m.to} className="rounded-lg border border-border bg-card p-3 hover:bg-secondary/30 transition-colors">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-muted-foreground leading-tight">{m.label}</span>
+              <m.icon className={`w-3.5 h-3.5 shrink-0 ${m.color}`} />
+            </div>
+            <div className={`text-xl font-bold font-display ${m.color}`}>{m.value}</div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border border-t border-border">
+        {/* Today's calls */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <PhoneCall className="w-3.5 h-3.5" /> Today's Calls
+            </h3>
+            <Link to="/live" className="text-[11px] text-primary hover:underline">View all</Link>
+          </div>
+          {data.todaysCalls.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No recruiting calls scheduled today.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {data.todaysCalls.map(c => (
+                <div key={c.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Badge variant="outline" className="text-[9px] shrink-0">{CALL_TYPE_LABEL[c.call_type] ?? c.call_type}</Badge>
+                    <span className="truncate">{c.title ?? "Recruiting call"}</span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0">
+                    {c.scheduled_at ? format(new Date(c.scheduled_at), "h:mm a") : "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Upcoming interviews */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Video className="w-3.5 h-3.5" /> Upcoming Interviews
+            </h3>
+            <Link to="/interviews" className="text-[11px] text-primary hover:underline">View all</Link>
+          </div>
+          {data.upcomingInterviews.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No interviews scheduled in the next 7 days.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {data.upcomingInterviews.map(iv => (
+                <button
+                  key={iv.id}
+                  onClick={() => navigate(`/candidates/${iv.candidate_id}`)}
+                  className="flex items-center justify-between gap-2 text-xs w-full text-left hover:text-primary transition-colors"
+                >
+                  <span className="truncate">
+                    <span className="font-medium">{iv.candidate_name}</span>
+                    <span className="text-muted-foreground"> — {iv.job_title}</span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0">
+                    {iv.scheduled_at ? format(new Date(iv.scheduled_at), "MMM d, h:mm a") : "—"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -225,6 +459,10 @@ export default function DashboardHome() {
             </>
           )}
         </div>
+
+        {/* ── Recruiting Overview (only rendered when the team has
+             recruiting data — a pure-sales workspace sees nothing extra) ── */}
+        <RecruitingOverview />
 
         {/* ── Recent Calls ── */}
         <div className="glass rounded-xl overflow-hidden">
