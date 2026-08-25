@@ -586,22 +586,36 @@ function CandidateDetailPageInner() {
     }
   };
 
+  // Records that the invitation was sent. The candidate's email itself is
+  // sent by the recruiter's own mail client via mailto: (opened by
+  // ScheduleInterviewModal's sendInvitation, right before this runs) —
+  // Fixsense never sends recruiting emails server-side, so there is no
+  // edge function here. This just persists candidate_notified_at on the
+  // interviews row via the existing mark_interview_candidate_notified RPC.
   const notifyCandidateByEmail = async (interviewId: string) => {
     try {
-      const { data: notifyData, error: notifyErr } = await supabase.functions.invoke("send-interview-invitation", {
-        body: { interview_id: interviewId },
+      const { error } = await (supabase as any).rpc("mark_interview_candidate_notified", {
+        p_interview_id: interviewId,
+        p_success: true,
+        p_error: null,
       });
-      const notifyResult = notifyData as { error?: string } | null;
-      if (notifyErr || notifyResult?.error) {
-        const msg = notifyResult?.error ?? notifyErr?.message ?? "Could not email the candidate";
-        toast.warning(msg);
-      } else {
-        toast.success("Candidate notified by email");
-      }
+      if (error) throw error;
+      toast.success("Invitation recorded");
       load();
       loadPipelineDetail();
-    } catch {
-      toast.warning("Could not send the candidate email");
+    } catch (e: any) {
+      // Best-effort: record the failure but don't block the recruiter —
+      // the mailto has already opened by this point.
+      try {
+        await (supabase as any).rpc("mark_interview_candidate_notified", {
+          p_interview_id: interviewId,
+          p_success: false,
+          p_error: e?.message ?? "Failed to record invitation",
+        });
+      } catch { /* noop */ }
+      toast.warning("Invitation email opened, but we couldn't record it — you can resend from the pipeline card.");
+      load();
+      loadPipelineDetail();
     }
   };
 
@@ -1501,13 +1515,14 @@ function CandidateDetailPageInner() {
 // ─── Schedule interview modal ────────────────────────────────────────────────
 // Invite to Interview flow: date/time/timezone/instructions -> create a
 // native Fixsense Meeting -> get its unique URL -> show an editable
-// invitation preview -> "Send Invitation" opens a mailto with the
-// recipient/subject/body pre-filled AND persists the invitation by emailing
-// through the existing send-interview-invitation function. The interview,
-// meeting, and Fixsense-meeting linkage (Candidate -> Job -> Client ->
-// Interview -> Recruiter) are all already persisted by the time this step
-// is reached — sending the invitation is a follow-up action on top of an
-// already-saved interview, never a prerequisite for it.
+// invitation preview -> "Send Invitation" opens a mailto: with the
+// recipient/subject/body pre-filled (the recruiter's own mail client sends
+// it — Fixsense never sends recruiting email server-side) AND records the
+// invitation via mark_interview_candidate_notified. The interview, meeting,
+// and Fixsense-meeting linkage (Candidate -> Job -> Client -> Interview ->
+// Recruiter) are all already persisted by the time this step is reached —
+// sending the invitation is a follow-up action on top of an already-saved
+// interview, never a prerequisite for it.
 function ScheduleInterviewModal({
   onClose, onSubmit, onSendInvitation,
   candidateName, candidateEmail, jobTitle, companyName, recruiterName,
