@@ -62,6 +62,8 @@ const GoogleCalendarCallback = lazy(() => import("./pages/GoogleCalendarCallback
 const GuestJoin = lazy(() => import("@/pages/GuestJoin"));
 const ClipSharePage = lazy(() => import("@/pages/ClipSharePage"));
 const DealsPage = lazy(() => import("@/pages/DealsPage"));
+const CrmPage = lazy(() => import("@/pages/CrmPage"));
+const InterviewsPage = lazy(() => import("@/pages/InterviewsPage"));
 const Changelogpage = lazy(() => import("./pages/Changelogpage"));
 const InviteLanding = lazy(() => import("./pages/InviteLanding"));
 const DealDetailPage = lazy(() => import("./pages/DealDetailPage"));
@@ -300,6 +302,8 @@ function AppRoutes() {
             }
           />
 
+          {/* Legacy sales Deals UI — kept live until CRM is confirmed fully
+              functional in production. Do not remove/redirect early. */}
           <Route
             path="/deals"
             element={
@@ -316,6 +320,31 @@ function AppRoutes() {
               <ProtectedRoute>
                 <ErrorBoundary>
                   <DealDetailPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Recruitment CRM — client-centric view over recruiting_clients */}
+          <Route
+            path="/crm"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <CrmPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Team-wide interview agenda — per-candidate scheduling stays on
+              CandidateDetailPage; this is the cross-candidate overview. */}
+          <Route
+            path="/interviews"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <InterviewsPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }
