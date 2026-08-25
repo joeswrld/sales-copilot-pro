@@ -5,7 +5,8 @@ import {
   Loader2, Pencil, Save, X, BarChart3, Target, Sparkles, MessageSquare,
   Bot, ChevronRight, Calendar, FileText, Lightbulb, ShieldAlert, Video, Download,
   Smile, Meh, Frown, Zap, HelpCircle, Mail, RefreshCw, Copy, TrendingUp,
-  ThumbsUp, TrendingDown, GraduationCap,
+  ThumbsUp, TrendingDown, GraduationCap, User,
+  Building2, ThumbsDown, MinusCircle, ClipboardList, Edit3, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallDetail, useUpdateCall, useGenerateCallSummary } from "@/hooks/useCalls";
@@ -101,6 +102,156 @@ function normalizeQuestion(item: unknown): QuestionAsked {
   return {};
 }
 
+// ─── Recruiting call context ─────────────────────────────────────────────────
+// If this `calls` row is the one backing a recruiting call (via
+// recruiting_calls.linked_call_id), surface the full Candidate -> Job ->
+// Client -> Interview chain plus AI interview feedback / extraction status
+// right on this same Call Details page — reusing recruiting_calls,
+// interviews, interview_feedback, ai_extractions, candidate_jobs exactly as
+// they already exist. No new tables, no new RPCs. Writes go through the
+// existing confirm_interview_feedback / update_interview_feedback_fields /
+// confirm_candidate_ai_extraction RPCs only.
+interface RecruitingCallContext {
+  recruitingCallId: string;
+  callType: "candidate_screening" | "client_intake" | "interview" | "other";
+  extractionStatus: string;
+  candidate: { id: string; full_name: string; email: string | null } | null;
+  job: { id: string; title: string } | null;
+  client: { id: string; name: string } | null;
+  candidateJobId: string | null;
+  interview: {
+    id: string;
+    status: string;
+    interview_stage: string | null;
+    scheduled_at: string | null;
+    occurred_at: string | null;
+  } | null;
+  feedback: {
+    id: string;
+    status: string;
+    overall_outcome: string | null;
+    technical_strengths: string[];
+    weaknesses: string[];
+    skills_demonstrated: string[];
+    concerns: string[];
+    candidate_questions: string[];
+    sentiment: string | null;
+    recommended_next_step: string | null;
+    follow_up_actions: string[];
+    supporting_evidence: string | null;
+  } | null;
+  pendingExtractionCount: number;
+  confirmedExtractionCount: number;
+}
+
+function useRecruitingCallContext(callId: string | undefined) {
+  return useQuery({
+    queryKey: ["recruiting-call-context", callId],
+    queryFn: async (): Promise<RecruitingCallContext | null> => {
+      if (!callId) return null;
+
+      const { data: rc, error: rcErr } = await (supabase as any)
+        .from("recruiting_calls")
+        .select("id, call_type, extraction_status, candidate_id, client_id, job_id, candidate_job_id")
+        .eq("linked_call_id", callId)
+        .maybeSingle();
+      if (rcErr) throw rcErr;
+      if (!rc) return null;
+
+      const [candidateRes, jobRes, clientRes, interviewRes, extractionsRes] = await Promise.all([
+        rc.candidate_id
+          ? (supabase as any).from("candidates").select("id, full_name, email").eq("id", rc.candidate_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        rc.job_id
+          ? (supabase as any).from("jobs").select("id, title").eq("id", rc.job_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        rc.client_id
+          ? (supabase as any).from("recruiting_clients").select("id, name").eq("id", rc.client_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        (supabase as any).from("interviews").select("id, status, interview_stage, scheduled_at, occurred_at").eq("call_id", rc.id).maybeSingle(),
+        (supabase as any).from("ai_extractions").select("status").eq("source_call_id", rc.id),
+      ]);
+
+      // candidate_job_id may not be set directly on recruiting_calls for
+      // interview-type calls yet (it's only guaranteed on the interviews
+      // row) — fall back there, and derive job/client from it if this
+      // recruiting_calls row didn't carry job_id/client_id directly.
+      let candidateJobId: string | null = rc.candidate_job_id ?? null;
+      let job = jobRes.data as { id: string; title: string } | null;
+      let client = clientRes.data as { id: string; name: string } | null;
+      let candidate = candidateRes.data as { id: string; full_name: string; email: string | null } | null;
+
+      if (interviewRes.data?.candidate_job_id) {
+        candidateJobId = interviewRes.data.candidate_job_id;
+      }
+      if (candidateJobId && (!job || !client || !candidate)) {
+        const { data: cj } = await (supabase as any)
+          .from("candidate_jobs")
+          .select("id, candidate:candidate_id(id, full_name, email), job:job_id(id, title, client:client_id(id, name))")
+          .eq("id", candidateJobId)
+          .maybeSingle();
+        if (cj) {
+          candidate = candidate ?? cj.candidate;
+          job = job ?? (cj.job ? { id: cj.job.id, title: cj.job.title } : null);
+          client = client ?? cj.job?.client ?? null;
+        }
+      }
+
+      let feedback: RecruitingCallContext["feedback"] = null;
+      if (interviewRes.data?.id) {
+        const { data: fb } = await (supabase as any)
+          .from("interview_feedback")
+          .select("id, status, overall_outcome, technical_strengths, weaknesses, skills_demonstrated, concerns, candidate_questions, sentiment, recommended_next_step, follow_up_actions, supporting_evidence")
+          .eq("interview_id", interviewRes.data.id)
+          .maybeSingle();
+        feedback = fb ?? null;
+      }
+
+      const extractions = (extractionsRes.data ?? []) as { status: string }[];
+
+      return {
+        recruitingCallId: rc.id,
+        callType: rc.call_type,
+        extractionStatus: rc.extraction_status,
+        candidate,
+        job,
+        client,
+        candidateJobId,
+        interview: interviewRes.data
+          ? {
+              id: interviewRes.data.id,
+              status: interviewRes.data.status,
+              interview_stage: interviewRes.data.interview_stage,
+              scheduled_at: interviewRes.data.scheduled_at,
+              occurred_at: interviewRes.data.occurred_at,
+            }
+          : null,
+        feedback,
+        pendingExtractionCount: extractions.filter(e => e.status === "pending_review").length,
+        confirmedExtractionCount: extractions.filter(e => e.status === "confirmed" || e.status === "edited").length,
+      };
+    },
+    enabled: !!callId,
+    staleTime: 15_000,
+  });
+}
+
+const CALL_TYPE_LABELS: Record<string, string> = {
+  candidate_screening: "Candidate Screening",
+  client_intake: "Client Intake",
+  interview: "Interview",
+  other: "Recruiting Call",
+};
+
+function extractionStatusDisplay(status: string) {
+  switch (status) {
+    case "completed": return { label: "AI extraction complete", color: "text-green-400" };
+    case "processing": return { label: "AI extracting…", color: "text-primary" };
+    case "failed": return { label: "AI extraction failed", color: "text-red-400" };
+    default: return { label: "Extraction pending", color: "text-muted-foreground" };
+  }
+}
+
 export default function CallDetail() {
   const { id } = useParams();
 
@@ -109,6 +260,7 @@ export default function CallDetail() {
   const { data: callClips = [] } = useCallClips(id ?? null);
   const updateCall = useUpdateCall();
   const generateSummary = useGenerateCallSummary();
+  const { data: recruitingContext, isLoading: recruitingContextLoading, refetch: refetchRecruitingContext } = useRecruitingCallContext(id);
 
   // The call is already linked to a deal (calls.deal_id) the moment it's
   // created — this just surfaces that link on the page. Re-fetches whenever
@@ -139,6 +291,86 @@ export default function CallDetail() {
 
   const [editing, setEditing]   = useState(false);
   const [editName, setEditName] = useState("");
+
+  // ── Recruiting interview feedback: edit + confirm ──────────────────────
+  const [editingFeedback, setEditingFeedback] = useState(false);
+  const [feedbackDraft, setFeedbackDraft] = useState<{
+    technical_strengths: string; weaknesses: string; skills_demonstrated: string;
+    concerns: string; candidate_questions: string; follow_up_actions: string;
+    sentiment: string; recommended_next_step: string; supporting_evidence: string;
+  } | null>(null);
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [confirmingFeedback, setConfirmingFeedback] = useState(false);
+
+  const toLines = (arr: string[] | null | undefined) => (arr ?? []).join("\n");
+  const fromLines = (text: string) => text.split("\n").map(s => s.trim()).filter(Boolean);
+
+  const startEditingFeedback = () => {
+    if (!recruitingContext?.feedback) return;
+    const fb = recruitingContext.feedback;
+    setFeedbackDraft({
+      technical_strengths: toLines(fb.technical_strengths),
+      weaknesses: toLines(fb.weaknesses),
+      skills_demonstrated: toLines(fb.skills_demonstrated),
+      concerns: toLines(fb.concerns),
+      candidate_questions: toLines(fb.candidate_questions),
+      follow_up_actions: toLines(fb.follow_up_actions),
+      sentiment: fb.sentiment ?? "",
+      recommended_next_step: fb.recommended_next_step ?? "",
+      supporting_evidence: fb.supporting_evidence ?? "",
+    });
+    setEditingFeedback(true);
+  };
+
+  const saveFeedbackEdits = async () => {
+    if (!recruitingContext?.feedback || !feedbackDraft) return;
+    setSavingFeedback(true);
+    try {
+      const { error } = await (supabase as any).rpc("update_interview_feedback_fields", {
+        p_interview_feedback_id: recruitingContext.feedback.id,
+        p_technical_strengths: fromLines(feedbackDraft.technical_strengths),
+        p_weaknesses: fromLines(feedbackDraft.weaknesses),
+        p_skills_demonstrated: fromLines(feedbackDraft.skills_demonstrated),
+        p_concerns: fromLines(feedbackDraft.concerns),
+        p_candidate_questions: fromLines(feedbackDraft.candidate_questions),
+        p_sentiment: feedbackDraft.sentiment || null,
+        p_recommended_next_step: feedbackDraft.recommended_next_step || null,
+        p_follow_up_actions: fromLines(feedbackDraft.follow_up_actions),
+        p_supporting_evidence: feedbackDraft.supporting_evidence || null,
+      });
+      if (error) throw error;
+      toast.success("Interview feedback updated");
+      setEditingFeedback(false);
+      refetchRecruitingContext();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update feedback");
+    } finally {
+      setSavingFeedback(false);
+    }
+  };
+
+  // Confirming applies whatever is currently saved on the row (including
+  // any edits just made via saveFeedbackEdits, which must complete first)
+  // and — via the existing tl_interview_feedback_confirmed trigger — writes
+  // it straight onto the candidate's timeline. Nothing here writes the
+  // timeline directly.
+  const confirmFeedbackOnCall = async (outcome: string) => {
+    if (!recruitingContext?.feedback) return;
+    setConfirmingFeedback(true);
+    try {
+      const { error } = await (supabase as any).rpc("confirm_interview_feedback", {
+        p_interview_feedback_id: recruitingContext.feedback.id,
+        p_overall_outcome: outcome,
+      });
+      if (error) throw error;
+      toast.success("Feedback confirmed — added to candidate timeline");
+      refetchRecruitingContext();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to confirm feedback");
+    } finally {
+      setConfirmingFeedback(false);
+    }
+  };
 
   const callData    = call.data;
   const summaryData = summary.data;
@@ -327,7 +559,7 @@ export default function CallDetail() {
           <Badge className={statusColor(callData.status)}>{callData.status || "Unknown"}</Badge>
         </div>
 
-        {/* ── Linked deal banner ── */}
+        {/* ── Linked deal banner (sales calls) ── */}
         {linkedDeal ? (
           <Link
             to={`/deals/${linkedDeal.id}`}
@@ -341,6 +573,62 @@ export default function CallDetail() {
             )}
             <ChevronRight className="w-3.5 h-3.5 ml-auto text-muted-foreground shrink-0" />
           </Link>
+        ) : recruitingContext ? (
+          /* ── Recruiting call banner: Candidate -> Job -> Client -> call type ── */
+          <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wide border-primary/30 text-primary">
+                {CALL_TYPE_LABELS[recruitingContext.callType] ?? recruitingContext.callType}
+              </Badge>
+              {recruitingContext.candidate && (
+                <Link to={`/candidates/${recruitingContext.candidate.id}`} className="flex items-center gap-1.5 font-medium hover:underline">
+                  <User className="w-3.5 h-3.5 text-primary shrink-0" />
+                  {recruitingContext.candidate.full_name}
+                </Link>
+              )}
+              {recruitingContext.job && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                    {recruitingContext.job.title}
+                  </span>
+                </>
+              )}
+              {recruitingContext.client && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    {recruitingContext.client.name}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+              {recruitingContext.interview && (
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3" />
+                  {recruitingContext.interview.status === "scheduled"
+                    ? `Scheduled ${recruitingContext.interview.scheduled_at ? format(new Date(recruitingContext.interview.scheduled_at), "MMM d, yyyy · h:mm a") : ""}`
+                    : recruitingContext.interview.status === "completed"
+                    ? `Completed ${recruitingContext.interview.occurred_at ? format(new Date(recruitingContext.interview.occurred_at), "MMM d, yyyy") : ""}`
+                    : recruitingContext.interview.status}
+                  {recruitingContext.interview.interview_stage ? ` · ${recruitingContext.interview.interview_stage}` : ""}
+                </span>
+              )}
+              <span className={`flex items-center gap-1.5 ${extractionStatusDisplay(recruitingContext.extractionStatus).color}`}>
+                <Bot className="w-3 h-3" />
+                {extractionStatusDisplay(recruitingContext.extractionStatus).label}
+                {recruitingContext.pendingExtractionCount > 0 && ` (${recruitingContext.pendingExtractionCount} pending review)`}
+              </span>
+              {recruitingContext.candidateJobId && (
+                <Link to={`/candidates/${recruitingContext.candidate?.id ?? ""}`} className="text-primary hover:underline ml-auto">
+                  View pipeline →
+                </Link>
+              )}
+            </div>
+          </div>
         ) : dealId === null ? (
           <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3.5 py-2.5 text-sm">
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
@@ -753,6 +1041,192 @@ export default function CallDetail() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Interview Feedback (recruiting calls) ── */}
+        {/* Reads/writes public.interview_feedback only via
+            update_interview_feedback_fields / confirm_interview_feedback —
+            confirming here fires the existing tl_interview_feedback_confirmed
+            trigger, which writes straight onto the candidate's timeline. */}
+        {recruitingContext?.feedback && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-primary" /> Interview Feedback
+              </h3>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] ${
+                    recruitingContext.feedback.status === "confirmed"
+                      ? "border-green-500/30 text-green-400"
+                      : "border-indigo-500/30 text-indigo-400"
+                  }`}
+                >
+                  {recruitingContext.feedback.status === "confirmed" ? "Confirmed" : recruitingContext.feedback.status === "edited" ? "Edited — pending confirmation" : "Pending review"}
+                </Badge>
+                {recruitingContext.feedback.status !== "confirmed" && !editingFeedback && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={startEditingFeedback}>
+                    <Edit3 className="w-3 h-3" /> Edit
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {!editingFeedback ? (
+              <>
+                {recruitingContext.feedback.sentiment && (
+                  <p className="text-xs text-muted-foreground"><b>Sentiment:</b> {recruitingContext.feedback.sentiment}</p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {!!recruitingContext.feedback.technical_strengths?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-green-400">
+                        <ThumbsUp className="w-3.5 h-3.5" /> Strengths
+                      </p>
+                      <ul className="space-y-1">
+                        {recruitingContext.feedback.technical_strengths.map((s, i) => (
+                          <li key={i} className="text-xs text-muted-foreground leading-relaxed">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!!recruitingContext.feedback.weaknesses?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-amber-400">
+                        <ThumbsDown className="w-3.5 h-3.5" /> Weaknesses
+                      </p>
+                      <ul className="space-y-1">
+                        {recruitingContext.feedback.weaknesses.map((s, i) => (
+                          <li key={i} className="text-xs text-muted-foreground leading-relaxed">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!!recruitingContext.feedback.skills_demonstrated?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-primary">
+                        <Sparkles className="w-3.5 h-3.5" /> Skills Demonstrated
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {recruitingContext.feedback.skills_demonstrated.map((s, i) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] font-normal">{s}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!!recruitingContext.feedback.concerns?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-red-400">
+                        <MinusCircle className="w-3.5 h-3.5" /> Concerns
+                      </p>
+                      <ul className="space-y-1">
+                        {recruitingContext.feedback.concerns.map((s, i) => (
+                          <li key={i} className="text-xs text-muted-foreground leading-relaxed">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!!recruitingContext.feedback.candidate_questions?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-primary">
+                        <HelpCircle className="w-3.5 h-3.5" /> Candidate Questions
+                      </p>
+                      <ul className="space-y-1">
+                        {recruitingContext.feedback.candidate_questions.map((s, i) => (
+                          <li key={i} className="text-xs text-muted-foreground leading-relaxed">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!!recruitingContext.feedback.follow_up_actions?.length && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium flex items-center gap-1.5 text-primary">
+                        <Target className="w-3.5 h-3.5" /> Follow-ups
+                      </p>
+                      <ul className="space-y-1">
+                        {recruitingContext.feedback.follow_up_actions.map((s, i) => (
+                          <li key={i} className="text-xs text-muted-foreground leading-relaxed">• {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {recruitingContext.feedback.recommended_next_step && (
+                  <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+                    <b>Recommended next step:</b> {recruitingContext.feedback.recommended_next_step}
+                  </p>
+                )}
+                {recruitingContext.feedback.status !== "confirmed" && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
+                    <span className="text-xs text-muted-foreground mr-1">Confirm outcome:</span>
+                    {["positive", "mixed", "negative"].map(outcome => (
+                      <Button
+                        key={outcome}
+                        size="sm"
+                        variant="outline"
+                        className={`h-7 text-xs gap-1.5 capitalize ${
+                          outcome === "positive" ? "border-green-500/30 text-green-400 hover:bg-green-500/10"
+                          : outcome === "negative" ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
+                          : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                        }`}
+                        onClick={() => confirmFeedbackOnCall(outcome)}
+                        disabled={confirmingFeedback}
+                      >
+                        {confirmingFeedback ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        {outcome}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : feedbackDraft && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-muted-foreground">One item per line.</p>
+                {([
+                  ["technical_strengths", "Strengths"],
+                  ["weaknesses", "Weaknesses"],
+                  ["skills_demonstrated", "Skills Demonstrated"],
+                  ["concerns", "Concerns"],
+                  ["candidate_questions", "Candidate Questions"],
+                  ["follow_up_actions", "Follow-ups"],
+                ] as const).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">{label}</label>
+                    <textarea
+                      value={feedbackDraft[key]}
+                      onChange={e => setFeedbackDraft(d => d ? { ...d, [key]: e.target.value } : d)}
+                      className="w-full text-xs p-2 rounded-lg border border-border bg-background min-h-[56px] resize-y"
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Sentiment</label>
+                  <Input
+                    value={feedbackDraft.sentiment}
+                    onChange={e => setFeedbackDraft(d => d ? { ...d, sentiment: e.target.value } : d)}
+                    className="text-xs h-8"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Recommended next step</label>
+                  <Input
+                    value={feedbackDraft.recommended_next_step}
+                    onChange={e => setFeedbackDraft(d => d ? { ...d, recommended_next_step: e.target.value } : d)}
+                    className="text-xs h-8"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button size="sm" className="h-7 text-xs gap-1.5" onClick={saveFeedbackEdits} disabled={savingFeedback}>
+                    {savingFeedback ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5" onClick={() => setEditingFeedback(false)} disabled={savingFeedback}>
+                    <X className="w-3 h-3" /> Cancel
+                  </Button>
+                </div>
               </div>
             )}
           </div>
