@@ -19,6 +19,8 @@ import { useActionStats } from "@/hooks/useCallActions";
 import { format, subDays, startOfDay } from "date-fns";
 import { usePlanEnforcement } from "@/contexts/PlanEnforcementContext";
 import { FeatureGate, LockedCard, PlanBanner } from "@/components/plan/PlanGate";
+import RecruitmentAnalyticsTab from "@/components/RecruitmentAnalyticsTab";
+import { Briefcase } from "lucide-react";
 
 const COLORS = [
   "hsl(174, 72%, 50%)",
@@ -32,7 +34,7 @@ export default function GatedAnalytics() {
   const { data: calls, isLoading } = useCalls();
   const { data: actionStats } = useActionStats();
   const { hasFeature } = usePlanEnforcement();
-  const [activeTab, setActiveTab] = useState<"overview" | "reps" | "trends">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "reps" | "trends" | "recruitment">("recruitment");
 
   const { dailyData, sentimentTrend, statusBreakdown, repData, trendData } = useMemo(() => {
     if (!calls || calls.length === 0) {
@@ -127,7 +129,8 @@ export default function GatedAnalytics() {
   const axisProps = { fill: "hsl(215, 20%, 55%)", fontSize: 12 };
 
   const TABS = [
-    { id: "overview" as const, label: "Overview", icon: BarChart3, locked: false },
+    { id: "recruitment" as const, label: "Recruitment", icon: Briefcase, locked: false },
+    { id: "overview" as const, label: "Sales Overview", icon: BarChart3, locked: false },
     { id: "reps" as const, label: "Rep Performance", icon: Award, locked: !hasLeaderboards },
     { id: "trends" as const, label: "Trends", icon: TrendingUp, locked: !hasAnalytics },
   ];
@@ -174,11 +177,14 @@ export default function GatedAnalytics() {
           ))}
         </div>
 
-        {noData ? (
+        {/* RECRUITMENT TAB — independent of sales call data, always rendered */}
+        {activeTab === "recruitment" && <RecruitmentAnalyticsTab />}
+
+        {activeTab !== "recruitment" && noData ? (
           <div className="glass rounded-xl p-10 text-center">
             <p className="text-muted-foreground text-sm">No data yet. Complete some calls to see your analytics.</p>
           </div>
-        ) : (
+        ) : activeTab !== "recruitment" && (
           <>
             {/* OVERVIEW TAB — available to all */}
             {activeTab === "overview" && (
