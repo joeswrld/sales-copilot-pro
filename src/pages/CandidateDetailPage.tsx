@@ -1592,8 +1592,11 @@ function ScheduleInterviewModal({
     return { subject, body };
   };
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const submit = async () => {
     setSaving(true);
+    setSubmitError(null);
     try {
       const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
       const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
@@ -1603,6 +1606,11 @@ function ScheduleInterviewModal({
         const { subject, body } = buildInvitation(created.meetingLink, iso);
         setInvitationSubject(subject);
         setInvitationBody(body);
+      } else {
+        // onSubmit already toasted the specific error — this inline message
+        // is a backstop for anyone who missed the toast, so the modal never
+        // just silently sits there with no explanation.
+        setSubmitError("Couldn't schedule the interview. Check the toast notification for details, then try again.");
       }
     } finally {
       setSaving(false);
@@ -1610,18 +1618,49 @@ function ScheduleInterviewModal({
   };
 
   const sendInvitation = async () => {
-    if (!result) return;
+    if (!result || !candidateEmail) return;
     setSending(true);
     try {
-      // mailto opens with the (possibly recruiter-edited) recipient/subject/body.
-      const mailto = `mailto:${encodeURIComponent(candidateEmail ?? "")}?subject=${encodeURIComponent(invitationSubject)}&body=${encodeURIComponent(invitationBody)}`;
-      window.location.href = mailto;
-      // Records the invitation (mark_interview_candidate_notified) and
-      // marks the interview/candidate as notified.
+      // Record first, THEN open the mail client. mailto navigation can
+      // blur/backgrounded the tab (or trigger an OS app-picker) before an
+      // awaited call after it resolves on some browsers — recording first
+      // guarantees candidate_notified_at is set even if the mail client
+      // hands off control immediately and this component never gets to
+      // finish its own await.
       await onSendInvitation(result.interviewId);
+
+      // Per RFC 6068, only the body/subject values need percent-encoding —
+      // encoding the recipient address itself (double-encoding "@") makes
+      // some mail clients (notably Outlook desktop) fail to parse the To:
+      // field and silently drop it, which looks identical to "nothing
+      // happened" from the recruiter's side.
+      const mailto = `mailto:${candidateEmail}?subject=${encodeURIComponent(invitationSubject)}&body=${encodeURIComponent(invitationBody)}`;
+      const opened = window.open(mailto, "_self");
+      // Some browsers/webviews have no registered mail handler and
+      // window.open silently no-ops instead of throwing — give the
+      // recruiter a visible way forward instead of a dead button.
+      if (!opened) {
+        toast.info("Couldn't open your mail app automatically — invitation copied instead. Paste it into a new email.", { duration: 8000 });
+        try {
+          await navigator.clipboard.writeText(`To: ${candidateEmail}\nSubject: ${invitationSubject}\n\n${invitationBody}`);
+        } catch { /* clipboard unavailable — the toast already told them to copy manually from the fields below */ }
+      } else {
+        toast.success("Invitation recorded — finish sending it in your mail app.");
+      }
       onClose();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to record the invitation. The email draft below is unchanged — you can still send it manually.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const copyInvitationText = async () => {
+    try {
+      await navigator.clipboard.writeText(`To: ${candidateEmail ?? ""}\nSubject: ${invitationSubject}\n\n${invitationBody}`);
+      toast.success("Copied — paste into any email client");
+    } catch {
+      toast.error("Couldn't copy — select and copy the text manually");
     }
   };
 
@@ -1663,6 +1702,12 @@ function ScheduleInterviewModal({
             <label style={labelStyle}>Message to candidate (optional)</label>
             <textarea value={messageToCandidate} onChange={e => setMessageToCandidate(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 60, resize: "vertical" }} placeholder="A personal note included in the invitation email" />
 
+            {submitError && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 11px", background: "rgba(178,58,58,0.08)", borderRadius: 8, marginBottom: 12, fontSize: 12, color: "#B23A3A", lineHeight: 1.5 }}>
+                {submitError}
+              </div>
+            )}
+
             <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               {saving ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Creating Fixsense Meeting…</>) : "Create Meeting & Continue"}
             </button>
@@ -1685,19 +1730,34 @@ function ScheduleInterviewModal({
               {candidateEmail ?? "No email on file — add one to the candidate record before sending"}
             </div>
 
+            {!candidateEmail && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 11px", background: "rgba(178,58,58,0.08)", borderRadius: 8, marginBottom: 10, fontSize: 12, color: "#B23A3A", lineHeight: 1.5 }}>
+                The meeting was created and the interview is scheduled — but there's no email on file for this candidate, so the invitation can't be sent yet. Add an email to their record, or copy the text below to send it another way.
+              </div>
+            )}
+
             <label style={labelStyle}>Subject (editable)</label>
             <input value={invitationSubject} onChange={e => setInvitationSubject(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
 
             <label style={labelStyle}>Invitation (editable)</label>
             <textarea value={invitationBody} onChange={e => setInvitationBody(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 220, resize: "vertical", fontFamily: "'Inter', sans-serif", lineHeight: 1.5 }} />
 
-            <button
-              onClick={sendInvitation}
-              disabled={sending || !candidateEmail}
-              style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: (sending || !candidateEmail) ? "default" : "pointer", opacity: (sending || !candidateEmail) ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-            >
-              {sending ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Sending…</>) : (<><Send style={{ width: 14, height: 14 }} /> Send Invitation</>)}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={sendInvitation}
+                disabled={sending || !candidateEmail}
+                style={{ flex: 1, padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: (sending || !candidateEmail) ? "default" : "pointer", opacity: (sending || !candidateEmail) ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+              >
+                {sending ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Sending…</>) : (<><Send style={{ width: 14, height: 14 }} /> Send Invitation</>)}
+              </button>
+              <button
+                onClick={copyInvitationText}
+                title="Copy invitation text"
+                style={{ padding: "12px 14px", background: "transparent", border: "1px solid rgba(23,23,15,0.15)", borderRadius: 10, color: "#17170F", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <Copy style={{ width: 14, height: 14 }} />
+              </button>
+            </div>
           </>
         )}
       </div>
