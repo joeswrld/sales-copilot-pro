@@ -23,6 +23,8 @@ import {
   Loader2, Filter, X, DollarSign, Briefcase, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { MatchExplanation, scoreColor, scoreBg } from "@/lib/matchExplanation";
+import { Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,7 @@ interface PipelineRow {
   pipeline_stage: string;
   status: string;
   match_score: number | null;
+  match_explanation: MatchExplanation | null;
   updated_at: string;
   candidate: { full_name: string; candidate_current_role: string | null } | null;
   job: { title: string; client_id: string | null } | null;
@@ -190,30 +193,58 @@ function RejectionModal({ row, onClose, onSubmit }: {
 function PipelineCard({ row, draggable, onDragStart, onClick }: {
   row: PipelineRow; draggable: boolean; onDragStart: (e: React.DragEvent) => void; onClick: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const explanation = row.match_explanation;
+
   return (
     <div
       draggable={draggable}
       onDragStart={onDragStart}
-      onClick={onClick}
       style={{
         background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 10,
-        padding: "10px 12px", marginBottom: 8, cursor: "pointer", fontFamily: "'Inter', sans-serif",
+        padding: "10px 12px", marginBottom: 8, fontFamily: "'Inter', sans-serif",
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#17170F", marginBottom: 3 }}>
-        {row.candidate?.full_name ?? "Unknown candidate"}
-      </div>
-      <div style={{ fontSize: 11, color: "rgba(23,23,15,0.5)", display: "flex", alignItems: "center", gap: 4, marginBottom: row.match_score !== null ? 6 : 0 }}>
-        <Briefcase style={{ width: 10, height: 10 }} />
-        {row.job?.title ?? "Unknown job"}
+      <div onClick={onClick} style={{ cursor: "pointer" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#17170F", marginBottom: 3 }}>
+          {row.candidate?.full_name ?? "Unknown candidate"}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(23,23,15,0.5)", display: "flex", alignItems: "center", gap: 4, marginBottom: row.match_score !== null ? 6 : 0 }}>
+          <Briefcase style={{ width: 10, height: 10 }} />
+          {row.job?.title ?? "Unknown job"}
+        </div>
       </div>
       {row.match_score !== null && (
-        <div style={{
-          display: "inline-block", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6,
-          background: row.match_score >= 70 ? "rgba(34,197,94,0.12)" : "rgba(251,191,36,0.15)",
-          color: row.match_score >= 70 ? "#16a34a" : "#b45309",
-        }}>
-          {row.match_score}% match
+        <div>
+          <div
+            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6,
+              background: scoreBg(row.match_score), color: scoreColor(row.match_score),
+              cursor: explanation ? "pointer" : "default", width: "fit-content",
+            }}
+          >
+            {row.match_score}% match
+            {explanation && (expanded ? <ChevronUp style={{ width: 10, height: 10 }} /> : <ChevronDown style={{ width: 10, height: 10 }} />)}
+          </div>
+          {expanded && explanation && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ marginTop: 8, padding: "8px 10px", background: "rgba(23,23,15,0.03)", borderRadius: 8, fontSize: 11, color: "rgba(23,23,15,0.75)", lineHeight: 1.5 }}
+            >
+              {explanation.overall_recommendation && (
+                <div style={{ marginBottom: explanation.potential_concerns?.length ? 6 : 0 }}>
+                  <Sparkles style={{ width: 10, height: 10, display: "inline", marginRight: 4, verticalAlign: "-1px", color: "#7c3aed" }} />
+                  {explanation.overall_recommendation}
+                </div>
+              )}
+              {explanation.potential_concerns && explanation.potential_concerns.length > 0 && (
+                <div style={{ color: "#b45309" }}>
+                  ⚠ {explanation.potential_concerns.join(" · ")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -293,7 +324,7 @@ function PipelinePageInner() {
       const [cjRes, jobsRes] = await Promise.all([
         (supabase as any)
           .from("candidate_jobs")
-          .select("id, candidate_id, job_id, pipeline_stage, status, match_score, updated_at, candidate:candidates(full_name, candidate_current_role), job:jobs(title, client_id)")
+          .select("id, candidate_id, job_id, pipeline_stage, status, match_score, match_explanation, updated_at, candidate:candidates(full_name, candidate_current_role), job:jobs(title, client_id)")
           .eq("team_id", teamId)
           .order("updated_at", { ascending: false }),
         (supabase as any).from("jobs").select("id, title").eq("team_id", teamId).order("created_at", { ascending: false }),
@@ -435,6 +466,19 @@ function PipelinePageInner() {
                 <div key={r.id} onClick={() => openCandidate(r)} style={{ background: "#fff", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 12, padding: 14 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "#17170F" }}>{r.candidate?.full_name}</div>
                   <div style={{ fontSize: 12, color: "rgba(23,23,15,0.5)", marginTop: 3 }}>{r.job?.title}</div>
+                  {r.match_score !== null && (
+                    <div style={{
+                      display: "inline-block", marginTop: 8, fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
+                      background: scoreBg(r.match_score), color: scoreColor(r.match_score),
+                    }}>
+                      {r.match_score}% match
+                    </div>
+                  )}
+                  {r.match_explanation?.overall_recommendation && (
+                    <div style={{ fontSize: 11.5, color: "rgba(23,23,15,0.65)", marginTop: 6, lineHeight: 1.5 }}>
+                      {r.match_explanation.overall_recommendation}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                     {STAGES.filter(s => s.key !== r.pipeline_stage).slice(0, 4).map(s => (
                       <button
