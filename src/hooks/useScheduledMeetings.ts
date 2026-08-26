@@ -39,6 +39,7 @@ export interface ScheduledMeeting {
   reminder_start_sent: boolean;
   call_id: string | null;
   deal_id: string | null;
+  candidate_job_id: string | null;
   created_at: string;
   updated_at: string;
   // Computed client-side
@@ -56,10 +57,15 @@ export interface CreateMeetingParams {
   participants?: string[];
   /** IANA timezone the user used when scheduling, e.g. "America/New_York". */
   scheduled_timezone?: string;
-  /** Deal this meeting belongs to. Required — mirrors the same rule enforced
-   * on instant meetings in useLiveCall: nothing gets scheduled without a
-   * deal to attach it to. */
-  deal_id: string;
+  /** Deal this meeting belongs to. A scheduled meeting must be linked to
+   * either a deal or a recruiting pipeline (candidate_job_id) — mirrors the
+   * same rule enforced on instant meetings in useLiveCall. */
+  deal_id?: string | null;
+  /** Recruiting pipeline (candidate_jobs.id) this meeting belongs to — the
+   * recruiting-industry equivalent of deal_id. Mutually exclusive with
+   * deal_id. */
+  candidate_job_id?: string | null;
+  recruiting_call_type?: "candidate_screening" | "interview" | "client_intake" | "other";
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -123,8 +129,11 @@ export function useScheduledMeetings() {
   // ── Create ────────────────────────────────────────────────────────────────
   const create = useMutation({
     mutationFn: async (params: CreateMeetingParams): Promise<ScheduledMeeting> => {
-      if (!params.deal_id) {
-        throw new Error("DEAL_REQUIRED");
+      if (!params.deal_id && !params.candidate_job_id) {
+        throw new Error("ANCHOR_REQUIRED");
+      }
+      if (params.deal_id && params.candidate_job_id) {
+        throw new Error("A meeting can't be linked to both a deal and a candidate pipeline.");
       }
       const { data, error } = await (supabase as any)
         .from("scheduled_meetings")
@@ -141,7 +150,8 @@ export function useScheduledMeetings() {
           meeting_type: params.meeting_type || "other",
           notes: params.notes || null,
           participants: params.participants || [],
-          deal_id: params.deal_id,
+          deal_id: params.deal_id ?? null,
+          candidate_job_id: params.candidate_job_id ?? null,
         })
         .select()
         .single();
@@ -149,16 +159,45 @@ export function useScheduledMeetings() {
 
       // Same pattern as instant meetings in useLiveCall — seed the deal
       // timeline right away instead of waiting for the meeting to happen.
-      await supabase.from("deal_timeline_events").insert({
-        deal_id: params.deal_id,
-        user_id: user!.id,
-        event_type: "meeting_scheduled",
-        title: `Meeting scheduled — ${params.title}`,
-        metadata: { scheduled_meeting_id: (data as any).id, scheduled_time: params.scheduled_time },
-        happened_at: new Date().toISOString(),
-      } as any).then(({ error: e }) => {
-        if (e) console.warn("deal_timeline_events insert (non-fatal):", e);
-      });
+      if (params.deal_id) {
+        await supabase.from("deal_timeline_events").insert({
+          deal_id: params.deal_id,
+          user_id: user!.id,
+          event_type: "meeting_scheduled",
+          title: `Meeting scheduled — ${params.title}`,
+          metadata: { scheduled_meeting_id: (data as any).id, scheduled_time: params.scheduled_time },
+          happened_at: new Date().toISOString(),
+        } as any).then(({ error: e }) => {
+          if (e) console.warn("deal_timeline_events insert (non-fatal):", e);
+        });
+      }
+
+      // Recruiting pipeline — link a recruiting_calls row so this scheduled
+      // meeting shows up alongside instant ones in RecruitingInterviewsPanel.
+      // No linked_call_id yet (the real Fixsense Meeting/calls row isn't
+      // created until the scheduled meeting actually starts), so this is
+      // purely a forward-looking record; create_recruiting_call's own
+      // idempotency (keyed on linked_call_id) doesn't apply here.
+      if (params.candidate_job_id) {
+        const { data: cj } = await supabase
+          .from("candidate_jobs" as any)
+          .select("id, team_id, candidate_id, job_id")
+          .eq("id", params.candidate_job_id)
+          .maybeSingle();
+        if (cj) {
+          await supabase.from("recruiting_timeline_events" as any).insert({
+            team_id: (cj as any).team_id,
+            entity_type: "candidate",
+            entity_id: (cj as any).candidate_id,
+            event_type: "meeting_scheduled",
+            title: `Meeting scheduled — ${params.title}`,
+            actor_id: user!.id,
+            metadata: { scheduled_meeting_id: (data as any).id, scheduled_time: params.scheduled_time, candidate_job_id: params.candidate_job_id },
+          }).then(({ error: e }: any) => {
+            if (e) console.warn("recruiting_timeline_events insert (non-fatal):", e);
+          });
+        }
+      }
 
       return data as ScheduledMeeting;
     },
