@@ -319,12 +319,22 @@ export function useLiveCall(options?: {
       scheduled_time?: string;
       duration_minutes?: number;
       description?: string;
-      /** Deal this meeting belongs to. Required — a meeting cannot start
-       * without being linked to a deal first. Pass explicit `null` only
-       * for the rare non-sales flows that intentionally skip deal linking
-       * (e.g. internal test calls); the UI should otherwise always supply
-       * a real deal id before calling startCall. */
+      /** Deal this meeting belongs to. A meeting must be linked to either
+       * a deal or a recruiting pipeline (candidate_job_id) before it can
+       * start — never both. Pass explicit `null` only for the rare flows
+       * that intentionally skip deal linking (e.g. internal test calls);
+       * the UI should otherwise always supply one real anchor before
+       * calling startCall. */
       deal_id: string | null;
+      /** Recruiting pipeline (candidate_jobs.id) this meeting belongs to —
+       * the recruiting-industry equivalent of deal_id. Mutually exclusive
+       * with deal_id; a call is either a sales call or a recruiting call.
+       * Also pass recruiting_call_type so the linked recruiting_calls row
+       * (created via create_recruiting_call, same RPC
+       * CandidateDetailPage's interview scheduler already uses) gets the
+       * right call_type. */
+      candidate_job_id?: string | null;
+      recruiting_call_type?: "candidate_screening" | "interview" | "client_intake" | "other";
       /** Who can join this meeting, chosen in the pre-call "Anyone with the
        * link" vs "Require approval" dialog. Defaults to "anyone_with_link"
        * (matching the calls table's column default) when omitted, so
@@ -336,8 +346,11 @@ export function useLiveCall(options?: {
       who_can_join?: "anyone_with_link" | "invited_only";
     }) => {
       if (!user) throw new Error("Not authenticated");
-      if (input.deal_id === undefined) {
-        throw new Error("DEAL_REQUIRED");
+      if (input.deal_id === undefined && input.candidate_job_id === undefined) {
+        throw new Error("ANCHOR_REQUIRED");
+      }
+      if (input.deal_id && input.candidate_job_id) {
+        throw new Error("A meeting can't be linked to both a deal and a candidate pipeline.");
       }
 
       // ── Gate on minutes, not on meeting count ─────────────────────────────
@@ -373,7 +386,8 @@ export function useLiveCall(options?: {
         participants: input.participants ?? [],
         date: new Date().toISOString(),
         // Linked at creation time, not guessed after the call ends.
-        deal_id: input.deal_id,
+        deal_id: input.deal_id ?? null,
+        candidate_job_id: input.candidate_job_id ?? null,
         // Seeded from the pre-call "Anyone with the link" / "Require
         // approval" dialog. Falls back to the column's own default
         // ('anyone_with_link') when the caller doesn't pass one.
@@ -398,6 +412,33 @@ export function useLiveCall(options?: {
         });
       }
 
+      // Recruiting pipeline is the anchor instead — link this meeting into
+      // the Candidate -> Job -> Client chain via the same create_recruiting_call
+      // RPC CandidateDetailPage's interview scheduler uses, so it shows up
+      // in RecruitingInterviewsPanel and (for candidate_screening/
+      // client_intake) gets its own timeline event for free. Non-fatal:
+      // the meeting itself already exists even if this linking fails.
+      if (input.candidate_job_id) {
+        const { data: cj } = await supabase
+          .from("candidate_jobs" as any)
+          .select("id, team_id, candidate_id, job_id")
+          .eq("id", input.candidate_job_id)
+          .maybeSingle();
+        if (cj) {
+          await (supabase as any).rpc("create_recruiting_call", {
+            p_linked_call_id: data.id,
+            p_team_id: (cj as any).team_id,
+            p_call_type: input.recruiting_call_type ?? "other",
+            p_candidate_id: (cj as any).candidate_id,
+            p_job_id: (cj as any).job_id,
+            p_candidate_job_id: input.candidate_job_id,
+            p_title: input.name || `${input.platform} Call`,
+          }).then(({ error: e }: any) => {
+            if (e) console.warn("create_recruiting_call link (non-fatal):", e);
+          });
+        }
+      }
+
       return data;
     },
 
@@ -412,7 +453,7 @@ export function useLiveCall(options?: {
       options?.onCallStarted?.();
     },
     onError: (err: any) => {
-      if (err.message !== "PLAN_LIMIT_REACHED" && err.message !== "DEAL_REQUIRED") {
+      if (err.message !== "PLAN_LIMIT_REACHED" && err.message !== "ANCHOR_REQUIRED") {
         console.error("startCall error:", err);
       }
     },
