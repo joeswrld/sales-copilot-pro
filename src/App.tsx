@@ -74,6 +74,7 @@ const SubmissionsPage = lazy(() => import("@/pages/SubmissionsPage"));
 const JobsPage = lazy(() => import("@/pages/JobsPage"));
 const JobDetailPage = lazy(() => import("@/pages/JobDetailPage"));
 const PublicJobApplicationPage = lazy(() => import("@/pages/PublicJobApplicationPage"));
+const ClientPortalPage = lazy(() => import("@/pages/ClientPortalPage"));
 const SecurityCompliancePage = lazy(() => import("./pages/SecurityCompliancePage"));
 
 const PrivacyPage = lazy(() => import("./pages/LegalPages").then((m) => ({ default: m.PrivacyPage })));
@@ -502,6 +503,7 @@ function AppRoutes() {
           {/* Public dynamic */}
           <Route path="/clip/:shareToken" element={<ClipSharePage />} />
           <Route path="/apply/:slug" element={<PublicJobApplicationPage />} />
+          <Route path="/portal/:slug" element={<ClientPortalPage />} />
 
           {/* Canonical Fixsense meeting URL — guest join (NO auth required)
               Format: https://fixsense.com.ng/meeting/{roomId} */}
