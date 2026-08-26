@@ -45,7 +45,7 @@ import { useUserStatus } from "@/hooks/useUserStatus";
 import { useTeamMinuteUsage } from "@/hooks/useTeamMinuteUsage";
 import { TeamUsageBanner } from "@/components/TeamMinuteUsageComponents";
 import { useScheduledMeetings } from "@/hooks/useScheduledMeetings";
-import { useDeals } from "@/hooks/useDeals";
+import { useCandidatePipelines, stageMeta } from "@/hooks/useCandidatePipelines";
 import MeetingTimeline from "@/components/MeetingTimeline";
 import { MeetingNotificationBanner, NotificationStatusPill } from "@/components/MeetingNotificationBanner";
 import { supabase } from "@/integrations/supabase/client";
@@ -298,13 +298,14 @@ interface LinkCheckResult {
   isExpired: boolean;
 }
 
+// Matches create_recruiting_call's call_type check constraint exactly —
+// candidate_screening, client_intake, interview, other. Changing these
+// values would break the RPC call in useLiveCall's startCall.
 const MEETING_TYPES = [
-  { value: "discovery",   label: "Discovery",   emoji: "🔍" },
-  { value: "demo",        label: "Demo",        emoji: "🎯" },
-  { value: "follow_up",   label: "Follow-up",   emoji: "📞" },
-  { value: "negotiation", label: "Negotiation", emoji: "🤝" },
-  { value: "onboarding",  label: "Onboarding",  emoji: "🚀" },
-  { value: "other",       label: "Other",       emoji: "📋" },
+  { value: "candidate_screening", label: "Screening",  emoji: "🔍" },
+  { value: "interview",           label: "Interview",  emoji: "🎯" },
+  { value: "client_intake",       label: "Client Call", emoji: "🤝" },
+  { value: "other",               label: "Other",       emoji: "📋" },
 ];
 
 // ─── Real-Time Network Quality Hook ──────────────────────────────────────────
@@ -516,32 +517,32 @@ function MeetingCreatedPopup({
 // ─── Schedule Meeting Modal ────────────────────────────────────────────────────
 
 function ScheduleModal({
-  prefillLink, prefillTitle, prefillDealId, deals, timezone, onSave, onClose,
+  prefillLink, prefillTitle, prefillCandidateJobId, pipelines, timezone, onSave, onClose,
 }: {
   prefillLink?: string;
   prefillTitle?: string;
-  prefillDealId?: string | null;
-  deals: { id: string; name: string; company?: string | null }[];
+  prefillCandidateJobId?: string | null;
+  pipelines: { id: string; candidate_name: string; job_title: string; client_name?: string | null; pipeline_stage: string }[];
   timezone: string;
-  onSave: (params: { title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; deal_id: string }) => Promise<void>;
+  onSave: (params: { title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; candidate_job_id: string }) => Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(prefillTitle || "");
   const [link, setLink] = useState(prefillLink || "");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [meetingType, setMeetingType] = useState("discovery");
-  const [dealId, setDealId] = useState<string>(prefillDealId || "");
+  const [meetingType, setMeetingType] = useState("candidate_screening");
+  const [candidateJobId, setCandidateJobId] = useState<string>(prefillCandidateJobId || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     if (!title.trim()) { toast.error("Title is required"); return; }
     if (!date || !time) { toast.error("Date and time are required"); return; }
-    if (!dealId) { toast.error("Select a deal — every meeting has to be linked to one before it starts."); return; }
+    if (!candidateJobId) { toast.error("Select a candidate — every meeting has to be linked to one before it starts."); return; }
     setIsSaving(true);
     try {
       const dt = new Date(`${date}T${time}:00`);
-      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time: dt.toISOString(), meeting_type: meetingType, scheduled_timezone: timezone, deal_id: dealId });
+      await onSave({ title: title.trim(), meeting_link: link.trim(), scheduled_time: dt.toISOString(), meeting_type: meetingType, scheduled_timezone: timezone, candidate_job_id: candidateJobId });
       toast.success("Meeting scheduled!");
       onClose();
     } catch (e: any) {
@@ -576,32 +577,32 @@ function ScheduleModal({
 
           <div>
             <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block flex items-center gap-1">
-              <Tag className="w-3 h-3" />Deal <span className="text-[#B3442F]">*</span>
+              <UserCheck className="w-3 h-3" />Candidate <span className="text-[#B3442F]">*</span>
             </label>
             <select
-              value={dealId}
-              onChange={(e) => setDealId(e.target.value)}
+              value={candidateJobId}
+              onChange={(e) => setCandidateJobId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none"
               style={{
                 background: "rgba(23,23,15,0.02)",
-                border: dealId ? "1px solid rgba(23,23,15,0.09)" : "1px solid rgba(179,68,47,0.4)",
+                border: candidateJobId ? "1px solid rgba(23,23,15,0.09)" : "1px solid rgba(179,68,47,0.4)",
               }}
             >
-              <option value="">Select a deal…</option>
-              {deals.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}{d.company ? ` — ${d.company}` : ""}
+              <option value="">Select a candidate…</option>
+              {pipelines.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.candidate_name} — {p.job_title}{p.client_name ? ` (${p.client_name})` : ""} · {stageMeta(p.pipeline_stage).label}
                 </option>
               ))}
             </select>
-            {!dealId && (
-              <p className="text-[11px] text-[#B3442F] mt-1">Required — a meeting can't be scheduled without a deal.</p>
+            {!candidateJobId && (
+              <p className="text-[11px] text-[#B3442F] mt-1">Required — a meeting can't be scheduled without a candidate.</p>
             )}
           </div>
 
           <div>
             <label className="text-xs text-[rgba(23,23,15,0.55)] font-medium mb-1.5 block">Meeting Title *</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Acme Corp Demo"
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Screening — Jane Doe"
               className="w-full px-3.5 py-2.5 rounded-xl text-sm text-[#17170F] outline-none placeholder:text-[rgba(23,23,15,0.32)]"
               style={{ background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.09)" }} />
           </div>
@@ -646,11 +647,11 @@ function ScheduleModal({
             </div>
           </div>
 
-          <button onClick={handleSave} disabled={isSaving || !dealId}
+          <button onClick={handleSave} disabled={isSaving || !candidateJobId}
             className="w-full py-3 rounded-xl text-sm font-semibold text-[#FAFAF8] flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
             style={{ background: "#22315C" }}>
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
-            {isSaving ? "Scheduling…" : !dealId ? "Select a deal to continue" : "Schedule Meeting"}
+            {isSaving ? "Scheduling…" : !candidateJobId ? "Select a candidate to continue" : "Schedule Meeting"}
           </button>
         </div>
       </div>
@@ -880,7 +881,7 @@ export default function LiveCall() {
   const [isStarting,             setIsStarting]             = useState(false);
   const [hostJoined,             setHostJoined]             = useState(false);
   const [activeMeetingTitle,     setActiveMeetingTitle]     = useState("");
-  const [meetingType,            setMeetingType]            = useState("discovery");
+  const [meetingType,            setMeetingType]            = useState("candidate_screening");
   const [meetingTitleInput,      setMeetingTitleInput]      = useState("");
   const [meetingNotes,           setMeetingNotes]           = useState("");
 
@@ -891,20 +892,21 @@ export default function LiveCall() {
   const [showAccessDialog,       setShowAccessDialog]       = useState(false);
   const [pendingWhoCanJoin,      setPendingWhoCanJoin]      = useState<"anyone_with_link" | "invited_only">("anyone_with_link");
 
-  // ── Deal linking (required before a meeting can start) ──────────────────
+  // ── Candidate linking (required before a meeting can start) ──────────────
   const [searchParams] = useSearchParams();
-  const { deals } = useDeals();
-  const [selectedDealId, setSelectedDealId] = useState<string | null>(
-    () => searchParams.get("dealId"),
+  const { pipelines } = useCandidatePipelines();
+  const [selectedCandidateJobId, setSelectedCandidateJobId] = useState<string | null>(
+    () => searchParams.get("candidateJobId"),
   );
-  // If arriving fresh from a Deal page after deals finish loading, make
-  // sure the id from the URL is still honored (covers the case where the
-  // deals list hook resolves after first paint).
+  // If arriving fresh from a Candidate page after pipelines finish loading,
+  // make sure the id from the URL is still honored (covers the case where
+  // the pipelines list hook resolves after first paint).
   useEffect(() => {
-    const fromUrl = searchParams.get("dealId");
-    if (fromUrl && fromUrl !== selectedDealId) setSelectedDealId(fromUrl);
+    const fromUrl = searchParams.get("candidateJobId");
+    if (fromUrl && fromUrl !== selectedCandidateJobId) setSelectedCandidateJobId(fromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+  const selectedPipeline = pipelines.find((p) => p.id === selectedCandidateJobId) ?? null;
   const [joinState,              setJoinState]              = useState<JoinState>("idle");
   const [networkWarningDismissed, setNetworkWarningDismissed] = useState(false);
   const [isAudioOn,              setIsAudioOn]              = useState(true);
@@ -1070,8 +1072,8 @@ export default function LiveCall() {
   const handleCreateMeeting = useCallback(() => {
     if (!checkLimit()) return;
 
-    if (!selectedDealId) {
-      toast.error("Select a deal before starting this meeting — every meeting has to be linked to a deal.");
+    if (!selectedCandidateJobId) {
+      toast.error("Select a candidate before starting this meeting — every meeting has to be linked to a candidate.");
       return;
     }
 
@@ -1086,7 +1088,7 @@ export default function LiveCall() {
     // Continue gets the same behavior as before this dialog existed.
     setPendingWhoCanJoin("anyone_with_link");
     setShowAccessDialog(true);
-  }, [selectedDealId, checkLimit, isLive]);
+  }, [selectedCandidateJobId, checkLimit, isLive]);
 
   // ── Confirm access level, then actually create the room ────────────────────
   const confirmCreateMeeting = useCallback(async (whoCanJoin: "anyone_with_link" | "invited_only") => {
@@ -1103,7 +1105,9 @@ export default function LiveCall() {
         meeting_type: meetingType,
         participants: [],
         description:  meetingNotes,
-        deal_id:      selectedDealId,
+        deal_id:      null,
+        candidate_job_id: selectedCandidateJobId,
+        recruiting_call_type: meetingType as any,
         who_can_join: whoCanJoin,
       } as any);
       setJoinState("creating_room");
@@ -1136,7 +1140,7 @@ export default function LiveCall() {
       setIsStarting(false);
       setJoinState("idle");
     }
-  }, [meetingTitleInput, meetingNotes, meetingType, selectedDealId, startCall, createRoom]);
+  }, [meetingTitleInput, meetingNotes, meetingType, selectedCandidateJobId, startCall, createRoom]);
 
   // ── End call ──────────────────────────────────────────────────────────────
   const handleEndCall = useCallback(async () => {
@@ -1183,7 +1187,7 @@ export default function LiveCall() {
   }, []);
 
   const handleScheduleSave = useCallback(async (params: {
-    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; deal_id: string;
+    title: string; meeting_link: string; scheduled_time: string; meeting_type: string; scheduled_timezone: string; candidate_job_id: string;
   }) => {
     await createMeeting.mutateAsync({ ...params });
   }, [createMeeting]);
@@ -1228,8 +1232,8 @@ export default function LiveCall() {
         <ScheduleModal
           prefillLink={schedulePrefilledLink}
           prefillTitle={schedulePrefilledTitle}
-          prefillDealId={selectedDealId}
-          deals={deals ?? []}
+          prefillCandidateJobId={selectedCandidateJobId}
+          pipelines={pipelines ?? []}
           timezone={userTz}
           onSave={handleScheduleSave}
           onClose={() => setShowScheduleModal(false)}
@@ -1514,26 +1518,51 @@ export default function LiveCall() {
 
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-1">
-                  <Tag className="w-3 h-3" />Deal <span className="text-red-400">*</span>
+                  <UserCheck className="w-3 h-3" />Candidate <span className="text-red-400">*</span>
                 </label>
                 <select
-                  value={selectedDealId ?? ""}
-                  onChange={(e) => setSelectedDealId(e.target.value || null)}
+                  value={selectedCandidateJobId ?? ""}
+                  onChange={(e) => setSelectedCandidateJobId(e.target.value || null)}
                   className={cn(
-                    "w-full px-3.5 py-2.5 rounded-xl text-sm bg-secondary/60 border outline-none transition-colors",
-                    selectedDealId ? "border-border focus:border-primary/60" : "border-red-500/40",
+                    "w-full px-3.5 py-2.5 rounded-xl text-sm bg-secondary/60 border outline-none transition-colors duration-150",
+                    selectedCandidateJobId ? "border-border focus:border-primary/60" : "border-red-500/40",
                   )}
                 >
-                  <option value="">Select a deal…</option>
-                  {(deals ?? []).map((d: any) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}{d.company ? ` — ${d.company}` : ""}
+                  <option value="">Select a candidate…</option>
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.candidate_name} — {p.job_title}{p.client_name ? ` (${p.client_name})` : ""}
                     </option>
                   ))}
                 </select>
-                {!selectedDealId && (
+
+                {/* Live pipeline-stage context — read-only here on purpose.
+                    Stage only ever advances via advance_candidate_pipeline_stage
+                    (PipelinePage / CandidateDetailPage), never by picking one
+                    when starting a call. */}
+                {selectedPipeline && (
+                  <div
+                    className="flex items-center gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg text-[11px] w-fit transition-all duration-200"
+                    style={{
+                      background: `${stageMeta(selectedPipeline.pipeline_stage).color}14`,
+                      border: `1px solid ${stageMeta(selectedPipeline.pipeline_stage).color}40`,
+                      color: stageMeta(selectedPipeline.pipeline_stage).color,
+                    }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stageMeta(selectedPipeline.pipeline_stage).color }} />
+                    Currently: {stageMeta(selectedPipeline.pipeline_stage).label}
+                  </div>
+                )}
+
+                {!selectedCandidateJobId && (
                   <p className="text-[11px] text-red-400 mt-1">
-                    A meeting can't be started until it's linked to a deal.
+                    A meeting can't be started until it's linked to a candidate.
+                  </p>
+                )}
+
+                {pipelines.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    No active pipelines yet — add a candidate to a job first.
                   </p>
                 )}
               </div>
@@ -1545,19 +1574,19 @@ export default function LiveCall() {
                   <input
                     value={meetingTitleInput}
                     onChange={(e) => setMeetingTitleInput(e.target.value)}
-                    placeholder="e.g. Acme Corp — Demo"
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors"
+                    placeholder="e.g. Screening — Jane Doe"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none transition-colors duration-150"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-1"><Tag className="w-3 h-3" />Type</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   {MEETING_TYPES.map((t) => (
                     <button key={t.value} onClick={() => setMeetingType(t.value)}
                       className={cn(
-                        "text-[11px] px-2 py-1.5 rounded-lg border transition-all text-center leading-tight",
+                        "text-[11px] px-2 py-1.5 rounded-lg border transition-all duration-150 text-center leading-tight active:scale-[0.97]",
                         meetingType === t.value
                           ? "border-primary/50 bg-primary/10 text-foreground"
                           : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60",
@@ -1575,21 +1604,21 @@ export default function LiveCall() {
                   value={meetingNotes}
                   onChange={(e) => setMeetingNotes(e.target.value)}
                   rows={2}
-                  placeholder="Agenda, context…"
-                  className="w-full px-3.5 py-2 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
+                  placeholder="Role requirements, prior screening notes…"
+                  className="w-full px-3.5 py-2 rounded-xl text-sm bg-secondary/60 border border-border focus:border-primary/60 outline-none resize-none transition-colors duration-150 placeholder:text-muted-foreground/50"
                 />
               </div>
 
               <Button
-                className="w-full gap-2"
+                className="w-full gap-2 active:scale-[0.98] transition-transform duration-150"
                 onClick={handleCreateMeeting}
-                disabled={isCreating || isStarting || !selectedDealId || (teamUsage?.isAtLimit ?? false)}
+                disabled={isCreating || isStarting || !selectedCandidateJobId || (teamUsage?.isAtLimit ?? false)}
               >
                 {isCreating || isStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                {isCreating || isStarting ? "Creating…" : !selectedDealId ? "Select a deal to continue" : "Create Meeting"}
+                {isCreating || isStarting ? "Creating…" : !selectedCandidateJobId ? "Select a candidate to continue" : "Create Meeting"}
               </Button>
 
-              <Button variant="outline" className="w-full gap-2" onClick={openFreshSchedule}>
+              <Button variant="outline" className="w-full gap-2 active:scale-[0.98] transition-transform duration-150" onClick={openFreshSchedule}>
                 <CalendarPlus className="w-4 h-4" />Schedule Meeting
               </Button>
             </div>
