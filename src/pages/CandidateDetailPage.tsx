@@ -573,6 +573,7 @@ function CandidateDetailPageInner() {
         p_meeting_link: shareLink,
         p_interview_instructions: combinedInstructions,
         p_message_to_candidate: messageToCandidate || null,
+        p_interview_stage: stage || null,
       });
       if (error) throw error;
 
@@ -1565,17 +1566,24 @@ function ScheduleInterviewModal({
     textTransform: "uppercase", letterSpacing: "0.05em",
   };
 
+  const stageLabel = (s: string) => (
+    s === "screening_call" ? "screening call" :
+    s === "final_interview" ? "final interview" :
+    "interview"
+  );
+
   const buildInvitation = (meetingLink: string, scheduledIso: string) => {
     const when = scheduledIso
       ? new Date(scheduledIso).toLocaleString(undefined, {
           weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
         })
       : "a time to be confirmed";
-    const subject = `Interview invitation — ${jobTitle} at ${companyName}`;
+    const label = stageLabel(stage);
+    const subject = `${label.charAt(0).toUpperCase() + label.slice(1)} invitation — ${jobTitle} at ${companyName}`;
     const body = [
       `Hi ${candidateName},`,
       ``,
-      `We'd like to invite you to an interview for the ${jobTitle} role at ${companyName}.`,
+      `We'd like to invite you to a ${label} for the ${jobTitle} role at ${companyName}.`,
       ``,
       `Date/time: ${when} (${timezone})`,
       `Meeting link (Fixsense Meeting): ${meetingLink}`,
