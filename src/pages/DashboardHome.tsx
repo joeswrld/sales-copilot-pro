@@ -6,8 +6,9 @@ import { PlanBanner } from "@/components/plan/PlanGate";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import {
   Phone, TrendingUp, AlertTriangle, CheckCircle, Loader2, Activity, ArrowUp, ArrowDown, Minus,
-  Briefcase, UserPlus, ClipboardCheck, Video, PhoneCall, Send, ListTodo, Award, PartyPopper,
+  Briefcase, UserPlus, ClipboardCheck, Video, PhoneCall, Send, ListTodo, Award, PartyPopper, Sparkles,
 } from "lucide-react";
+import { MatchExplanation, scoreColor, scoreBg } from "@/lib/matchExplanation";
 import { useCalls, useCallStats } from "@/hooks/useCalls";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
@@ -251,6 +252,108 @@ const CALL_TYPE_LABEL: Record<string, string> = {
   other: "Call",
 };
 
+// ─── AI Matches ─────────────────────────────────────────────────────────────
+// Surfaces the strongest existing AI matches so a recruiter can act on them
+// without opening the Pipeline board. This reads match_score and
+// match_explanation directly off public.candidate_jobs — the same columns
+// the parse-candidate-cv edge function (mode: candidate_job_match) already
+// writes and that PipelinePage already displays. No new matching system,
+// table, or RPC is introduced; this only surfaces existing data on an
+// active (non-rejected, non-placed) pipeline row.
+interface AiMatchRow {
+  id: string;
+  candidate_id: string;
+  job_id: string;
+  match_score: number;
+  match_explanation: MatchExplanation | null;
+  candidate_name: string;
+  job_title: string;
+}
+
+function useTopAiMatches(teamId: string | null) {
+  return useQuery({
+    queryKey: ["dashboard-ai-matches", teamId],
+    queryFn: async (): Promise<AiMatchRow[]> => {
+      if (!teamId) return [];
+      const { data, error } = await supabase
+        .from("candidate_jobs" as any)
+        .select("id, candidate_id, job_id, match_score, match_explanation, candidate:candidates(full_name), job:jobs(title)")
+        .eq("team_id", teamId)
+        .not("match_score", "is", null)
+        .not("pipeline_stage", "in", "(placed,rejected)")
+        .gte("match_score", 70)
+        .order("match_score", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return ((data ?? []) as any[]).map(r => ({
+        id: r.id,
+        candidate_id: r.candidate_id,
+        job_id: r.job_id,
+        match_score: r.match_score,
+        match_explanation: r.match_explanation,
+        candidate_name: r.candidate?.full_name ?? "Candidate",
+        job_title: r.job?.title ?? "Role",
+      }));
+    },
+    enabled: !!teamId,
+    staleTime: 30_000,
+  });
+}
+
+function AiMatchesPanel() {
+  const { teamId } = useTeam();
+  const navigate = useNavigate();
+  const { data: matches, isLoading } = useTopAiMatches(teamId ?? null);
+
+  if (isLoading) {
+    return (
+      <div className="glass rounded-xl p-4 border border-border space-y-3">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-16 rounded-lg" />
+      </div>
+    );
+  }
+
+  if (!matches || matches.length === 0) return null;
+
+  return (
+    <div className="glass rounded-xl overflow-hidden border border-border">
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <h2 className="font-display font-semibold flex items-center gap-1.5">
+          <Sparkles className="w-4 h-4 text-primary" /> Top AI Matches
+        </h2>
+        <Link to="/pipeline" className="text-xs text-primary hover:underline">View pipeline</Link>
+      </div>
+      <div className="divide-y divide-border">
+        {matches.map(m => (
+          <button
+            key={m.id}
+            onClick={() => navigate(`/candidates/${m.candidate_id}?job=${m.job_id}&cj=${m.id}`)}
+            className="w-full text-left p-4 hover:bg-secondary/30 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <span className="text-sm font-medium truncate">
+                {m.candidate_name} <span className="text-muted-foreground">→ {m.job_title}</span>
+              </span>
+              <span
+                className="text-xs font-bold shrink-0 px-2 py-0.5 rounded-full"
+                style={{ background: scoreBg(m.match_score), color: scoreColor(m.match_score) }}
+              >
+                {m.match_score}% match
+              </span>
+            </div>
+            {m.match_explanation?.overall_recommendation && (
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                {m.match_explanation.overall_recommendation}
+              </p>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RecruitingOverview() {
   const { teamId } = useTeam();
   const navigate = useNavigate();
@@ -463,6 +566,10 @@ export default function DashboardHome() {
         {/* ── Recruiting Overview (only rendered when the team has
              recruiting data — a pure-sales workspace sees nothing extra) ── */}
         <RecruitingOverview />
+
+        {/* ── Top AI Matches — existing match_score/match_explanation data,
+             surfaced here so a recruiter can act without opening Pipeline ── */}
+        <AiMatchesPanel />
 
         {/* ── Recent Calls ── */}
         <div className="glass rounded-xl overflow-hidden">
