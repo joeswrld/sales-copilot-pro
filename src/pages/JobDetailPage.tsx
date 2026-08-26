@@ -84,6 +84,16 @@ interface ApplicationLink {
   created_at: string;
 }
 
+interface ClientPortalLink {
+  id: string;
+  slug: string;
+  is_active: boolean;
+  expires_at: string | null;
+  access_count: number;
+  last_accessed_at: string | null;
+  created_at: string;
+}
+
 interface PipelineCandidate {
   candidate_job_id: string;
   pipeline_stage: string;
@@ -143,6 +153,11 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const PUBLIC_BASE_URL = "https://fixsense.com.ng/apply";
+// Client portal links use the app's actual runtime origin rather than the
+// hardcoded apply-link domain — CreateClipModal.tsx already establishes this
+// pattern for share links, and it's the more robust choice for a link type
+// introduced after PUBLIC_BASE_URL was hardcoded.
+const portalBaseUrl = () => `${typeof window !== "undefined" ? window.location.origin : "https://fixsense.com.ng"}/portal`;
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -156,6 +171,9 @@ export default function JobDetailPage() {
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [extendingLinkId, setExtendingLinkId] = useState<string | null>(null);
   const [companyEditOpen, setCompanyEditOpen] = useState(false);
+  const [portalLinks, setPortalLinks] = useState<ClientPortalLink[]>([]);
+  const [creatingPortalLink, setCreatingPortalLink] = useState(false);
+  const [copiedPortalSlug, setCopiedPortalSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -165,10 +183,64 @@ export default function JobDetailPage() {
     } else {
       setSummary(data as JobSummary);
     }
+    // client_portal_links has no equivalent in get_job_application_summary
+    // (it's a client-facing concern, not an applicant-facing one) — RLS
+    // ("team members can read client portal links") scopes this select to
+    // the recruiter's own team, same trust boundary as every other direct
+    // table read in this app.
+    const { data: linkRows, error: linkErr } = await (supabase as any)
+      .from("client_portal_links")
+      .select("id, slug, is_active, expires_at, access_count, last_accessed_at, created_at")
+      .eq("job_id", id)
+      .order("created_at", { ascending: false });
+    if (linkErr) {
+      toast.error(linkErr.message ?? "Failed to load client portal links");
+    } else {
+      setPortalLinks((linkRows ?? []) as ClientPortalLink[]);
+    }
     setLoading(false);
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const createPortalLink = async () => {
+    if (!id) return;
+    setCreatingPortalLink(true);
+    try {
+      const { error } = await (supabase as any).rpc("create_client_portal_link", { p_job_id: id });
+      if (error) throw error;
+      toast.success("Client portal link created");
+      load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to create client portal link");
+    } finally {
+      setCreatingPortalLink(false);
+    }
+  };
+
+  const copyPortalLink = (slug: string) => {
+    navigator.clipboard.writeText(`${portalBaseUrl()}/${slug}`).then(() => {
+      setCopiedPortalSlug(slug);
+      setTimeout(() => setCopiedPortalSlug(null), 2000);
+    });
+  };
+
+  const togglePortalLinkActive = async (link: ClientPortalLink) => {
+    // disable_client_portal_link only turns a link off (matches its RPC
+    // signature — one-way by design, since re-enabling a client-facing
+    // review link is a deliberate recruiter action). Re-enable goes through
+    // a direct update, same as setJobStatus below does for jobs.
+    if (link.is_active) {
+      const { error } = await (supabase as any).rpc("disable_client_portal_link", { p_link_id: link.id });
+      if (error) { toast.error(error.message); return; }
+      toast.success("Portal link disabled");
+    } else {
+      const { error } = await (supabase as any).from("client_portal_links").update({ is_active: true }).eq("id", link.id);
+      if (error) { toast.error(error.message); return; }
+      toast.success("Portal link enabled");
+    }
+    load();
+  };
 
   const copyLink = (slug: string) => {
     navigator.clipboard.writeText(`${PUBLIC_BASE_URL}/${slug}`).then(() => {
@@ -390,6 +462,36 @@ export default function JobDetailPage() {
                   extending={extendingLinkId === link.id}
                   onConfirmExtend={(days) => extendExpiration(link.id, days)}
                   onCancelExtend={() => setExtendingLinkId(null)}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Client portal links */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: "#17170F" }}>Client portal</h2>
+              <button
+                onClick={createPortalLink}
+                disabled={creatingPortalLink}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#fff", border: "1px solid rgba(23,23,15,0.15)", borderRadius: 8, color: "#17170F", fontSize: 12.5, fontWeight: 600, cursor: creatingPortalLink ? "not-allowed" : "pointer", opacity: creatingPortalLink ? 0.6 : 1 }}
+              >
+                {creatingPortalLink ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : <Plus style={{ width: 13, height: 13 }} />}
+                New portal link
+              </button>
+            </div>
+            {portalLinks.length === 0 ? (
+              <div style={{ padding: 24, background: "rgba(23,23,15,0.03)", borderRadius: 12, textAlign: "center", fontSize: 13, color: "rgba(23,23,15,0.4)" }}>
+                No client portal links yet. Create one to let the client review, shortlist, and give feedback on submitted candidates.
+              </div>
+            ) : (
+              portalLinks.map(link => (
+                <PortalLinkCard
+                  key={link.id}
+                  link={link}
+                  copied={copiedPortalSlug === link.slug}
+                  onCopy={() => copyPortalLink(link.slug)}
+                  onToggle={() => togglePortalLinkActive(link)}
                 />
               ))
             )}
@@ -618,6 +720,48 @@ function LinkCard({
           <button onClick={onCancelExtend} style={{ fontSize: 11, color: "rgba(23,23,15,0.4)", background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function PortalLinkCard({ link, copied, onCopy, onToggle }: {
+  link: ClientPortalLink; copied: boolean; onCopy: () => void; onToggle: () => void;
+}) {
+  const isExpired = link.expires_at && new Date(link.expires_at) < new Date();
+  const effectiveStatus = !link.is_active ? "Disabled" : isExpired ? "Expired" : "Active";
+  const statusColor = effectiveStatus === "Active" ? "#22c55e" : effectiveStatus === "Disabled" ? "#94a3b8" : "#f59e0b";
+
+  return (
+    <div style={{ background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 12, padding: 16, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <LinkIcon style={{ width: 14, height: 14, color: "#22315C", flexShrink: 0 }} />
+          <code style={{ fontSize: 12.5, color: "#17170F", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {portalBaseUrl()}/{link.slug}
+          </code>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, color: "#fff", background: statusColor, flexShrink: 0 }}>
+            {effectiveStatus}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <IconButton onClick={onCopy} title="Copy link">
+            {copied ? <CheckCircle2 style={{ width: 14, height: 14, color: "#22c55e" }} /> : <Copy style={{ width: 14, height: 14 }} />}
+          </IconButton>
+          <IconButton onClick={() => window.open(`${portalBaseUrl()}/${link.slug}`, "_blank")} title="Open portal">
+            <ExternalLink style={{ width: 14, height: 14 }} />
+          </IconButton>
+          <IconButton onClick={onToggle} title={link.is_active ? "Disable link" : "Enable link"}>
+            <Power style={{ width: 14, height: 14, color: link.is_active ? "#ef4444" : "#22c55e" }} />
+          </IconButton>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 11.5, color: "rgba(23,23,15,0.45)", flexWrap: "wrap" }}>
+        <span>{link.access_count} view{link.access_count === 1 ? "" : "s"}</span>
+        {link.last_accessed_at && <span>Last viewed {formatDistanceToNow(new Date(link.last_accessed_at), { addSuffix: true })}</span>}
+        {link.expires_at && <span>Expires {format(new Date(link.expires_at), "MMM d, yyyy")}</span>}
+        <span>Created {formatDistanceToNow(new Date(link.created_at), { addSuffix: true })}</span>
+      </div>
     </div>
   );
 }
