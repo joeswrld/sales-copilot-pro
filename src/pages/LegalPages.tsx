@@ -391,15 +391,15 @@ export function PrivacyPage() {
 
   return (
     <LegalLayout page="privacy" kicker="Privacy Policy" title="Your data." titleC="Our responsibility."
-      subtitle="We're committed to protecting your personal information and being fully transparent about what we collect, why, and how we protect it."
-      updated="August 8, 2026" version="2.2" sections={sections}>
+      subtitle="We're committed to protecting your personal information — and the candidate and client data your recruiting desk runs through Fixsense — and being fully transparent about what we collect, why, and how we protect it."
+      updated="August 28, 2026" version="3.0" sections={sections}>
 
       <section className="lg-section" id="overview">
         <h2>Overview</h2>
         <div className="lg-highlight">
-          <p><strong>TL;DR:</strong> We collect data necessary to provide Fixsense. We do not sell your data to third parties. Your call recordings and transcripts are encrypted and processed solely to deliver AI insights back to you.</p>
+          <p><strong>TL;DR:</strong> We collect the data necessary to run your recruitment desk and your sales calls in Fixsense — including candidate CVs and application data, client and job records, and call/interview recordings and transcripts. We do not sell your data to third parties. Candidate and call data is encrypted and processed solely to deliver the platform's features back to you.</p>
         </div>
-        <p>Fixsense, Inc. ("Fixsense", "we", "us") operates the Fixsense sales intelligence platform. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our services.</p>
+        <p>Fixsense, Inc. ("Fixsense", "we", "us") operates the Fixsense platform: a recruitment operating system for agencies and in-house talent teams (jobs, candidates, AI matching, applications, pipeline, client CRM, interviews, and placements), alongside its sales call intelligence tools (call recording, transcription, and coaching). This Privacy Policy explains how we collect, use, disclose, and safeguard information when you use our services — including personal data you hold about candidates and clients, not only your own account data.</p>
         <p>By using Fixsense, you agree to the collection and use of information in accordance with this policy.</p>
       </section>
 
@@ -412,13 +412,27 @@ export function PrivacyPage() {
           <li>Profile photo (optional)</li>
           <li>Billing name and payment method (processed by Paystack)</li>
         </ul>
+        <h3>Candidate Data</h3>
+        <p>If you use Fixsense's recruiting features, you control the collection of the following data about your candidates, and act as the data controller for it:</p>
+        <ul>
+          <li>Name, email, phone number, and current role, submitted via a job application or entered by your team</li>
+          <li>CV/résumé files, uploaded directly or submitted through a public job application link</li>
+          <li>Structured data extracted from CVs by our AI parsing (skills, work history, education) — every AI-extracted field is held as unverified until a recruiter on your team reviews and confirms it</li>
+          <li>Pipeline stage, interview schedule, interview transcripts and AI-generated interview feedback, submission history, and client feedback about the candidate</li>
+          <li>Notes, tags, and activity timeline entries your team records against the candidate</li>
+        </ul>
+        <h3>Client & Job Data</h3>
+        <ul>
+          <li>Recruiting client company names, contacts, and job requisitions you create</li>
+          <li>Job application data submitted by applicants through your public application links</li>
+        </ul>
         <h3>Call & Meeting Data</h3>
         <ul>
-          <li>Audio recordings of sales calls and meetings</li>
+          <li>Audio recordings of sales calls, candidate interviews, and client meetings held through Fixsense Meetings</li>
           <li>Transcripts generated from recordings</li>
           <li>Participant metadata (names, email addresses, if provided)</li>
           <li>Meeting duration, platform, and timestamps</li>
-          <li>AI-generated summaries, action items, and objection analyses</li>
+          <li>AI-generated summaries, action items, objection analyses, and interview feedback</li>
         </ul>
         <h3>Usage Data</h3>
         <ul>
@@ -427,7 +441,7 @@ export function PrivacyPage() {
           <li>Log data and error reports</li>
         </ul>
         <h3>Integration Data</h3>
-        <p>If you connect third-party services , we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
+        <p>If you connect third-party services, we receive OAuth tokens and only the data scopes you explicitly authorize.</p>
         <h3>Website Visitors & Abandoned Sign-ups</h3>
         <p>When you browse fixsense.com.ng, we record anonymous session activity (pages viewed, clicks, scroll depth, device and browser type) if you've accepted analytics cookies — never your keystrokes or anything you type. We never link this to your name or email unless you sign in.</p>
         <p>If you begin creating an account and enter an email address (and optionally your name) into the sign-up form but don't complete sign-up, we record that email and name so our team can follow up with you. This is active as of August 8, 2026. We only ever record what you've actually typed into that field, and only after you move on from it — never anything you haven't entered yourself. You can ask us to delete this, or opt out of future follow-up, at any time by contacting <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>.</p>
@@ -435,31 +449,35 @@ export function PrivacyPage() {
 
       <section className="lg-section" id="how-we-use">
         <h2>How We Use Data</h2>
-        <p>We use your data to:</p>
+        <p>We use data to:</p>
         <ul>
-          <li>Provide, operate, and improve the Fixsense platform</li>
-          <li>Generate AI-powered transcripts, summaries, and coaching insights</li>
+          <li>Provide, operate, and improve the Fixsense platform, including the candidate pipeline, client CRM, and job application links your team runs</li>
+          <li>Parse CVs into structured candidate records and generate AI candidate-job match scores</li>
+          <li>Generate AI-powered call/interview transcripts, summaries, and coaching or interview feedback</li>
           <li>Process payments and manage your subscription</li>
-          <li>Send transactional emails (call summaries, invoices)</li>
+          <li>Send transactional emails (interview invitations, call summaries, invoices) and, where your team sends them, candidate/client notifications</li>
           <li>Provide customer support</li>
           <li>Detect fraud, abuse, and security incidents</li>
           <li>Comply with legal obligations</li>
         </ul>
-        <p>We do <strong>not</strong> use your call recordings or transcripts to train general AI models without your explicit consent.</p>
+        <p>We do <strong>not</strong> use call recordings, transcripts, CVs, or candidate data to train general AI models without explicit consent.</p>
       </section>
 
       <section className="lg-section" id="sharing">
         <h2>Data Sharing</h2>
         <div className="lg-highlight">
-          <p><strong>We do not sell your data.</strong> We do not share your personal information with advertisers or data brokers, ever.</p>
+          <p><strong>We do not sell candidate, client, or account data.</strong> We do not share personal information with advertisers or data brokers, ever.</p>
         </div>
         <h3>Service Providers</h3>
         <ul>
-          <li><strong>Supabase:</strong> Database and authentication infrastructure</li>
+          <li><strong>Supabase:</strong> Database, file storage (including candidate CVs), and authentication infrastructure</li>
           <li><strong>Paystack:</strong> Payment processing</li>
-          <li><strong>Anthropic / Claude:</strong> AI analysis of transcripts to generate insights</li>
-          <li><strong>Daily.co:</strong> Meeting room infrastructure</li>
+          <li><strong>Lovable AI Gateway / underlying AI model providers:</strong> AI processing of CVs, transcripts, and candidate-job matching to generate insights</li>
+          <li><strong>Daily.co:</strong> Meeting room infrastructure for calls and interviews</li>
+          <li><strong>Deepgram:</strong> Real-time transcription of calls and interviews</li>
         </ul>
+        <h3>Sharing With Your Clients</h3>
+        <p>When your team submits a candidate to a client through Fixsense's client CRM and submissions features, the candidate details you choose to include in that submission are shared with the client contact you send it to. This sharing is initiated and controlled by your team, not by Fixsense.</p>
         <h3>Legal Requirements</h3>
         <p>We may disclose data when required by law, court order, or governmental authority.</p>
         <h3>Business Transfers</h3>
@@ -468,11 +486,13 @@ export function PrivacyPage() {
 
       <section className="lg-section" id="storage">
         <h2>Storage & Retention</h2>
-        <p>All data is encrypted at rest (AES-256) and in transit (TLS 1.3). Servers are operated by Supabase.</p>
+        <p>All data is encrypted at rest (AES-256) and in transit (TLS 1.3). Servers and file storage are operated by Supabase. Candidate CVs are stored in a private storage bucket and are never publicly accessible.</p>
         <h3>Retention Periods</h3>
         <ul>
-          <li>Call recordings: Retained while your account is active. Deleted within 30 days of account deletion.</li>
-          <li>Transcripts and summaries: Retained while your account is active.</li>
+          <li>Call and interview recordings: Retained while your account is active. Deleted within 30 days of account deletion.</li>
+          <li>Transcripts, AI summaries, and AI interview feedback: Retained while your account is active.</li>
+          <li>Candidate CVs and candidate records: Retained while your account is active, or until your team deletes the candidate record. Deleted within 30 days of account deletion.</li>
+          <li>Job, pipeline, and client CRM records: Retained while your account is active.</li>
           <li>Account information: Retained for 7 years for compliance.</li>
           <li>Payment records: Retained for 7 years per financial regulations.</li>
           <li>Access logs: Retained for 90 days.</li>
@@ -489,8 +509,11 @@ export function PrivacyPage() {
           <li><strong>Withdraw Consent:</strong> Revoke consent for data processing</li>
         </ul>
         <p>To exercise any of these rights, contact us at <a href="mailto:privacy@fixsense.com.ng">privacy@fixsense.com.ng</a>. We will respond within 30 days.</p>
-        <h3>GDPR (European Users)</h3>
-        <p>If you are located in the EEA, you have additional rights under GDPR. Our lawful basis for processing includes contract performance, legitimate interests, and consent.</p>
+        <div className="lg-highlight">
+          <p><strong>For candidates:</strong> Fixsense is not the data controller for candidate data submitted to a recruiting agency's account — the agency using Fixsense is. If you're a candidate and want to exercise a data right over your information, please contact the recruiting agency you applied to directly. We support agencies in fulfilling these requests.</p>
+        </div>
+        <h3>GDPR (European & UK Users)</h3>
+        <p>If you are located in the EEA or UK, you have additional rights under GDPR / UK GDPR. Our lawful basis for processing includes contract performance, legitimate interests, and consent.</p>
         <h3>NDPR (Nigerian Users)</h3>
         <p>We comply with the Nigeria Data Protection Regulation (NDPR). Our DPO: <a href="mailto:dpo@fixsense.com.ng">dpo@fixsense.com.ng</a>.</p>
       </section>
@@ -507,7 +530,7 @@ export function PrivacyPage() {
 
       <section className="lg-section" id="children">
         <h2>Children's Privacy</h2>
-        <p>Fixsense is a professional B2B tool not intended for individuals under 18 years of age. We do not knowingly collect personal information from children.</p>
+        <p>Fixsense is a professional B2B tool not intended for individuals under 18 years of age. We do not knowingly collect personal information from children. Recruiting teams using Fixsense are responsible for ensuring candidate data they submit relates to individuals of employment age under applicable law.</p>
       </section>
 
       <section className="lg-section" id="changes">
@@ -548,8 +571,8 @@ export function TermsPage() {
 
   return (
     <LegalLayout page="terms" kicker="Terms of Service" title="The rules of" titleC="the road."
-      subtitle="By using Fixsense, you agree to these terms. Please read them carefully: they govern your use of our platform and services."
-      updated="March 29, 2026" version="3.0" sections={sections}>
+      subtitle="By using Fixsense, you agree to these terms. Please read them carefully: they govern your use of our recruiting and sales-call platform and services."
+      updated="August 28, 2026" version="4.0" sections={sections}>
 
       <section className="lg-section" id="agreement">
         <h2>Agreement to Terms</h2>
@@ -561,9 +584,9 @@ export function TermsPage() {
 
       <section className="lg-section" id="services">
         <h2>Use of Services</h2>
-        <p>Fixsense provides AI-powered sales intelligence tools including call recording, transcription, analysis, coaching insights, and team collaboration features. Our Services are designed for professional sales use.</p>
+        <p>Fixsense provides a recruitment operating system — jobs, candidate records, CV parsing, AI candidate-job matching, a candidate pipeline, a client CRM, submissions, interview scheduling, and placement tracking — alongside AI-powered sales intelligence tools including call recording, transcription, analysis, and coaching insights. Our Services are designed for professional recruiting and sales use.</p>
         <p>We reserve the right to modify, suspend, or discontinue any part of the Services at any time with reasonable notice for material changes.</p>
-        <p>You acknowledge that Fixsense uses AI models (including Anthropic's Claude) to process your meeting content. AI outputs are intended to assist, not replace, human judgment.</p>
+        <p>You acknowledge that Fixsense uses AI models to process CVs, candidate-job matching, and meeting/interview content. AI-extracted candidate data and AI outputs (match scores, interview feedback, summaries) are intended to assist, not replace, human judgment, and every AI-extracted candidate field remains unverified until a member of your team reviews and confirms it.</p>
       </section>
 
       <section className="lg-section" id="accounts">
@@ -598,19 +621,23 @@ export function TermsPage() {
 
       <section className="lg-section" id="content">
         <h2>Your Content</h2>
-        <p>You retain full ownership of all recordings, transcripts, notes, and materials you create through Fixsense. We do not claim any intellectual property rights over your content.</p>
+        <p>You retain full ownership of all candidate records, CVs, job postings, client records, call/interview recordings, transcripts, notes, and other materials you or your team create or upload through Fixsense ("Your Content"). We do not claim any intellectual property rights over Your Content.</p>
+        <h3>Candidate & Client Data You Submit</h3>
+        <p>If Your Content includes personal data about candidates, job applicants, or client contacts, you represent that you have the legal right to collect, submit, and process that data through Fixsense, and that you have provided any notices and obtained any consents required by applicable law (including data protection law) before doing so. As between you and Fixsense, you are the data controller for that candidate and client data; Fixsense processes it on your instructions to provide the Services.</p>
         <h3>License to Fixsense</h3>
-        <p>By using our Services, you grant Fixsense a limited, non-exclusive, royalty-free license to process, store, and display your content solely to provide the Services to you.</p>
+        <p>By using our Services, you grant Fixsense a limited, non-exclusive, royalty-free license to process, store, and display Your Content solely to provide the Services to you.</p>
         <h3>Recording Consent</h3>
-        <p>You are solely responsible for obtaining necessary consent from all meeting participants before recording. Recording consent laws vary by jurisdiction.</p>
+        <p>You are solely responsible for obtaining necessary consent from all meeting and interview participants before recording. Recording consent laws vary by jurisdiction.</p>
       </section>
 
       <section className="lg-section" id="acceptable-use">
         <h2>Acceptable Use</h2>
         <p>You agree not to use Fixsense to:</p>
         <ul>
-          <li>Record meetings without proper participant consent where legally required</li>
-          <li>Process any content that is illegal, harmful, or violates third-party rights</li>
+          <li>Record meetings or interviews without proper participant consent where legally required</li>
+          <li>Collect or process candidate or client data you are not legally entitled to collect or process</li>
+          <li>Process any content that is illegal, harmful, discriminatory, or violates third-party rights</li>
+          <li>Use candidate data to make automated hiring decisions without appropriate human review, where required by applicable law</li>
           <li>Attempt to gain unauthorized access to our systems</li>
           <li>Reverse engineer, decompile, or attempt to extract our source code</li>
           <li>Use automated tools to scrape or extract data from our platform</li>
@@ -627,19 +654,19 @@ export function TermsPage() {
       <section className="lg-section" id="warranty">
         <h2>Disclaimers</h2>
         <p>THE SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED.</p>
-        <p>AI transcriptions, summaries, and coaching recommendations may contain errors. Always apply professional judgment before acting on AI-generated content.</p>
+        <p>AI-generated content — including CV-extracted candidate data, candidate-job match scores, call/interview transcriptions, summaries, and coaching or interview feedback — may contain errors. Always apply professional judgment and independent verification before acting on AI-generated content, particularly before making hiring, submission, or placement decisions.</p>
       </section>
 
       <section className="lg-section" id="liability">
         <h2>Limitation of Liability</h2>
-        <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, FIXSENSE SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</p>
+        <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, FIXSENSE SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING THOSE ARISING FROM HIRING, EMPLOYMENT, OR PLACEMENT DECISIONS MADE USING INFORMATION FROM THE SERVICES.</p>
         <p>OUR TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FIXSENSE IN THE 12 MONTHS PRECEDING THE CLAIM.</p>
       </section>
 
       <section className="lg-section" id="termination">
         <h2>Termination</h2>
         <p>Either party may terminate this agreement at any time. You may close your account through settings. We may suspend or terminate your account for violations of these Terms or non-payment.</p>
-        <p>Upon termination: access to Services ends immediately; you may export your data within 30 days; data will be permanently deleted within 60 days.</p>
+        <p>Upon termination: access to Services ends immediately; you may export your data, including candidate and client records, within 30 days; data will be permanently deleted within 60 days.</p>
       </section>
 
       <section className="lg-section" id="governing-law">
@@ -665,12 +692,12 @@ export function TermsPage() {
 
 // Overview cards — the six controls the brief asked to lead with.
 const SEC_OVERVIEW_CARDS = [
-  { icon: Lock, title: "Encryption at rest", desc: "Database records, call recordings, and audio files are encrypted at rest using AES-256." },
+  { icon: Lock, title: "Encryption at rest", desc: "Database records, candidate CVs, and call/interview recordings are encrypted at rest using AES-256." },
   { icon: ShieldCheck, title: "Encryption in transit", desc: "All connections — API calls, dashboard traffic, and real-time features — run over TLS 1.2 or higher." },
-  { icon: KeyRound, title: "Row-Level Security", desc: "Every database table is protected by Postgres Row-Level Security, scoping each query to the authenticated user or team." },
-  { icon: Users, title: "Access controls", desc: "Role-based access separates admin and member permissions. Fixsense staff do not have routine, standing access to call content." },
-  { icon: UserCheck, title: "Recording transparency", desc: "The meeting assistant joins visibly as \"Fixsense AI Recorder\" and announces itself to all participants when a call starts." },
-  { icon: Trash2, title: "Deletion & export", desc: "Account deletion removes associated data. Users can request an export of their data at any time." },
+  { icon: KeyRound, title: "Row-Level Security", desc: "Every database table — including candidate, job, and client records — is protected by Postgres Row-Level Security, scoping each query to the authenticated user or team." },
+  { icon: Users, title: "Access controls", desc: "Role-based access separates admin and member permissions. Fixsense staff do not have routine, standing access to candidate data or call content." },
+  { icon: UserCheck, title: "Recording transparency", desc: "The meeting assistant joins visibly as \"Fixsense AI Recorder\" and announces itself to all participants when a call or interview starts." },
+  { icon: Trash2, title: "Deletion & export", desc: "Account deletion removes associated candidate, job, client, and call data. Users can request an export of their data at any time." },
 ] as const;
 
 // Verification ledger — the page's signature element. Each row states what
@@ -684,25 +711,27 @@ const LEDGER_STATUS_LABEL: Record<LedgerStatus, string> = {
   assessed: "Self-assessed, not certified",
 };
 const SEC_LEDGER: { claim: string; detail: string; status: LedgerStatus; source: string }[] = [
-  { claim: "Row-Level Security on all data tables", detail: "Policies scope every query to the owning user or team at the database layer.", status: "implemented", source: "Fixsense · Postgres RLS" },
+  { claim: "Row-Level Security on all data tables", detail: "Policies scope every query — candidate, job, client, and call records included — to the owning user or team at the database layer.", status: "implemented", source: "Fixsense · Postgres RLS" },
+  { claim: "Candidate CVs stored in private storage", detail: "CV files are held in an access-controlled storage bucket, never publicly reachable, and served only via signed URLs to authorized team members.", status: "implemented", source: "Fixsense" },
+  { claim: "AI-extracted candidate data held as unverified", detail: "Every field a CV parser or AI matcher writes to a candidate record carries a confidence and status, and is never treated as authoritative until a recruiter on your team confirms it.", status: "implemented", source: "Fixsense" },
   { claim: "OAuth token encryption", detail: "Refresh tokens for connected integrations are encrypted at the application layer before storage.", status: "implemented", source: "Fixsense · AES-GCM" },
   { claim: "Webhook signature verification", detail: "Incoming payment and integration webhooks are verified against a signed secret before processing.", status: "implemented", source: "Fixsense · HMAC" },
-  { claim: "Visible recording notice", detail: "The meeting assistant announces itself by name when it joins a call — no silent recording.", status: "implemented", source: "Fixsense" },
+  { claim: "Visible recording notice", detail: "The meeting assistant announces itself by name when it joins a call or interview — no silent recording.", status: "implemented", source: "Fixsense" },
   { claim: "Database & storage encryption at rest", detail: "AES-256 encryption for database records and storage buckets, managed by our hosting provider.", status: "vendor", source: "Supabase" },
   { claim: "TLS in transit", detail: "TLS 1.2+ termination on all connections between clients and our infrastructure.", status: "vendor", source: "Supabase / hosting layer" },
   { claim: "Payment card handling", detail: "Card data is collected and processed by our payment processor; Fixsense never stores card numbers.", status: "vendor", source: "Paystack" },
-  { claim: "UK GDPR–aligned data practices", detail: "Consent, minimization, deletion, export, and retention controls are designed to meet UK GDPR expectations.", status: "assessed", source: "Internal review — no formal certification held" },
+  { claim: "UK GDPR–aligned data practices", detail: "Consent, minimization, deletion, export, and retention controls — for candidate and client data as much as account data — are designed to meet UK GDPR expectations.", status: "assessed", source: "Internal review — no formal certification held" },
 ];
 
 // AI data-processing flow — states plainly what happens, without naming an
 // unverified model provider or claiming a data-retention agreement that
 // isn't in front of us.
 const SEC_AI_FLOW = [
-  { title: "What's sent", desc: "Call audio is transcribed, and the resulting transcript text — not the raw audio — is sent to our AI processing layer to generate summaries, action items, and objection notes." },
-  { title: "Why it's processed", desc: "Solely to generate the summary, action items, and coaching insights that are returned to your account. It is not used for any purpose beyond producing that output." },
-  { title: "Model training", desc: "Your call content is not used to train Fixsense's product or shared for third-party model training as part of our standard processing." },
+  { title: "What's sent", desc: "Call/interview audio is transcribed, and the resulting transcript text — not the raw audio — is sent to our AI processing layer to generate summaries, action items, and interview feedback. CV text is sent to extract structured candidate fields, and candidate/job data is sent to generate match scores." },
+  { title: "Why it's processed", desc: "Solely to generate the summary, action items, coaching insights, CV-extracted candidate fields, candidate-job match scores, and interview feedback that are returned to your account. It is not used for any purpose beyond producing that output." },
+  { title: "Model training", desc: "Candidate data, CVs, and call content are not used to train Fixsense's product or shared for third-party model training as part of our standard processing." },
   { title: "Retention by processing providers", desc: "We rely on the retention and deletion terms of our AI processing provider's commercial API. We have not independently published a zero-retention guarantee, and this page will be updated if that changes." },
-  { title: "Human access", desc: "Fixsense staff do not routinely read transcripts or listen to recordings. Support access to a specific account's data requires the customer's request and is logged." },
+  { title: "Human access", desc: "Fixsense staff do not routinely read transcripts, view candidate records, or listen to recordings. Support access to a specific account's data requires the customer's request and is logged." },
 ] as const;
 
 // Documentation cards
@@ -812,9 +841,9 @@ export function SecurityPage() {
             <Link to="/">Home</Link><span>/</span><span className="cur">Security & Privacy</span>
           </div>
           <div className="sec-kicker"><span className="sec-kicker-dot" />Security & Privacy Centre</div>
-          <h1 className="sec-h1">Security and privacy built into <span className="c">every meeting.</span></h1>
+          <h1 className="sec-h1">Security and privacy built into <span className="c">every candidate, call, and record.</span></h1>
           <p className="sec-sub">
-            Fixsense protects call recordings, transcripts, and personal information at every stage —
+            Fixsense protects candidate records, CVs, client data, call recordings, and transcripts at every stage —
             collection, processing, storage, and deletion. This page explains exactly how, and is honest
             about where a claim comes from us versus a vendor we rely on.
           </p>
@@ -873,21 +902,65 @@ export function SecurityPage() {
         </div>
       </div>
 
-      {/* ── Meeting & candidate data ──────────────────────────────────── */}
+      {/* ── Candidate & recruiting data ──────────────────────────────────── */}
       <div className="sec-band">
         <div className="sec-band-inner">
-          <div className="sec-band-eyebrow">Meeting & Candidate Data</div>
-          <h2 className="sec-band-h2">How recruitment calls are handled</h2>
+          <div className="sec-band-eyebrow">Candidate & Recruiting Data</div>
+          <h2 className="sec-band-h2">How candidate and client data is handled</h2>
           <p className="sec-band-p">
-            For recruitment and staffing teams, calls often include candidate personal details, salary
-            expectations, and client requirements. Here's specifically how that data moves through Fixsense.
+            Fixsense is a recruitment operating system: candidate CVs, applications, AI matching, pipeline,
+            client CRM, submissions, interviews, and placements all live in the platform. Here's specifically
+            how that data is protected.
           </p>
           <div className="sec-grid-2">
             <div className="sec-card">
-              <div className="sec-card-icon"><UserCheck size={18} /></div>
-              <div className="sec-card-title">Candidate screening & client intake calls</div>
-              <div className="sec-card-desc">Interviews and intake calls are recorded and transcribed the same way as any other meeting on the platform — the assistant joins visibly, and a transcript with a summary and action items is generated after the call.</div>
+              <div className="sec-card-icon"><FileText size={18} /></div>
+              <div className="sec-card-title">CV storage & parsing</div>
+              <div className="sec-card-desc">Uploaded CVs are stored in a private, access-controlled storage bucket — never a public link. Our AI parser extracts structured fields (skills, roles, history) from each CV into the candidate record.</div>
             </div>
+            <div className="sec-card">
+              <div className="sec-card-icon"><ShieldCheck size={18} /></div>
+              <div className="sec-card-title">AI extractions are never auto-trusted</div>
+              <div className="sec-card-desc">Every AI-extracted candidate field is written with its source, confidence, and a review status. It does not become part of the authoritative candidate record until a recruiter on your team reviews and confirms it.</div>
+            </div>
+            <div className="sec-card">
+              <div className="sec-card-icon"><Users size={18} /></div>
+              <div className="sec-card-title">Who can see a candidate record</div>
+              <div className="sec-card-desc">Candidate, job, and client records are scoped to your recruiting team by Row-Level Security. A candidate isn't automatically visible outside your team, and access inside your team follows your roles and permissions.</div>
+            </div>
+            <div className="sec-card">
+              <div className="sec-card-icon"><UserCheck size={18} /></div>
+              <div className="sec-card-title">Candidate interviews & client calls</div>
+              <div className="sec-card-desc">Interviews and client intake calls run through Fixsense Meetings the same way as any other call — the assistant joins visibly, and a transcript with AI interview feedback is generated and saved to the candidate record.</div>
+            </div>
+            <div className="sec-card">
+              <div className="sec-card-icon"><ArrowUpRight size={18} /></div>
+              <div className="sec-card-title">Client submissions</div>
+              <div className="sec-card-desc">When your team submits a candidate to a client, only the details your team chooses to include go out, and the submission is tracked as a step in the pipeline rather than an untracked email.</div>
+            </div>
+            <div className="sec-card">
+              <div className="sec-card-icon"><Trash2 size={18} /></div>
+              <div className="sec-card-title">Deleting a candidate's data</div>
+              <div className="sec-card-desc">Individual candidates, their CVs, and linked interview recordings/transcripts can be deleted from within the platform. Deleting an account removes associated candidate, job, client, and call data.</div>
+            </div>
+          </div>
+          <div className="sec-note">
+            <ShieldCheck size={16} />
+            <p><strong>Worth knowing:</strong> Your agency (not the candidate or client) controls what data is collected and how it's used — Fixsense processes it on your team's instructions to run your recruiting desk.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Sales call data ──────────────────────────────────────────────── */}
+      <div className="sec-band alt">
+        <div className="sec-band-inner">
+          <div className="sec-band-eyebrow">Sales Call Data</div>
+          <h2 className="sec-band-h2">How sales calls are handled</h2>
+          <p className="sec-band-p">
+            Fixsense's original sales-call intelligence tools remain fully available alongside the recruiting
+            platform, with the same protections.
+          </p>
+          <div className="sec-grid-2">
             <div className="sec-card">
               <div className="sec-card-icon"><Database size={18} /></div>
               <div className="sec-card-title">Where recordings and transcripts live</div>
@@ -896,17 +969,8 @@ export function SecurityPage() {
             <div className="sec-card">
               <div className="sec-card-icon"><Users size={18} /></div>
               <div className="sec-card-title">Who can see it inside your team</div>
-              <div className="sec-card-desc">Access follows your team's roles and permissions in Fixsense. A candidate call isn't automatically visible to everyone in the organization — it follows the same access rules as any other call.</div>
+              <div className="sec-card-desc">Access follows your team's roles and permissions in Fixsense. A call isn't automatically visible to everyone in the organization — it follows the same access rules as any other call.</div>
             </div>
-            <div className="sec-card">
-              <div className="sec-card-icon"><Trash2 size={18} /></div>
-              <div className="sec-card-title">Deleting a candidate's data</div>
-              <div className="sec-card-desc">Individual calls and their transcripts can be deleted from within the platform. Deleting an account removes associated recordings and transcripts.</div>
-            </div>
-          </div>
-          <div className="sec-note">
-            <ShieldCheck size={16} />
-            <p><strong>Worth knowing:</strong> Fixsense is not a candidate database or applicant tracking system. It's built to capture and summarize the conversation itself — the record that sits alongside whatever ATS or CRM your team already uses.</p>
           </div>
         </div>
       </div>
@@ -944,9 +1008,9 @@ export function SecurityPage() {
           <div className="sec-grid-3">
             {[
               { icon: UserCheck, title: "Consent", desc: "The recording assistant announces itself by name on joining a call, so participants know a recording is taking place." },
-              { icon: Database, title: "Data minimization", desc: "We collect what's needed to run the platform and generate call insights — not more." },
-              { icon: Trash2, title: "Deletion", desc: "Users can delete individual calls, and account deletion removes associated data." },
-              { icon: Download, title: "Export", desc: "Data can be exported on request; call data is also accessible via the platform." },
+              { icon: Database, title: "Data minimization", desc: "We collect what's needed to run the platform and generate candidate matching, interview, and call insights — not more." },
+              { icon: Trash2, title: "Deletion", desc: "Users can delete individual candidates, jobs, or calls, and account deletion removes associated data." },
+              { icon: Download, title: "Export", desc: "Data can be exported on request; candidate, job, and call data is also accessible via the platform." },
               { icon: FileText, title: "Data-subject rights", desc: "Requests for access, correction, or erasure are handled by our privacy team on a reasonable timescale." },
               { icon: Clock, title: "Retention", desc: "Retention periods for recordings, transcripts, and account data are set out in the Privacy Policy." },
               { icon: Globe, title: "International transfers", desc: "Our infrastructure providers may process data outside the UK. Details are available on request." },
@@ -986,7 +1050,7 @@ export function SecurityPage() {
             <div className="sec-card">
               <div className="sec-card-icon"><Lock size={18} /></div>
               <div className="sec-card-title">Storage encryption</div>
-              <div className="sec-card-desc">Call recordings and file uploads sit in private storage buckets, accessed only via time-limited signed URLs — never a public link.</div>
+              <div className="sec-card-desc">Candidate CVs, call/interview recordings, and other file uploads sit in private storage buckets, accessed only via time-limited signed URLs — never a public link.</div>
             </div>
             <div className="sec-card">
               <div className="sec-card-icon"><KeyRound size={18} /></div>
@@ -1149,6 +1213,7 @@ export function ContactPage() {
     { q: "How do I cancel my subscription?", a: "Cancel directly from your Billing dashboard at any time. Your access continues until the end of the billing period." },
     { q: "Can I get a demo before subscribing?", a: "Yes, the Free plan includes up to 30 minutes per month, no credit card required. For a personalized demo with our team, email enterprise@fixsense.com.ng." },
     { q: "Do you offer refunds?", a: "We offer a 7-day money-back guarantee on new paid subscriptions. After 7 days, refunds are considered case-by-case. Email billing@fixsense.com.ng." },
+    { q: "I'm a candidate or client contact and have a question about my data.", a: "Fixsense is used by a recruiting agency or sales team you interacted with — we aren't the data controller for the information they hold about you. Please contact that organization directly. If you're unable to reach them, email privacy@fixsense.com.ng and we'll help route your request." },
   ];
 
   const NAV = [
