@@ -68,7 +68,6 @@ function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: num
     case "user-check": return <svg {...p}><circle cx="9" cy="8" r="4" /><path d="M2 21c0-4 3.1-7 7-7s7 3 7 7" /><path d="M17 11l2 2 4-4" /></svg>;
     case "book": return <svg {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>;
     case "phone": return <svg {...p}><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .6 2.9a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.5 2.9.6a2 2 0 0 1 1.8 2.1z" /></svg>;
-    case "coffee": return <svg {...p}><path d="M17 8h1a4 4 0 0 1 0 8h-1" /><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" /><line x1="6" y1="2" x2="6" y2="4" /><line x1="10" y1="2" x2="10" y2="4" /><line x1="14" y1="2" x2="14" y2="4" /></svg>;
     case "shield": return <svg {...p}><path d="M12 2l8 3.5v6c0 5-3.4 8.8-8 10.5-4.6-1.7-8-5.5-8-10.5v-6L12 2z" /><path d="M9 12l2 2 4-4" /></svg>;
     case "lock": return <svg {...p}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>;
     case "eye-off": return <svg {...p}><path d="M17.9 17.9A9.6 9.6 0 0 1 12 20c-5 0-9-4-10-8a11.6 11.6 0 0 1 3.1-4.9M9.9 5.1A9.6 9.6 0 0 1 12 4c5 0 9 4 10 8a11.6 11.6 0 0 1-1.6 3" /><line x1="2" y1="2" x2="22" y2="22" /></svg>;
@@ -87,64 +86,127 @@ function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: num
     case "user-plus": return <svg {...p}><circle cx="9" cy="8" r="4" /><path d="M2 21c0-4 3.1-7 7-7s7 3 7 7" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" /></svg>;
     case "link": return <svg {...p}><path d="M10 13a5 5 0 0 0 7.5.4l3-3a5 5 0 0 0-7.1-7.1l-1.5 1.5" /><path d="M14 11a5 5 0 0 0-7.5-.4l-3 3a5 5 0 0 0 7.1 7.1l1.5-1.5" /></svg>;
     case "grid": return <svg {...p}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+    case "target": return <svg {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></svg>;
+    case "inbox": return <svg {...p}><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>;
+    case "database": return <svg {...p}><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" /><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" /></svg>;
+    case "bar-chart": return <svg {...p}><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
+    case "compass": return <svg {...p}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></svg>;
+    case "sparkle": return <svg {...p}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" /></svg>;
+    case "route": return <svg {...p}><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19H15a4 4 0 0 0 4-4v-1a4 4 0 0 0-4-4H9a4 4 0 0 1-4-4v-1" /></svg>;
     default: return null;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Use cases — Fixsense is positioned for every kind of meeting, not just sales
+// The complete workflow — a genuine sequence, so a numbered rail is earned.
 // ─────────────────────────────────────────────────────────────────────────
-const USE_CASES = [
-  { icon: "briefcase", title: "Business meetings", desc: "Decisions, owners, and deadlines captured automatically, so nothing depends on someone's memory of what was agreed." },
-  { icon: "user-check", title: "Interviews", desc: "Stay present with the candidate. A clean transcript and summary are ready for the hiring panel right after the call." },
-  { icon: "book", title: "Classes and training", desc: "Every lecture or session becomes a searchable transcript that students and teammates can revisit anytime." },
-  { icon: "phone", title: "Client calls", desc: "Know exactly what was promised and asked on every call, with a summary ready to send before you hang up." },
-  { icon: "users", title: "Team meetings", desc: "Standups, planning sessions, and retros documented automatically, with action items assigned to the right person." },
-  { icon: "coffee", title: "One-on-ones", desc: "Everyday conversations, check-ins, and brainstorms captured as reliably as your most important calls." },
+type FlowStage = { key: string; label: string; icon: string };
+const FLOW: FlowStage[] = [
+  { key: "job", label: "Job", icon: "briefcase" },
+  { key: "applications", label: "Applications", icon: "inbox" },
+  { key: "candidates", label: "Candidates", icon: "database" },
+  { key: "match", label: "AI Match", icon: "sparkle" },
+  { key: "shortlist", label: "Shortlist", icon: "check-square" },
+  { key: "submit", label: "Submit", icon: "link" },
+  { key: "interview", label: "Interview", icon: "mic" },
+  { key: "intel", label: "AI Interview Intelligence", icon: "file-text" },
+  { key: "feedback", label: "Client Feedback", icon: "message" },
+  { key: "placement", label: "Placement", icon: "target" },
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recruiter pain → Fixsense fix, using real shipped features only
+// ─────────────────────────────────────────────────────────────────────────
+const PAIN_POINTS = [
+  {
+    icon: "inbox",
+    pain: "Too many applications to get through",
+    fix: "Every application lands against the job automatically through your application link, so nothing sits unread in an inbox.",
+  },
+  {
+    icon: "database",
+    pain: "CVs and candidate details scattered everywhere",
+    fix: "CV parsing reads every upload straight into a structured candidate record in one database — skills, roles, history, all searchable.",
+  },
+  {
+    icon: "mic",
+    pain: "Time wasted screening and taking notes",
+    fix: "Fixsense Meetings transcribes the call live, so you can run the conversation instead of typing through it.",
+  },
+  {
+    icon: "message",
+    pain: "Losing track of client feedback",
+    fix: "Client feedback is logged against the candidate and the job in the Client CRM, not buried in an email thread.",
+  },
+  {
+    icon: "route",
+    pain: "Candidates getting stuck between stages",
+    fix: "The candidate pipeline shows exactly which stage every candidate is sitting at, for every open job, at once.",
+  },
+  {
+    icon: "clock",
+    pain: "Follow-ups being forgotten",
+    fix: "Candidate timelines log every action automatically, so a stalled candidate is visible, not forgotten.",
+  },
+  {
+    icon: "target",
+    pain: "Hard to know who is actually the best fit",
+    fix: "AI job matching scores every candidate against the job and explains the reasoning, so shortlisting starts from evidence.",
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recruiting-specific differentiators — real, shipped functionality only
+// ─────────────────────────────────────────────────────────────────────────
+const DIFFERENTIATORS = [
+  { icon: "database", title: "Candidate database & CV parsing", desc: "Upload a CV and Fixsense extracts skills, roles, and history into a structured, searchable record." },
+  { icon: "sparkle", title: "AI job matching", desc: "Every candidate gets a match score against a job, with the reasoning behind it — not just a ranked list." },
+  { icon: "link", title: "Application links", desc: "A public link per job collects applications directly into your pipeline, no manual re-entry." },
+  { icon: "route", title: "Candidate pipeline", desc: "See every candidate's stage across every open job, from application to placement, in one view." },
+  { icon: "briefcase", title: "Client CRM", desc: "Clients, contacts, jobs, candidates, interviews, and placements roll up into one company record." },
+  { icon: "check-square", title: "Candidate & client submissions", desc: "Submit a shortlist to a client and track it as a first-class step in the pipeline, not a side email." },
+  { icon: "mic", title: "Fixsense Meetings", desc: "Live transcription for interviews and client calls, built into the workflow, not bolted on." },
+  { icon: "file-text", title: "Interview transcription & AI feedback", desc: "Every interview becomes a transcript and structured feedback the panel can actually use." },
+  { icon: "clock", title: "Candidate timelines", desc: "A full, automatic activity history for every candidate — every stage change, note, and interaction." },
+  { icon: "user-plus", title: "Interview invitations", desc: "Send and track interview invitations without leaving the candidate record." },
+  { icon: "target", title: "Placement tracking", desc: "Follow a candidate from submission through offer to a confirmed placement." },
+  { icon: "bar-chart", title: "Recruitment analytics", desc: "Time-to-shortlist, interview-to-offer ratio, placements per recruiter, and pipeline value, in one dashboard." },
+  { icon: "shield", title: "Compliance & data controls", desc: "Candidate data stays access-controlled by team, with export and deletion in your control." },
 ];
 
 const SECURITY_ITEMS = [
-  { icon: "lock", title: "Encrypted in transit and at rest", desc: "Recordings and transcripts are encrypted end to end using industry-standard protocols." },
-  { icon: "shield", title: "Built for GDPR", desc: "Data minimization, explicit consent, and the right to be forgotten are part of the design, not an add-on." },
-  { icon: "eye-off", title: "No visible bot", desc: "Fixsense works natively inside your meeting room instead of joining as a separate participant." },
-  { icon: "download", title: "You control your data", desc: "Export or permanently delete any recording or transcript from your account at any time." },
+  { icon: "lock", title: "Encrypted in transit and at rest", desc: "Candidate records, CVs, and interview transcripts are encrypted end to end." },
+  { icon: "shield", title: "Built for GDPR", desc: "Data minimisation, explicit consent, and the right to be forgotten are part of the design, for candidate data as much as client data." },
+  { icon: "users", title: "Team-scoped access", desc: "Candidate and client records are scoped to your agency's team, not shared across accounts." },
+  { icon: "download", title: "You control your data", desc: "Export or permanently delete any candidate record, CV, or transcript from your account at any time." },
 ];
 
 const FAQS = [
-  { q: "Do I need to invite a bot to my meeting?", a: "No. Fixsense works natively inside the meeting room instead of sending a visible bot to join on your behalf. There is nothing extra for other participants to notice or approve before you can start recording and transcribing." },
-  { q: "Who is Fixsense built for?", a: "Anyone who spends time in meetings. Sales and customer success teams use it for client calls, but so do founders running investor updates, recruiters conducting interviews, teachers recording lectures, consultants documenting client work, and teams that want a reliable record of what was said and agreed." },
-  { q: "How accurate is the transcription and speaker identification?", a: "Fixsense uses automatic speech recognition tuned for real conversations, including overlapping speech and accents, and separates each speaker automatically so you always know who said what without manual tagging." },
-  { q: "What happens to my recordings and transcripts?", a: "Your recordings and transcripts are encrypted, stored under your account, and never used to train shared AI models without your explicit consent. You can export or delete your data at any time from your account settings." },
-  { q: "How quickly can I get started?", a: "Most people are recording their first meeting within minutes of signing up. There is no hardware to install and no IT approval required. You join your normal meeting link and Fixsense handles the rest." },
-  { q: "Do I need a credit card to try it?", a: "No. The free plan starts with just an email address. You are only asked for billing details if you choose to upgrade to a paid plan." },
-  { q: "Can I cancel anytime?", a: "Yes. There is no contract and no lock-in. You can cancel from your account settings at any time, and you keep access until the end of your current billing period." },
-  { q: "What if someone on the call does not want to be recorded?", a: "Fixsense supports consent prompts you can enable for any meeting, and you stay in control of what gets recorded, stored, or deleted at all times." },
+  { q: "Is Fixsense a full ATS, or just an add-on?", a: "Fixsense is the operating system for your recruitment desk: jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements all live in one system, not stitched together from a spreadsheet, an inbox, and a separate call-recording tool." },
+  { q: "Do I need to invite a bot to interviews?", a: "No. Fixsense Meetings works natively inside your call instead of sending a visible bot to join. Nothing extra for the candidate or client to notice before you start." },
+  { q: "How does AI matching work?", a: "Every candidate is scored against a job's requirements, with an explanation of what drove the score — not a black-box number. You decide who gets shortlisted." },
+  { q: "What happens to candidate CVs and data?", a: "CVs and candidate records are encrypted, stored under your agency's account, and scoped to your team. You can export or delete any candidate's data at any time." },
+  { q: "Do I need a credit card to try it?", a: "No. The free plan starts with just an email address. You're only asked for billing details if you choose to upgrade to a paid plan." },
+  { q: "Can I cancel anytime?", a: "Yes. There's no contract and no lock-in. Cancel from your account settings at any time and keep access until the end of your current billing period." },
+  { q: "How quickly can I get started?", a: "Most agencies have their first job posted and application link live within minutes of signing up. There's no hardware to install and no IT approval required." },
 ];
 
 const NAV_LINKS = [
   { label: "Product", href: "#product" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Use cases", href: "#use-cases" },
+  { label: "Workflow", href: "#workflow" },
+  { label: "For agencies", href: "#agency" },
   { label: "Pricing", href: "#pricing" },
   { label: "Security", href: "#security" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// Product mock — the hero interface. A realistic meeting screen: transcript
-// on the left, AI summary and action items on the right. This is what a
-// first-time visitor needs to see to understand the product in one glance.
+// Hero product mock — a real recruiting screen: pipeline + AI match score
 // ─────────────────────────────────────────────────────────────────────────
-const TRANSCRIPT_LINES = [
-  { time: "00:11:42", speaker: "Maria Chen", text: "So the main blocker right now is getting sign-off from legal on the new contract terms." },
-  { time: "00:11:58", speaker: "Daniel Osei", text: "I can follow up with them this afternoon and get a clear timeline back to the team." },
-  { time: "00:12:14", speaker: "Priya Nair", text: "Good. Let's revisit this in Thursday's sync once you've heard back from legal." },
-  { time: "00:12:29", speaker: "Maria Chen", text: "Agreed. I'll also loop in the client so they're not caught off guard by the delay." },
-];
-
-const ACTION_ITEMS = [
-  { text: "Follow up with legal for a sign-off timeline", owner: "Daniel Osei", due: "Today" },
-  { text: "Revisit contract status in Thursday's sync", owner: "Priya Nair", due: "Thursday" },
-  { text: "Notify client about the possible delay", owner: "Maria Chen", due: "No date set" },
+const PIPELINE_CANDIDATES = [
+  { name: "Sarah Whitfield", role: "Senior .NET Developer", stage: "Interview", match: 94 },
+  { name: "Tom Adeyemi", role: "Senior .NET Developer", stage: "Shortlist", match: 88 },
+  { name: "Aisha Malik", role: "Senior .NET Developer", stage: "Submitted", match: 91 },
+  { name: "James Carrick", role: "Senior .NET Developer", stage: "Applied", match: 76 },
 ];
 
 function ProductMock() {
@@ -154,62 +216,56 @@ function ProductMock() {
         <div className="mock-dots">
           <span /><span /><span />
         </div>
-        <div className="mock-titlebar-name">Weekly Client Sync</div>
+        <div className="mock-titlebar-name">Pipeline · Senior .NET Developer — London</div>
         <div className="mock-rec">
-          <span className="mock-rec-dot" />
-          Recording · 00:12:41
+          <Icon name="sparkle" size={12} strokeWidth={1.8} />
+          AI matching live
         </div>
       </div>
 
       <div className="mock-body">
         <div className="mock-transcript-pane">
           <div className="mock-pane-head">
-            <Icon name="mic" size={13} />
-            Live transcript
+            <Icon name="route" size={13} />
+            Pipeline · 4 candidates
           </div>
           <div className="mock-transcript-list">
-            {TRANSCRIPT_LINES.map((l, i) => (
+            {PIPELINE_CANDIDATES.map((c, i) => (
               <div className="mock-t-row" key={i}>
                 <div className="mock-t-meta">
-                  <span className="mock-t-speaker">{l.speaker}</span>
-                  <span className="mock-t-time">{l.time}</span>
+                  <span className="mock-t-speaker">{c.name}</span>
+                  <span className="mock-t-time">{c.stage}</span>
                 </div>
-                <div className="mock-t-text">{l.text}</div>
+                <div className="mock-t-text">{c.role}</div>
               </div>
             ))}
-            <div className="mock-t-row mock-t-live">
-              <div className="mock-t-meta">
-                <span className="mock-t-speaker">Daniel Osei</span>
-                <span className="mock-t-time">Live</span>
-              </div>
-              <div className="mock-t-text">
-                Sounds good, I'll send the updated terms as soon as I hear back
-                <span className="mock-caret" />
-              </div>
-            </div>
           </div>
         </div>
 
         <div className="mock-summary-pane">
           <div className="mock-pane-head">
-            <Icon name="file-text" size={13} />
-            Summary
+            <Icon name="sparkle" size={13} />
+            Match score — Sarah Whitfield
           </div>
           <p className="mock-summary-text">
-            The team reviewed a legal sign-off blocker on the new contract terms. Daniel will follow up with legal today, and the group will revisit status in Thursday's sync.
+            94% match. Eight years .NET/Azure, matches all three required skills and the London hybrid requirement. Notice period aligns with the client's start date.
           </p>
 
           <div className="mock-pane-head" style={{ marginTop: 18 }}>
             <Icon name="check-square" size={13} />
-            Action items · 3
+            Next steps
           </div>
           <div className="mock-action-list">
-            {ACTION_ITEMS.map((a, i) => (
+            {[
+              { text: "Submit to client with AI-generated profile summary", owner: "Ready to send", due: "" },
+              { text: "Interview booked — invitation sent", owner: "Thu, 2:00pm", due: "" },
+              { text: "Client feedback logged after last submission", owner: "2 days ago", due: "" },
+            ].map((a, i) => (
               <div className="mock-action-row" key={i}>
                 <span className="mock-action-box" />
                 <div>
                   <div className="mock-action-text">{a.text}</div>
-                  <div className="mock-action-meta">{a.owner} · {a.due}</div>
+                  <div className="mock-action-meta">{a.owner}</div>
                 </div>
               </div>
             ))}
@@ -217,16 +273,16 @@ function ProductMock() {
 
           <div className="mock-insight-row">
             <div className="mock-insight">
-              <div className="mock-insight-val">4</div>
-              <div className="mock-insight-label">Speakers</div>
+              <div className="mock-insight-val">94%</div>
+              <div className="mock-insight-label">Match score</div>
             </div>
             <div className="mock-insight">
-              <div className="mock-insight-val">92%</div>
-              <div className="mock-insight-label">Follow-through</div>
+              <div className="mock-insight-val">4</div>
+              <div className="mock-insight-label">In pipeline</div>
             </div>
             <div className="mock-insight">
               <div className="mock-insight-val">1</div>
-              <div className="mock-insight-label">Risk flagged</div>
+              <div className="mock-insight-label">Interview booked</div>
             </div>
           </div>
         </div>
@@ -236,346 +292,65 @@ function ProductMock() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// MAIN LANDING PAGE
+// Workflow rail — Job → Applications → Candidates → AI Match → Shortlist →
+// Submit → Interview → AI Interview Intelligence → Client Feedback → Placement
 // ─────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────
-// "See how Fixsense works" — interactive, auto-playing product walkthrough
-// ─────────────────────────────────────────────────────────────────────────
-
-type Stage = {
-  label: string;
-  eyebrow: string;
-  title: string;
-  desc: string;
-  frameLabel: string;
-};
-
-const STAGES: Stage[] = [
-  {
-    label: "Start meeting",
-    eyebrow: "Step 1 · Start your meeting with Fixsense.",
-    title: "Start your meeting.",
-    desc: "Start a meeting from your Fixsense workspace, invite your participants, and join the live meeting. Fixsense records and transcribes the conversation automatically, so you can focus on the discussion instead of taking notes.",
-    frameLabel: "live meeting · fixsense.com.ng",
-  },
-  {
-    label: "Capture",
-    eyebrow: "Step 2 · Fixsense captures the conversation",
-    title: "Speakers are identified automatically.",
-    desc: "While the conversation happens, Fixsense transcribes it in real time and attributes every line to the right speaker — no manual tagging.",
-    frameLabel: "transcript · fixsense.com.ng",
-  },
-  {
-    label: "AI understands",
-    eyebrow: "Step 3 · AI understands what happened",
-    title: "The conversation becomes structure.",
-    desc: "Fixsense processes what was said into a summary, decisions, action items with owners and deadlines, and the key moments worth revisiting.",
-    frameLabel: "analysis · fixsense.com.ng",
-  },
-  {
-    label: "Meeting record",
-    eyebrow: "Step 4 · Your meeting becomes a record",
-    title: "Every call, permanently searchable.",
-    desc: "The finished Call Details page holds the summary, action items, decisions, and full transcript — nothing lives only in someone's memory.",
-    frameLabel: "call details · fixsense.com.ng",
-  },
-  {
-    label: "Keep it moving",
-    eyebrow: "Step 5 · Keep the conversation moving",
-    title: "Your meeting doesn't end when the call does.",
-    desc: "Decisions, commitments, and follow-ups flow straight into Messages and Deals — connected to the people and work they belong to.",
-    frameLabel: "messages · fixsense.com.ng",
-  },
-];
-
-const AUTOPLAY_MS = 4200;
-
-function TypingCaption() {
-  const text = "So the main blocker right now is getting sign-off from legal on the new terms.";
-  const [shown, setShown] = useState(0);
-  useEffect(() => {
-    setShown(0);
-    const id = setInterval(() => {
-      setShown((n) => {
-        if (n >= text.length) { clearInterval(id); return n; }
-        return n + 1;
-      });
-    }, 32);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="s1-caption-text">
-      {text.slice(0, shown)}
-      <span className="s1-caret" />
-    </div>
-  );
-}
-
-function StageOne() {
-  return (
-    <div className="panel show">
-      <div className="s1-callbar">
-        <div className="s1-rec"><span className="s1-rec-dot" />REC</div>
-        <div className="s1-timer">00:00:14</div>
-      </div>
-      <div className="s1-tiles">
-        <div className="s1-tile speaking">
-          <div className="s1-avatar">MC</div>
-          <div className="s1-name-tag">Maria Chen</div>
-          <div className="s1-wave"><span /><span /><span /><span /></div>
-        </div>
-        <div className="s1-tile">
-          <div className="s1-avatar">DO</div>
-          <div className="s1-name-tag">Daniel Osei</div>
-        </div>
-      </div>
-      <div className="s1-controls">
-        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /></svg></div>
-        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg></div>
-        <div className="s1-ctl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg></div>
-      </div>
-      <div className="s1-caption-row">
-        <div className="s1-caption-label">Live caption</div>
-        <TypingCaption />
-      </div>
-    </div>
-  );
-}
-
-function StageTwo() {
-  const lines = [
-    { n: "Maria Chen", i: "MC", t: "00:12:04", x: "So the main blocker right now is getting sign-off from legal on the new terms." },
-    { n: "Daniel Osei", i: "DO", t: "00:12:19", x: "I can follow up with them this afternoon and get a timeline." },
-    { n: "Priya Nair", i: "PN", t: "00:12:31", x: "Great, let's revisit this in Thursday's sync once you hear back." },
-  ];
-  return (
-    <div className="panel show">
-      <div className="s2-head">Live transcript</div>
-      <div className="s2-list">
-        {lines.map((l, i) => (
-          <div key={i} className="s2-line in" style={{ animationDelay: `${i * 260}ms` }}>
-            <div className="s2-avatar">{l.i}</div>
-            <div className="s2-body">
-              <div className="s2-meta"><span className="s2-name">{l.n}</span><span className="s2-time">{l.t}</span></div>
-              <div className="s2-text">{l.x}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StageThree() {
-  const cards = [
-    { icon: "file-text", label: "Summary", val: "Legal sign-off is the sole blocker to close.", big: false },
-    { icon: "check-square", label: "Decisions", val: "2", big: true },
-    { icon: "trending", label: "Action items", val: "4", big: true },
-    { icon: "clock", label: "Deadlines", val: "Thu sync", big: false },
-  ];
-  return (
-    <div className="panel show">
-      <div className="s3-head"><span className="s3-spinner" /> Fixsense is analyzing</div>
-      <div className="s3-grid">
-        {cards.map((c, i) => (
-          <div key={i} className="s3-card in" style={{ animationDelay: `${i * 220}ms` }}>
-            <div className="s3-card-label"><Icon name={c.icon} size={12} strokeWidth={1.8} />{c.label}</div>
-            <div className={c.big ? "s3-card-val num" : "s3-card-val"}>{c.val}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StageFour() {
-  const stats: [string, string][] = [["4", "Action items"], ["2", "Decisions"], ["3", "Participants"], ["34m", "Transcript"]];
-  const items: [string, string][] = [
-    ["Daniel to follow up with legal on contract terms", "Owner: Daniel Osei · Due Thu"],
-    ["Priya to prep renewal numbers for next sync", "Owner: Priya Nair · Due Thu"],
-    ["Send updated MSA redline to Acme legal team", "Owner: Maria Chen · Due Fri"],
-  ];
-  return (
-    <div className="panel show">
-      <div className="s4-top">
-        <div>
-          <div className="s4-title">Pipeline review — Acme Corp</div>
-          <div className="s4-meta">Aug 12, 2026 · 34 min · 3 participants</div>
-        </div>
-        <div className="s4-badge">Complete</div>
-      </div>
-      <div className="s4-stats">
-        {stats.map(([v, l], i) => (
-          <div key={i} className="s4-stat">
-            <div className="s4-stat-val" style={{ animationDelay: `${i * 90}ms` }}>{v}</div>
-            <div className="s4-stat-label">{l}</div>
-          </div>
-        ))}
-      </div>
-      <div className="s4-rows">
-        {items.map(([t, m], i) => (
-          <div key={i} className="s4-row in" style={{ animationDelay: `${i * 200}ms` }}>
-            <div className="s4-check"><Icon name="check" size={8} strokeWidth={2.6} /></div>
-            <div><div className="s4-row-text">{t}</div><div className="s4-row-meta">{m}</div></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StageFive() {
-  const nodes: [string, string][] = [["file-text", "Meeting"], ["trending", "Summary"], ["check-square", "Action items"], ["message", "Team chat"]];
-  return (
-    <div className="panel show">
-      <div className="s5-flow">
-        {nodes.map((n, i) => (
-          <div key={i} style={{ display: "contents" }}>
-            <div className="s5-node in" style={{ animationDelay: `${i * 200}ms` }}>
-              <div className="s5-node-icon"><Icon name={n[0]} size={16} strokeWidth={1.7} /></div>
-              <div className="s5-node-label">{n[1]}</div>
-            </div>
-            {i < nodes.length - 1 && <div className="s5-arrow" />}
-          </div>
-        ))}
-      </div>
-      <div className="s5-thread in" style={{ animationDelay: "900ms" }}>
-        <div className="s5-msg">
-          <div className="s5-msg-avatar">FX</div>
-          <div><div className="s5-msg-name">Fixsense</div><div className="s5-msg-text">4 action items posted from "Pipeline review — Acme Corp." Daniel is owner on 2.</div></div>
-        </div>
-        <div className="s5-msg">
-          <div className="s5-msg-avatar">DO</div>
-          <div><div className="s5-msg-name">Daniel Osei</div><div className="s5-msg-text">On it — following up with legal now.</div></div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const STAGE_COMPONENTS = [StageOne, StageTwo, StageThree, StageFour, StageFive];
-
-function HowItWorksInteractive() {
-  // Autoplay is the default, continuous experience — it loops forever (stage 5 → stage 1)
-  // until the visitor explicitly pauses it or clicks a stage/nav control themselves.
-  const [current, setCurrent] = useState(0);
-  const [autoplay, setAutoplay] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const rafRef = useRef<number>();
-  const startRef = useRef<number>(0);
-
-  // Pause autoplay only while the section is actually on screen isn't required here —
-  // IntersectionObserver could be added later, but requestAnimationFrame already stays
-  // cheap (a single style write per tick) so it's safe to run continuously.
-  const goTo = useCallback((i: number) => {
-    setCurrent(i);
-    setProgress(0);
-  }, []);
-
-  const stopAutoplay = useCallback(() => {
-    setAutoplay(false);
-    setProgress(0);
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-  }, []);
-
-  const startAutoplay = useCallback(() => {
-    setAutoplay(true);
-  }, []);
-
-  useEffect(() => {
-    if (!autoplay) return;
-    startRef.current = performance.now();
-    function frame(now: number) {
-      const elapsed = now - startRef.current;
-      const pct = Math.min(100, (elapsed / AUTOPLAY_MS) * 100);
-      setProgress(pct);
-      if (elapsed >= AUTOPLAY_MS) {
-        setCurrent((c) => (c === STAGES.length - 1 ? 0 : c + 1));
-        startRef.current = now;
-        setProgress(0);
-      }
-      rafRef.current = requestAnimationFrame(frame);
-    }
-    rafRef.current = requestAnimationFrame(frame);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [autoplay]);
-
-  const StageVisual = STAGE_COMPONENTS[current];
-  const s = STAGES[current];
+function WorkflowRail() {
+  const [active, setActive] = useState(0);
+  const detail: Record<string, { title: string; desc: string }> = {
+    job: { title: "Post the job once.", desc: "Create the job in Fixsense with the client, requirements, and location. It becomes the anchor everything downstream connects to." },
+    applications: { title: "Applications land in one place.", desc: "Share the job's application link. Every application arrives directly into the pipeline instead of an inbox." },
+    candidates: { title: "CVs become structured records.", desc: "CV parsing reads every application into your candidate database — skills, history, and contact details, searchable across your whole desk." },
+    match: { title: "AI scores every candidate.", desc: "Each candidate is matched against the job's requirements with a score and a plain-language explanation of why." },
+    shortlist: { title: "Build the shortlist from evidence.", desc: "Move the strongest matches into shortlist with one action, backed by the match reasoning, not a gut feeling alone." },
+    submit: { title: "Submit to the client.", desc: "Send a submission to the client as a tracked step in the pipeline — not a one-off email that goes quiet." },
+    interview: { title: "Schedule and send the invitation.", desc: "Send the interview invitation and get it on the calendar without leaving the candidate record." },
+    intel: { title: "The interview transcribes itself.", desc: "Fixsense Meetings captures the interview live and turns it into a transcript with AI feedback for the panel." },
+    feedback: { title: "Client feedback lands on the record.", desc: "Feedback from the client goes straight onto the candidate and job in the Client CRM — never lost in a thread." },
+    placement: { title: "Track it through to placement.", desc: "Follow the candidate from offer to confirmed placement, and see it reflected in your recruitment analytics." },
+  };
+  const d = detail[FLOW[active].key];
 
   return (
-    <section className="section" id="how-it-works">
+    <section className="section" id="workflow">
       <div className="section-inner">
         <Reveal>
           <div style={{ textAlign: "center", marginBottom: 8 }}>
-            <div className="kicker" style={{ justifyContent: "center" }}>See how Fixsense works</div>
-            <h2 className="section-h" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>
-              From conversation to useful follow-up, automatically.
+            <div className="kicker" style={{ justifyContent: "center" }}>The complete workflow</div>
+            <h2 className="section-h" style={{ textAlign: "center", maxWidth: 680, margin: "0 auto" }}>
+              From job to placement, in one system.
             </h2>
-            <p className="section-sub" style={{ textAlign: "center", margin: "0 auto" }}>
-              Click through each stage below, or let it play. This is the actual product experience — start to finish, in under 30 seconds.
+            <p className="section-sub" style={{ textAlign: "center", margin: "10px auto 0" }}>
+              Ten stages. One record per candidate. No handoffs to a spreadsheet or a separate inbox in between.
             </p>
           </div>
         </Reveal>
 
-        <div className="stage-rail">
-          {STAGES.map((st, i) => (
-            <div key={i} style={{ display: "contents" }}>
-              <button
-                className={`stage-btn${current === i ? " active" : ""}${current > i ? " done" : ""}`}
-                onClick={() => { stopAutoplay(); goTo(i); }}
-              >
-                <span className="stage-num">{i + 1}</span>
-                <span className="stage-label">{st.label}</span>
-              </button>
-              {i < STAGES.length - 1 && <div className="stage-connector" />}
-            </div>
-          ))}
-        </div>
-
-        <div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
-        <div className="autoplay-row">
-          <button className="autoplay-btn" onClick={() => (autoplay ? stopAutoplay() : startAutoplay())}>
-            {autoplay ? (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
-            ) : (
-              <Icon name="play" size={12} />
-            )}
-            {autoplay ? "Pause" : "Play walkthrough"}
-          </button>
-        </div>
-
-        <div className="stage-panel">
-          <div className="stage-copy">
-            <div className="stage-eyebrow">{s.eyebrow}</div>
-            <h3 className="stage-title">{s.title}</h3>
-            <p className="stage-desc">{s.desc}</p>
-          </div>
-          <div className="stage-visual">
-            <div className="frame">
-              <div className="frame-bar">
-                <div className="frame-dots"><span /><span /><span /></div>
-                <span className="frame-label">{s.frameLabel}</span>
+        <Reveal delay={80}>
+          <div className="flow-rail">
+            {FLOW.map((s, i) => (
+              <div key={s.key} style={{ display: "contents" }}>
+                <button
+                  className={`flow-node${active === i ? " active" : ""}`}
+                  onClick={() => setActive(i)}
+                  aria-pressed={active === i}
+                >
+                  <span className="flow-node-icon"><Icon name={s.icon} size={16} strokeWidth={1.7} /></span>
+                  <span className="flow-node-label">{s.label}</span>
+                </button>
+                {i < FLOW.length - 1 && <div className="flow-arrow" />}
               </div>
-              <div className="frame-body" key={current}>
-                <StageVisual />
-              </div>
-            </div>
+            ))}
           </div>
-        </div>
+        </Reveal>
 
-        <div className="stage-nav">
-          <button className="nav-btn" disabled={current === 0} onClick={() => { stopAutoplay(); goTo(Math.max(0, current - 1)); }}>Back</button>
-          <button className="nav-btn" onClick={() => { stopAutoplay(); goTo(current === STAGES.length - 1 ? 0 : current + 1); }}>
-            {current === STAGES.length - 1 ? "Restart" : "Next stage"}
-          </button>
-        </div>
-
-        <div className="hiw-cta">
-          <div className="hiw-cta-h">Your first meeting can look like this.</div>
-          <a href="/login?mode=signup" className="btn-hero">Start for free</a>
-          <div className="hiw-cta-note">No credit card required.</div>
-        </div>
+        <Reveal delay={120}>
+          <div className="flow-detail">
+            <div className="flow-detail-num">Stage {active + 1} of {FLOW.length}</div>
+            <h3 className="flow-detail-title">{d.title}</h3>
+            <p className="flow-detail-desc">{d.desc}</p>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -603,10 +378,6 @@ export default function LandingPage() {
   const plans = [PLAN_CONFIG.free, PLAN_CONFIG.starter, PLAN_CONFIG.growth, PLAN_CONFIG.scale];
 
   const css = `
-    /* Font is loaded from index.html (blocking @import removed — it was
-       delaying first paint of this whole page while the CSS parser waited
-       on a round trip to fonts.googleapis.com). */
-
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
       --paper:#FAFAF8;--paper2:#F3F2ED;--ink-panel:#14140F;
@@ -679,8 +450,8 @@ export default function LandingPage() {
     .hero{padding:126px 22px 0;position:relative;}
     .hero-inner{max-width:1180px;margin:0 auto;width:100%;}
     .hero-top{max-width:760px;}
-    .hero-h{font-size:clamp(32px,4.8vw,58px);font-weight:700;line-height:1.08;letter-spacing:-.03em;color:var(--ink);margin-top:8px;margin-bottom:20px;}
-    .hero-sub{font-size:clamp(15.5px,1.6vw,18px);color:var(--ink2);line-height:1.65;max-width:600px;margin-bottom:32px;}
+    .hero-h{font-size:clamp(32px,4.8vw,56px);font-weight:700;line-height:1.08;letter-spacing:-.03em;color:var(--ink);margin-top:8px;margin-bottom:20px;}
+    .hero-sub{font-size:clamp(15.5px,1.6vw,18px);color:var(--ink2);line-height:1.65;max-width:620px;margin-bottom:32px;}
     .hero-ctas{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:26px;}
     .btn-hero{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14.5px;font-weight:600;color:var(--accent-ink)!important;background:var(--accent);border:1px solid var(--accent);padding:13px 24px;border-radius:var(--radius-s);cursor:pointer;text-decoration:none;font-family:var(--fb);transition:opacity .15s,transform .12s;min-height:48px;}
     .btn-hero:hover{opacity:.9;}
@@ -696,7 +467,6 @@ export default function LandingPage() {
     .hero-audience-list{display:flex;flex-wrap:wrap;gap:7px;}
     .hero-audience-pill{font-size:12.5px;font-weight:500;color:var(--ink2);background:var(--paper2);border:1px solid var(--border);border-radius:100px;padding:6px 13px;white-space:nowrap;}
 
-    /* Product mock wrapper */
     .hero-mock-wrap{margin-top:48px;padding-bottom:64px;}
 
     @media(max-width:640px){
@@ -714,8 +484,7 @@ export default function LandingPage() {
     .mock-dots{display:flex;gap:6px;}
     .mock-dots span{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.14);}
     .mock-titlebar-name{font-size:12.5px;color:rgba(255,255,255,.55);font-weight:500;flex:1;text-align:center;}
-    .mock-rec{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#E8998A;font-family:var(--fm);flex-shrink:0;}
-    .mock-rec-dot{width:6px;height:6px;border-radius:50%;background:#E8998A;}
+    .mock-rec{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#8FA6D6;font-family:var(--fm);flex-shrink:0;}
 
     .mock-body{display:grid;grid-template-columns:1.15fr 1fr;}
     .mock-transcript-pane{padding:18px 20px;border-right:1px solid rgba(255,255,255,.07);}
@@ -725,13 +494,10 @@ export default function LandingPage() {
 
     .mock-transcript-list{display:flex;flex-direction:column;gap:14px;}
     .mock-t-row{display:flex;flex-direction:column;gap:3px;}
-    .mock-t-meta{display:flex;align-items:baseline;gap:8px;}
+    .mock-t-meta{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
     .mock-t-speaker{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85);}
-    .mock-t-time{font-size:10.5px;color:rgba(255,255,255,.3);font-family:var(--fm);}
-    .mock-t-text{font-size:13px;color:rgba(255,255,255,.62);line-height:1.55;}
-    .mock-t-live .mock-t-text{color:rgba(255,255,255,.85);}
-    .mock-caret{display:inline-block;width:2px;height:12px;background:#8FA6D6;margin-left:2px;vertical-align:-2px;animation:mockblink 1s step-end infinite;}
-    @keyframes mockblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+    .mock-t-time{font-size:10.5px;color:#8FA6D6;font-family:var(--fm);flex-shrink:0;}
+    .mock-t-text{font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;}
 
     .mock-summary-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.65;}
     .mock-action-list{display:flex;flex-direction:column;gap:10px;}
@@ -756,7 +522,7 @@ export default function LandingPage() {
     }
 
     /* ══════════════════════════════════════════
-       LOGO / TRUST STRIP  (no fabricated numbers, plain company text)
+       TRUST STRIP
     ══════════════════════════════════════════ */
     .strip{padding:20px 22px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--paper2);}
     .strip-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
@@ -773,232 +539,112 @@ export default function LandingPage() {
     @media(max-width:640px){.section{padding:56px 16px;}}
 
     /* ══════════════════════════════════════════
-       PROBLEM STRIP
+       WORKFLOW RAIL (10-stage sequence)
     ══════════════════════════════════════════ */
-    .problem-flow{display:flex;align-items:stretch;gap:0;margin-top:40px;border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
-    .problem-step{flex:1;padding:26px 22px;position:relative;background:var(--paper);}
-    .problem-step + .problem-step{border-left:1px solid var(--border);}
-    .problem-step-num{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--faint);margin-bottom:10px;}
-    .problem-step-title{font-size:14.5px;font-weight:600;color:var(--ink);margin-bottom:6px;letter-spacing:-.01em;}
-    .problem-step-desc{font-size:12.5px;color:var(--muted);line-height:1.55;}
-    .problem-step.is-fix{background:var(--accent-soft);}
-    .problem-step.is-fix .problem-step-num{color:var(--accent);}
-    @media(max-width:860px){
-      .problem-flow{flex-direction:column;border-radius:var(--radius-m);}
-      .problem-step + .problem-step{border-left:none;border-top:1px solid var(--border);}
-    }
+    .flow-rail{display:flex;align-items:center;justify-content:center;gap:0;margin:44px 0 0;flex-wrap:wrap;row-gap:14px;}
+    .flow-node{display:flex;flex-direction:column;align-items:center;gap:8px;width:88px;padding:10px 4px;background:transparent;border:none;cursor:pointer;flex-shrink:0;}
+    .flow-node-icon{width:38px;height:38px;border-radius:10px;background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);transition:background .2s,border-color .2s,color .2s;}
+    .flow-node.active .flow-node-icon{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+    .flow-node-label{font-size:11px;font-weight:600;color:var(--muted);text-align:center;line-height:1.25;transition:color .2s;}
+    .flow-node.active .flow-node-label{color:var(--ink);}
+    .flow-arrow{width:16px;height:1px;background:var(--border);flex-shrink:0;margin-top:-24px;}
+    @media(max-width:900px){.flow-arrow{display:none;} .flow-rail{gap:4px;}}
+    @media(max-width:560px){.flow-node{width:72px;} .flow-node-icon{width:32px;height:32px;} .flow-node-label{font-size:10px;}}
+
+    .flow-detail{max-width:640px;margin:40px auto 0;text-align:center;padding-top:32px;border-top:1px solid var(--border);}
+    .flow-detail-num{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
+    .flow-detail-title{font-size:clamp(19px,2.4vw,25px);font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:10px;line-height:1.25;}
+    .flow-detail-desc{font-size:14.5px;color:var(--ink2);line-height:1.68;}
 
     /* ══════════════════════════════════════════
-       USE CASES
+       PAIN / FIX PAIRS
     ══════════════════════════════════════════ */
-    .usecase-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
-    .usecase-card{background:var(--paper);padding:26px 24px;}
-    .usecase-icon{width:34px;height:34px;border-radius:var(--radius-s);background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px;}
-    .usecase-title{font-size:14.5px;font-weight:600;color:var(--ink);margin-bottom:6px;letter-spacing:-.01em;}
-    .usecase-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
-    @media(max-width:860px){.usecase-grid{grid-template-columns:1fr 1fr;}}
-    @media(max-width:560px){.usecase-grid{grid-template-columns:1fr;}}
+    .pain-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
+    .pain-card{background:var(--paper);padding:26px 24px;display:flex;flex-direction:column;gap:16px;}
+    .pain-row{display:flex;align-items:flex-start;gap:12px;}
+    .pain-icon{width:30px;height:30px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--faint);flex-shrink:0;}
+    .pain-label{font-size:10.5px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-family:var(--fm);}
+    .pain-text{font-size:14px;font-weight:600;color:var(--ink2);line-height:1.4;letter-spacing:-.01em;}
+    .fix-row{display:flex;align-items:flex-start;gap:12px;padding-top:16px;border-top:1px dashed var(--border);}
+    .fix-icon{width:30px;height:30px;border-radius:var(--radius-s);background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0;}
+    .fix-label{font-size:10.5px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-family:var(--fm);}
+    .fix-text{font-size:13px;color:var(--ink2);line-height:1.6;}
+    @media(max-width:860px){.pain-grid{grid-template-columns:1fr;}}
 
     /* ══════════════════════════════════════════
-       FIRST MINUTES (numbered — genuine sequence)
+       DIFFERENTIATORS GRID
     ══════════════════════════════════════════ */
-    .steps-rail{margin-top:44px;display:flex;flex-direction:column;}
-    .steps-row{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:22px 0;}
-    .steps-row + .steps-row{border-top:1px solid var(--border);}
-    .steps-num-col{display:flex;flex-direction:column;align-items:center;}
-    .steps-num{width:32px;height:32px;border-radius:50%;border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:12.5px;font-weight:600;color:var(--ink2);flex-shrink:0;}
-    .steps-body{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;}
-    .steps-icon{width:34px;height:34px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);flex-shrink:0;}
-    .steps-text{flex:1;min-width:200px;}
-    .steps-title{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em;}
-    .steps-desc{font-size:13px;color:var(--muted);line-height:1.6;max-width:480px;}
+    .diff-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
+    .diff-card{background:var(--paper);padding:24px 22px;}
+    .diff-icon{width:32px;height:32px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);margin-bottom:14px;}
+    .diff-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;letter-spacing:-.01em;}
+    .diff-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
+    @media(max-width:900px){.diff-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:560px){.diff-grid{grid-template-columns:1fr;}}
+
+    /* ══════════════════════════════════════════
+       BUILT FOR RECRUITERS
+    ══════════════════════════════════════════ */
+    .built-wrap{margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
+    .built-col{padding:32px 28px;}
+    .built-col.is-them{background:var(--paper);}
+    .built-col.is-us{background:var(--ink-panel);}
+    .built-col-label{font-family:var(--fm);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:20px;}
+    .built-col.is-them .built-col-label{color:var(--faint);}
+    .built-col.is-us .built-col-label{color:#8FA6D6;}
+    .built-item{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-top:1px solid var(--border);}
+    .built-col.is-them .built-item:first-of-type{border-top:none;}
+    .built-col.is-us .built-item{border-top:1px solid rgba(255,255,255,.08);}
+    .built-col.is-us .built-item:first-of-type{border-top:none;}
+    .built-item-icon{width:16px;height:16px;flex-shrink:0;margin-top:2px;}
+    .built-col.is-them .built-item-icon{color:var(--faint);}
+    .built-col.is-us .built-item-icon{color:#7FC79E;}
+    .built-item-text{font-size:13px;line-height:1.55;}
+    .built-col.is-them .built-item-text{color:var(--muted);}
+    .built-col.is-us .built-item-text{color:rgba(255,255,255,.75);}
+    @media(max-width:760px){.built-wrap{grid-template-columns:1fr;}}
+
+    /* ══════════════════════════════════════════
+       CANDIDATE JOURNEY (numbered — real end-to-end sequence)
+    ══════════════════════════════════════════ */
+    .journey-rail{margin-top:44px;display:flex;flex-direction:column;}
+    .journey-row{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:22px 0;}
+    .journey-row + .journey-row{border-top:1px solid var(--border);}
+    .journey-num{width:32px;height:32px;border-radius:50%;border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:12.5px;font-weight:600;color:var(--ink2);flex-shrink:0;}
+    .journey-body{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+    .journey-icon{width:34px;height:34px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);flex-shrink:0;}
+    .journey-text{flex:1;min-width:200px;}
+    .journey-title{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.01em;}
+    .journey-desc{font-size:13px;color:var(--muted);line-height:1.6;max-width:520px;}
     @media(max-width:560px){
-      .steps-row{grid-template-columns:40px 1fr;gap:12px;}
-      .steps-num{width:26px;height:26px;font-size:11px;}
+      .journey-row{grid-template-columns:40px 1fr;gap:12px;}
+      .journey-num{width:26px;height:26px;font-size:11px;}
     }
 
     /* ══════════════════════════════════════════
-       HOW IT WORKS — interactive walkthrough
+       AGENCY VISIBILITY
     ══════════════════════════════════════════ */
-    .hiw-cta{text-align:center;margin-top:56px;padding-top:44px;border-top:1px solid var(--border);}
-    .hiw-cta-h{font-size:clamp(18px,2vw,22px);font-weight:700;letter-spacing:-.015em;margin-bottom:18px;}
-    .hiw-cta-note{font-size:12px;color:var(--faint);margin-top:12px;}
-
-    .stage-rail{display:flex;align-items:center;justify-content:center;gap:6px;margin:44px 0 28px;flex-wrap:wrap;}
-    .stage-btn{display:flex;align-items:center;gap:9px;padding:9px 14px 9px 10px;border-radius:100px;border:1px solid var(--border);background:var(--paper);cursor:pointer;transition:border-color .2s,background .2s;font-family:var(--fb);}
-    .stage-btn:hover{border-color:var(--border-strong);}
-    .stage-btn.active{border-color:var(--accent);background:var(--accent-soft);}
-    .stage-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:10.5px;font-weight:600;background:var(--paper2);color:var(--muted);flex-shrink:0;transition:background .2s,color .2s;}
-    .stage-btn.active .stage-num{background:var(--accent);color:var(--accent-ink);}
-    .stage-btn.done .stage-num{background:var(--good-soft);color:var(--good);}
-    .stage-label{font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;}
-    .stage-btn.active .stage-label{color:var(--ink);}
-    .stage-connector{width:16px;height:1px;background:var(--border);flex-shrink:0;}
-    @media (max-width:820px){.stage-connector{display:none;} .stage-rail{gap:8px;}}
-
-    .progress-track{max-width:640px;margin:0 auto 4px;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
-    .progress-fill{height:100%;background:var(--accent);width:0%;transition:width .05s linear;}
-    .autoplay-row{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:40px;}
-    .autoplay-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink2);background:none;border:none;cursor:pointer;font-family:var(--fb);padding:4px 8px;}
-    .autoplay-btn:hover{color:var(--ink);}
-
-    .stage-panel{display:grid;grid-template-columns:1fr 1.3fr;gap:48px;align-items:center;}
-    @media (max-width:860px){.stage-panel{grid-template-columns:1fr;gap:28px;}}
-    .stage-copy{}
-    .stage-eyebrow{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
-    .stage-title{font-size:clamp(19px,2.2vw,24px);font-weight:700;letter-spacing:-.015em;line-height:1.24;margin-bottom:10px;}
-    .stage-desc{font-size:14.5px;color:var(--ink2);line-height:1.68;max-width:380px;}
-    .stage-visual{position:relative;}
-
-    .frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);}
-    .frame-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
-    .frame-dots{display:flex;gap:6px;}
-    .frame-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.14);}
-    .frame-label{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex:1;text-align:center;}
-    .frame-body{min-height:290px;position:relative;overflow:hidden;}
-
-    .panel{padding:20px 22px;opacity:0;transform:translateY(6px);animation:panelIn .35s cubic-bezier(.16,1,.3,1) forwards;}
-    .panel.show{opacity:1;transform:translateY(0);}
-    @keyframes panelIn{to{opacity:1;transform:translateY(0)}}
-
-    .s1-callbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
-    .s1-rec{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#E8998A;font-family:var(--fm);}
-    .s1-rec-dot{width:6px;height:6px;border-radius:50%;background:#E8998A;animation:pulse 1.4s ease-in-out infinite;}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-    .s1-timer{font-size:11px;color:rgba(255,255,255,.3);font-family:var(--fm);}
-    .s1-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
-    .s1-tile{aspect-ratio:16/10;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;position:relative;}
-    .s1-avatar{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;}
-    .s1-name-tag{position:absolute;bottom:7px;left:8px;font-size:10px;color:rgba(255,255,255,.55);background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;}
-    .s1-tile.speaking{border-color:rgba(143,166,214,.5);}
-    .s1-wave{position:absolute;bottom:7px;right:8px;display:flex;gap:2px;align-items:flex-end;height:12px;}
-    .s1-wave span{width:2px;background:#8FA6D6;border-radius:1px;animation:wv 0.9s ease-in-out infinite;}
-    .s1-wave span:nth-child(1){height:5px;animation-delay:0s}
-    .s1-wave span:nth-child(2){height:10px;animation-delay:.15s}
-    .s1-wave span:nth-child(3){height:7px;animation-delay:.3s}
-    .s1-wave span:nth-child(4){height:11px;animation-delay:.45s}
-    @keyframes wv{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
-    .s1-controls{display:flex;align-items:center;justify-content:center;gap:10px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);}
-    .s1-ctl{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;}
-    .s1-caption-row{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);}
-    .s1-caption-label{font-size:10px;font-weight:600;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;font-family:var(--fm);}
-    .s1-caption-text{font-size:13px;color:rgba(255,255,255,.75);line-height:1.5;min-height:20px;}
-    .s1-caret{display:inline-block;width:2px;height:12px;background:#8FA6D6;margin-left:2px;vertical-align:-2px;animation:mockblink 1s step-end infinite;}
-
-    .s2-head{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px;font-family:var(--fm);}
-    .s2-list{display:flex;flex-direction:column;gap:15px;}
-    .s2-line{display:flex;gap:11px;opacity:0;transform:translateY(4px);}
-    .s2-line.in{animation:lineIn .4s cubic-bezier(.16,1,.3,1) forwards;}
-    @keyframes lineIn{to{opacity:1;transform:translateY(0)}}
-    .s2-avatar{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;}
-    .s2-body{flex:1;min-width:0;}
-    .s2-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
-    .s2-name{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85);}
-    .s2-time{font-size:10.5px;color:rgba(255,255,255,.3);font-family:var(--fm);}
-    .s2-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.55;}
-
-    .s3-head{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px;font-family:var(--fm);}
-    .s3-spinner{width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(143,166,214,.25);border-top-color:#8FA6D6;animation:spin .8s linear infinite;display:inline-block;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .s3-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-    .s3-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 13px;opacity:0;transform:scale(.96);}
-    .s3-card.in{animation:cardIn .45s cubic-bezier(.16,1,.3,1) forwards;}
-    @keyframes cardIn{to{opacity:1;transform:scale(1)}}
-    .s3-card-label{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.5);margin-bottom:6px;}
-    .s3-card-label svg{color:rgba(255,255,255,.5);}
-    .s3-card-val{font-size:13px;color:rgba(255,255,255,.85);line-height:1.4;}
-    .s3-card-val.num{font-size:20px;font-weight:700;color:#fff;}
-
-    .s4-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.07);}
-    .s4-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
-    .s4-meta{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);}
-    .s4-badge{font-size:10.5px;font-weight:600;color:#8FA6D6;background:rgba(143,166,214,.12);padding:4px 9px;border-radius:100px;}
-    .s4-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:18px;}
-    .s4-stat{padding-right:10px;}
-    .s4-stat-val{font-size:19px;font-weight:700;color:#fff;letter-spacing:-.01em;margin-bottom:2px;opacity:0;animation:fadeUp .4s cubic-bezier(.16,1,.3,1) forwards;}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
-    .s4-stat-label{font-size:10px;color:rgba(255,255,255,.38);}
-    .s4-rows{display:flex;flex-direction:column;gap:9px;}
-    .s4-row{display:flex;align-items:flex-start;gap:9px;opacity:0;transform:translateY(4px);}
-    .s4-row.in{animation:lineIn .4s cubic-bezier(.16,1,.3,1) forwards;}
-    .s4-check{width:14px;height:14px;border-radius:4px;background:rgba(47,107,79,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1.5px;}
-    .s4-check svg{stroke:#7FC79E;}
-    .s4-row-text{font-size:12.5px;color:rgba(255,255,255,.8);line-height:1.5;}
-    .s4-row-meta{font-size:10.5px;color:rgba(255,255,255,.35);margin-top:1px;}
-
-    .s5-flow{display:flex;align-items:center;gap:0;margin-bottom:20px;flex-wrap:wrap;}
-    .s5-node{display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0;transform:scale(.92);}
-    .s5-node.in{animation:cardIn .4s cubic-bezier(.16,1,.3,1) forwards;}
-    .s5-node-icon{width:36px;height:36px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;}
-    .s5-node-icon svg{color:rgba(255,255,255,.75);}
-    .s5-node-label{font-size:10px;color:rgba(255,255,255,.45);text-align:center;white-space:nowrap;}
-    .s5-arrow{flex:1;min-width:14px;height:1px;background:rgba(255,255,255,.14);position:relative;margin:0 4px 22px;}
-    .s5-arrow::after{content:'';position:absolute;right:0;top:-3px;width:6px;height:6px;border-top:1px solid rgba(255,255,255,.3);border-right:1px solid rgba(255,255,255,.3);transform:rotate(45deg);}
-    .s5-thread{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px 13px;opacity:0;transform:translateY(6px);}
-    .s5-thread.in{animation:lineIn .45s cubic-bezier(.16,1,.3,1) forwards;}
-    .s5-msg{display:flex;gap:9px;margin-bottom:9px;}
-    .s5-msg:last-child{margin-bottom:0;}
-    .s5-msg-avatar{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0;}
-    .s5-msg-name{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:2px;}
-    .s5-msg-text{font-size:12px;color:rgba(255,255,255,.6);line-height:1.45;}
-
-    .stage-nav{display:flex;justify-content:center;gap:10px;margin-top:28px;}
-    .nav-btn{font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--paper);border:1px solid var(--border-strong);padding:8px 16px;border-radius:100px;cursor:pointer;font-family:var(--fb);transition:border-color .15s,color .15s;}
-    .nav-btn:hover{color:var(--ink);border-color:var(--ink);}
-    .nav-btn:disabled{opacity:.35;cursor:default;}
-
-    @media (prefers-reduced-motion: reduce){
-      .s1-rec-dot,.s1-wave span,.s3-spinner,.stage-panel *{animation-duration:.001ms!important;}
-    }
+    .visibility-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
+    .vis-card{background:var(--paper);padding:24px 22px;}
+    .vis-icon{width:32px;height:32px;border-radius:var(--radius-s);background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;color:var(--accent);margin-bottom:14px;}
+    .vis-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;}
+    .vis-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
+    @media(max-width:860px){.visibility-grid{grid-template-columns:1fr 1fr;}}
+    @media(max-width:560px){.visibility-grid{grid-template-columns:1fr;}}
 
     /* ══════════════════════════════════════════
-       PRODUCT SHOWCASE (deep dive rows)
+       MID-PAGE CTA
     ══════════════════════════════════════════ */
-    .showcase-wrap{display:flex;flex-direction:column;gap:72px;margin-top:48px;}
-    .showcase-row{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;}
-    .showcase-row.reverse .showcase-copy{order:2;}
-    .showcase-row.reverse .showcase-visual{order:1;}
-    .showcase-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;font-family:var(--fm);}
-    .showcase-title{font-size:clamp(19px,2.2vw,25px);font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:12px;line-height:1.25;}
-    .showcase-desc{font-size:14px;color:var(--ink2);line-height:1.7;margin-bottom:18px;}
-    .showcase-list{display:flex;flex-direction:column;gap:9px;}
-    .showcase-list-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--ink2);line-height:1.5;}
-    .showcase-check{width:16px;height:16px;border-radius:50%;background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0;margin-top:1px;}
-
-    .showcase-frame{background:var(--ink-panel);border-radius:var(--radius-m);overflow:hidden;box-shadow:0 20px 48px -20px rgba(20,20,15,.3), 0 0 0 1px rgba(20,20,15,.04);}
-    .showcase-frame-bar{padding:10px 14px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:7px;}
-    .showcase-frame-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.14);}
-    .showcase-frame-label{margin-left:6px;font-size:10.5px;color:rgba(255,255,255,.35);font-family:var(--fm);}
-    .showcase-frame-body{padding:18px 20px;}
-
-    .sc-transcript-line{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);}
-    .sc-transcript-line:last-child{border-bottom:none;}
-    .sc-avatar{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:rgba(255,255,255,.7);flex-shrink:0;}
-    .sc-t-body{flex:1;min-width:0;}
-    .sc-t-meta{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;}
-    .sc-t-name{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.85);}
-    .sc-t-time{font-size:10px;color:rgba(255,255,255,.3);font-family:var(--fm);}
-    .sc-t-text{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.55;}
-
-    .sc-summary-label{font-size:10px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:9px;font-family:var(--fm);}
-    .sc-summary-section{margin-bottom:18px;}
-    .sc-summary-section:last-child{margin-bottom:0;}
-    .sc-summary-text{font-size:12.5px;color:rgba(255,255,255,.65);line-height:1.65;}
-    .sc-action-row{display:flex;align-items:flex-start;gap:9px;padding:7px 0;}
-    .sc-action-box{width:14px;height:14px;border-radius:4px;border:1.3px solid rgba(255,255,255,.28);flex-shrink:0;margin-top:2px;}
-    .sc-action-text{font-size:12.5px;color:rgba(255,255,255,.78);line-height:1.5;}
-    .sc-action-meta{font-size:10.5px;color:rgba(255,255,255,.35);margin-top:2px;}
-
-    .sc-bar-row{display:flex;align-items:center;gap:12px;padding:8px 0;}
-    .sc-bar-name{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.7);width:80px;flex-shrink:0;}
-    .sc-bar-track{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;}
-    .sc-bar-fill{height:100%;border-radius:4px;background:rgba(255,255,255,.45);}
-    .sc-bar-pct{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.4);width:32px;text-align:right;flex-shrink:0;font-family:var(--fm);}
-
-    @media(max-width:900px){
-      .showcase-row,.showcase-row.reverse{grid-template-columns:1fr;gap:28px;}
-      .showcase-row.reverse .showcase-copy,.showcase-row.reverse .showcase-visual{order:initial;}
-    }
+    .mid-cta{padding:64px 22px;text-align:center;background:var(--ink-panel);}
+    .mid-cta-inner{max-width:600px;margin:0 auto;}
+    .mid-cta-h{font-size:clamp(22px,3.2vw,32px);font-weight:700;color:#fff;letter-spacing:-.025em;line-height:1.2;margin-bottom:14px;}
+    .mid-cta-sub{font-size:14.5px;color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:26px;}
+    .mid-cta-ctas{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+    .btn-hero-dark{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;color:var(--ink-panel)!important;background:#fff;border:1px solid #fff;padding:13px 24px;border-radius:var(--radius-s);cursor:pointer;text-decoration:none;font-family:var(--fb);transition:opacity .15s;min-height:48px;}
+    .btn-hero-dark:hover{opacity:.88;}
+    .btn-hero-outline-dark{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;color:#fff!important;background:transparent;border:1px solid rgba(255,255,255,.28);padding:13px 22px;border-radius:var(--radius-s);cursor:pointer;text-decoration:none;font-family:var(--fb);transition:border-color .15s;min-height:48px;}
+    .btn-hero-outline-dark:hover{border-color:#fff;}
+    @media(max-width:500px){.mid-cta-ctas{flex-direction:column;align-items:stretch;} .mid-cta-ctas a{width:100%;}}
 
     /* ══════════════════════════════════════════
        SECURITY
@@ -1118,7 +764,7 @@ export default function LandingPage() {
             ) : (
               <>
                 <Link to="/login?mode=login" className="btn-ghost">Sign in</Link>
-                <Link to="/login?mode=signup" className="btn-primary">Start free</Link>
+                <Link to="/login?mode=signup" className="btn-primary">Start Free</Link>
               </>
             )}
             <button
@@ -1144,7 +790,7 @@ export default function LandingPage() {
           ) : (
             <>
               <Link to="/login?mode=login" className="btn-hero-outline" onClick={closeMobile}>Sign in</Link>
-              <Link to="/login?mode=signup" className="btn-hero" onClick={closeMobile}>Start free</Link>
+              <Link to="/login?mode=signup" className="btn-hero" onClick={closeMobile}>Start Free</Link>
             </>
           )}
         </div>
@@ -1155,20 +801,20 @@ export default function LandingPage() {
         <div className="hero-inner">
           <div className="hero-top">
             <h1 className="hero-h">
-              Every meeting, captured, transcribed, and turned into a record you can trust.
+              Run your recruitment desk without losing the details that win placements.
             </h1>
             <p className="hero-sub">
-              Fixsense joins your calls, transcribes every word, and turns the conversation into a clear summary and action list, ready before the meeting is even over. No memory required, no notes to rebuild.
+              Fixsense brings jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements into one system — so nothing sits in a spreadsheet, an inbox, or someone's memory.
             </p>
             <div className="hero-ctas">
               <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero">
-                Start free
+                Start Free
                 <Icon name="arrow-right" size={14} />
               </Link>
-              <a href="#how-it-works" className="btn-hero-outline">See how it works</a>
+              <a href="#workflow" className="btn-hero-outline">See How It Works</a>
             </div>
             <div className="hero-trust">
-              {["No credit card required", "No visible bot on your call", "Cancel anytime"].map((t, i) => (
+              {["No credit card required", "Live in minutes", "Cancel anytime"].map((t, i) => (
                 <div key={i} className="trust-pill">
                   <Icon name="check" size={13} strokeWidth={2.2} />
                   {t}
@@ -1178,9 +824,9 @@ export default function LandingPage() {
           </div>
 
           <div className="hero-audience">
-            <div className="hero-audience-label">Built for every kind of meeting</div>
+            <div className="hero-audience-label">Built for UK recruitment &amp; staffing agencies</div>
             <div className="hero-audience-list">
-              {["Business meetings", "Client calls", "Interviews", "Classes", "Team standups", "One-on-ones"].map((t, i) => (
+              {["Contingency recruiters", "Agency owners & desk managers", "Executive search", "Contract & temp staffing", "In-house talent teams"].map((t, i) => (
                 <span key={i} className="hero-audience-pill">{t}</span>
               ))}
             </div>
@@ -1192,36 +838,44 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* TRUST STRIP — plain, no fabricated numbers */}
+      {/* TRUST STRIP */}
       <div className="strip">
         <div className="strip-inner">
           <span className="strip-label">
-            Built for founders, consultants, recruiters, educators, and teams who need a record they can rely on.
+            Built for recruitment agencies running contingency, retained, and contract desks who need one system instead of five.
           </span>
         </div>
       </div>
 
-      {/* PROBLEM → SOLUTION FLOW */}
-      <section className="section" id="problem">
+      {/* THE COMPLETE WORKFLOW */}
+      <WorkflowRail />
+
+      {/* PAIN → FIX */}
+      <section className="section" id="pain" style={{ background: "var(--paper2)" }}>
         <div className="section-inner">
           <Reveal>
-            <div className="kicker">The problem</div>
-            <h2 className="section-h">Good meetings still get lost the moment they end.</h2>
-            <p className="section-sub">Most of what is said in a meeting is forgotten within a day. Notes are incomplete, action items live in someone's memory, and nobody has time to write a proper recap.</p>
+            <div className="kicker">Where desks lose time</div>
+            <h2 className="section-h">The problems every recruitment desk knows.</h2>
+            <p className="section-sub">Not abstract inefficiencies — the specific moments where a placement slips, using the features already built to fix each one.</p>
           </Reveal>
           <Reveal delay={80}>
-            <div className="problem-flow">
-              {[
-                { num: "01", title: "The meeting happens", desc: "A real conversation, full of decisions, context, and detail that matters." },
-                { num: "02", title: "Details get lost", desc: "Notes are partial, memory fades, and nobody agrees afterward on exactly what was said." },
-                { num: "03", title: "Fixsense captures it", desc: "Every word is recorded and transcribed automatically, with each speaker identified.", fix: true },
-                { num: "04", title: "AI builds the record", desc: "The transcript becomes a summary and a list of action items with clear owners.", fix: true },
-                { num: "05", title: "Everyone knows what's next", desc: "The team shares one reliable record instead of five different memories of the call.", fix: true },
-              ].map((s, i) => (
-                <div key={i} className={`problem-step ${s.fix ? "is-fix" : ""}`}>
-                  <div className="problem-step-num">{s.num}</div>
-                  <div className="problem-step-title">{s.title}</div>
-                  <div className="problem-step-desc">{s.desc}</div>
+            <div className="pain-grid">
+              {PAIN_POINTS.map((p, i) => (
+                <div key={i} className="pain-card">
+                  <div className="pain-row">
+                    <div className="pain-icon"><Icon name={p.icon} size={15} /></div>
+                    <div>
+                      <div className="pain-label">The problem</div>
+                      <div className="pain-text">{p.pain}</div>
+                    </div>
+                  </div>
+                  <div className="fix-row">
+                    <div className="fix-icon"><Icon name="check" size={14} strokeWidth={2.2} /></div>
+                    <div>
+                      <div className="fix-label">How Fixsense fixes it</div>
+                      <div className="fix-text">{p.fix}</div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1229,187 +883,158 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* USE CASES */}
-      <section className="section" id="use-cases" style={{ background: "var(--paper2)" }}>
-        <div className="section-inner">
-          <Reveal>
-            <div className="kicker">Where Fixsense fits</div>
-            <h2 className="section-h">One AI meeting assistant. Every kind of conversation.</h2>
-            <p className="section-sub">Fixsense was built for the meetings that make up a normal week, not just sales calls.</p>
-          </Reveal>
-          <Reveal delay={80}>
-            <div className="usecase-grid">
-              {USE_CASES.map((c, i) => (
-                <div key={i} className="usecase-card">
-                  <div className="usecase-icon"><Icon name={c.icon} size={17} /></div>
-                  <div className="usecase-title">{c.title}</div>
-                  <div className="usecase-desc">{c.desc}</div>
-                </div>
-              ))}
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS — interactive, auto-playing product walkthrough */}
-      <HowItWorksInteractive />
-
-      {/* PRODUCT SHOWCASE — deep dive on the three core outputs */}
-      <section className="section" style={{ background: "var(--paper2)" }}>
+      {/* DIFFERENTIATORS */}
+      <section className="section" id="differentiators">
         <div className="section-inner">
           <Reveal>
             <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>Inside the product</div>
-              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 640, margin: "0 auto" }}>What you get after every meeting.</h2>
+              <div className="kicker" style={{ justifyContent: "center" }}>Recruiting-specific, not bolted on</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 680, margin: "0 auto" }}>
+                Everything a recruitment desk actually needs.
+              </h2>
             </div>
           </Reveal>
-
-          <div className="showcase-wrap">
-            {/* Row 1: transcript */}
-            <div className="showcase-row">
-              <Reveal>
-                <div className="showcase-copy">
-                  <div className="showcase-tag">Transcription</div>
-                  <h3 className="showcase-title">A transcript that knows who said what.</h3>
-                  <p className="showcase-desc">Fixsense separates each voice automatically, so your transcript reads like a real conversation instead of a wall of unattributed text.</p>
-                  <div className="showcase-list">
-                    {["Speaker labels applied automatically, no manual tagging", "Accurate timestamps down to the second", "Searchable across every past meeting"].map((t, i) => (
-                      <div key={i} className="showcase-list-item">
-                        <span className="showcase-check"><Icon name="check" size={9} strokeWidth={2.4} /></span>
-                        {t}
-                      </div>
-                    ))}
-                  </div>
+          <Reveal delay={80}>
+            <div className="diff-grid">
+              {DIFFERENTIATORS.map((d, i) => (
+                <div key={i} className="diff-card">
+                  <div className="diff-icon"><Icon name={d.icon} size={16} /></div>
+                  <div className="diff-title">{d.title}</div>
+                  <div className="diff-desc">{d.desc}</div>
                 </div>
-              </Reveal>
-              <Reveal delay={80}>
-                <div className="showcase-visual">
-                  <div className="showcase-frame">
-                    <div className="showcase-frame-bar">
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <span className="showcase-frame-label">transcript · fixsense.app</span>
-                    </div>
-                    <div className="showcase-frame-body">
-                      {[
-                        { name: "Maria Chen", time: "00:12:04", text: "So the main blocker right now is getting sign-off from legal on the new terms." },
-                        { name: "Daniel Osei", time: "00:12:19", text: "I can follow up with them this afternoon and get a timeline." },
-                        { name: "Priya Nair", time: "00:12:31", text: "Great, let's revisit this in Thursday's sync once you hear back." },
-                      ].map((l, i) => (
-                        <div key={i} className="sc-transcript-line">
-                          <div className="sc-avatar">{l.name.split(" ").map(n => n[0]).join("")}</div>
-                          <div className="sc-t-body">
-                            <div className="sc-t-meta">
-                              <span className="sc-t-name">{l.name}</span>
-                              <span className="sc-t-time">{l.time}</span>
-                            </div>
-                            <div className="sc-t-text">{l.text}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Reveal>
+              ))}
             </div>
+          </Reveal>
+        </div>
+      </section>
 
-            {/* Row 2: AI summary + action items */}
-            <div className="showcase-row reverse">
-              <Reveal>
-                <div className="showcase-copy">
-                  <div className="showcase-tag">AI summary and action items</div>
-                  <h3 className="showcase-title">A summary you would actually want to read.</h3>
-                  <p className="showcase-desc">No generic bullet points. Fixsense writes a clear recap of what was discussed and pulls out concrete action items with an owner attached whenever one is mentioned.</p>
-                  <div className="showcase-list">
-                    {["Plain-language summary of the whole meeting", "Action items extracted with owners and deadlines", "One click to copy, export, or share with your team"].map((t, i) => (
-                      <div key={i} className="showcase-list-item">
-                        <span className="showcase-check"><Icon name="check" size={9} strokeWidth={2.4} /></span>
-                        {t}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Reveal>
-              <Reveal delay={80}>
-                <div className="showcase-visual">
-                  <div className="showcase-frame">
-                    <div className="showcase-frame-bar">
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <span className="showcase-frame-label">summary · fixsense.app</span>
-                    </div>
-                    <div className="showcase-frame-body">
-                      <div className="sc-summary-section">
-                        <div className="sc-summary-label">Summary</div>
-                        <div className="sc-summary-text">The team reviewed the legal sign-off blocker on the new contract terms and agreed on next steps. Daniel will follow up with legal today. The topic will be revisited in Thursday's sync.</div>
-                      </div>
-                      <div className="sc-summary-section">
-                        <div className="sc-summary-label">Action items</div>
-                        {[
-                          ["Follow up with legal for a sign-off timeline", "Daniel Osei · Due today"],
-                          ["Revisit contract status in Thursday's sync", "Priya Nair · Due Thursday"],
-                          ["Share updated terms with the client once approved", "Maria Chen · No date set"],
-                        ].map(([text, owner], i) => (
-                          <div key={i} className="sc-action-row">
-                            <span className="sc-action-box" />
-                            <div>
-                              <div className="sc-action-text">{text}</div>
-                              <div className="sc-action-meta">{owner}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Reveal>
-            </div>
-
-            {/* Row 3: meeting insights */}
-            <div className="showcase-row">
-              <Reveal>
-                <div className="showcase-copy">
-                  <div className="showcase-tag">Meeting insights</div>
-                  <h3 className="showcase-title">See how the conversation actually went.</h3>
-                  <p className="showcase-desc">Talk-time balance and key moments are calculated automatically, giving you a clear picture of the meeting without rewatching the recording.</p>
-                  <div className="showcase-list">
-                    {["Talk-time ratio across every speaker", "Key moments flagged with timestamps", "Follow-through tracking on past action items"].map((t, i) => (
-                      <div key={i} className="showcase-list-item">
-                        <span className="showcase-check"><Icon name="check" size={9} strokeWidth={2.4} /></span>
-                        {t}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Reveal>
-              <Reveal delay={80}>
-                <div className="showcase-visual">
-                  <div className="showcase-frame">
-                    <div className="showcase-frame-bar">
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <div className="showcase-frame-dot" />
-                      <span className="showcase-frame-label">insights · fixsense.app</span>
-                    </div>
-                    <div className="showcase-frame-body">
-                      <div className="sc-summary-label">Talk-time balance</div>
-                      {[
-                        ["Maria Chen", 42], ["Daniel Osei", 35], ["Priya Nair", 23],
-                      ].map(([name, pct], i) => (
-                        <div key={i} className="sc-bar-row">
-                          <span className="sc-bar-name">{name}</span>
-                          <div className="sc-bar-track"><div className="sc-bar-fill" style={{ width: `${pct}%` }} /></div>
-                          <span className="sc-bar-pct">{pct}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Reveal>
-            </div>
+      {/* MID-PAGE CTA */}
+      <section className="mid-cta">
+        <div className="mid-cta-inner">
+          <h2 className="mid-cta-h">Stop stitching five tools into one recruitment process.</h2>
+          <p className="mid-cta-sub">Jobs, candidates, matching, submissions, interviews, and placements — already connected. Start running your desk in Fixsense today.</p>
+          <div className="mid-cta-ctas">
+            <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero-dark">
+              Start Free
+              <Icon name="arrow-right" size={14} />
+            </Link>
+            <a href="#workflow" className="btn-hero-outline-dark">See How It Works</a>
           </div>
+        </div>
+      </section>
+
+      {/* BUILT FOR RECRUITERS, NOT ADAPTED FOR RECRUITERS */}
+      <section className="section" id="built-for" style={{ background: "var(--paper2)" }}>
+        <div className="section-inner">
+          <Reveal>
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <div className="kicker" style={{ justifyContent: "center" }}>Not a repurposed meeting tool</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 640, margin: "0 auto" }}>Built for recruiters, not adapted for recruiters.</h2>
+              <p className="section-sub" style={{ textAlign: "center", margin: "10px auto 0" }}>A generic AI notetaker records calls. Fixsense runs your entire desk.</p>
+            </div>
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="built-wrap">
+              <div className="built-col is-them">
+                <div className="built-col-label">A generic meeting assistant</div>
+                {[
+                  "Transcribes a call and writes a summary",
+                  "No concept of a job, a candidate, or a pipeline",
+                  "No way to score a candidate against requirements",
+                  "Client feedback lives in an inbox, disconnected from the call",
+                  "Nothing connects the interview to a placement outcome",
+                ].map((t, i) => (
+                  <div key={i} className="built-item">
+                    <span className="built-item-icon"><Icon name="minus" size={16} /></span>
+                    <span className="built-item-text">{t}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="built-col is-us">
+                <div className="built-col-label">Fixsense</div>
+                {[
+                  "The interview transcript sits inside the candidate's record, on the job it's for",
+                  "Every candidate has a pipeline stage, a match score, and a full timeline",
+                  "AI matching scores candidates against the job with a stated reason",
+                  "Client feedback is logged on the candidate and the client CRM record",
+                  "The same record runs from application through to confirmed placement",
+                ].map((t, i) => (
+                  <div key={i} className="built-item">
+                    <span className="built-item-icon"><Icon name="check" size={14} strokeWidth={2.4} /></span>
+                    <span className="built-item-text">{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* CANDIDATE JOURNEY — a realistic end-to-end run-through */}
+      <section className="section" id="journey">
+        <div className="section-inner">
+          <Reveal>
+            <div className="kicker">A realistic run-through</div>
+            <h2 className="section-h">From creating a job to placing a candidate.</h2>
+            <p className="section-sub">What a recruiter actually does inside Fixsense, start to finish, on a single vacancy.</p>
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="journey-rail">
+              {[
+                { icon: "briefcase", title: "Create the job", desc: "A recruiter adds a new vacancy — Senior .NET Developer, London, for an existing client in the Client CRM — with the requirements Fixsense will match against." },
+                { icon: "link", title: "Share the application link", desc: "The job's application link goes out to the recruiter's network. Applications start arriving directly into the pipeline as they come in." },
+                { icon: "database", title: "CVs parse into candidate records", desc: "Each application's CV is parsed automatically into a structured candidate profile — skills, experience, contact details — added to the candidate database." },
+                { icon: "sparkle", title: "AI scores every applicant", desc: "AI job matching scores each candidate against the job's requirements and explains the reasoning behind each score." },
+                { icon: "check-square", title: "Build the shortlist", desc: "The recruiter reviews the top matches and moves the strongest candidates into shortlist in the pipeline." },
+                { icon: "user-plus", title: "Submit to the client", desc: "A submission is sent to the client with the shortlisted candidates — tracked in the Client CRM, not a one-off email." },
+                { icon: "mic", title: "Run the interview in Fixsense Meetings", desc: "The client interview is held inside Fixsense Meetings, transcribed live with AI feedback generated for the panel afterward." },
+                { icon: "message", title: "Log the client feedback", desc: "The client's feedback after the interview is logged directly against the candidate and the job." },
+                { icon: "target", title: "Confirm the placement", desc: "Once the offer is accepted, the placement is recorded and reflected immediately in recruitment analytics." },
+              ].map((s, i) => (
+                <div className="journey-row" key={i}>
+                  <div className="journey-num">{String(i + 1).padStart(2, "0")}</div>
+                  <div className="journey-body">
+                    <div className="journey-icon"><Icon name={s.icon} size={16} /></div>
+                    <div className="journey-text">
+                      <div className="journey-title">{s.title}</div>
+                      <div className="journey-desc">{s.desc}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* AGENCY OWNER — VISIBILITY */}
+      <section className="section" id="agency" style={{ background: "var(--paper2)" }}>
+        <div className="section-inner">
+          <Reveal>
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <div className="kicker" style={{ justifyContent: "center" }}>For agency owners and desk managers</div>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>Know what is happening across your desk.</h2>
+              <p className="section-sub" style={{ textAlign: "center", margin: "10px auto 0" }}>Every job, candidate, interview, submission, and placement, visible in one place — not five recruiters' separate spreadsheets.</p>
+            </div>
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="visibility-grid">
+              {[
+                { icon: "briefcase", title: "Open jobs", desc: "See every live vacancy across the agency, which client it's for, and how it's progressing." },
+                { icon: "route", title: "Candidate pipeline", desc: "Every candidate's stage, across every job and every recruiter, in one pipeline view." },
+                { icon: "mic", title: "Interviews", desc: "Upcoming interviews, ones needing feedback, and completed ones, tracked as a team-wide agenda." },
+                { icon: "user-plus", title: "Submissions", desc: "Every submission sent to a client, and whether it has moved to interview or feedback." },
+                { icon: "target", title: "Placements", desc: "Confirmed placements and pipeline value, rolled up by client and by recruiter." },
+                { icon: "bar-chart", title: "Recruiter activity", desc: "Time-to-shortlist, interview-to-offer ratio, and placements per recruiter in recruitment analytics." },
+              ].map((v, i) => (
+                <div key={i} className="vis-card">
+                  <div className="vis-icon"><Icon name={v.icon} size={16} /></div>
+                  <div className="vis-title">{v.title}</div>
+                  <div className="vis-desc">{v.desc}</div>
+                </div>
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -1419,8 +1044,8 @@ export default function LandingPage() {
           <Reveal>
             <div style={{ textAlign: "center", marginBottom: 8 }}>
               <div className="kicker" style={{ justifyContent: "center" }}>Built to be trusted</div>
-              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}>Your meetings and data, protected by default.</h2>
-              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>Every recording carries confidential conversations. We built Fixsense around that responsibility from day one.</p>
+              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}>Candidate and client data, protected by default.</h2>
+              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>CVs, interviews, and client feedback carry sensitive information. Fixsense is built around that responsibility from day one.</p>
             </div>
           </Reveal>
           <Reveal delay={80}>
@@ -1450,7 +1075,7 @@ export default function LandingPage() {
             <div style={{ textAlign: "center", marginBottom: 8 }}>
               <div className="kicker" style={{ justifyContent: "center" }}>Pricing</div>
               <h2 className="section-h" style={{ textAlign: "center", maxWidth: 560, margin: "0 auto" }}>Simple, minute-based pricing.</h2>
-              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>No per-seat tricks. Start free and upgrade only when you need more minutes.</p>
+              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>No per-seat tricks. Start free and upgrade only when your desk needs more.</p>
             </div>
           </Reveal>
           <Reveal delay={80}>
@@ -1476,14 +1101,14 @@ export default function LandingPage() {
                     ))}
                   </ul>
                   <Link to={user ? "/dashboard" : "/login?mode=signup"} className={`plan-cta ${p.highlight ? "primary" : ""}`}>
-                    {p.price_usd === 0 ? "Start free" : "Choose plan"}
+                    {p.price_usd === 0 ? "Start Free" : "Choose plan"}
                   </Link>
                 </div>
               ))}
             </div>
           </Reveal>
           <div className="pricing-footline">
-            All plans include unlimited transcript storage and no lock-in contract.{" "}
+            All plans include unlimited candidate and job records, and no lock-in contract.{" "}
             <Link to="/pricing" className="security-footlink" style={{ display: "inline-flex" }}>
               See full plan comparison
               <Icon name="arrow-right" size={12} />
@@ -1521,16 +1146,16 @@ export default function LandingPage() {
       <section className="final">
         <div className="final-inner">
           <Reveal>
-            <h2 className="final-h">Stop taking notes. Start having the meeting.</h2>
-            <p className="final-sub">Try Fixsense free on your next meeting. No credit card required, no bot for anyone to notice, and your first summary ready in minutes.</p>
+            <h2 className="final-h">Run your desk here, not across five tools.</h2>
+            <p className="final-sub">Post your first job, share the application link, and see AI matching work on your next shortlist. No credit card required, and you can be live in minutes.</p>
             <div className="final-ctas">
               <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero">
-                Start free
+                Start Free
                 <Icon name="arrow-right" size={14} />
               </Link>
-              <a href="#how-it-works" className="btn-hero-outline">See how it works</a>
+              <a href="#workflow" className="btn-hero-outline">See How It Works</a>
             </div>
-            <p className="final-footnote">Free plan · No credit card required · No bot joins your call</p>
+            <p className="final-footnote">Free plan · No credit card required · Live in minutes</p>
           </Reveal>
         </div>
       </section>
@@ -1541,11 +1166,11 @@ export default function LandingPage() {
           <div className="footer-top">
             <div>
               <div className="footer-brand-name"><Logo size={20} />Fixsense</div>
-              <p className="footer-brand-desc">The AI meeting assistant that remembers everything, so you don't have to.</p>
+              <p className="footer-brand-desc">The recruitment operating system for agencies — jobs, candidates, matching, and placements, in one place.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
-              {[["#product", "Product"], ["#how-it-works", "How it works"], ["/pricing", "Pricing"], ["/changelog", "Changelog"]].map(([h, l]) => (
+              {[["#product", "Product"], ["#workflow", "How it works"], ["/pricing", "Pricing"], ["/changelog", "Changelog"]].map(([h, l]) => (
                 h.startsWith("#")
                   ? <a key={h} href={h} className="footer-link">{l}</a>
                   : <Link key={h} to={h} className="footer-link">{l}</Link>
