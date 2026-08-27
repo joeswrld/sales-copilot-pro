@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Phone, Radio, Settings, CreditCard, Menu, X, Bot,
   Users, LogOut, MessageSquare, ChevronDown, Bell, Timer, BarChart3,
-  Kanban, Send, Briefcase, Calendar,
+  Kanban, Send, Briefcase, Calendar, HandCoins,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -125,6 +125,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Pipeline", icon: Kanban, href: "/pipeline" },
     { label: "Submissions", icon: Send, href: "/submissions" },
     { label: "Interviews", icon: Calendar, href: "/interviews" },
+    { label: "Placements", icon: HandCoins, href: "/placements" },
     { label: "Live Calls", icon: Radio, href: "/live" },
     { label: "CRM", icon: Building2, href: "/crm" },
     { label: "AI Coach", icon: Bot, href: "/coach" },
@@ -328,6 +329,7 @@ function BreadcrumbPath() {
     profile:   "Profile",   deals: "Deals",     crm: "CRM",
     jobs: "Jobs", candidates: "Candidates", pipeline: "Pipeline",
     submissions: "Submissions", interviews: "Interviews",
+    placements: "Placements",
   };
 
   if (segments.length === 1)
