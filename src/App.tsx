@@ -73,6 +73,7 @@ const PipelinePage = lazy(() => import("@/pages/PipelinePage"));
 const SubmissionsPage = lazy(() => import("@/pages/SubmissionsPage"));
 const JobsPage = lazy(() => import("@/pages/JobsPage"));
 const JobDetailPage = lazy(() => import("@/pages/JobDetailPage"));
+const PlacementsPage = lazy(() => import("@/pages/PlacementsPage"));
 const PublicJobApplicationPage = lazy(() => import("@/pages/PublicJobApplicationPage"));
 const ClientPortalPage = lazy(() => import("@/pages/ClientPortalPage"));
 const SecurityCompliancePage = lazy(() => import("./pages/SecurityCompliancePage"));
@@ -407,6 +408,16 @@ function AppRoutes() {
               <ProtectedRoute>
                 <ErrorBoundary>
                   <JobDetailPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/placements"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary>
+                  <PlacementsPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }
