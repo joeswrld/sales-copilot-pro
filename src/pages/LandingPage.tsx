@@ -54,7 +54,7 @@ function Logo({ size = 26 }: { size?: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Icon set — precise, uniform stroke, no decorative flourishes
+// Icon set: precise, uniform stroke, no decorative flourishes
 // ─────────────────────────────────────────────────────────────────────────
 function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: number; strokeWidth?: number }) {
   const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -98,7 +98,7 @@ function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: num
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// The complete workflow — a genuine sequence, so a numbered rail is earned.
+// The complete workflow, a genuine sequence, so a numbered rail is earned.
 // ─────────────────────────────────────────────────────────────────────────
 type FlowStage = { key: string; label: string; icon: string };
 const FLOW: FlowStage[] = [
@@ -126,7 +126,7 @@ const PAIN_POINTS = [
   {
     icon: "database",
     pain: "CVs and candidate details scattered everywhere",
-    fix: "CV parsing reads every upload straight into a structured candidate record in one database — skills, roles, history, all searchable.",
+    fix: "CV parsing reads every upload straight into a structured candidate record in one database: skills, roles, history, all searchable.",
   },
   {
     icon: "mic",
@@ -156,18 +156,18 @@ const PAIN_POINTS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// Recruiting-specific differentiators — real, shipped functionality only
+// Recruiting-specific differentiators: real, shipped functionality only
 // ─────────────────────────────────────────────────────────────────────────
 const DIFFERENTIATORS = [
   { icon: "database", title: "Candidate database & CV parsing", desc: "Upload a CV and Fixsense extracts skills, roles, and history into a structured, searchable record." },
-  { icon: "sparkle", title: "AI job matching", desc: "Every candidate gets a match score against a job, with the reasoning behind it — not just a ranked list." },
+  { icon: "sparkle", title: "AI job matching", desc: "Every candidate gets a match score against a job, with the reasoning behind it, not just a ranked list." },
   { icon: "link", title: "Application links", desc: "A public link per job collects applications directly into your pipeline, no manual re-entry." },
   { icon: "route", title: "Candidate pipeline", desc: "See every candidate's stage across every open job, from application to placement, in one view." },
   { icon: "briefcase", title: "Client CRM", desc: "Clients, contacts, jobs, candidates, interviews, and placements roll up into one company record." },
   { icon: "check-square", title: "Candidate & client submissions", desc: "Submit a shortlist to a client and track it as a first-class step in the pipeline, not a side email." },
   { icon: "mic", title: "Fixsense Meetings", desc: "Live transcription for interviews and client calls, built into the workflow, not bolted on." },
   { icon: "file-text", title: "Interview transcription & AI feedback", desc: "Every interview becomes a transcript and structured feedback the panel can actually use." },
-  { icon: "clock", title: "Candidate timelines", desc: "A full, automatic activity history for every candidate — every stage change, note, and interaction." },
+  { icon: "clock", title: "Candidate timelines", desc: "A full, automatic activity history for every candidate: every stage change, note, and interaction." },
   { icon: "user-plus", title: "Interview invitations", desc: "Send and track interview invitations without leaving the candidate record." },
   { icon: "target", title: "Placement tracking", desc: "Follow a candidate from submission through offer to a confirmed placement." },
   { icon: "bar-chart", title: "Recruitment analytics", desc: "Time-to-shortlist, interview-to-offer ratio, placements per recruiter, and pipeline value, in one dashboard." },
@@ -184,7 +184,7 @@ const SECURITY_ITEMS = [
 const FAQS = [
   { q: "Is Fixsense a full ATS, or just an add-on?", a: "Fixsense is the operating system for your recruitment desk: jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements all live in one system, not stitched together from a spreadsheet, an inbox, and a separate call-recording tool." },
   { q: "Do I need to invite a bot to interviews?", a: "No. Fixsense Meetings works natively inside your call instead of sending a visible bot to join. Nothing extra for the candidate or client to notice before you start." },
-  { q: "How does AI matching work?", a: "Every candidate is scored against a job's requirements, with an explanation of what drove the score — not a black-box number. You decide who gets shortlisted." },
+  { q: "How does AI matching work?", a: "Every candidate is scored against a job's requirements, with an explanation of what drove the score, not a black-box number. You decide who gets shortlisted." },
   { q: "What happens to candidate CVs and data?", a: "CVs and candidate records are encrypted, stored under your agency's account, and scoped to your team. You can export or delete any candidate's data at any time." },
   { q: "Do I need a credit card to try it?", a: "No. The free plan starts with just an email address. You're only asked for billing details if you choose to upgrade to a paid plan." },
   { q: "Can I cancel anytime?", a: "Yes. There's no contract and no lock-in. Cancel from your account settings at any time and keep access until the end of your current billing period." },
@@ -200,7 +200,7 @@ const NAV_LINKS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// Hero product mock — a real recruiting screen: pipeline + AI match score
+// Hero product mock: a real recruiting screen, pipeline + match score
 // ─────────────────────────────────────────────────────────────────────────
 const PIPELINE_CANDIDATES = [
   { name: "Sarah Whitfield", role: "Senior .NET Developer", stage: "Interview", match: 94 },
@@ -216,11 +216,7 @@ function ProductMock() {
         <div className="mock-dots">
           <span /><span /><span />
         </div>
-        <div className="mock-titlebar-name">Pipeline · Senior .NET Developer — London</div>
-        <div className="mock-rec">
-          <Icon name="sparkle" size={12} strokeWidth={1.8} />
-          AI matching live
-        </div>
+        <div className="mock-titlebar-name">Pipeline · Senior .NET Developer, London</div>
       </div>
 
       <div className="mock-body">
@@ -245,7 +241,7 @@ function ProductMock() {
         <div className="mock-summary-pane">
           <div className="mock-pane-head">
             <Icon name="sparkle" size={13} />
-            Match score — Sarah Whitfield
+            Match score: Sarah Whitfield
           </div>
           <p className="mock-summary-text">
             94% match. Eight years .NET/Azure, matches all three required skills and the London hybrid requirement. Notice period aligns with the client's start date.
@@ -258,7 +254,7 @@ function ProductMock() {
           <div className="mock-action-list">
             {[
               { text: "Submit to client with AI-generated profile summary", owner: "Ready to send", due: "" },
-              { text: "Interview booked — invitation sent", owner: "Thu, 2:00pm", due: "" },
+              { text: "Interview booked, invitation sent", owner: "Thu, 2:00pm", due: "" },
               { text: "Client feedback logged after last submission", owner: "2 days ago", due: "" },
             ].map((a, i) => (
               <div className="mock-action-row" key={i}>
@@ -292,24 +288,249 @@ function ProductMock() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Workflow rail — Job → Applications → Candidates → AI Match → Shortlist →
+// Workflow rail: Job → Applications → Candidates → AI Match → Shortlist →
 // Submit → Interview → AI Interview Intelligence → Client Feedback → Placement
+//
+// Fully automated: plays itself on a loop through all ten stages, each with
+// its own small animated screen built from the platform's actual pipeline,
+// matching, transcription, feedback, and analytics views. Visitors can still
+// click a stage to jump to it, which pauses autoplay.
 // ─────────────────────────────────────────────────────────────────────────
+const FLOW_DETAIL: Record<string, { title: string; desc: string }> = {
+  job: { title: "Post the job once.", desc: "Create the job in Fixsense with the client, requirements, and location. It becomes the anchor everything downstream connects to." },
+  applications: { title: "Applications land in one place.", desc: "Share the job's application link. Every application arrives directly into the pipeline instead of an inbox." },
+  candidates: { title: "CVs become structured records.", desc: "CV parsing reads every application into your candidate database: skills, history, and contact details, searchable across your whole desk." },
+  match: { title: "AI scores every candidate.", desc: "Each candidate is matched against the job's requirements with a score and a plain-language explanation of why." },
+  shortlist: { title: "Build the shortlist from evidence.", desc: "Move the strongest matches into shortlist with one action, backed by the match reasoning, not a gut feeling alone." },
+  submit: { title: "Submit to the client.", desc: "Send a submission to the client as a tracked step in the pipeline, not a one-off email that goes quiet." },
+  interview: { title: "Schedule and send the invitation.", desc: "Send the interview invitation and get it on the calendar without leaving the candidate record." },
+  intel: { title: "The interview transcribes itself.", desc: "Fixsense Meetings captures the interview live and turns it into a transcript with feedback for the panel." },
+  feedback: { title: "Client feedback lands on the record.", desc: "Feedback from the client goes straight onto the candidate and job in the Client CRM, never lost in a thread." },
+  placement: { title: "Track it through to placement.", desc: "Follow the candidate from offer to confirmed placement, and see it reflected in your recruitment analytics." },
+};
+
+const FLOW_AUTOPLAY_MS = 3400;
+
+function FlowScreenJob() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="briefcase" size={13} />New job</div>
+      <div className="fs-field"><span className="fs-field-label">Title</span><span className="fs-field-val">Senior .NET Developer</span></div>
+      <div className="fs-field"><span className="fs-field-label">Client</span><span className="fs-field-val">Harrow &amp; Bell Technology</span></div>
+      <div className="fs-field"><span className="fs-field-label">Location</span><span className="fs-field-val">London, hybrid</span></div>
+      <div className="fs-field"><span className="fs-field-label">Status</span><span className="fs-chip">Open</span></div>
+    </div>
+  );
+}
+
+function FlowScreenApplications() {
+  const rows = ["Sarah Whitfield", "Tom Adeyemi", "Aisha Malik", "James Carrick"];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="inbox" size={13} />Applications · via job link</div>
+      {rows.map((r, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 130}ms` }} key={r}>
+          <span className="fs-dot" />
+          <span className="fs-row-text">{r}</span>
+          <span className="fs-row-meta">Applied</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowScreenCandidates() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="database" size={13} />Candidate record</div>
+      <div className="fs-cv-parse">
+        <span className="fs-cv-icon"><Icon name="file-text" size={14} /></span>
+        <span className="fs-cv-name">SarahWhitfield_CV.pdf</span>
+        <span className="fs-chip fs-chip-good">Parsed</span>
+      </div>
+      {["8 yrs .NET / Azure", "London, hybrid preferred", "Notice period: 4 weeks"].map((t, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 140}ms` }} key={t}>
+          <span className="fs-check"><Icon name="check" size={9} strokeWidth={2.6} /></span>
+          <span className="fs-row-text">{t}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowScreenMatch() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="target" size={13} />Match score</div>
+      <div className="fs-match-ring-row">
+        <div className="fs-match-ring"><span>94%</span></div>
+        <div className="fs-match-copy">Sarah Whitfield<br /><span className="fs-muted">vs. Senior .NET Developer</span></div>
+      </div>
+      {["All 3 required skills matched", "Location requirement met", "Notice period aligns with start date"].map((t, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 140}ms` }} key={t}>
+          <span className="fs-check"><Icon name="check" size={9} strokeWidth={2.6} /></span>
+          <span className="fs-row-text">{t}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowScreenShortlist() {
+  const rows = [
+    { name: "Sarah Whitfield", match: 94, on: true },
+    { name: "Aisha Malik", match: 91, on: true },
+    { name: "Tom Adeyemi", match: 88, on: false },
+    { name: "James Carrick", match: 76, on: false },
+  ];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="check-square" size={13} />Shortlist · 2 selected</div>
+      {rows.map((r, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 120}ms` }} key={r.name}>
+          <span className={`fs-box${r.on ? " on" : ""}`}>{r.on && <Icon name="check" size={9} strokeWidth={2.8} />}</span>
+          <span className="fs-row-text">{r.name}</span>
+          <span className="fs-row-meta">{r.match}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowScreenSubmit() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="link" size={13} />Submission · Harrow &amp; Bell Technology</div>
+      {["Sarah Whitfield", "Aisha Malik"].map((n, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 150}ms` }} key={n}>
+          <span className="fs-dot fs-dot-accent" />
+          <span className="fs-row-text">{n}</span>
+          <span className="fs-chip">Sent</span>
+        </div>
+      ))}
+      <div className="fs-note fs-in" style={{ animationDelay: "420ms" }}>Client notified · tracked in Client CRM</div>
+    </div>
+  );
+}
+
+function FlowScreenInterview() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="user-plus" size={13} />Interview invitation</div>
+      <div className="fs-field"><span className="fs-field-label">Candidate</span><span className="fs-field-val">Sarah Whitfield</span></div>
+      <div className="fs-field"><span className="fs-field-label">Client</span><span className="fs-field-val">Harrow &amp; Bell Technology</span></div>
+      <div className="fs-field"><span className="fs-field-label">When</span><span className="fs-field-val">Thu, 2:00pm</span></div>
+      <div className="fs-note fs-in" style={{ animationDelay: "280ms" }}>Invitation sent · on the calendar</div>
+    </div>
+  );
+}
+
+function FlowScreenIntel() {
+  const lines = [
+    { n: "Client", t: "Tell me about your Azure migration work." },
+    { n: "Sarah", t: "I led the migration for a 40-service platform over six months." },
+  ];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="mic" size={13} />Fixsense Meetings · live transcript</div>
+      {lines.map((l, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 220}ms` }} key={l.n}>
+          <span className="fs-avatar">{l.n[0]}</span>
+          <span className="fs-row-text">{l.t}</span>
+        </div>
+      ))}
+      <div className="fs-note fs-in" style={{ animationDelay: "480ms" }}>Transcript and feedback saved to candidate record</div>
+    </div>
+  );
+}
+
+function FlowScreenFeedback() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="message" size={13} />Client feedback · Harrow &amp; Bell Technology</div>
+      <p className="fs-quote fs-in" style={{ animationDelay: "120ms" }}>
+        Strong technical depth, good fit for the team. Moving to a second interview with the engineering lead.
+      </p>
+      <div className="fs-row fs-row-in" style={{ animationDelay: "360ms" }}>
+        <span className="fs-dot fs-dot-good" />
+        <span className="fs-row-text">Logged on candidate and job record</span>
+      </div>
+    </div>
+  );
+}
+
+function FlowScreenPlacement() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="target" size={13} />Placement confirmed</div>
+      <div className="fs-place-row">
+        <span className="fs-chip fs-chip-good">Placed</span>
+        <span className="fs-row-text">Sarah Whitfield → Senior .NET Developer</span>
+      </div>
+      <div className="fs-stat-row">
+        {[["18d", "Time to fill"], ["4", "In pipeline"], ["2", "Interviews"]].map(([v, l], i) => (
+          <div className="fs-stat fs-in" style={{ animationDelay: `${i * 130}ms` }} key={l}>
+            <div className="fs-stat-val">{v}</div>
+            <div className="fs-stat-label">{l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const FLOW_SCREENS: Record<string, React.ComponentType> = {
+  job: FlowScreenJob,
+  applications: FlowScreenApplications,
+  candidates: FlowScreenCandidates,
+  match: FlowScreenMatch,
+  shortlist: FlowScreenShortlist,
+  submit: FlowScreenSubmit,
+  interview: FlowScreenInterview,
+  intel: FlowScreenIntel,
+  feedback: FlowScreenFeedback,
+  placement: FlowScreenPlacement,
+};
+
 function WorkflowRail() {
   const [active, setActive] = useState(0);
-  const detail: Record<string, { title: string; desc: string }> = {
-    job: { title: "Post the job once.", desc: "Create the job in Fixsense with the client, requirements, and location. It becomes the anchor everything downstream connects to." },
-    applications: { title: "Applications land in one place.", desc: "Share the job's application link. Every application arrives directly into the pipeline instead of an inbox." },
-    candidates: { title: "CVs become structured records.", desc: "CV parsing reads every application into your candidate database — skills, history, and contact details, searchable across your whole desk." },
-    match: { title: "AI scores every candidate.", desc: "Each candidate is matched against the job's requirements with a score and a plain-language explanation of why." },
-    shortlist: { title: "Build the shortlist from evidence.", desc: "Move the strongest matches into shortlist with one action, backed by the match reasoning, not a gut feeling alone." },
-    submit: { title: "Submit to the client.", desc: "Send a submission to the client as a tracked step in the pipeline — not a one-off email that goes quiet." },
-    interview: { title: "Schedule and send the invitation.", desc: "Send the interview invitation and get it on the calendar without leaving the candidate record." },
-    intel: { title: "The interview transcribes itself.", desc: "Fixsense Meetings captures the interview live and turns it into a transcript with AI feedback for the panel." },
-    feedback: { title: "Client feedback lands on the record.", desc: "Feedback from the client goes straight onto the candidate and job in the Client CRM — never lost in a thread." },
-    placement: { title: "Track it through to placement.", desc: "Follow the candidate from offer to confirmed placement, and see it reflected in your recruitment analytics." },
-  };
-  const d = detail[FLOW[active].key];
+  const [autoplay, setAutoplay] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef<number>();
+  const startRef = useRef(0);
+
+  const goTo = useCallback((i: number) => {
+    setActive(i);
+    setProgress(0);
+  }, []);
+
+  const stopAutoplay = useCallback(() => {
+    setAutoplay(false);
+    setProgress(0);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!autoplay) return;
+    startRef.current = performance.now();
+    function frame(now: number) {
+      const elapsed = now - startRef.current;
+      const pct = Math.min(100, (elapsed / FLOW_AUTOPLAY_MS) * 100);
+      setProgress(pct);
+      if (elapsed >= FLOW_AUTOPLAY_MS) {
+        setActive((c) => (c === FLOW.length - 1 ? 0 : c + 1));
+        startRef.current = now;
+        setProgress(0);
+      }
+      rafRef.current = requestAnimationFrame(frame);
+    }
+    rafRef.current = requestAnimationFrame(frame);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [autoplay]);
+
+  const stage = FLOW[active];
+  const d = FLOW_DETAIL[stage.key];
+  const Screen = FLOW_SCREENS[stage.key];
 
   return (
     <section className="section" id="workflow">
@@ -331,8 +552,8 @@ function WorkflowRail() {
             {FLOW.map((s, i) => (
               <div key={s.key} style={{ display: "contents" }}>
                 <button
-                  className={`flow-node${active === i ? " active" : ""}`}
-                  onClick={() => setActive(i)}
+                  className={`flow-node${active === i ? " active" : ""}${active > i ? " done" : ""}`}
+                  onClick={() => { stopAutoplay(); goTo(i); }}
                   aria-pressed={active === i}
                 >
                   <span className="flow-node-icon"><Icon name={s.icon} size={16} strokeWidth={1.7} /></span>
@@ -344,13 +565,39 @@ function WorkflowRail() {
           </div>
         </Reveal>
 
-        <Reveal delay={120}>
-          <div className="flow-detail">
-            <div className="flow-detail-num">Stage {active + 1} of {FLOW.length}</div>
-            <h3 className="flow-detail-title">{d.title}</h3>
-            <p className="flow-detail-desc">{d.desc}</p>
-          </div>
-        </Reveal>
+        <div className="flow-progress-track"><div className="flow-progress-fill" style={{ width: `${progress}%` }} /></div>
+
+        <div className="flow-panel">
+          <Reveal delay={80}>
+            <div className="flow-detail">
+              <div className="flow-detail-num">Stage {active + 1} of {FLOW.length}</div>
+              <h3 className="flow-detail-title">{d.title}</h3>
+              <p className="flow-detail-desc">{d.desc}</p>
+            </div>
+          </Reveal>
+          <Reveal delay={120}>
+            <div className="flow-frame">
+              <div className="flow-frame-bar">
+                <div className="flow-frame-dots"><span /><span /><span /></div>
+                <span className="flow-frame-label">fixsense.app · {stage.label.toLowerCase()}</span>
+              </div>
+              <div className="flow-frame-body" key={stage.key}>
+                <Screen />
+              </div>
+            </div>
+          </Reveal>
+        </div>
+
+        <div className="flow-autoplay-row">
+          <button className="autoplay-btn" onClick={() => (autoplay ? stopAutoplay() : setAutoplay(true))}>
+            {autoplay ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+            ) : (
+              <Icon name="play" size={12} />
+            )}
+            {autoplay ? "Pause" : "Play"}
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -545,16 +792,87 @@ export default function LandingPage() {
     .flow-node{display:flex;flex-direction:column;align-items:center;gap:8px;width:88px;padding:10px 4px;background:transparent;border:none;cursor:pointer;flex-shrink:0;}
     .flow-node-icon{width:38px;height:38px;border-radius:10px;background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);transition:background .2s,border-color .2s,color .2s;}
     .flow-node.active .flow-node-icon{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+    .flow-node.done .flow-node-icon{background:var(--good-soft);border-color:var(--good);color:var(--good);}
     .flow-node-label{font-size:11px;font-weight:600;color:var(--muted);text-align:center;line-height:1.25;transition:color .2s;}
     .flow-node.active .flow-node-label{color:var(--ink);}
     .flow-arrow{width:16px;height:1px;background:var(--border);flex-shrink:0;margin-top:-24px;}
     @media(max-width:900px){.flow-arrow{display:none;} .flow-rail{gap:4px;}}
     @media(max-width:560px){.flow-node{width:72px;} .flow-node-icon{width:32px;height:32px;} .flow-node-label{font-size:10px;}}
 
-    .flow-detail{max-width:640px;margin:40px auto 0;text-align:center;padding-top:32px;border-top:1px solid var(--border);}
+    .flow-progress-track{max-width:640px;margin:28px auto 0;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .flow-progress-fill{height:100%;background:var(--accent);width:0%;transition:width .05s linear;}
+
+    .flow-panel{display:grid;grid-template-columns:1fr 1.15fr;gap:48px;align-items:center;margin-top:40px;}
+    @media(max-width:860px){.flow-panel{grid-template-columns:1fr;gap:24px;}}
+
+    .flow-detail{max-width:420px;}
     .flow-detail-num{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
     .flow-detail-title{font-size:clamp(19px,2.4vw,25px);font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:10px;line-height:1.25;}
     .flow-detail-desc{font-size:14.5px;color:var(--ink2);line-height:1.68;}
+
+    .flow-frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);}
+    .flow-frame-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
+    .flow-frame-dots{display:flex;gap:6px;}
+    .flow-frame-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.14);}
+    .flow-frame-label{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex:1;text-align:center;}
+    .flow-frame-body{min-height:220px;position:relative;overflow:hidden;}
+
+    .flow-autoplay-row{display:flex;align-items:center;justify-content:center;margin-top:24px;}
+
+    /* Per-stage animated screens */
+    .fs-panel{padding:20px 22px;opacity:0;transform:translateY(6px);}
+    .fs-panel.fs-in{animation:fsPanelIn .35s cubic-bezier(.16,1,.3,1) forwards;}
+    @keyframes fsPanelIn{to{opacity:1;transform:translateY(0)}}
+    .fs-head{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px;font-family:var(--fm);}
+    .fs-head svg{color:rgba(255,255,255,.4);}
+    .fs-muted{color:rgba(255,255,255,.4);}
+
+    .fs-field{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);}
+    .fs-field:last-child{border-bottom:none;}
+    .fs-field-label{font-size:11px;color:rgba(255,255,255,.4);}
+    .fs-field-val{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85);}
+
+    .fs-chip{font-size:10.5px;font-weight:600;color:#8FA6D6;background:rgba(143,166,214,.12);padding:4px 9px;border-radius:100px;}
+    .fs-chip-good{color:#7FC79E;background:rgba(127,199,158,.14);}
+
+    .fs-row{display:flex;align-items:center;gap:10px;padding:8px 0;opacity:0;transform:translateY(4px);}
+    .fs-row-in{animation:fsRowIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    @keyframes fsRowIn{to{opacity:1;transform:translateY(0)}}
+    .fs-row-text{flex:1;font-size:12.5px;color:rgba(255,255,255,.75);line-height:1.5;}
+    .fs-row-meta{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex-shrink:0;}
+    .fs-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.28);flex-shrink:0;}
+    .fs-dot-accent{background:#8FA6D6;}
+    .fs-dot-good{background:#7FC79E;}
+    .fs-check{width:14px;height:14px;border-radius:4px;background:rgba(127,199,158,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .fs-check svg{stroke:#7FC79E;}
+    .fs-box{width:15px;height:15px;border-radius:4px;border:1.3px solid rgba(255,255,255,.28);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+    .fs-box.on{background:#8FA6D6;border-color:#8FA6D6;color:#0e1119;}
+    .fs-avatar{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+
+    .fs-cv-parse{display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;margin-bottom:12px;}
+    .fs-cv-icon{color:rgba(255,255,255,.5);flex-shrink:0;display:flex;}
+    .fs-cv-name{flex:1;font-size:12px;color:rgba(255,255,255,.65);font-family:var(--fm);}
+
+    .fs-match-ring-row{display:flex;align-items:center;gap:16px;margin-bottom:16px;}
+    .fs-match-ring{width:56px;height:56px;border-radius:50%;border:3px solid #8FA6D6;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .fs-match-ring span{font-size:13px;font-weight:700;color:#fff;}
+    .fs-match-copy{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.5;}
+
+    .fs-note{font-size:11.5px;color:rgba(255,255,255,.4);margin-top:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);opacity:0;transform:translateY(4px);}
+    .fs-note.fs-in{animation:fsRowIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    .fs-quote{font-size:13px;color:rgba(255,255,255,.7);line-height:1.6;font-style:italic;opacity:0;transform:translateY(4px);}
+    .fs-quote.fs-in{animation:fsRowIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+
+    .fs-place-row{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+    .fs-stat-row{display:flex;gap:0;padding-top:16px;border-top:1px solid rgba(255,255,255,.07);}
+    .fs-stat{flex:1;opacity:0;transform:translateY(4px);}
+    .fs-stat.fs-in{animation:fsRowIn .4s cubic-bezier(.16,1,.3,1) forwards;}
+    .fs-stat-val{font-size:19px;font-weight:700;color:#fff;letter-spacing:-.01em;margin-bottom:2px;}
+    .fs-stat-label{font-size:10.5px;color:rgba(255,255,255,.38);}
+
+    @media (prefers-reduced-motion: reduce){
+      .fs-panel,.fs-row,.fs-note,.fs-quote,.fs-stat{animation-duration:.001ms!important;}
+    }
 
     /* ══════════════════════════════════════════
        PAIN / FIX PAIRS
@@ -605,7 +923,7 @@ export default function LandingPage() {
     @media(max-width:760px){.built-wrap{grid-template-columns:1fr;}}
 
     /* ══════════════════════════════════════════
-       CANDIDATE JOURNEY (numbered — real end-to-end sequence)
+       CANDIDATE JOURNEY (numbered, real end-to-end sequence)
     ══════════════════════════════════════════ */
     .journey-rail{margin-top:44px;display:flex;flex-direction:column;}
     .journey-row{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:22px 0;}
@@ -804,7 +1122,7 @@ export default function LandingPage() {
               Run your recruitment desk without losing the details that win placements.
             </h1>
             <p className="hero-sub">
-              Fixsense brings jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements into one system — so nothing sits in a spreadsheet, an inbox, or someone's memory.
+              Fixsense brings jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements into one system, so nothing sits in a spreadsheet, an inbox, or someone's memory.
             </p>
             <div className="hero-ctas">
               <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero">
@@ -856,7 +1174,7 @@ export default function LandingPage() {
           <Reveal>
             <div className="kicker">Where desks lose time</div>
             <h2 className="section-h">The problems every recruitment desk knows.</h2>
-            <p className="section-sub">Not abstract inefficiencies — the specific moments where a placement slips, using the features already built to fix each one.</p>
+            <p className="section-sub">Not abstract inefficiencies. The specific moments where a placement slips, using the features already built to fix each one.</p>
           </Reveal>
           <Reveal delay={80}>
             <div className="pain-grid">
@@ -912,7 +1230,7 @@ export default function LandingPage() {
       <section className="mid-cta">
         <div className="mid-cta-inner">
           <h2 className="mid-cta-h">Stop stitching five tools into one recruitment process.</h2>
-          <p className="mid-cta-sub">Jobs, candidates, matching, submissions, interviews, and placements — already connected. Start running your desk in Fixsense today.</p>
+          <p className="mid-cta-sub">Jobs, candidates, matching, submissions, interviews, and placements, already connected. Start running your desk in Fixsense today.</p>
           <div className="mid-cta-ctas">
             <Link to={user ? "/dashboard" : "/login?mode=signup"} className="btn-hero-dark">
               Start Free
@@ -970,7 +1288,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CANDIDATE JOURNEY — a realistic end-to-end run-through */}
+      {/* CANDIDATE JOURNEY: a realistic end-to-end run-through */}
       <section className="section" id="journey">
         <div className="section-inner">
           <Reveal>
@@ -981,12 +1299,12 @@ export default function LandingPage() {
           <Reveal delay={80}>
             <div className="journey-rail">
               {[
-                { icon: "briefcase", title: "Create the job", desc: "A recruiter adds a new vacancy — Senior .NET Developer, London, for an existing client in the Client CRM — with the requirements Fixsense will match against." },
+                { icon: "briefcase", title: "Create the job", desc: "A recruiter adds a new vacancy: Senior .NET Developer, London, for an existing client in the Client CRM, with the requirements Fixsense will match against." },
                 { icon: "link", title: "Share the application link", desc: "The job's application link goes out to the recruiter's network. Applications start arriving directly into the pipeline as they come in." },
-                { icon: "database", title: "CVs parse into candidate records", desc: "Each application's CV is parsed automatically into a structured candidate profile — skills, experience, contact details — added to the candidate database." },
+                { icon: "database", title: "CVs parse into candidate records", desc: "Each application's CV is parsed automatically into a structured candidate profile (skills, experience, contact details) added to the candidate database." },
                 { icon: "sparkle", title: "AI scores every applicant", desc: "AI job matching scores each candidate against the job's requirements and explains the reasoning behind each score." },
                 { icon: "check-square", title: "Build the shortlist", desc: "The recruiter reviews the top matches and moves the strongest candidates into shortlist in the pipeline." },
-                { icon: "user-plus", title: "Submit to the client", desc: "A submission is sent to the client with the shortlisted candidates — tracked in the Client CRM, not a one-off email." },
+                { icon: "user-plus", title: "Submit to the client", desc: "A submission is sent to the client with the shortlisted candidates, tracked in the Client CRM, not a one-off email." },
                 { icon: "mic", title: "Run the interview in Fixsense Meetings", desc: "The client interview is held inside Fixsense Meetings, transcribed live with AI feedback generated for the panel afterward." },
                 { icon: "message", title: "Log the client feedback", desc: "The client's feedback after the interview is logged directly against the candidate and the job." },
                 { icon: "target", title: "Confirm the placement", desc: "Once the offer is accepted, the placement is recorded and reflected immediately in recruitment analytics." },
@@ -1007,14 +1325,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* AGENCY OWNER — VISIBILITY */}
+      {/* AGENCY OWNER: VISIBILITY */}
       <section className="section" id="agency" style={{ background: "var(--paper2)" }}>
         <div className="section-inner">
           <Reveal>
             <div style={{ textAlign: "center", marginBottom: 8 }}>
               <div className="kicker" style={{ justifyContent: "center" }}>For agency owners and desk managers</div>
               <h2 className="section-h" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>Know what is happening across your desk.</h2>
-              <p className="section-sub" style={{ textAlign: "center", margin: "10px auto 0" }}>Every job, candidate, interview, submission, and placement, visible in one place — not five recruiters' separate spreadsheets.</p>
+              <p className="section-sub" style={{ textAlign: "center", margin: "10px auto 0" }}>Every job, candidate, interview, submission, and placement, visible in one place, not five recruiters' separate spreadsheets.</p>
             </div>
           </Reveal>
           <Reveal delay={80}>
@@ -1166,7 +1484,7 @@ export default function LandingPage() {
           <div className="footer-top">
             <div>
               <div className="footer-brand-name"><Logo size={20} />Fixsense</div>
-              <p className="footer-brand-desc">The recruitment operating system for agencies — jobs, candidates, matching, and placements, in one place.</p>
+              <p className="footer-brand-desc">The recruitment operating system for agencies: jobs, candidates, matching, and placements, in one place.</p>
             </div>
             <div>
               <div className="footer-col-title">Product</div>
