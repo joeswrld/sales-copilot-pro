@@ -60,6 +60,10 @@ const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
 const GoogleCalendarCallback = lazy(() => import("./pages/GoogleCalendarCallback"));
 
 const GuestJoin = lazy(() => import("@/pages/GuestJoin"));
+// MeetingEntry sits in front of every Fixsense Meeting link and resolves
+// Host vs Guest from the authenticated user + DB ownership before handing
+// off to LiveMeeting (host) or GuestJoin (guest) — see MeetingEntry.tsx.
+const MeetingEntry = lazy(() => import("@/pages/MeetingEntry"));
 const ClipSharePage = lazy(() => import("@/pages/ClipSharePage"));
 const DealsPage = lazy(() => import("@/pages/DealsPage"));
 const CrmPage = lazy(() => import("@/pages/CrmPage"));
@@ -516,12 +520,18 @@ function AppRoutes() {
           <Route path="/apply/:slug" element={<PublicJobApplicationPage />} />
           <Route path="/portal/:slug" element={<ClientPortalPage />} />
 
-          {/* Canonical Fixsense meeting URL — guest join (NO auth required)
-              Format: https://fixsense.com.ng/meeting/{roomId} */}
-          <Route path="/meeting/:roomName" element={<GuestJoin />} />
+          {/* Canonical Fixsense meeting URL (NO auth required to load this
+              route — MeetingEntry itself decides Host vs Guest).
+              Format: https://fixsense.com.ng/meeting/{roomId}
+              MeetingEntry resolves the logged-in user against DB meeting
+              ownership: the meeting's creator is sent to the Host page
+              (/live/:id, LiveMeeting.tsx); everyone else — signed out,
+              or signed in but not the owner — gets GuestJoin, exactly as
+              before. See MeetingEntry.tsx for the ownership check. */}
+          <Route path="/meeting/:roomName" element={<MeetingEntry />} />
           {/* Legacy aliases — keep so previously shared links keep working */}
-          <Route path="/join/:roomName" element={<GuestJoin />} />
-          <Route path="/meet/:roomName" element={<GuestJoin />} />
+          <Route path="/join/:roomName" element={<MeetingEntry />} />
+          <Route path="/meet/:roomName" element={<MeetingEntry />} />
 
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
