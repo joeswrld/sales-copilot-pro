@@ -492,6 +492,311 @@ const FLOW_SCREENS: Record<string, React.ComponentType> = {
   placement: FlowScreenPlacement,
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// FIRST-VISIT PREVIEW — a dedicated, short, conversion-focused product
+// experience shown immediately after the hero CTAs, for first-time
+// visitors specifically. Not a feature tour: eight stages of the real
+// Fixsense recruiting workflow, each rendered with the same real UI
+// vocabulary (fs-panel screens) as the rest of the page, auto-advancing
+// quickly so the whole loop takes under 20 seconds. "Start Free" is always
+// one tap away — in the rail header, after every stage, and at the end.
+//
+// Stage set matches the brief exactly:
+// Create Job → Collect Applications → AI Candidate Matching → Pipeline →
+// Client Submission → Fixsense Interview → AI Interview Feedback →
+// Placement.
+// ─────────────────────────────────────────────────────────────────────────
+type PreviewStage = { key: string; label: string; icon: string; caption: string };
+
+const PREVIEW_STAGES: PreviewStage[] = [
+  { key: "job", label: "Create Job", icon: "briefcase", caption: "Post the role once, with the client attached." },
+  { key: "applications", label: "Collect Applications", icon: "inbox", caption: "Every application lands in the pipeline automatically." },
+  { key: "matching", label: "AI Candidate Matching", icon: "sparkle", caption: "Every candidate scored against the job, with reasoning." },
+  { key: "pipeline", label: "Pipeline", icon: "route", caption: "See exactly which stage every candidate is sitting at." },
+  { key: "submission", label: "Client Submission", icon: "link", caption: "Send the shortlist to the client as a tracked step." },
+  { key: "interview", label: "Fixsense Interview", icon: "mic", caption: "Run the interview with live transcription built in." },
+  { key: "aifeedback", label: "AI Interview Feedback", icon: "file-text", caption: "The transcript becomes structured feedback for the panel." },
+  { key: "placement", label: "Placement", icon: "target", caption: "Track the candidate through to a confirmed placement." },
+];
+
+function PreviewScreenJob() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="briefcase" size={13} />New job</div>
+      <div className="fs-field"><span className="fs-field-label">Title</span><span className="fs-field-val">Senior .NET Developer</span></div>
+      <div className="fs-field"><span className="fs-field-label">Client</span><span className="fs-field-val">Harrow &amp; Bell Technology</span></div>
+      <div className="fs-field"><span className="fs-field-label">Location</span><span className="fs-field-val">London, hybrid</span></div>
+      <div className="fs-field"><span className="fs-field-label">Status</span><span className="fs-chip fs-chip-good">Open</span></div>
+    </div>
+  );
+}
+
+function PreviewScreenApplications() {
+  const rows = [
+    { name: "Sarah Whitfield", meta: "CV attached" },
+    { name: "Tom Adeyemi", meta: "CV attached" },
+    { name: "Aisha Malik", meta: "CV attached" },
+  ];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="inbox" size={13} />Applications · via job link</div>
+      {rows.map((r, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 130}ms` }} key={r.name}>
+          <span className="fs-dot" />
+          <span className="fs-row-text">{r.name}</span>
+          <span className="fs-row-meta">{r.meta}</span>
+        </div>
+      ))}
+      <div className="fs-note fs-in" style={{ animationDelay: "420ms" }}>3 new applications · parsed into candidate records</div>
+    </div>
+  );
+}
+
+function PreviewScreenMatching() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="sparkle" size={13} />AI candidate matching</div>
+      <div className="fs-match-ring-row">
+        <div className="fs-match-ring"><span>94%</span></div>
+        <div className="fs-match-copy">Sarah Whitfield<br /><span className="fs-muted">vs. Senior .NET Developer</span></div>
+      </div>
+      {["All 3 required skills matched", "London hybrid requirement met", "Notice period aligns with start date"].map((t, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 140}ms` }} key={t}>
+          <span className="fs-check"><Icon name="check" size={9} strokeWidth={2.6} /></span>
+          <span className="fs-row-text">{t}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PreviewScreenPipeline() {
+  const rows = [
+    { name: "Sarah Whitfield", stage: "Interview", match: 94 },
+    { name: "Aisha Malik", stage: "Submitted", match: 91 },
+    { name: "Tom Adeyemi", stage: "Shortlist", match: 88 },
+  ];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="route" size={13} />Pipeline · Senior .NET Developer</div>
+      {rows.map((r, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 130}ms` }} key={r.name}>
+          <span className="fs-dot fs-dot-accent" />
+          <span className="fs-row-text">{r.name}</span>
+          <span className="fs-row-meta">{r.stage} · {r.match}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PreviewScreenSubmission() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="link" size={13} />Submission · Harrow &amp; Bell Technology</div>
+      {["Sarah Whitfield", "Aisha Malik"].map((n, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 150}ms` }} key={n}>
+          <span className="fs-dot fs-dot-accent" />
+          <span className="fs-row-text">{n}</span>
+          <span className="fs-chip">Sent</span>
+        </div>
+      ))}
+      <div className="fs-note fs-in" style={{ animationDelay: "420ms" }}>Client notified · tracked in Client CRM</div>
+    </div>
+  );
+}
+
+function PreviewScreenInterview() {
+  const lines = [
+    { n: "Client", t: "Tell me about your Azure migration work." },
+    { n: "Sarah", t: "I led the migration for a 40-service platform over six months." },
+  ];
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="mic" size={13} />Fixsense Meeting · live</div>
+      {lines.map((l, i) => (
+        <div className="fs-row fs-row-in" style={{ animationDelay: `${i * 220}ms` }} key={l.n}>
+          <span className="fs-avatar">{l.n[0]}</span>
+          <span className="fs-row-text">{l.t}</span>
+        </div>
+      ))}
+      <div className="fs-note fs-in" style={{ animationDelay: "480ms" }}>Transcribing live · recording saved to the candidate record</div>
+    </div>
+  );
+}
+
+function PreviewScreenAiFeedback() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="file-text" size={13} />AI interview feedback</div>
+      <p className="fs-quote fs-in" style={{ animationDelay: "120ms" }}>
+        Strong Azure and distributed-systems depth. Communicated migration decisions clearly. Recommend advancing to the client interview.
+      </p>
+      <div className="fs-row fs-row-in" style={{ animationDelay: "320ms" }}>
+        <span className="fs-dot fs-dot-good" />
+        <span className="fs-row-text">Structured feedback saved to candidate + job record</span>
+      </div>
+    </div>
+  );
+}
+
+function PreviewScreenPlacement() {
+  return (
+    <div className="fs-panel fs-in">
+      <div className="fs-head"><Icon name="target" size={13} />Placement confirmed</div>
+      <div className="fs-place-row">
+        <span className="fs-chip fs-chip-good">Placed</span>
+        <span className="fs-row-text">Sarah Whitfield → Senior .NET Developer</span>
+      </div>
+      <div className="fs-stat-row">
+        {[["18d", "Time to fill"], ["3", "In pipeline"], ["1", "Interview"]].map(([v, l], i) => (
+          <div className="fs-stat fs-in" style={{ animationDelay: `${i * 130}ms` }} key={l}>
+            <div className="fs-stat-val">{v}</div>
+            <div className="fs-stat-label">{l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const PREVIEW_SCREENS: Record<string, React.ComponentType> = {
+  job: PreviewScreenJob,
+  applications: PreviewScreenApplications,
+  matching: PreviewScreenMatching,
+  pipeline: PreviewScreenPipeline,
+  submission: PreviewScreenSubmission,
+  interview: PreviewScreenInterview,
+  aifeedback: PreviewScreenAiFeedback,
+  placement: PreviewScreenPlacement,
+};
+
+const PREVIEW_AUTOPLAY_MS = 2200;
+
+function FirstVisitPreview() {
+  const { user } = useAuth();
+  const [active, setActive] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef<number>();
+  const startRef = useRef(0);
+  const isLast = active === PREVIEW_STAGES.length - 1;
+
+  const goTo = useCallback((i: number) => {
+    setActive(i);
+    setProgress(0);
+  }, []);
+
+  const stopAutoplay = useCallback(() => {
+    setAutoplay(false);
+    setProgress(0);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!autoplay) return;
+    startRef.current = performance.now();
+    function frame(now: number) {
+      const elapsed = now - startRef.current;
+      const pct = Math.min(100, (elapsed / PREVIEW_AUTOPLAY_MS) * 100);
+      setProgress(pct);
+      if (elapsed >= PREVIEW_AUTOPLAY_MS) {
+        setActive((c) => {
+          // Loop stops one short of restarting so a first-time visitor
+          // lands on Placement + the closing CTA instead of looping
+          // straight past their own conversion moment.
+          if (c >= PREVIEW_STAGES.length - 1) {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            setAutoplay(false);
+            return c;
+          }
+          return c + 1;
+        });
+        startRef.current = now;
+        setProgress(0);
+      }
+      rafRef.current = requestAnimationFrame(frame);
+    }
+    rafRef.current = requestAnimationFrame(frame);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [autoplay]);
+
+  const stage = PREVIEW_STAGES[active];
+  const Screen = PREVIEW_SCREENS[stage.key];
+  const signupHref = user ? "/dashboard" : "/login?mode=signup";
+
+  return (
+    <section className="fv-preview" aria-label="Interactive product preview">
+      <div className="fv-inner">
+        <div className="fv-headrow">
+          <div>
+            <div className="kicker" style={{ marginBottom: 8 }}>See it in under 20 seconds</div>
+            <h2 className="fv-h">A real recruiting desk, walked through live.</h2>
+          </div>
+          <Link to={signupHref} className="btn-hero fv-head-cta">
+            Start Free
+            <Icon name="arrow-right" size={14} />
+          </Link>
+        </div>
+
+        <div className="fv-rail">
+          {PREVIEW_STAGES.map((s, i) => (
+            <button
+              key={s.key}
+              className={`fv-node${active === i ? " active" : ""}${active > i ? " done" : ""}`}
+              onClick={() => { stopAutoplay(); goTo(i); }}
+              aria-pressed={active === i}
+              aria-label={s.label}
+            >
+              <span className="fv-node-icon"><Icon name={s.icon} size={14} strokeWidth={1.7} /></span>
+              <span className="fv-node-num">{i + 1}</span>
+            </button>
+          ))}
+        </div>
+        <div className="fv-progress-track"><div className="fv-progress-fill" style={{ width: `${progress}%` }} /></div>
+
+        <div className="fv-stage-row">
+          <div className="fv-stage-label">{stage.label}</div>
+          <div className="fv-stage-caption">{stage.caption}</div>
+        </div>
+
+        <div className="fv-frame">
+          <div className="flow-frame-bar">
+            <div className="flow-frame-dots"><span /><span /><span /></div>
+            <span className="flow-frame-label">fixsense.app · {stage.label.toLowerCase()}</span>
+          </div>
+          <div className="flow-frame-body" key={stage.key}>
+            <Screen />
+          </div>
+        </div>
+
+        <div className="fv-footer-row">
+          <button className="autoplay-btn" onClick={() => (autoplay ? stopAutoplay() : setAutoplay(true))}>
+            {autoplay ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+            ) : (
+              <Icon name="play" size={12} />
+            )}
+            {autoplay ? "Pause" : isLast ? "Replay" : "Play"}
+          </button>
+
+          {isLast ? (
+            <Link to={signupHref} className="btn-hero fv-footer-cta">
+              Start Free — set up your first job
+              <Icon name="arrow-right" size={14} />
+            </Link>
+          ) : (
+            <Link to={signupHref} className="fv-footer-cta-ghost">
+              Skip the preview, start free
+              <Icon name="arrow-right" size={13} />
+            </Link>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function WorkflowRail() {
   const [active, setActive] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
@@ -875,6 +1180,53 @@ export default function LandingPage() {
     }
 
     /* ══════════════════════════════════════════
+       FIRST-VISIT PREVIEW (compact, post-hero, 8-stage)
+    ══════════════════════════════════════════ */
+    .fv-preview{padding:0 22px 64px;}
+    .fv-inner{max-width:920px;margin:0 auto;background:var(--paper2);border:1px solid var(--border);border-radius:20px;padding:32px 28px 28px;}
+    .fv-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px;}
+    .fv-h{font-size:clamp(19px,2.4vw,25px);font-weight:700;color:var(--ink);letter-spacing:-.02em;line-height:1.2;max-width:420px;}
+    .fv-head-cta{flex-shrink:0;padding:11px 18px;min-height:auto;}
+
+    .fv-rail{display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
+    .fv-rail::-webkit-scrollbar{display:none;}
+    .fv-node{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:7px 10px 7px 7px;background:var(--paper);border:1px solid var(--border);border-radius:100px;cursor:pointer;transition:background .25s cubic-bezier(.16,1,.3,1),border-color .25s cubic-bezier(.16,1,.3,1),transform .15s cubic-bezier(.16,1,.3,1);}
+    .fv-node:active{transform:scale(.96);}
+    .fv-node-icon{width:22px;height:22px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;color:var(--ink2);transition:background .25s,color .25s;flex-shrink:0;}
+    .fv-node-num{font-family:var(--fm);font-size:10.5px;font-weight:600;color:var(--faint);padding-right:2px;transition:color .25s;}
+    .fv-node.active{background:var(--accent);border-color:var(--accent);}
+    .fv-node.active .fv-node-icon{background:rgba(255,255,255,.18);color:var(--accent-ink);}
+    .fv-node.active .fv-node-num{color:var(--accent-ink);}
+    .fv-node.done .fv-node-icon{background:var(--good-soft);color:var(--good);}
+    .fv-node.done .fv-node-num{color:var(--good);}
+
+    .fv-progress-track{margin:14px 2px 0;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .fv-progress-fill{height:100%;background:var(--accent);width:0%;transition:width .05s linear;}
+
+    .fv-stage-row{margin:20px 2px 14px;}
+    .fv-stage-label{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:4px;}
+    .fv-stage-caption{font-size:13px;color:var(--ink2);line-height:1.5;}
+
+    .fv-frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 20px 48px -20px rgba(20,20,15,.32), 0 0 0 1px rgba(20,20,15,.04);}
+
+    .fv-footer-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px;flex-wrap:wrap;}
+    .fv-footer-cta{padding:11px 18px;min-height:auto;font-size:13.5px;}
+    .fv-footer-cta-ghost{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--accent)!important;text-decoration:none;padding:8px 2px;transition:opacity .15s;}
+    .fv-footer-cta-ghost:hover{opacity:.75;}
+
+    @media(max-width:640px){
+      .fv-inner{padding:24px 18px 20px;border-radius:16px;}
+      .fv-headrow{flex-direction:column;align-items:stretch;}
+      .fv-head-cta{width:100%;justify-content:center;}
+      .fv-footer-row{flex-direction:column;align-items:stretch;}
+      .fv-footer-cta{width:100%;justify-content:center;}
+      .fv-footer-cta-ghost{justify-content:center;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .fv-node{transition:none;}
+    }
+
+    /* ══════════════════════════════════════════
        PAIN / FIX PAIRS
     ══════════════════════════════════════════ */
     .pain-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
@@ -1155,6 +1507,12 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* FIRST-TIME VISITOR PRODUCT PREVIEW — dedicated, short, interactive
+          walkthrough of the real workflow, placed right after the hero CTAs
+          per the brief. Distinct from the full 10-stage WorkflowRail further
+          down the page (#workflow), which stays as the deeper reference. */}
+      <FirstVisitPreview />
 
       {/* TRUST STRIP */}
       <div className="strip">
