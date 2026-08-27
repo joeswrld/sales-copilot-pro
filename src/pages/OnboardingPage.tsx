@@ -11,6 +11,13 @@
  * same visual language on purpose — this is the first authenticated screen
  * a new user sees right after the marketing site, and switching palettes
  * here reads as leaving the product.
+ *
+ * Content walks the platform's actual current workflow — recruiting, not
+ * the original sales-call product: post a job → source and screen
+ * candidates → move them through the pipeline → submit to the client →
+ * get paid when they're placed. Every step below mirrors a real page
+ * (JobsPage, CandidatesPage/PipelinePage, SubmissionsPage, PlacementsPage)
+ * so the preview panel isn't a mockup of a feature that doesn't exist.
  */
 
 import { useState } from "react";
@@ -42,6 +49,11 @@ function Icon({ name, size = 18, strokeWidth = 1.6, className = "" }: { name: st
     case "bar-chart": return <svg {...p}><line x1="5" y1="21" x2="5" y2="12" /><line x1="12" y1="21" x2="12" y2="7" /><line x1="19" y1="21" x2="19" y2="15" /></svg>;
     case "check": return <svg {...p} strokeWidth={2}><polyline points="20 6 9 17 4 12" /></svg>;
     case "check-square": return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M8 12l3 3 5-6" /></svg>;
+    case "briefcase": return <svg {...p}><rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M2.5 12.5h19" /></svg>;
+    case "columns": return <svg {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 4v16" /></svg>;
+    case "send": return <svg {...p}><path d="M21 3L11 13" /><path d="M21 3l-7 18-4-8-8-4z" /></svg>;
+    case "coins": return <svg {...p}><ellipse cx="8" cy="7" rx="5.5" ry="3" /><path d="M2.5 7v6c0 1.66 2.46 3 5.5 3s5.5-1.34 5.5-3V7" /><path d="M2.5 10c0 1.66 2.46 3 5.5 3s5.5-1.34 5.5-3" /><ellipse cx="16" cy="14" rx="5.5" ry="3" strokeOpacity="0.6" /><path d="M10.5 14v3c0 1.66 2.46 3 5.5 3s5.5-1.34 5.5-3v-3" strokeOpacity="0.6" /></svg>;
+    case "shield": return <svg {...p}><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6l7-3z" /><path d="M9 12l2 2 4-4" /></svg>;
     default: return null;
   }
 }
@@ -50,55 +62,67 @@ function Icon({ name, size = 18, strokeWidth = 1.6, className = "" }: { name: st
 
 const STEPS = [
   {
-    id: "live_call",
-    icon: "video",
-    title: "Start meetings in one click",
-    subtitle: "Create a private meeting room, share the link — your prospect joins without any account. AI transcribes both sides live.",
+    id: "jobs",
+    icon: "briefcase",
+    title: "Post a role, capture what the client actually needs",
+    subtitle: "Create a job against one of your clients — salary band, must-haves, deal-breakers, interview stages. AI can pull most of this straight from your intake call.",
   },
   {
-    id: "ai_insights",
-    icon: "brain",
-    title: "AI works while you talk",
-    subtitle: "Real-time objection detection, sentiment tracking, and engagement scoring happen automatically. You stay focused on the conversation.",
+    id: "candidates",
+    icon: "users",
+    title: "Source and screen candidates with AI on every call",
+    subtitle: "Upload a CV or run a screening call — Fixsense transcribes it live and extracts experience, salary expectations, and notice period into a structured profile you review before it's saved.",
   },
   {
-    id: "summaries",
-    icon: "sparkles",
-    title: "Summaries and next actions, ready instantly",
-    subtitle: "The moment a call ends, Fixsense generates a full summary, extracts action items, identifies buying signals, and drafts your follow-up email.",
+    id: "pipeline",
+    icon: "columns",
+    title: "Move candidates through one shared pipeline",
+    subtitle: "Drag candidates from sourced through interview to placed. Every stage change is logged automatically, so nothing falls through the cracks between you and your team.",
   },
   {
-    id: "deals",
-    icon: "target",
-    title: "Track every deal across all calls",
-    subtitle: "Link calls to deals and build a living timeline. The AI compares calls over time, showing what changed, sentiment trends, and your next best action.",
+    id: "submissions",
+    icon: "send",
+    title: "Submit to the client, track their response",
+    subtitle: "Send a candidate package straight from their pipeline card, then log client feedback — interview requests, rejections, or an offer — right where you tracked the submission.",
+  },
+  {
+    id: "placements",
+    icon: "coins",
+    title: "Get paid, and stay covered by the guarantee",
+    subtitle: "Once a candidate is placed, record the fee and commission, invoice the client, and track payment. Guarantee periods are tracked automatically so nothing expires unnoticed.",
   },
 ];
 
 const STEP_FEATURES = [
   [
-    { icon: "radio", text: "Fixsense-powered private rooms" },
-    { icon: "mic", text: "Both sides transcribed in real time" },
-    { icon: "users", text: "No account needed for guests" },
-    { icon: "video", text: "Host video and mic controls built in" },
+    { icon: "briefcase", text: "Salary band, must-haves, and deal-breakers in one place" },
+    { icon: "brain", text: "AI drafts requirements from your intake call" },
+    { icon: "check-square", text: "Interview stages defined up front" },
+    { icon: "users", text: "Assigned to the right recruiter automatically" },
   ],
   [
-    { icon: "zap", text: "Pricing and timeline objections flagged live" },
-    { icon: "bar-chart", text: "Sentiment score updates second by second" },
-    { icon: "brain", text: "Talk ratio tracked throughout the call" },
-    { icon: "sparkles", text: "AI coaching insights surface in real time" },
+    { icon: "mic", text: "Screening calls transcribed in real time" },
+    { icon: "sparkles", text: "Experience, salary, and skills extracted by AI" },
+    { icon: "check", text: "Every AI extraction reviewed before it's saved" },
+    { icon: "target", text: "Match score against every open role" },
   ],
   [
-    { icon: "sparkles", text: "Full AI summary generated on call end" },
-    { icon: "check-square", text: "Action items extracted automatically" },
-    { icon: "target", text: "Follow-up email drafted and ready to send" },
-    { icon: "zap", text: "One-click push to HubSpot or Salesforce" },
+    { icon: "columns", text: "Sourced → Screening → Interview → Placed" },
+    { icon: "zap", text: "Stage changes logged to the candidate's timeline" },
+    { icon: "bar-chart", text: "See every open role's pipeline at a glance" },
+    { icon: "check-square", text: "Rejection reasons captured for future matching" },
   ],
   [
-    { icon: "target", text: "Deal timeline — all calls in one thread" },
-    { icon: "brain", text: "\u201cWhat changed?\u201d AI analysis between calls" },
-    { icon: "bar-chart", text: "Sentiment trend: improving, declining, stable" },
-    { icon: "sparkles", text: "AI-recommended next best action per deal" },
+    { icon: "send", text: "Submission package built from verified candidate data" },
+    { icon: "check", text: "Client response logged against the submission" },
+    { icon: "target", text: "Auto-advances the candidate's pipeline stage" },
+    { icon: "sparkles", text: "AI-drafted client update, never sent automatically" },
+  ],
+  [
+    { icon: "coins", text: "Fee, commission %, and salary recorded on placement" },
+    { icon: "shield", text: "Guarantee period tracked with an expiry alert" },
+    { icon: "check-square", text: "Invoice the client and record payment" },
+    { icon: "bar-chart", text: "Financials totalled by currency across your team" },
   ],
 ];
 
@@ -107,102 +131,129 @@ const STEP_FEATURES = [
 // product," while the surrounding page stays on the light paper surface ───
 
 function StepPreview({ stepId }: { stepId: string }) {
-  if (stepId === "live_call") return (
+  if (stepId === "jobs") return (
     <div className="ob-mock">
       <div className="ob-mock-bar">
-        <span className="ob-mock-bar-title">Acme Corp — Discovery Call</span>
+        <Icon name="briefcase" size={13} />
+        <span className="ob-mock-bar-title">Senior Backend Engineer — Acme Corp</span>
+        <span className="ob-mock-badge">Open</span>
+      </div>
+      <div className="ob-mock-body">
+        <div className="ob-mock-label">Salary band</div>
+        <div className="ob-mock-callout">NGN 9,000,000 – 13,500,000 · Remote (Nigeria)</div>
+        <div className="ob-mock-label" style={{ marginTop: 12 }}>Must-haves</div>
+        <div className="ob-mock-signals">5+ years backend · Postgres at scale · Led a small team</div>
+        <div className="ob-mock-label" style={{ marginTop: 12 }}>Deal-breakers</div>
+        <div className="ob-mock-signals" style={{ color: "#E8998A" }}>No sponsorship available · Must be Lagos-based within 90 days</div>
+      </div>
+    </div>
+  );
+
+  if (stepId === "candidates") return (
+    <div className="ob-mock">
+      <div className="ob-mock-bar">
+        <span className="ob-mock-bar-title">Screening call — Ada O.</span>
         <span className="ob-mock-live">
           <span className="ob-mock-live-dot" />
-          Live · 00:12:41
+          Live · 00:08:14
         </span>
       </div>
       <div className="ob-mock-body">
         {[
-          { sp: "You", text: "What's your biggest challenge with the current setup?" },
-          { sp: "Alex", text: "Honestly, we're losing deals and don't know why. No visibility." },
-          { sp: "You", text: "That's exactly what Fixsense solves. Every call gets analyzed automatically." },
+          { sp: "You", text: "Walk me through what you're earning now and what you'd need to move." },
+          { sp: "Ada", text: "I'm at 7.2M now, looking for 9.5 to 10M with the seniority bump." },
         ].map((l, i) => (
           <div key={i} className="ob-mock-line">
             <span className="ob-mock-speaker">{l.sp}</span>
             <span className="ob-mock-text">{l.text}</span>
           </div>
         ))}
+        <div className="ob-mock-stat-grid" style={{ marginTop: 4 }}>
+          <div className="ob-mock-stat">
+            <div className="ob-mock-stat-val">9.5M</div>
+            <div className="ob-mock-stat-lbl">Expected salary</div>
+          </div>
+          <div className="ob-mock-stat">
+            <div className="ob-mock-stat-val">4wk</div>
+            <div className="ob-mock-stat-lbl">Notice period</div>
+          </div>
+        </div>
         <div className="ob-mock-status">
           <span className="ob-mock-status-dot" />
-          AI transcribing both sides
+          AI extracting candidate profile — pending your review
         </div>
       </div>
     </div>
   );
 
-  if (stepId === "ai_insights") return (
+  if (stepId === "pipeline") return (
     <div className="ob-mock">
-      <div className="ob-mock-bar"><span className="ob-mock-bar-title">Live AI insights</span></div>
-      <div className="ob-mock-body">
-        <div className="ob-mock-flag">
-          <div className="ob-mock-flag-title">Pricing objection · 94% confidence</div>
-          <div className="ob-mock-flag-body">Anchor on ROI — teams typically see payback in 6 weeks</div>
-        </div>
-        <div className="ob-mock-stat-grid">
-          {[
-            { lbl: "Sentiment", val: "78%" },
-            { lbl: "Talk ratio", val: "42/58" },
-            { lbl: "Engagement", val: "85%" },
-            { lbl: "Objections", val: "1" },
-          ].map(s => (
-            <div key={s.lbl} className="ob-mock-stat">
-              <div className="ob-mock-stat-val">{s.val}</div>
-              <div className="ob-mock-stat-lbl">{s.lbl}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  if (stepId === "summaries") return (
-    <div className="ob-mock">
-      <div className="ob-mock-bar">
-        <Icon name="sparkles" size={13} />
-        <span className="ob-mock-bar-title">AI summary ready</span>
-        <span className="ob-mock-badge">Completed</span>
-      </div>
-      <div className="ob-mock-body">
-        <div className="ob-mock-label">Priority action</div>
-        <div className="ob-mock-callout">Send ROI breakdown within 24h — prospect signalled urgency on budget timeline</div>
-        <div className="ob-mock-label" style={{ marginTop: 12 }}>Buying signals</div>
-        <div className="ob-mock-signals">CFO joining next call · Timeline confirmed · Budget exists</div>
-        <div className="ob-mock-push-row">
-          <div className="ob-mock-push">Push to HubSpot</div>
-          <div className="ob-mock-push">Push to Salesforce</div>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (stepId === "deals") return (
-    <div className="ob-mock">
-      <div className="ob-mock-bar">
-        <Icon name="target" size={13} />
-        <span className="ob-mock-bar-title">Acme Corp — Enterprise deal</span>
-        <span className="ob-mock-trend">Improving</span>
-      </div>
+      <div className="ob-mock-bar"><Icon name="columns" size={13} /><span className="ob-mock-bar-title">Senior Backend Engineer — pipeline</span></div>
       <div className="ob-mock-body">
         {[
-          { name: "Discovery call", date: "Mar 3", score: 72 },
-          { name: "Product demo", date: "Mar 10", score: 84 },
-          { name: "Negotiation", date: "Mar 17", score: 91 },
+          { name: "Ada O.", stage: "Interview", color: "#fb923c" },
+          { name: "Michael T.", stage: "Client Review", color: "#f472b6" },
+          { name: "Chidinma K.", stage: "Shortlisted", color: "#818cf8" },
+          { name: "Ibrahim S.", stage: "Placed", color: "#7FB89C" },
         ].map((c, i) => (
           <div key={i} className="ob-mock-deal-row">
-            <span className="ob-mock-deal-dot" />
+            <span className="ob-mock-deal-dot" style={{ background: c.color }} />
             <span className="ob-mock-deal-name">{c.name}</span>
-            <span className="ob-mock-deal-date">{c.date}</span>
-            <span className="ob-mock-deal-score">{c.score}</span>
+            <span className="ob-mock-deal-date" style={{ color: c.color, fontFamily: "var(--fb)", fontSize: 11 }}>{c.stage}</span>
           </div>
         ))}
+        <div className="ob-mock-status">
+          <span className="ob-mock-status-dot" />
+          Every stage move logged to the candidate's timeline
+        </div>
+      </div>
+    </div>
+  );
+
+  if (stepId === "submissions") return (
+    <div className="ob-mock">
+      <div className="ob-mock-bar">
+        <Icon name="send" size={13} />
+        <span className="ob-mock-bar-title">Submission — Ada O.</span>
+        <span className="ob-mock-badge">Client responded</span>
+      </div>
+      <div className="ob-mock-body">
+        <div className="ob-mock-label">Sent to</div>
+        <div className="ob-mock-callout">hiring@acmecorp.com · Senior Backend Engineer</div>
+        <div className="ob-mock-label" style={{ marginTop: 12 }}>Client feedback</div>
+        <div className="ob-mock-signals">"Strong technical depth — let's get her in for a final round."</div>
+        <div className="ob-mock-push-row">
+          <div className="ob-mock-push">Advance to Final Interview</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (stepId === "placements") return (
+    <div className="ob-mock">
+      <div className="ob-mock-bar">
+        <Icon name="coins" size={13} />
+        <span className="ob-mock-bar-title">Ibrahim S. — placed</span>
+        <span className="ob-mock-trend">Guarantee active</span>
+      </div>
+      <div className="ob-mock-body">
+        <div className="ob-mock-stat-grid">
+          <div className="ob-mock-stat">
+            <div className="ob-mock-stat-val">₦1.9M</div>
+            <div className="ob-mock-stat-lbl">Placement fee</div>
+          </div>
+          <div className="ob-mock-stat">
+            <div className="ob-mock-stat-val">20%</div>
+            <div className="ob-mock-stat-lbl">Commission</div>
+          </div>
+        </div>
         <div className="ob-mock-changed">
-          <div className="ob-mock-changed-title">What changed</div>
-          <div className="ob-mock-changed-body">Pricing objection resolved · New stakeholder: CFO · Sentiment +7pts</div>
+          <div className="ob-mock-changed-title">Invoice INV-0042</div>
+          <div className="ob-mock-changed-body">₦1,900,000 · Sent Aug 12 · Due Sep 11</div>
+        </div>
+        <div className="ob-mock-status">
+          <span className="ob-mock-status-dot" />
+          90-day guarantee ends Nov 10
         </div>
       </div>
     </div>
@@ -239,8 +290,8 @@ export default function OnboardingPage() {
 
       if (error) console.warn("Could not update onboarding_complete:", error.message);
 
-      toast.success("You're all set! Start your first call.");
-      navigate("/live", { replace: true });
+      toast.success("You're all set! Post your first role.");
+      navigate("/jobs", { replace: true });
     } catch (err) {
       console.error("Onboarding finish error:", err);
       toast.error("Something went wrong.");
@@ -471,7 +522,7 @@ export default function OnboardingPage() {
                 {saving ? (
                   <><Icon name="loader" size={15} className="ob-spin" /> Setting up…</>
                 ) : isLast ? (
-                  <><Icon name="play" size={13} /> Start my first call</>
+                  <><Icon name="briefcase" size={13} /> Post my first job</>
                 ) : (
                   <>Next <Icon name="chevron-right" size={14} /></>
                 )}
