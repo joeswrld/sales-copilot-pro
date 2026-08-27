@@ -39,6 +39,7 @@ import {
   DollarSign, Calendar, FileText, Upload, Check, X, Edit3, ChevronDown,
   ChevronUp, Sparkles, Clock, Plus, RefreshCw, AlertCircle, CheckCircle2,
   XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp, ExternalLink, Copy,
+  Shield, ShieldAlert, Trash2, ShieldCheck,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -75,6 +76,17 @@ interface Candidate {
   status: string;
   created_at: string;
   updated_at: string;
+  data_consent_given: boolean;
+  data_consent_given_at: string | null;
+  data_consent_source: string | null;
+  recording_consent_given: boolean;
+  recording_consent_given_at: string | null;
+  marketing_consent_given: boolean;
+  retention_expires_at: string | null;
+  deletion_requested_at: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  anonymized: boolean;
 }
 
 interface CandidateSkill {
@@ -690,6 +702,87 @@ function CandidateDetailPageInner() {
       toast.error(e.message ?? "Failed to save");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── Consent & erasure (compliance) ──────────────────────────────────────
+  // request_candidate_deletion / execute_candidate_erasure are the only
+  // sanctioned way to mutate deletion/erasure state — never write
+  // deleted_at / anonymized directly, so the audit trail in
+  // recruiting_timeline_events always reflects what actually happened.
+  const [erasing, setErasing] = useState(false);
+  const [requestingDeletion, setRequestingDeletion] = useState(false);
+  const [showErasureConfirm, setShowErasureConfirm] = useState(false);
+  const [erasureConfirmText, setErasureConfirmText] = useState("");
+
+  const setConsent = async (field: "data_consent_given" | "recording_consent_given" | "marketing_consent_given", value: boolean) => {
+    if (!candidate) return;
+    setSaving(true);
+    try {
+      const timestampField = field === "data_consent_given" ? "data_consent_given_at"
+        : field === "recording_consent_given" ? "recording_consent_given_at" : null;
+      const updates: Record<string, any> = { [field]: value };
+      if (timestampField) updates[timestampField] = value ? new Date().toISOString() : null;
+      if (field === "data_consent_given" && value) updates.data_consent_source = "recruiter_recorded";
+      const { error } = await (supabase as any).from("candidates").update(updates).eq("id", candidate.id);
+      if (error) throw error;
+      setCandidate(c => c ? { ...c, ...updates } : c);
+      toast.success(value ? "Consent recorded" : "Consent withdrawn");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update consent");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const requestDeletion = async () => {
+    if (!candidate) return;
+    setRequestingDeletion(true);
+    try {
+      const { error } = await (supabase as any).rpc("request_candidate_deletion", {
+        p_candidate_id: candidate.id,
+        p_reason: null,
+      });
+      if (error) throw error;
+      setCandidate(c => c ? { ...c, deletion_requested_at: new Date().toISOString() } : c);
+      setTimeline(t => [{ id: `local-${Date.now()}`, event_type: "deletion_requested", title: "Deletion/erasure requested", created_at: new Date().toISOString() }, ...t]);
+      toast.success("Deletion requested — erase the record when you're ready to finalize it");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to request deletion");
+    } finally {
+      setRequestingDeletion(false);
+    }
+  };
+
+  const cancelDeletionRequest = async () => {
+    if (!candidate) return;
+    setRequestingDeletion(true);
+    try {
+      const { error } = await (supabase as any).from("candidates").update({ deletion_requested_at: null }).eq("id", candidate.id);
+      if (error) throw error;
+      setCandidate(c => c ? { ...c, deletion_requested_at: null } : c);
+      toast.success("Deletion request cancelled");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to cancel deletion request");
+    } finally {
+      setRequestingDeletion(false);
+    }
+  };
+
+  const executeErasure = async () => {
+    if (!candidate) return;
+    setErasing(true);
+    try {
+      const { error } = await (supabase as any).rpc("execute_candidate_erasure", { p_candidate_id: candidate.id });
+      if (error) throw error;
+      toast.success("Candidate data erased");
+      setShowErasureConfirm(false);
+      setErasureConfirmText("");
+      await load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to erase candidate data");
+    } finally {
+      setErasing(false);
     }
   };
 
@@ -1496,6 +1589,182 @@ function CandidateDetailPageInner() {
           </div>
         </div>
       </div>
+
+      {/* Privacy & Compliance */}
+      <div style={{ background: "#FFFFFF", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 14, padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+          <Shield style={{ width: 14, height: 14, color: "#22315C" }} />
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: "#17170F", margin: 0 }}>Privacy &amp; Compliance</h3>
+        </div>
+
+        {candidate.anonymized || candidate.deleted_at ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.2)", borderRadius: 10 }}>
+            <ShieldCheck style={{ width: 14, height: 14, color: "#64748b", flexShrink: 0 }} />
+            <p style={{ fontSize: 12, color: "rgba(23,23,15,0.55)", margin: 0 }}>
+              This candidate's personal data was erased{candidate.deleted_at ? ` ${formatDistanceToNow(new Date(candidate.deleted_at), { addSuffix: true })}` : ""}. Name, contact details, resume, notes, and skills have been removed; the record is kept only as an anonymized placeholder for pipeline history.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>Data processing consent</div>
+                  <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)" }}>
+                    {candidate.data_consent_given && candidate.data_consent_given_at
+                      ? `Given ${formatDistanceToNow(new Date(candidate.data_consent_given_at), { addSuffix: true })}`
+                      : "Not yet recorded"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setConsent("data_consent_given", !candidate.data_consent_given)}
+                  disabled={saving}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "6px 12px", borderRadius: 8, border: "none", flexShrink: 0,
+                    background: candidate.data_consent_given ? "rgba(34,197,94,0.12)" : "rgba(23,23,15,0.06)",
+                    color: candidate.data_consent_given ? "#16a34a" : "rgba(23,23,15,0.5)",
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  {candidate.data_consent_given ? "Given" : "Not given"}
+                </button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>Call recording consent</div>
+                  <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)" }}>
+                    {candidate.recording_consent_given && candidate.recording_consent_given_at
+                      ? `Given ${formatDistanceToNow(new Date(candidate.recording_consent_given_at), { addSuffix: true })}`
+                      : "Not yet recorded"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setConsent("recording_consent_given", !candidate.recording_consent_given)}
+                  disabled={saving}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "6px 12px", borderRadius: 8, border: "none", flexShrink: 0,
+                    background: candidate.recording_consent_given ? "rgba(34,197,94,0.12)" : "rgba(23,23,15,0.06)",
+                    color: candidate.recording_consent_given ? "#16a34a" : "rgba(23,23,15,0.5)",
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  {candidate.recording_consent_given ? "Given" : "Not given"}
+                </button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>Marketing consent</div>
+                  <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)" }}>Future roles &amp; updates</div>
+                </div>
+                <button
+                  onClick={() => setConsent("marketing_consent_given", !candidate.marketing_consent_given)}
+                  disabled={saving}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "6px 12px", borderRadius: 8, border: "none", flexShrink: 0,
+                    background: candidate.marketing_consent_given ? "rgba(34,197,94,0.12)" : "rgba(23,23,15,0.06)",
+                    color: candidate.marketing_consent_given ? "#16a34a" : "rgba(23,23,15,0.5)",
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  {candidate.marketing_consent_given ? "Given" : "Not given"}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid rgba(23,23,15,0.06)", paddingTop: 12 }}>
+              {candidate.deletion_requested_at ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10 }}>
+                    <ShieldAlert style={{ width: 14, height: 14, color: "#b45309", flexShrink: 0, marginTop: 1 }} />
+                    <p style={{ fontSize: 12, color: "#92400e", margin: 0 }}>
+                      Deletion requested {formatDistanceToNow(new Date(candidate.deletion_requested_at), { addSuffix: true })}. No data has been removed yet — erase the record to permanently delete this candidate's personal data, or cancel the request if it's no longer needed.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={cancelDeletionRequest}
+                      disabled={requestingDeletion}
+                      style={{ padding: "8px 14px", background: "rgba(23,23,15,0.05)", border: "none", borderRadius: 9, color: "rgba(23,23,15,0.6)", fontSize: 12, fontWeight: 700, cursor: requestingDeletion ? "default" : "pointer" }}
+                    >
+                      Cancel request
+                    </button>
+                    <button
+                      onClick={() => setShowErasureConfirm(true)}
+                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.22)", borderRadius: 9, color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      <Trash2 style={{ width: 12, height: 12 }} />Erase candidate data
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11.5, color: "rgba(23,23,15,0.45)", maxWidth: 420 }}>
+                    If this candidate asks to be forgotten, request deletion first — it flags the record without removing anything, so you can double-check before it's irreversible.
+                  </div>
+                  <button
+                    onClick={requestDeletion}
+                    disabled={requestingDeletion}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "rgba(23,23,15,0.05)", border: "1px solid rgba(23,23,15,0.1)", borderRadius: 9, color: "rgba(23,23,15,0.6)", fontSize: 12, fontWeight: 700, cursor: requestingDeletion ? "default" : "pointer", flexShrink: 0 }}
+                  >
+                    {requestingDeletion ? <Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> : <ShieldAlert style={{ width: 12, height: 12 }} />}
+                    Request deletion
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Erasure confirmation — a destructive, irreversible action gets an
+          explicit typed confirmation rather than a plain confirm button,
+          since it permanently removes the candidate's PII. */}
+      {showErasureConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(23,23,15,0.45)", backdropFilter: "blur(6px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => { setShowErasureConfirm(false); setErasureConfirmText(""); }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#FFFFFF", borderRadius: 16, padding: 22, width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <Trash2 style={{ width: 16, height: 16, color: "#dc2626" }} />
+              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#17170F", margin: 0 }}>Erase candidate data</h3>
+            </div>
+            <p style={{ fontSize: 12.5, color: "rgba(23,23,15,0.55)", lineHeight: 1.6, marginBottom: 14 }}>
+              This permanently removes {candidate.full_name}'s name, contact details, resume, notes, and skills. This can't be undone. Pipeline and interview history will remain, but attributed to an anonymized record.
+            </p>
+            <label style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+              Type ERASE to confirm
+            </label>
+            <input
+              value={erasureConfirmText}
+              onChange={e => setErasureConfirmText(e.target.value)}
+              placeholder="ERASE"
+              style={{ width: "100%", padding: "10px 12px", background: "rgba(23,23,15,0.03)", border: "1px solid rgba(23,23,15,0.12)", borderRadius: 10, fontSize: 13, color: "#17170F", outline: "none", boxSizing: "border-box", marginBottom: 16 }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setShowErasureConfirm(false); setErasureConfirmText(""); }}
+                disabled={erasing}
+                style={{ padding: "9px 16px", background: "rgba(23,23,15,0.05)", border: "none", borderRadius: 9, color: "rgba(23,23,15,0.6)", fontSize: 12.5, fontWeight: 700, cursor: erasing ? "default" : "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeErasure}
+                disabled={erasing || erasureConfirmText !== "ERASE"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 9, border: "none", fontSize: 12.5, fontWeight: 700,
+                  background: erasureConfirmText === "ERASE" ? "#dc2626" : "rgba(220,38,38,0.15)",
+                  color: erasureConfirmText === "ERASE" ? "#FFFFFF" : "rgba(220,38,38,0.5)",
+                  cursor: erasing || erasureConfirmText !== "ERASE" ? "default" : "pointer",
+                }}
+              >
+                {erasing ? <Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> : <Trash2 style={{ width: 12, height: 12 }} />}
+                Erase permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showScheduleModal && selectedCjId && (
         <ScheduleInterviewModal
