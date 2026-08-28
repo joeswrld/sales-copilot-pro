@@ -126,19 +126,19 @@ const MentionTextarea = forwardRef<MentionTextareaHandle, Props>(function Mentio
         rows={1}
         style={{
           width: "100%", background: "transparent", border: "none", outline: "none",
-          resize: "none", fontSize: 14, color: "#f0f6fc",
-          fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto",
+          resize: "none", fontSize: 14, color: "#17170F",
+          fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto",
           ...style,
         }}
       />
       {open && matches.length > 0 && (
         <div style={{
           position: "absolute", bottom: "calc(100% + 6px)", left: 0,
-          background: "#1a1f2e", border: "1px solid rgba(255,255,255,.12)",
+          background: "#FFFFFF", border: "1px solid rgba(23,23,15,.12)",
           borderRadius: 10, padding: 4, minWidth: 220, maxWidth: 300,
-          boxShadow: "0 8px 32px rgba(0,0,0,.7)", zIndex: 200,
+          boxShadow: "0 8px 24px -6px rgba(20,20,15,.18), 0 0 0 1px rgba(20,20,15,.03)", zIndex: 200,
         }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)", padding: "4px 8px", fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
+          <div style={{ fontSize: 10, color: "rgba(23,23,15,.35)", padding: "4px 8px", fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>
             Mention a teammate
           </div>
           {matches.map((m, i) => {
@@ -149,21 +149,21 @@ const MentionTextarea = forwardRef<MentionTextareaHandle, Props>(function Mentio
                 style={{
                   display: "flex", alignItems: "center", gap: 8, width: "100%",
                   padding: "7px 8px", border: "none", borderRadius: 7, cursor: "pointer",
-                  background: i === highlight ? "rgba(14,245,212,.12)" : "transparent",
-                  color: "#f0f6fc", textAlign: "left",
+                  background: i === highlight ? "rgba(34,49,92,.08)" : "transparent",
+                  color: "#17170F", textAlign: "left",
                 }}>
                 {m.avatar_url ? (
                   <img src={m.avatar_url} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                 ) : (
                   <div style={{
                     width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                    background: "rgba(167,139,250,.2)", color: "#a78bfa",
+                    background: "rgba(167,139,250,.16)", color: "#7c5ce0",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 10, fontWeight: 700,
                   }}>{(label[0] || "?").toUpperCase()}</div>
                 )}
                 <span style={{ fontSize: 12.5, fontWeight: 500, flex: 1 }}>{label}</span>
-                {m.email && <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.35)" }}>@{m.email.split("@")[0]}</span>}
+                {m.email && <span style={{ fontSize: 10.5, color: "rgba(23,23,15,.35)" }}>@{m.email.split("@")[0]}</span>}
               </button>
             );
           })}
@@ -178,7 +178,7 @@ export default MentionTextarea;
 function escapeRe(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /** Render text with @mentions highlighted. */
-export function renderWithMentions(text: string, color = "#0ef5d4") {
+export function renderWithMentions(text: string, color = "#22315C") {
   const parts = text.split(/(@[A-Za-z0-9._-]+)/g);
   return parts.map((p, i) =>
     p.startsWith("@")
