@@ -129,17 +129,17 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={submitting ? undefined : onClose}>
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: "min(420px, 100%)", borderRadius: 16, background: "#0d1420", border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 20px 60px rgba(0,0,0,.5)", fontFamily: "'Geist',system-ui,sans-serif" }}
+        style={{ width: "min(420px, 100%)", borderRadius: 16, background: "#FFFFFF", border: "1px solid rgba(23,23,15,.1)", boxShadow: "0 20px 48px -12px rgba(20,20,15,.25), 0 0 0 1px rgba(20,20,15,.03)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid rgba(23,23,15,.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Video size={16} color="#0ef5d4" />
-            <span style={{ fontSize: 15, fontWeight: 700, color: "#f0f6fc" }}>
+            <Video size={16} color="#22315C" />
+            <span style={{ fontSize: 15, fontWeight: 700, color: "#17170F" }}>
               {step === "details" ? "Start a meeting" : "Who can join this meeting?"}
             </span>
           </div>
           {!submitting && (
-            <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer" }}><X size={18} /></button>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(23,23,15,.4)", cursor: "pointer" }}><X size={18} /></button>
           )}
         </div>
 
@@ -149,13 +149,13 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => setMode("deal")}
-                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: mode === "deal" ? "rgba(167,139,250,.15)" : "rgba(255,255,255,.04)", border: `1px solid ${mode === "deal" ? "rgba(167,139,250,.35)" : "rgba(255,255,255,.08)"}`, color: mode === "deal" ? "#a78bfa" : "rgba(255,255,255,.5)" }}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: mode === "deal" ? "rgba(167,139,250,.15)" : "rgba(23,23,15,.04)", border: `1px solid ${mode === "deal" ? "rgba(167,139,250,.35)" : "rgba(23,23,15,.08)"}`, color: mode === "deal" ? "#a78bfa" : "rgba(23,23,15,.5)" }}
                 >
                   <Building2 size={13} /> Deal Meeting
                 </button>
                 <button
                   onClick={() => setMode("general")}
-                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: mode === "general" ? "rgba(14,245,212,.12)" : "rgba(255,255,255,.04)", border: `1px solid ${mode === "general" ? "rgba(14,245,212,.3)" : "rgba(255,255,255,.08)"}`, color: mode === "general" ? "#0ef5d4" : "rgba(255,255,255,.5)" }}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: mode === "general" ? "rgba(34,49,92,.12)" : "rgba(23,23,15,.04)", border: `1px solid ${mode === "general" ? "rgba(34,49,92,.3)" : "rgba(23,23,15,.08)"}`, color: mode === "general" ? "#22315C" : "rgba(23,23,15,.5)" }}
                 >
                   <UsersIcon size={13} /> Team Meeting
                 </button>
@@ -164,7 +164,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
 
             {mode === "deal" && (
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Deal</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Deal</label>
                 {lockDeal ? (
                   <div style={{ marginTop: 6, padding: "9px 12px", borderRadius: 9, background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", fontSize: 13, color: "#a78bfa", fontWeight: 600 }}>
                     {defaultDealName || "This deal"}
@@ -173,7 +173,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
                   <select
                     value={dealId ?? ""}
                     onChange={e => setDealId(e.target.value || null)}
-                    style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#f0f6fc", fontSize: 13 }}
+                    style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", color: "#17170F", fontSize: 13 }}
                   >
                     <option value="">Select a deal…</option>
                     {deals.map(d => <option key={d.id} value={d.id}>{d.name}{d.company ? ` — ${d.company}` : ""}</option>)}
@@ -184,28 +184,28 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
 
             {mode === "general" && (
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Link to a deal (optional)</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Link to a deal (optional)</label>
                 <select
                   value={teamMeetingDealId ?? ""}
                   onChange={e => setTeamMeetingDealId(e.target.value || null)}
-                  style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#f0f6fc", fontSize: 13 }}
+                  style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", color: "#17170F", fontSize: 13 }}
                 >
                   <option value="">No deal — general team meeting</option>
                   {deals.map(d => <option key={d.id} value={d.id}>{d.name}{d.company ? ` — ${d.company}` : ""}</option>)}
                 </select>
-                <p style={{ margin: "5px 0 0", fontSize: 11, color: "rgba(255,255,255,.3)" }}>
+                <p style={{ margin: "5px 0 0", fontSize: 11, color: "rgba(23,23,15,.3)" }}>
                   Ties this meeting to a deal's timeline, even though it's not a dedicated deal call.
                 </p>
               </div>
             )}
 
             <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Meeting name (optional)</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(23,23,15,.4)", textTransform: "uppercase", letterSpacing: .4 }}>Meeting name (optional)</label>
               <input
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder={mode === "deal" ? "e.g. Discovery call" : "e.g. Weekly sync"}
-                style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#f0f6fc", fontSize: 13, outline: "none" }}
+                style={{ marginTop: 6, width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", color: "#17170F", fontSize: 13, outline: "none" }}
               />
             </div>
 
@@ -214,7 +214,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
               disabled={mode === "deal" && !dealId}
               style={{
                 marginTop: 4, padding: "11px 0", borderRadius: 11, border: "none", cursor: (mode === "deal" && !dealId) ? "not-allowed" : "pointer",
-                background: "linear-gradient(135deg,#0ef5d4,#0891b2)", color: "#060912", fontWeight: 800, fontSize: 13.5,
+                background: "linear-gradient(135deg,#22315C,#1a2748)", color: "#FAFAF8", fontWeight: 800, fontSize: 13.5,
                 opacity: (mode === "deal" && !dealId) ? .5 : 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}
@@ -224,40 +224,40 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
           </div>
         ) : (
           <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.45)" }}>
+            <p style={{ margin: 0, fontSize: 12, color: "rgba(23,23,15,.45)" }}>
               You can change this later from Meeting Settings once the call starts.
             </p>
 
-            <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,.1)" }}>
+            <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(23,23,15,.1)" }}>
               <button
                 onClick={() => setWhoCanJoin("anyone_with_link")}
                 style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", textAlign: "left",
                   border: "none", cursor: "pointer",
-                  background: whoCanJoin === "anyone_with_link" ? "rgba(14,245,212,.1)" : "transparent",
+                  background: whoCanJoin === "anyone_with_link" ? "rgba(34,49,92,.1)" : "transparent",
                 }}
               >
-                <Link2 size={16} color={whoCanJoin === "anyone_with_link" ? "#0ef5d4" : "rgba(255,255,255,.4)"} />
+                <Link2 size={16} color={whoCanJoin === "anyone_with_link" ? "#22315C" : "rgba(23,23,15,.4)"} />
                 <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f0f6fc" }}>Anyone with the link</p>
-                  <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.4)" }}>Guests join instantly, no approval needed</p>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#17170F" }}>Anyone with the link</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(23,23,15,.4)" }}>Guests join instantly, no approval needed</p>
                 </div>
-                {whoCanJoin === "anyone_with_link" && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#0ef5d4", flexShrink: 0 }} />}
+                {whoCanJoin === "anyone_with_link" && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22315C", flexShrink: 0 }} />}
               </button>
               <button
                 onClick={() => setWhoCanJoin("invited_only")}
                 style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", textAlign: "left",
-                  border: "none", borderTop: "1px solid rgba(255,255,255,.1)", cursor: "pointer",
-                  background: whoCanJoin === "invited_only" ? "rgba(14,245,212,.1)" : "transparent",
+                  border: "none", borderTop: "1px solid rgba(23,23,15,.1)", cursor: "pointer",
+                  background: whoCanJoin === "invited_only" ? "rgba(34,49,92,.1)" : "transparent",
                 }}
               >
-                <ShieldCheck size={16} color={whoCanJoin === "invited_only" ? "#0ef5d4" : "rgba(255,255,255,.4)"} />
+                <ShieldCheck size={16} color={whoCanJoin === "invited_only" ? "#22315C" : "rgba(23,23,15,.4)"} />
                 <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f0f6fc" }}>Require approval</p>
-                  <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.4)" }}>Guests knock and you admit them one by one</p>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#17170F" }}>Require approval</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(23,23,15,.4)" }}>Guests knock and you admit them one by one</p>
                 </div>
-                {whoCanJoin === "invited_only" && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#0ef5d4", flexShrink: 0 }} />}
+                {whoCanJoin === "invited_only" && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22315C", flexShrink: 0 }} />}
               </button>
             </div>
 
@@ -267,7 +267,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
                 disabled={submitting}
                 style={{
                   padding: "11px 16px", borderRadius: 11, cursor: submitting ? "not-allowed" : "pointer",
-                  background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", fontWeight: 700, fontSize: 13,
+                  background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", color: "rgba(23,23,15,.6)", fontWeight: 700, fontSize: 13,
                 }}
               >
                 Back
@@ -277,7 +277,7 @@ export default function StartMeetingModal({ defaultDealId = null, defaultDealNam
                 disabled={submitting}
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 11, border: "none", cursor: submitting ? "not-allowed" : "pointer",
-                  background: "linear-gradient(135deg,#0ef5d4,#0891b2)", color: "#060912", fontWeight: 800, fontSize: 13.5,
+                  background: "linear-gradient(135deg,#22315C,#1a2748)", color: "#FAFAF8", fontWeight: 800, fontSize: 13.5,
                   opacity: submitting ? .6 : 1,
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 }}
