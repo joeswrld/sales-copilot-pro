@@ -599,39 +599,6 @@ function CandidateDetailPageInner() {
     }
   };
 
-  // Records that the invitation was sent. The candidate's email itself is
-  // sent by the recruiter's own mail client via mailto: (opened by
-  // ScheduleInterviewModal's sendInvitation, right before this runs) —
-  // Fixsense never sends recruiting emails server-side, so there is no
-  // edge function here. This just persists candidate_notified_at on the
-  // interviews row via the existing mark_interview_candidate_notified RPC.
-  const notifyCandidateByEmail = async (interviewId: string) => {
-    try {
-      const { error } = await (supabase as any).rpc("mark_interview_candidate_notified", {
-        p_interview_id: interviewId,
-        p_success: true,
-        p_error: null,
-      });
-      if (error) throw error;
-      toast.success("Invitation recorded");
-      load();
-      loadPipelineDetail();
-    } catch (e: any) {
-      // Best-effort: record the failure but don't block the recruiter —
-      // the mailto has already opened by this point.
-      try {
-        await (supabase as any).rpc("mark_interview_candidate_notified", {
-          p_interview_id: interviewId,
-          p_success: false,
-          p_error: e?.message ?? "Failed to record invitation",
-        });
-      } catch { /* noop */ }
-      toast.warning("Invitation email opened, but we couldn't record it — you can resend from the pipeline card.");
-      load();
-      loadPipelineDetail();
-    }
-  };
-
 
   const runAiMatch = async () => {
     if (!selectedCjId) return;
@@ -1770,7 +1737,7 @@ function CandidateDetailPageInner() {
         <ScheduleInterviewModal
           onClose={() => setShowScheduleModal(false)}
           onSubmit={scheduleInterview}
-          onSendInvitation={notifyCandidateByEmail}
+          candidateJobId={selectedCjId}
           candidateName={candidate?.full_name ?? "Candidate"}
           candidateEmail={candidate?.email ?? null}
           jobTitle={selectedCj?.job?.title ?? "the role"}
@@ -1784,25 +1751,26 @@ function CandidateDetailPageInner() {
 
 // ─── Schedule interview modal ────────────────────────────────────────────────
 // Invite to Interview flow: date/time/timezone/instructions -> create a
-// native Fixsense Meeting -> get its unique URL -> show an editable
-// invitation preview -> "Send Invitation" opens a mailto: with the
-// recipient/subject/body pre-filled (the recruiter's own mail client sends
-// it — Fixsense never sends recruiting email server-side) AND records the
-// invitation via mark_interview_candidate_notified. The interview, meeting,
-// and Fixsense-meeting linkage (Candidate -> Job -> Client -> Interview ->
-// Recruiter) are all already persisted by the time this step is reached —
-// sending the invitation is a follow-up action on top of an already-saved
-// interview, never a prerequisite for it.
+// native Fixsense Meeting -> get its unique URL -> AI drafts an editable
+// invitation (send-interview-invitation, mode: "draft") -> recruiter
+// reviews/edits subject+body -> "Send Invitation" sends it server-side via
+// send-interview-invitation (mode: "send", backed by Resend), passing the
+// reviewed text as an override so the recruiter's edits are what actually
+// goes out. That call also records candidate_notified_at itself. The
+// interview, meeting, and Fixsense-meeting linkage (Candidate -> Job ->
+// Client -> Interview -> Recruiter) are all already persisted by the time
+// this step is reached — sending the invitation is a follow-up action on
+// top of an already-saved interview, never a prerequisite for it.
 function ScheduleInterviewModal({
-  onClose, onSubmit, onSendInvitation,
-  candidateName, candidateEmail, jobTitle, companyName, recruiterName,
+  onClose, onSubmit,
+  candidateJobId, candidateName, candidateEmail, jobTitle, companyName, recruiterName,
 }: {
   onClose: () => void;
   onSubmit: (
     stage: string, scheduledAt: string, timezone: string, interviewers: string[],
     instructions: string, messageToCandidate: string,
   ) => Promise<{ interviewId: string; meetingLink: string } | null>;
-  onSendInvitation: (interviewId: string) => Promise<void>;
+  candidateJobId: string;
   candidateName: string;
   candidateEmail: string | null;
   jobTitle: string;
@@ -1870,6 +1838,51 @@ function ScheduleInterviewModal({
   };
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [generatingInvitation, setGeneratingInvitation] = useState(false);
+
+  // AI drafts the invitation first; the hand-written template above is only
+  // a fallback if the AI call fails for any reason (no key, rate limit, bad
+  // JSON) — scheduling the interview must never be blocked on this, and the
+  // recruiter can always edit either result before sending.
+  // AI drafts the invitation first (via send-interview-invitation's "draft"
+  // mode); the hand-written template above is only a local fallback if that
+  // call can't be reached at all (network error) — the edge function itself
+  // also falls back to its own copy of this template on AI failure, so this
+  // is a last resort. Scheduling the interview must never be blocked on
+  // this, and the recruiter can always edit either result before sending.
+  const generateAiInvitation = async (meetingLink: string, scheduledIso: string) => {
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("send-interview-invitation", {
+        body: {
+          mode: "draft",
+          candidate_job_id: candidateJobId,
+          candidate_name: candidateName,
+          job_title: jobTitle,
+          company_name: companyName,
+          recruiter_name: recruiterName,
+          interview_stage: stage,
+          scheduled_at_display: scheduledIso
+            ? new Date(scheduledIso).toLocaleString(undefined, {
+                weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+              })
+            : null,
+          timezone,
+          meeting_link: meetingLink,
+          instructions: instructions.trim() || null,
+          message_to_candidate: messageToCandidate.trim() || null,
+        },
+      });
+      if (error || !data || !data.subject || !data.body) {
+        return buildInvitation(meetingLink, scheduledIso);
+      }
+      // data.fallback true just means the server used its own template
+      // instead of AI — still perfectly good text to show, no need to
+      // discard it in favor of a second, client-side template.
+      return { subject: data.subject as string, body: data.body as string };
+    } catch {
+      return buildInvitation(meetingLink, scheduledIso);
+    }
+  };
 
   const submit = async () => {
     setSaving(true);
@@ -1880,9 +1893,11 @@ function ScheduleInterviewModal({
       const created = await onSubmit(stage, iso, timezone, interviewers, instructions.trim(), messageToCandidate.trim());
       if (created) {
         setResult(created);
-        const { subject, body } = buildInvitation(created.meetingLink, iso);
+        setGeneratingInvitation(true);
+        const { subject, body } = await generateAiInvitation(created.meetingLink, iso);
         setInvitationSubject(subject);
         setInvitationBody(body);
+        setGeneratingInvitation(false);
       } else {
         // onSubmit already toasted the specific error — this inline message
         // is a backstop for anyone who missed the toast, so the modal never
@@ -1898,35 +1913,37 @@ function ScheduleInterviewModal({
     if (!result || !candidateEmail) return;
     setSending(true);
     try {
-      // Record first, THEN open the mail client. mailto navigation can
-      // blur/backgrounded the tab (or trigger an OS app-picker) before an
-      // awaited call after it resolves on some browsers — recording first
-      // guarantees candidate_notified_at is set even if the mail client
-      // hands off control immediately and this component never gets to
-      // finish its own await.
-      await onSendInvitation(result.interviewId);
+      // Sends server-side via send-interview-invitation ("send" mode, backed
+      // by Resend) using the recruiter's reviewed/edited subject and body as
+      // overrides — never the function's own built-in template once a
+      // recruiter has looked at and approved this text. The function itself
+      // records candidate_notified_at on success/failure, so there's no
+      // separate client-side RPC call needed here anymore.
+      const { data, error } = await (supabase as any).functions.invoke("send-interview-invitation", {
+        body: {
+          interview_id: result.interviewId,
+          subject: invitationSubject,
+          body: invitationBody,
+        },
+      });
 
-      // Per RFC 6068, only the body/subject values need percent-encoding —
-      // encoding the recipient address itself (double-encoding "@") makes
-      // some mail clients (notably Outlook desktop) fail to parse the To:
-      // field and silently drop it, which looks identical to "nothing
-      // happened" from the recruiter's side.
-      const mailto = `mailto:${candidateEmail}?subject=${encodeURIComponent(invitationSubject)}&body=${encodeURIComponent(invitationBody)}`;
-      const opened = window.open(mailto, "_self");
-      // Some browsers/webviews have no registered mail handler and
-      // window.open silently no-ops instead of throwing — give the
-      // recruiter a visible way forward instead of a dead button.
-      if (!opened) {
-        toast.info("Couldn't open your mail app automatically — invitation copied instead. Paste it into a new email.", { duration: 8000 });
-        try {
-          await navigator.clipboard.writeText(`To: ${candidateEmail}\nSubject: ${invitationSubject}\n\n${invitationBody}`);
-        } catch { /* clipboard unavailable — the toast already told them to copy manually from the fields below */ }
-      } else {
-        toast.success("Invitation recorded — finish sending it in your mail app.");
+      if (error || !data?.success) {
+        const message: string = data?.error ?? error?.message ?? "Failed to send the invitation.";
+        // RESEND_API_KEY not configured yet is a distinct, actionable state
+        // — surface it clearly rather than a generic failure toast, since
+        // the fix is a one-time project setting, not a retry.
+        if (message.toLowerCase().includes("not configured")) {
+          toast.error("Email sending isn't set up yet for this project (missing Resend API key). Copy the invitation below and send it manually for now.", { duration: 10000 });
+        } else {
+          toast.error(message);
+        }
+        return;
       }
+
+      toast.success("Invitation sent to the candidate.");
       onClose();
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed to record the invitation. The email draft below is unchanged — you can still send it manually.");
+      toast.error(e?.message ?? "Failed to send the invitation. The email draft below is unchanged — you can still copy and send it manually.");
     } finally {
       setSending(false);
     }
@@ -2013,24 +2030,34 @@ function ScheduleInterviewModal({
               </div>
             )}
 
-            <label style={labelStyle}>Subject (editable)</label>
-            <input value={invitationSubject} onChange={e => setInvitationSubject(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+            {generatingInvitation ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "20px 0", justifyContent: "center", color: "rgba(23,23,15,0.5)", fontSize: 12.5 }}>
+                <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
+                Drafting the invitation with AI…
+              </div>
+            ) : (
+              <>
+                <label style={labelStyle}>Subject (editable)</label>
+                <input value={invitationSubject} onChange={e => setInvitationSubject(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
 
-            <label style={labelStyle}>Invitation (editable)</label>
-            <textarea value={invitationBody} onChange={e => setInvitationBody(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 220, resize: "vertical", fontFamily: "'Inter', sans-serif", lineHeight: 1.5 }} />
+                <label style={labelStyle}>Invitation (editable)</label>
+                <textarea value={invitationBody} onChange={e => setInvitationBody(e.target.value)} style={{ ...inputStyle, marginBottom: 16, minHeight: 220, resize: "vertical", fontFamily: "'Inter', sans-serif", lineHeight: 1.5 }} />
+              </>
+            )}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={sendInvitation}
-                disabled={sending || !candidateEmail}
-                style={{ flex: 1, padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: (sending || !candidateEmail) ? "default" : "pointer", opacity: (sending || !candidateEmail) ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                disabled={sending || !candidateEmail || generatingInvitation}
+                style={{ flex: 1, padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: (sending || !candidateEmail || generatingInvitation) ? "default" : "pointer", opacity: (sending || !candidateEmail || generatingInvitation) ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
               >
                 {sending ? (<><Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Sending…</>) : (<><Send style={{ width: 14, height: 14 }} /> Send Invitation</>)}
               </button>
               <button
                 onClick={copyInvitationText}
+                disabled={generatingInvitation}
                 title="Copy invitation text"
-                style={{ padding: "12px 14px", background: "transparent", border: "1px solid rgba(23,23,15,0.15)", borderRadius: 10, color: "#17170F", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                style={{ padding: "12px 14px", background: "transparent", border: "1px solid rgba(23,23,15,0.15)", borderRadius: 10, color: "#17170F", fontSize: 13, fontWeight: 600, cursor: generatingInvitation ? "default" : "pointer", opacity: generatingInvitation ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 }}
               >
                 <Copy style={{ width: 14, height: 14 }} />
               </button>
