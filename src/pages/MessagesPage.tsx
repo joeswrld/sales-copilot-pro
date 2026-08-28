@@ -164,20 +164,20 @@ const CSS = `
 @keyframes pdot    { 0%,100%{opacity:1} 50%{opacity:.3} }
 *{box-sizing:border-box}
 ::-webkit-scrollbar{width:3px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+::-webkit-scrollbar-thumb{background:rgba(23,23,15,.1);border-radius:3px}
 textarea:focus,input:focus{outline:none!important}
 .msg-in  { animation:msg-in  .18s ease }
 .fade-in { animation:fade-in .12s ease }
 .slide-up{ animation:slide-up .25s ease }
 .pdot{display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:rgba(255,255,255,.5);animation:pdot 1.2s ease infinite}
+  background:rgba(23,23,15,.5);animation:pdot 1.2s ease infinite}
 .pdot:nth-child(2){animation-delay:.2s}
 .pdot:nth-child(3){animation-delay:.4s}
 `;
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function MsgAvatar({ name, size = 32, color = "#0ef5d4", isOnline = false, avatarUrl }: {
+function MsgAvatar({ name, size = 32, color = "#22315C", isOnline = false, avatarUrl }: {
   name?: string | null; size?: number; color?: string; isOnline?: boolean; avatarUrl?: string | null;
 }) {
   return (
@@ -185,11 +185,11 @@ function MsgAvatar({ name, size = 32, color = "#0ef5d4", isOnline = false, avata
       {avatarUrl ? (
         <img src={avatarUrl} alt={name || "User"} style={{ width: size, height: size, borderRadius: size * 0.3, objectFit: "cover", border: `1px solid ${color}30` }} />
       ) : (
-        <div style={{ width: size, height: size, borderRadius: size * 0.3, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color, fontFamily: "'Geist',system-ui,sans-serif" }}>
+        <div style={{ width: size, height: size, borderRadius: size * 0.3, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
           {initials(name)}
         </div>
       )}
-      {isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: size * 0.32, height: size * 0.32, borderRadius: "50%", background: "#22c55e", border: "2px solid #08090f" }} />}
+      {isOnline && <div style={{ position: "absolute", bottom: -1, right: -1, width: size * 0.32, height: size * 0.32, borderRadius: "50%", background: "#22c55e", border: "2px solid #FAFAF8" }} />}
     </div>
   );
 }
@@ -214,52 +214,52 @@ function NotificationBell({ notifications, onMarkAll, onMarkOne, isMobile }: {
   const List = () => (
     <div style={{ overflowY: "auto", flex: 1 }}>
       {notifications.length === 0 ? (
-        <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif", fontSize: 13 }}>🔔 All caught up!</div>
+        <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(23,23,15,.3)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", fontSize: 13 }}>🔔 All caught up!</div>
       ) : notifications.map(n => (
-        <div key={n.id} onClick={() => !n.is_read && onMarkOne(n.id)} style={{ display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.04)", background: n.is_read ? "transparent" : "rgba(14,245,212,.04)", cursor: n.is_read ? "default" : "pointer" }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+        <div key={n.id} onClick={() => !n.is_read && onMarkOne(n.id)} style={{ display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid rgba(23,23,15,.04)", background: n.is_read ? "transparent" : "rgba(34,49,92,.04)", cursor: n.is_read ? "default" : "pointer" }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(23,23,15,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
             {{ comment: "💬", coaching: "📈", mention: "💬", system: "⚙️" }[n.type] ?? "🔔"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 13, margin: "0 0 2px", color: n.is_read ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.88)", fontWeight: n.is_read ? 400 : 700, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title || "Notification"}</p>
-            <p style={{ fontSize: 12, margin: "0 0 3px", color: "rgba(255,255,255,.5)", fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{n.message}</p>
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)" }}>{fmtTime(n.created_at)}</span>
+            <p style={{ fontSize: 13, margin: "0 0 2px", color: n.is_read ? "rgba(23,23,15,.5)" : "rgba(23,23,15,.88)", fontWeight: n.is_read ? 400 : 700, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title || "Notification"}</p>
+            <p style={{ fontSize: 12, margin: "0 0 3px", color: "rgba(23,23,15,.5)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{n.message}</p>
+            <span style={{ fontSize: 11, color: "rgba(23,23,15,.28)" }}>{fmtTime(n.created_at)}</span>
           </div>
-          {!n.is_read && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#0ef5d4", flexShrink: 0, marginTop: 4 }} />}
+          {!n.is_read && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22315C", flexShrink: 0, marginTop: 4 }} />}
         </div>
       ))}
     </div>
   );
 
   const Header = () => (
-    <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+    <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(23,23,15,.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }}>Notifications</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>Notifications</span>
         {unread > 0 && <span style={{ fontSize: 10, fontWeight: 800, background: "#ef4444", color: "#fff", borderRadius: 10, padding: "1px 6px" }}>{unread}</span>}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        {unread > 0 && <button onClick={onMarkAll} style={{ background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.2)", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, color: "#0ef5d4", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", gap: 4 }}><CheckCheck size={11} /> All read</button>}
-        {isMobile && <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", fontSize: 18 }}>×</button>}
+        {unread > 0 && <button onClick={onMarkAll} style={{ background: "rgba(34,49,92,.1)", border: "1px solid rgba(34,49,92,.2)", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, color: "#22315C", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", display: "flex", alignItems: "center", gap: 4 }}><CheckCheck size={11} /> All read</button>}
+        {isMobile && <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.4)", fontSize: 18 }}>×</button>}
       </div>
     </div>
   );
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen(v => !v)} style={{ position: "relative", background: open ? "rgba(14,245,212,.12)" : "rgba(255,255,255,.07)", border: `1px solid ${open ? "rgba(14,245,212,.3)" : "rgba(255,255,255,.1)"}`, borderRadius: 9, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: open ? "#0ef5d4" : "rgba(255,255,255,.6)" }}>
+      <button onClick={() => setOpen(v => !v)} style={{ position: "relative", background: open ? "rgba(34,49,92,.12)" : "rgba(23,23,15,.07)", border: `1px solid ${open ? "rgba(34,49,92,.3)" : "rgba(23,23,15,.1)"}`, borderRadius: 9, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: open ? "#22315C" : "rgba(23,23,15,.6)" }}>
         <Bell size={15} />
-        {unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9, background: "#ef4444", border: "2px solid #08090f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", padding: "0 3px" }}>{unread > 99 ? "99+" : unread}</div>}
+        {unread > 0 && <div style={{ position: "absolute", top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9, background: "#ef4444", border: "2px solid #FAFAF8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", padding: "0 3px" }}>{unread > 99 ? "99+" : unread}</div>}
       </button>
       {open && !isMobile && (
-        <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: 340, maxHeight: 480, background: "#111827", border: "1px solid rgba(255,255,255,.1)", borderRadius: 14, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.7)", zIndex: 200, display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: 340, maxHeight: 480, background: "#F3F2ED", border: "1px solid rgba(23,23,15,.1)", borderRadius: 14, overflow: "hidden", boxShadow: "0 20px 48px -12px rgba(20,20,15,.22), 0 0 0 1px rgba(20,20,15,.03)", zIndex: 200, display: "flex", flexDirection: "column" }}>
           <Header /><List />
         </div>
       )}
       {open && isMobile && (
         <div style={{ position: "fixed", inset: 0, zIndex: 300 }}>
           <div onClick={() => setOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }} />
-          <div className="slide-up" style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#111827", borderRadius: "18px 18px 0 0", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} /></div>
+          <div className="slide-up" style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#F3F2ED", borderRadius: "18px 18px 0 0", border: "1px solid rgba(23,23,15,.1)", borderBottom: "none", maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(23,23,15,.2)" }} /></div>
             <Header /><List />
           </div>
         </div>
@@ -281,7 +281,7 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
     : ch.deal_health >= 40 ? "#eab308"
     : "#ef4444";
   return (
-    <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", textAlign: "left", background: isActive ? "rgba(14,245,212,.09)" : hovered ? "rgba(255,255,255,.04)" : "transparent", borderLeft: `2px solid ${isActive ? "#0ef5d4" : "transparent"}`, cursor: "pointer", transition: "all .1s" }}>
+    <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", textAlign: "left", background: isActive ? "rgba(34,49,92,.09)" : hovered ? "rgba(23,23,15,.04)" : "transparent", borderLeft: `2px solid ${isActive ? "#22315C" : "transparent"}`, cursor: "pointer", transition: "all .1s" }}>
       {ch.type === "dm" ? (
         <MsgAvatar name={ch.name} avatarUrl={ch.avatar_url} size={26} color="#a78bfa" />
       ) : (
@@ -289,18 +289,18 @@ function ChannelItem({ ch, isActive, onClick }: { ch: Channel; isActive: boolean
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#f0f6fc" : "rgba(255,255,255,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Geist',system-ui,sans-serif" }}>{ch.name}</span>
+          <span style={{ fontSize: 13, fontWeight: ch.unread_count > 0 ? 700 : 500, color: isActive ? "#17170F" : "rgba(23,23,15,.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{ch.name}</span>
           {healthColor && (
             <span
               title={`Deal health: ${ch.deal_health}/100`}
               style={{ width: 6, height: 6, borderRadius: 999, background: healthColor, flexShrink: 0 }}
             />
           )}
-          {ch.last_msg_at && <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)", flexShrink: 0 }}>{fmtTime(ch.last_msg_at)}</span>}
+          {ch.last_msg_at && <span style={{ fontSize: 10, color: "rgba(23,23,15,.25)", flexShrink: 0 }}>{fmtTime(ch.last_msg_at)}</span>}
         </div>
-        {ch.last_msg && <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{ch.last_msg.length > 40 ? ch.last_msg.slice(0, 40) + "…" : ch.last_msg}</span>}
+        {ch.last_msg && <span style={{ fontSize: 11.5, color: "rgba(23,23,15,.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{ch.last_msg.length > 40 ? ch.last_msg.slice(0, 40) + "…" : ch.last_msg}</span>}
       </div>
-      {ch.unread_count > 0 && <span style={{ fontSize: 10, fontWeight: 800, color: "#060912", background: "#0ef5d4", borderRadius: 10, padding: "1.5px 6px", flexShrink: 0 }}>{ch.unread_count > 99 ? "99+" : ch.unread_count}</span>}
+      {ch.unread_count > 0 && <span style={{ fontSize: 10, fontWeight: 800, color: "#FAFAF8", background: "#22315C", borderRadius: 10, padding: "1.5px 6px", flexShrink: 0 }}>{ch.unread_count > 99 ? "99+" : ch.unread_count}</span>}
     </button>
   );
 }
@@ -315,11 +315,11 @@ function EmojiPicker({ onSelect, onClose, isOwn }: { onSelect: (e: string) => vo
     return () => document.removeEventListener("mousedown", h);
   }, [onClose]);
   return (
-    <div ref={ref} className="fade-in" style={{ position: "absolute", bottom: "calc(100% + 4px)", [isOwn ? "right" : "left"]: 0, background: "#1a1f2e", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: 8, zIndex: 100, display: "flex", gap: 3, flexWrap: "wrap", width: 196, boxShadow: "0 8px 32px rgba(0,0,0,.6)" }}>
+    <div ref={ref} className="fade-in" style={{ position: "absolute", bottom: "calc(100% + 4px)", [isOwn ? "right" : "left"]: 0, background: "#FFFFFF", border: "1px solid rgba(23,23,15,.12)", borderRadius: 12, padding: 8, zIndex: 100, display: "flex", gap: 3, flexWrap: "wrap", width: 196, boxShadow: "0 8px 24px -6px rgba(20,20,15,.18), 0 0 0 1px rgba(20,20,15,.03)" }}>
       {QUICK_EMOJIS.map(e => (
-        <button key={e} onClick={() => { onSelect(e); onClose(); }} style={{ width: 34, height: 34, borderRadius: 8, border: "none", background: "rgba(255,255,255,.06)", cursor: "pointer", fontSize: 17 }}
-          onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.15)")}
-          onMouseLeave={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.06)")}>
+        <button key={e} onClick={() => { onSelect(e); onClose(); }} style={{ width: 34, height: 34, borderRadius: 8, border: "none", background: "rgba(23,23,15,.06)", cursor: "pointer", fontSize: 17 }}
+          onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(23,23,15,.15)")}
+          onMouseLeave={ev => (ev.currentTarget.style.background = "rgba(23,23,15,.06)")}>
           {e}
         </button>
       ))}
@@ -342,12 +342,12 @@ function CtxMenu({ isOwn, isPinned, x, y, isMobile, onReact, onReply, onThread, 
   }, [onClose]);
 
   const menuSt: React.CSSProperties = isMobile
-    ? { position: "fixed", bottom: 0, left: 0, right: 0, background: "#1a1f2e", borderRadius: "16px 16px 0 0", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", padding: "8px 0 24px", zIndex: 500 }
-    : { position: "fixed", left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 320), background: "#1a1f2e", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "6px 0", zIndex: 500, minWidth: 190, boxShadow: "0 8px 32px rgba(0,0,0,.7)" };
+    ? { position: "fixed", bottom: 0, left: 0, right: 0, background: "#FFFFFF", borderRadius: "16px 16px 0 0", border: "1px solid rgba(23,23,15,.1)", borderBottom: "none", padding: "8px 0 24px", zIndex: 500 }
+    : { position: "fixed", left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 320), background: "#FFFFFF", border: "1px solid rgba(23,23,15,.12)", borderRadius: 12, padding: "6px 0", zIndex: 500, minWidth: 190, boxShadow: "0 8px 24px -6px rgba(20,20,15,.18), 0 0 0 1px rgba(20,20,15,.03)" };
 
   const Row = ({ icon, label, color, cb }: { icon: React.ReactNode; label: string; color?: string; cb: () => void }) => (
-    <button onClick={() => { cb(); onClose(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 16px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: 14, color: color || "rgba(255,255,255,.82)", fontFamily: "'Geist',system-ui,sans-serif" }}
-      onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.06)")}
+    <button onClick={() => { cb(); onClose(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 16px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: 14, color: color || "rgba(23,23,15,.82)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
+      onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(23,23,15,.06)")}
       onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}>
       {icon}{label}
     </button>
@@ -357,12 +357,12 @@ function CtxMenu({ isOwn, isPinned, x, y, isMobile, onReact, onReply, onThread, 
     <>
       {isMobile && <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 499 }} />}
       <div ref={ref} className="fade-in" style={menuSt}>
-        {isMobile && <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 12px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} /></div>}
-        <div style={{ display: "flex", gap: 3, padding: "6px 12px 10px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+        {isMobile && <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 12px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(23,23,15,.2)" }} /></div>}
+        <div style={{ display: "flex", gap: 3, padding: "6px 12px 10px", borderBottom: "1px solid rgba(23,23,15,.06)" }}>
           {QUICK_EMOJIS.slice(0, 6).map(e => (
-            <button key={e} onClick={() => { onReact(e); onClose(); }} style={{ flex: 1, padding: "6px 2px", border: "none", borderRadius: 8, background: "rgba(255,255,255,.06)", cursor: "pointer", fontSize: 17 }}
-              onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.15)")}
-              onMouseLeave={ev => (ev.currentTarget.style.background = "rgba(255,255,255,.06)")}>
+            <button key={e} onClick={() => { onReact(e); onClose(); }} style={{ flex: 1, padding: "6px 2px", border: "none", borderRadius: 8, background: "rgba(23,23,15,.06)", cursor: "pointer", fontSize: 17 }}
+              onMouseEnter={ev => (ev.currentTarget.style.background = "rgba(23,23,15,.15)")}
+              onMouseLeave={ev => (ev.currentTarget.style.background = "rgba(23,23,15,.06)")}>
               {e}
             </button>
           ))}
@@ -385,7 +385,7 @@ function ReactionRow({ reactions, onToggle }: { reactions: Reaction[]; onToggle:
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
       {reactions.map(r => (
-        <button key={r.emoji} onClick={() => onToggle(r.emoji)} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 12, background: r.by_me ? "rgba(14,245,212,.18)" : "rgba(255,255,255,.07)", border: `1px solid ${r.by_me ? "rgba(14,245,212,.4)" : "rgba(255,255,255,.12)"}`, cursor: "pointer", fontSize: 12, color: r.by_me ? "#0ef5d4" : "rgba(255,255,255,.7)", fontFamily: "'Geist',system-ui,sans-serif" }}>
+        <button key={r.emoji} onClick={() => onToggle(r.emoji)} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 12, background: r.by_me ? "rgba(34,49,92,.18)" : "rgba(23,23,15,.07)", border: `1px solid ${r.by_me ? "rgba(34,49,92,.4)" : "rgba(23,23,15,.12)"}`, cursor: "pointer", fontSize: 12, color: r.by_me ? "#22315C" : "rgba(23,23,15,.7)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
           {r.emoji}<span style={{ fontSize: 11, fontWeight: 700 }}>{r.count}</span>
         </button>
       ))}
@@ -409,7 +409,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, isUnread, onSeen, onReact, 
 
   const text = msgText(msg);
   const name = msgSenderName(msg);
-  const senderColor = isOwn ? "#0ef5d4" : "#a78bfa";
+  const senderColor = isOwn ? "#22315C" : "#a78bfa";
   const seenCount = msg.read_by?.length ?? 0;
   const isSeen = seenCount > 0;
   const openCtx = (x: number, y: number) => { setCtxPos({ x, y }); setShowCtx(true); };
@@ -443,7 +443,7 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, isUnread, onSeen, onReact, 
     }
     return (
       <div style={{ textAlign: "center", padding: "4px 0" }}>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", background: "rgba(255,255,255,.05)", borderRadius: 20, padding: "3px 12px" }}>{text}</span>
+        <span style={{ fontSize: 11, color: "rgba(23,23,15,.3)", background: "rgba(23,23,15,.05)", borderRadius: 20, padding: "3px 12px" }}>{text}</span>
       </div>
     );
   }
@@ -454,59 +454,59 @@ function MsgBubble({ msg, isOwn, isMobile, isOnline, isUnread, onSeen, onReact, 
       onClick={() => { if (isUnread) onSeen?.(); }}>
       <div style={{ position: "relative", flexShrink: 0 }}>
         <MsgAvatar name={name} size={28} color={senderColor} isOnline={!isOwn && isOnline} avatarUrl={msg.sender_avatar_url} />
-        {isUnread && <div title="Unread" style={{ position: "absolute", top: -2, [isOwn ? "left" : "right"]: -2, width: 9, height: 9, borderRadius: "50%", background: "#0ef5d4", border: "2px solid #08090f" }} />}
+        {isUnread && <div title="Unread" style={{ position: "absolute", top: -2, [isOwn ? "left" : "right"]: -2, width: 9, height: 9, borderRadius: "50%", background: "#22315C", border: "2px solid #FAFAF8" }} />}
       </div>
       <div style={{ maxWidth: isMobile ? "84%" : "68%", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 3, flexDirection: isOwn ? "row-reverse" : "row" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Geist',system-ui,sans-serif" }}>{isOwn ? "You" : name}</span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)" }}>{fmtTime(msg.created_at)}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: senderColor, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{isOwn ? "You" : name}</span>
+          <span style={{ fontSize: 10, color: "rgba(23,23,15,.25)" }}>{fmtTime(msg.created_at)}</span>
           {!isOwn && isOnline && <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 600 }}>● online</span>}
-          {isUnread && <span style={{ fontSize: 9, fontWeight: 800, color: "#0ef5d4", background: "rgba(14,245,212,.12)", border: "1px solid rgba(14,245,212,.25)", borderRadius: 6, padding: "1px 5px", letterSpacing: ".04em" }}>NEW</span>}
+          {isUnread && <span style={{ fontSize: 9, fontWeight: 800, color: "#22315C", background: "rgba(34,49,92,.12)", border: "1px solid rgba(34,49,92,.25)", borderRadius: 6, padding: "1px 5px", letterSpacing: ".04em" }}>NEW</span>}
         </div>
         <div style={{ position: "relative" }}>
           {msg.reply_to_text && (
-            <div style={{ background: isOwn ? "rgba(0,0,0,.2)" : "rgba(255,255,255,.06)", borderLeft: `3px solid ${isOwn ? "rgba(255,255,255,.4)" : "#a78bfa"}`, borderRadius: "8px 8px 0 0", padding: "5px 10px", marginBottom: -2 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: isOwn ? "rgba(255,255,255,.6)" : "#a78bfa", margin: "0 0 1px", fontFamily: "'Geist',system-ui,sans-serif" }}>{msg.reply_to_sender_name || "Unknown"}</p>
-              <p style={{ fontSize: 11, color: isOwn ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{msg.reply_to_text}</p>
+            <div style={{ background: isOwn ? "rgba(255,255,255,.15)" : "rgba(23,23,15,.06)", borderLeft: `3px solid ${isOwn ? "rgba(255,255,255,.4)" : "#a78bfa"}`, borderRadius: "8px 8px 0 0", padding: "5px 10px", marginBottom: -2 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: isOwn ? "rgba(255,255,255,.75)" : "#a78bfa", margin: "0 0 1px", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{msg.reply_to_sender_name || "Unknown"}</p>
+              <p style={{ fontSize: 11, color: isOwn ? "rgba(255,255,255,.65)" : "rgba(23,23,15,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{msg.reply_to_text}</p>
             </div>
           )}
           <div
             onContextMenu={e => { if (!isMobile) { e.preventDefault(); openCtx(e.clientX, e.clientY); } }}
             onTouchStart={() => { if (isMobile) longRef.current = setTimeout(() => openCtx(0, 0), 500); }}
             onTouchEnd={() => { if (longRef.current) clearTimeout(longRef.current); }}
-            style={{ padding: msg.file_url && (isImageType(msg.file_type) || isAudioType(msg.file_type)) ? 6 : "9px 13px", background: isOwn ? "linear-gradient(135deg,rgba(14,245,212,.9),rgba(8,145,178,.9))" : isUnread ? "rgba(14,245,212,.09)" : "rgba(255,255,255,.08)", border: isOwn ? "none" : isUnread ? "1px solid rgba(14,245,212,.3)" : "1px solid rgba(255,255,255,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#060912" : "rgba(255,255,255,.92)", fontFamily: "'Geist',system-ui,sans-serif", wordBreak: "break-word", cursor: isUnread ? "pointer" : "default", fontWeight: isUnread ? 600 : 400 }}>
+            style={{ padding: msg.file_url && (isImageType(msg.file_type) || isAudioType(msg.file_type)) ? 6 : "9px 13px", background: isOwn ? "linear-gradient(135deg,#22315C,#1a2748)" : isUnread ? "rgba(34,49,92,.09)" : "rgba(23,23,15,.08)", border: isOwn ? "none" : isUnread ? "1px solid rgba(34,49,92,.3)" : "1px solid rgba(23,23,15,.09)", borderRadius: msg.reply_to_text ? (isOwn ? "0 13px 3px 13px" : "0 13px 13px 3px") : (isOwn ? "13px 13px 3px 13px" : "13px 13px 13px 3px"), fontSize: 13.5, lineHeight: 1.55, color: isOwn ? "#FAFAF8" : "rgba(23,23,15,.92)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", wordBreak: "break-word", cursor: isUnread ? "pointer" : "default", fontWeight: isUnread ? 600 : 400 }}>
             {msg.is_pinned && <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#fbbf24", marginRight: 6, opacity: .85 }}><Pin size={10} /> Pinned</div>}
             {msg.file_url ? (
               <AttachmentRender url={msg.file_url} name={msg.file_name} type={msg.file_type} isOwn={isOwn} />
             ) : (
-              <span>{renderWithMentions(text, isOwn ? "#003a3a" : "#0ef5d4")}</span>
+              <span>{renderWithMentions(text, isOwn ? "#B8C4E0" : "#22315C")}</span>
             )}
-            {msg.edited_at && <span style={{ fontSize: 10, color: isOwn ? "rgba(0,0,0,.4)" : "rgba(255,255,255,.3)", marginLeft: 6 }}>(edited)</span>}
+            {msg.edited_at && <span style={{ fontSize: 10, color: isOwn ? "rgba(255,255,255,.6)" : "rgba(23,23,15,.3)", marginLeft: 6 }}>(edited)</span>}
           </div>
           {(msg.reply_count ?? 0) > 0 && (
-            <button onClick={onThread} style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 8, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.18)", color: "#0ef5d4", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={onThread} style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 8, background: "rgba(34,49,92,.08)", border: "1px solid rgba(34,49,92,.18)", color: "#22315C", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
               <MessageCircle size={11} /> {msg.reply_count} {msg.reply_count === 1 ? "reply" : "replies"}
             </button>
           )}
           {!isMobile && hovered && (
             <div style={{ position: "absolute", top: -34, [isOwn ? "left" : "right"]: 0, display: "flex", gap: 3, zIndex: 10 }}>
               <div style={{ position: "relative" }}>
-                <button onClick={() => setShowEmoji(v => !v)} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="React"><Smile size={13} /></button>
+                <button onClick={() => setShowEmoji(v => !v)} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "rgba(23,23,15,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="React"><Smile size={13} /></button>
                 {showEmoji && <EmojiPicker onSelect={onReact} onClose={() => setShowEmoji(false)} isOwn={isOwn} />}
               </div>
-              <button onClick={onReply} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Reply"><CornerUpLeft size={13} /></button>
-              <button onClick={onCopy} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Copy"><Copy size={12} /></button>
-              {isOwn && <button onClick={onEdit} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Edit"><Edit2 size={12} /></button>}
-              {isOwn && <button onClick={onDelete} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center" }} title="Delete"><Trash2 size={12} /></button>}
-              <button onClick={e => openCtx(e.clientX, e.clientY)} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(255,255,255,.12)", background: "#1a1f2e", cursor: "pointer", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="More"><MoreHorizontal size={13} /></button>
+              <button onClick={onReply} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "rgba(23,23,15,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Reply"><CornerUpLeft size={13} /></button>
+              <button onClick={onCopy} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "rgba(23,23,15,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Copy"><Copy size={12} /></button>
+              {isOwn && <button onClick={onEdit} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "rgba(23,23,15,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="Edit"><Edit2 size={12} /></button>}
+              {isOwn && <button onClick={onDelete} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center" }} title="Delete"><Trash2 size={12} /></button>}
+              <button onClick={e => openCtx(e.clientX, e.clientY)} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid rgba(23,23,15,.12)", background: "#FFFFFF", cursor: "pointer", color: "rgba(23,23,15,.6)", display: "flex", alignItems: "center", justifyContent: "center" }} title="More"><MoreHorizontal size={13} /></button>
             </div>
           )}
         </div>
         <ReactionRow reactions={msg.reactions || []} onToggle={onReact} />
         {isOwn && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 3, alignItems: "center", gap: 2 }}>
-            {isSeen ? <CheckCheck size={13} color="#0ef5d4" /> : <Check size={13} color="rgba(255,255,255,.35)" />}
-            <span style={{ fontSize: 9, color: isSeen ? "#0ef5d4" : "rgba(255,255,255,.3)", fontFamily: "'Geist',system-ui,sans-serif" }}>{isSeen ? "Seen" : "Sent"}</span>
+            {isSeen ? <CheckCheck size={13} color="#22315C" /> : <Check size={13} color="rgba(23,23,15,.35)" />}
+            <span style={{ fontSize: 9, color: isSeen ? "#22315C" : "rgba(23,23,15,.3)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{isSeen ? "Seen" : "Sent"}</span>
           </div>
         )}
       </div>
@@ -546,11 +546,11 @@ function NewDMModal({ members, currentUserId, conversations, teamId, onClose, on
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "flex-end" }}>
-      <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", background: "#111827", borderRadius: "16px 16px 0 0", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} /></div>
+      <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", background: "#F3F2ED", borderRadius: "16px 16px 0 0", border: "1px solid rgba(23,23,15,.1)", borderBottom: "none", padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(23,23,15,.2)" }} /></div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }}>New Message</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", fontSize: 18 }}>×</button>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>New Message</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.4)", fontSize: 18 }}>×</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto", marginBottom: 16 }}>
           {others.map(m => {
@@ -559,21 +559,21 @@ function NewDMModal({ members, currentUserId, conversations, teamId, onClose, on
             const online = onlineUsers.has(m.user_id) && Date.now() - onlineUsers.get(m.user_id)!.lastSeen.getTime() < 120_000;
             return (
               <div key={m.id} onClick={() => setSelected(p => checked ? p.filter(i => i !== m.user_id) : [...p, m.user_id])}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, cursor: "pointer", background: checked ? "rgba(14,245,212,.08)" : "rgba(255,255,255,.03)", border: `1px solid ${checked ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.07)"}` }}>
-                <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${checked ? "#0ef5d4" : "rgba(255,255,255,.3)"}`, background: checked ? "#0ef5d4" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {checked && <span style={{ fontSize: 11, color: "#060912", fontWeight: 800 }}>✓</span>}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, cursor: "pointer", background: checked ? "rgba(34,49,92,.08)" : "rgba(23,23,15,.03)", border: `1px solid ${checked ? "rgba(34,49,92,.25)" : "rgba(23,23,15,.07)"}` }}>
+                <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${checked ? "#22315C" : "rgba(23,23,15,.3)"}`, background: checked ? "#22315C" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {checked && <span style={{ fontSize: 11, color: "#FAFAF8", fontWeight: 800 }}>✓</span>}
                 </div>
-                <MsgAvatar name={name} size={32} color={checked ? "#0ef5d4" : "#a78bfa"} isOnline={online} avatarUrl={m.profile?.avatar_url} />
+                <MsgAvatar name={name} size={32} color={checked ? "#22315C" : "#a78bfa"} isOnline={online} avatarUrl={m.profile?.avatar_url} />
                 <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif" }}>{name}</p>
-                  <p style={{ fontSize: 11, color: online ? "#22c55e" : "rgba(255,255,255,.3)", margin: 0 }}>{online ? "● Online" : "○ Offline"}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "#17170F", margin: 0, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{name}</p>
+                  <p style={{ fontSize: 11, color: online ? "#22c55e" : "rgba(23,23,15,.3)", margin: 0 }}>{online ? "● Online" : "○ Offline"}</p>
                 </div>
               </div>
             );
           })}
-          {others.length === 0 && <p style={{ textAlign: "center", color: "rgba(255,255,255,.3)", fontSize: 13, padding: "20px 0", fontFamily: "'Geist',system-ui,sans-serif" }}>No other team members</p>}
+          {others.length === 0 && <p style={{ textAlign: "center", color: "rgba(23,23,15,.3)", fontSize: 13, padding: "20px 0", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>No other team members</p>}
         </div>
-        <button onClick={start} disabled={!selected.length || loading} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: selected.length ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.08)", color: selected.length ? "#060912" : "rgba(255,255,255,.3)", fontSize: 14, fontWeight: 700, cursor: selected.length ? "pointer" : "not-allowed", fontFamily: "'Geist',system-ui,sans-serif" }}>
+        <button onClick={start} disabled={!selected.length || loading} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: selected.length ? "linear-gradient(135deg,#22315C,#22315C)" : "rgba(23,23,15,.08)", color: selected.length ? "#FAFAF8" : "rgba(23,23,15,.3)", fontSize: 14, fontWeight: 700, cursor: selected.length ? "pointer" : "not-allowed", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
           {loading ? "Starting…" : selected.length > 1 ? "Start Group Chat" : "Start Conversation"}
         </button>
       </div>
@@ -599,14 +599,14 @@ function NewChannelModal({ teamId, onClose, onCreated }: { teamId: string; onClo
   };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "flex-end" }}>
-      <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", background: "#111827", borderRadius: "16px 16px 0 0", border: "1px solid rgba(255,255,255,.1)", borderBottom: "none", padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)" }} /></div>
+      <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", background: "#F3F2ED", borderRadius: "16px 16px 0 0", border: "1px solid rgba(23,23,15,.1)", borderBottom: "none", padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(23,23,15,.2)" }} /></div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }}># New Channel</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", fontSize: 18 }}>×</button>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}># New Channel</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.4)", fontSize: 18 }}>×</button>
         </div>
-        <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === "Enter" && create()} placeholder="Channel name (e.g. general)" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, marginBottom: 14, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#f0f6fc", fontSize: 14, fontFamily: "'Geist',system-ui,sans-serif" }} />
-        <button onClick={create} disabled={!name.trim() || saving} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: name.trim() ? "rgba(14,245,212,.9)" : "rgba(255,255,255,.08)", color: name.trim() ? "#060912" : "rgba(255,255,255,.3)", fontSize: 14, fontWeight: 700, cursor: name.trim() ? "pointer" : "not-allowed", fontFamily: "'Geist',system-ui,sans-serif" }}>
+        <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === "Enter" && create()} placeholder="Channel name (e.g. general)" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, marginBottom: 14, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", color: "#17170F", fontSize: 14, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
+        <button onClick={create} disabled={!name.trim() || saving} style={{ width: "100%", padding: "12px 0", borderRadius: 11, border: "none", background: name.trim() ? "rgba(34,49,92,.9)" : "rgba(23,23,15,.08)", color: name.trim() ? "#FAFAF8" : "rgba(23,23,15,.3)", fontSize: 14, fontWeight: 700, cursor: name.trim() ? "pointer" : "not-allowed", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
           {saving ? "Creating…" : "Create Channel"}
         </button>
       </div>
@@ -914,35 +914,35 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
 
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, height: "100%" }}>
         {/* Header */}
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(255,255,255,.02)" }}>
-          {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#0ef5d4", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(23,23,15,.06)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, background: "rgba(23,23,15,.02)" }}>
+          {isMobile && <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#22315C", flexShrink: 0, padding: 4 }}><ChevronLeft size={20} /></button>}
           {activeChannel.type === "dm" ? (
             <MsgAvatar name={activeChannel.name} avatarUrl={activeChannel.avatar_url} size={34} color="#a78bfa" />
           ) : (
-            <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(14,245,212,.08)", border: "1px solid rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#0ef5d4" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(34,49,92,.08)", border: "1px solid rgba(34,49,92,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#22315C" }}>
               {activeChannel.type === "deal" ? "◈" : "#"}
             </div>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#17170F", margin: 0, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeChannel.name}</p>
             {activeChannel.deal_stage && activeChannel.deal_id ? (
               <p
                 onClick={() => navigate(`/deals/${activeChannel.deal_id}`)}
                 title="Open this deal"
-                style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0, cursor: "pointer", width: "fit-content" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "#0ef5d4")}
-                onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.3)")}
+                style={{ fontSize: 11, color: "rgba(23,23,15,.3)", margin: 0, cursor: "pointer", width: "fit-content" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "#22315C")}
+                onMouseLeave={e => (e.currentTarget.style.color = "rgba(23,23,15,.3)")}
               >
                 {getStage(activeChannel.deal_stage).label} · View Deal
               </p>
             ) : activeChannel.deal_stage && (
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>
+              <p style={{ fontSize: 11, color: "rgba(23,23,15,.3)", margin: 0 }}>{getStage(activeChannel.deal_stage).label}</p>
             )}
           </div>
-          <button onClick={() => setShowMsgSearch(v => !v)} title="Search messages" style={{ width: 32, height: 32, borderRadius: 8, background: showMsgSearch ? "rgba(14,245,212,.1)" : "rgba(255,255,255,.05)", border: `1px solid ${showMsgSearch ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.08)"}`, color: showMsgSearch ? "#0ef5d4" : "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => setShowMsgSearch(v => !v)} title="Search messages" style={{ width: 32, height: 32, borderRadius: 8, background: showMsgSearch ? "rgba(34,49,92,.1)" : "rgba(23,23,15,.05)", border: `1px solid ${showMsgSearch ? "rgba(34,49,92,.25)" : "rgba(23,23,15,.08)"}`, color: showMsgSearch ? "#22315C" : "rgba(23,23,15,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Search size={13} />
           </button>
-          <button onClick={() => setShowPinned(true)} title="Pinned messages" style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => setShowPinned(true)} title="Pinned messages" style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.08)", color: "rgba(23,23,15,.55)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Pin size={13} />
           </button>
           {(() => {
@@ -962,7 +962,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
               <button
                 onClick={() => setShowStartMeeting(true)}
                 title={activeChannel.type === "deal" ? "Start a meeting for this deal" : "Start a team meeting"}
-                style={{ display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.25)", color: "#0ef5d4", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}
+                style={{ display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(34,49,92,.1)", border: "1px solid rgba(34,49,92,.25)", color: "#22315C", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}
               >
                 <Video size={12} /> Start Meeting
               </button>
@@ -971,11 +971,11 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
         </div>
 
         {showMsgSearch && (
-          <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", background: "rgba(255,255,255,.02)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "6px 10px" }}>
-              <Search size={12} color="rgba(255,255,255,.3)" />
-              <input autoFocus value={msgSearch} onChange={e => setMsgSearch(e.target.value)} placeholder="Search in this conversation…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }} />
-              {msgSearch && <button onClick={() => setMsgSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>×</button>}
+          <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(23,23,15,.04)", background: "rgba(23,23,15,.02)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", borderRadius: 9, padding: "6px 10px" }}>
+              <Search size={12} color="rgba(23,23,15,.3)" />
+              <input autoFocus value={msgSearch} onChange={e => setMsgSearch(e.target.value)} placeholder="Search in this conversation…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
+              {msgSearch && <button onClick={() => setMsgSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.3)" }}>×</button>}
             </div>
           </div>
         )}
@@ -983,12 +983,12 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
         {/* Messages */}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px 4px", minHeight: 0 }}>
           {loading ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
+            <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(34,49,92,.3)", borderTopColor: "#22315C", animation: "spin .8s linear infinite" }} /></div>
           ) : displayMessages.length === 0 ? (
             <div style={{ textAlign: "center", padding: "60px 20px" }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>{activeChannel.type === "dm" ? "👋" : "#"}</div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.4)", margin: "0 0 6px", fontFamily: "'Geist',system-ui,sans-serif" }}>{msgSearch ? "No matches" : activeChannel.type === "dm" ? `Start a conversation with ${activeChannel.name}` : `#${activeChannel.name}`}</p>
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,.22)", margin: 0 }}>{msgSearch ? "Try a different search term." : "Send a message to get started."}</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(23,23,15,.4)", margin: "0 0 6px", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{msgSearch ? "No matches" : activeChannel.type === "dm" ? `Start a conversation with ${activeChannel.name}` : `#${activeChannel.name}`}</p>
+              <p style={{ fontSize: 12, color: "rgba(23,23,15,.22)", margin: 0 }}>{msgSearch ? "Try a different search term." : "Send a message to get started."}</p>
             </div>
           ) : (
             <>
@@ -1002,22 +1002,22 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
                   <div key={msg.id}>
                     {showDate && (
                       <div style={{ display: "flex", alignItems: "center", margin: "14px 0 10px", gap: 10 }}>
-                        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
-                        <span style={{ fontSize: 11, color: "rgba(255,255,255,.28)", whiteSpace: "nowrap" }}>
+                        <div style={{ flex: 1, height: 1, background: "rgba(23,23,15,.06)" }} />
+                        <span style={{ fontSize: 11, color: "rgba(23,23,15,.28)", whiteSpace: "nowrap" }}>
                           {isToday(new Date(msg.created_at)) ? "Today" : isYesterday(new Date(msg.created_at)) ? "Yesterday" : format(new Date(msg.created_at), "MMMM d")}
                         </span>
-                        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
+                        <div style={{ flex: 1, height: 1, background: "rgba(23,23,15,.06)" }} />
                       </div>
                     )}
                     {editingId === msg.id ? (
-                      <div style={{ margin: "4px 0 8px", padding: "8px 12px", background: "rgba(14,245,212,.06)", borderRadius: 10, border: "1px solid rgba(14,245,212,.2)" }}>
+                      <div style={{ margin: "4px 0 8px", padding: "8px 12px", background: "rgba(34,49,92,.06)", borderRadius: 10, border: "1px solid rgba(34,49,92,.2)" }}>
                         <textarea value={editText} onChange={e => setEditText(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === "Escape") setEditingId(null); }}
-                          autoFocus style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#f0f6fc", fontSize: 13.5, resize: "none", minHeight: 36, fontFamily: "'Geist',system-ui,sans-serif" }} />
+                          autoFocus style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#17170F", fontSize: 13.5, resize: "none", minHeight: 36, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
                         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                          <button onClick={saveEdit} style={{ padding: "4px 12px", borderRadius: 7, border: "none", background: "#0ef5d4", color: "#060912", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
-                          <button onClick={() => setEditingId(null)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12, cursor: "pointer" }}>Cancel</button>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", alignSelf: "center" }}>Enter · Esc</span>
+                          <button onClick={saveEdit} style={{ padding: "4px 12px", borderRadius: 7, border: "none", background: "#22315C", color: "#FAFAF8", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                          <button onClick={() => setEditingId(null)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid rgba(23,23,15,.15)", background: "transparent", color: "rgba(23,23,15,.6)", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                          <span style={{ fontSize: 11, color: "rgba(23,23,15,.3)", alignSelf: "center" }}>Enter · Esc</span>
                         </div>
                       </div>
                     ) : (
@@ -1043,7 +1043,7 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
         {typingUsers.length > 0 && (
           <div style={{ padding: "3px 16px", flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
             <span className="pdot" /><span className="pdot" /><span className="pdot" />
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,.4)", fontFamily: "'Geist',system-ui,sans-serif" }}>
+            <span style={{ fontSize: 12, color: "rgba(23,23,15,.4)", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
               {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
             </span>
           </div>
@@ -1053,17 +1053,17 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
           <div style={{ margin: "0 14px 4px", padding: "6px 10px", background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <CornerUpLeft size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Geist',system-ui,sans-serif" }}>Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}</span>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msgText(replyTo)}</p>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>Replying to {replyTo.sender_full_name || msgSenderName(replyTo)}</span>
+              <p style={{ fontSize: 11, color: "rgba(23,23,15,.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{msgText(replyTo)}</p>
             </div>
-            <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.4)", flexShrink: 0 }}><X size={14} /></button>
+            <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.4)", flexShrink: 0 }}><X size={14} /></button>
           </div>
         )}
 
         {/* Input */}
-        <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 13, padding: "6px 8px 6px 10px" }}>
-            <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Attach file" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <div style={{ padding: "8px 14px 12px", borderTop: "1px solid rgba(23,23,15,.06)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, background: "rgba(23,23,15,.05)", border: `1px solid ${text ? "rgba(34,49,92,.25)" : "rgba(23,23,15,.09)"}`, borderRadius: 13, padding: "6px 8px 6px 10px" }}>
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Attach file" style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(23,23,15,.55)", cursor: uploading ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Paperclip size={15} />
             </button>
             {allowMentions ? (
@@ -1084,13 +1084,13 @@ function ChatArea({ activeChannel, currentUserId, isMobile, onBack, onlineUsers,
               <textarea value={text} onChange={e => { setText(e.target.value); sendTyping(); }}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder={placeholder}
-                rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
+                rows={1} style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 14, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }} />
             )}
-            <button onClick={send} disabled={!text.trim() || sending || uploading} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
+            <button onClick={send} disabled={!text.trim() || sending || uploading} style={{ width: 34, height: 34, borderRadius: 9, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#22315C,#22315C)" : "rgba(23,23,15,.07)", color: text.trim() ? "#FAFAF8" : "rgba(23,23,15,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
               <Send size={14} />
             </button>
           </div>
-          {!isMobile && <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.2)", margin: "4px 0 0 2px", fontFamily: "'Geist',system-ui,sans-serif" }}>
+          {!isMobile && <p style={{ fontSize: 10.5, color: "rgba(23,23,15,.2)", margin: "4px 0 0 2px", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
             {allowMentions ? "Enter to send · @ to mention · Attach files · Right-click for more" : "Enter to send · Shift+Enter newline · Attach files"}
           </p>}
         </div>
@@ -1355,11 +1355,11 @@ export default function MessagesPage() {
 
   if (!teamId) return (
     <DashboardLayout>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: "'Geist',system-ui,sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,.6)", marginBottom: 8 }}>Team Required</p>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.35)" }}>Create or join a team to access messaging.</p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(23,23,15,.6)", marginBottom: 8 }}>Team Required</p>
+          <p style={{ fontSize: 13, color: "rgba(23,23,15,.35)" }}>Create or join a team to access messaging.</p>
         </div>
       </div>
     </DashboardLayout>
@@ -1367,44 +1367,44 @@ export default function MessagesPage() {
 
   const Sidebar = () => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
+      <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid rgba(23,23,15,.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#0ef5d4,#0891b2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#060912", fontWeight: 900 }}>F</div>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#22315C,#22315C)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#FAFAF8", fontWeight: 900 }}>F</div>
             <div>
-              <p style={{ fontSize: 13, fontWeight: 800, color: "#f0f6fc", margin: 0, fontFamily: "'Geist',system-ui,sans-serif" }}>{team?.name || "Fixsense"}</p>
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,.3)", margin: 0 }}>{onlineUsers.size} online · {members.length} members</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: "#17170F", margin: 0, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>{team?.name || "Fixsense"}</p>
+              <p style={{ fontSize: 10, color: "rgba(23,23,15,.3)", margin: 0 }}>{onlineUsers.size} online · {members.length} members</p>
             </div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <NotificationBell notifications={notifications} onMarkAll={markAllRead} onMarkOne={markOneRead} isMobile={isMobile} />
-            <button onClick={() => setShowNotifSettings(true)} title="Notification settings" style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(255,255,255,.5)" }}>
+            <button onClick={() => setShowNotifSettings(true)} title="Notification settings" style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(23,23,15,.07)", border: "1px solid rgba(23,23,15,.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(23,23,15,.5)" }}>
               <Settings size={13} />
             </button>
-            <button onClick={() => setShowSearch(v => !v)} style={{ width: 34, height: 34, borderRadius: 9, background: showSearch ? "rgba(14,245,212,.12)" : "rgba(255,255,255,.07)", border: `1px solid ${showSearch ? "rgba(14,245,212,.3)" : "rgba(255,255,255,.1)"}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: showSearch ? "#0ef5d4" : "rgba(255,255,255,.5)" }}>
+            <button onClick={() => setShowSearch(v => !v)} style={{ width: 34, height: 34, borderRadius: 9, background: showSearch ? "rgba(34,49,92,.12)" : "rgba(23,23,15,.07)", border: `1px solid ${showSearch ? "rgba(34,49,92,.3)" : "rgba(23,23,15,.1)"}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: showSearch ? "#22315C" : "rgba(23,23,15,.5)" }}>
               <Search size={13} />
             </button>
           </div>
           <NotificationSettingsPanel open={showNotifSettings} onOpenChange={setShowNotifSettings} />
         </div>
         {showSearch && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "7px 11px" }}>
-            <Search size={12} color="rgba(255,255,255,.3)" />
-            <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search channels…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#f0f6fc", fontFamily: "'Geist',system-ui,sans-serif" }} />
-            {searchQ && <button onClick={() => setSearchQ("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)", fontSize: 14 }}>×</button>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.1)", borderRadius: 9, padding: "7px 11px" }}>
+            <Search size={12} color="rgba(23,23,15,.3)" />
+            <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search channels…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "#17170F", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
+            {searchQ && <button onClick={() => setSearchQ("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.3)", fontSize: 14 }}>×</button>}
           </div>
         )}
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 4 }}>
         {loadingCh ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(14,245,212,.3)", borderTopColor: "#0ef5d4", animation: "spin .8s linear infinite" }} /></div>
+          <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(34,49,92,.3)", borderTopColor: "#22315C", animation: "spin .8s linear infinite" }} /></div>
         ) : (
           <>
             {/* DMs */}
             <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>● Direct Messages</span>
-              <button onClick={() => setShowNewDM(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
+              <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(23,23,15,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>● Direct Messages</span>
+              <button onClick={() => setShowNewDM(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
             </div>
             {dmChs.map(ch => {
               const conv = conversations.find(c => `dm-${c.id}` === ch.id);
@@ -1413,18 +1413,18 @@ export default function MessagesPage() {
               return (
                 <div key={ch.id} style={{ position: "relative" }}>
                   <ChannelItem ch={ch} isActive={activeChannel?.id === ch.id} onClick={() => selectChannel(ch)} />
-                  {online && <div style={{ position: "absolute", left: 22, top: "50%", transform: "translateY(-50%)", width: 7, height: 7, borderRadius: "50%", background: "#22c55e", border: "1.5px solid #0c0f1e", pointerEvents: "none" }} />}
+                  {online && <div style={{ position: "absolute", left: 22, top: "50%", transform: "translateY(-50%)", width: 7, height: 7, borderRadius: "50%", background: "#22c55e", border: "1.5px solid #FAFAF8", pointerEvents: "none" }} />}
                 </div>
               );
             })}
-            {dmChs.length === 0 && <button onClick={() => setShowNewDM(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", border: "none", background: "transparent", cursor: "pointer", color: "rgba(255,255,255,.25)", fontSize: 12, fontFamily: "'Geist',system-ui,sans-serif" }}><Plus size={13} /> Message a teammate</button>}
+            {dmChs.length === 0 && <button onClick={() => setShowNewDM(true)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", border: "none", background: "transparent", cursor: "pointer", color: "rgba(23,23,15,.25)", fontSize: 12, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}><Plus size={13} /> Message a teammate</button>}
 
             {/* Team channels */}
             {teamChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}># Channels</span>
-                  <button onClick={() => setShowNewChannel(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(23,23,15,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}># Channels</span>
+                  <button onClick={() => setShowNewChannel(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,.35)", fontSize: 16, lineHeight: 1 }}>+</button>
                 </div>
                 {teamChs.map(ch => <ChannelItem key={ch.id} ch={ch} isActive={activeChannel?.id === ch.id} onClick={() => selectChannel(ch)} />)}
               </>
@@ -1434,7 +1434,7 @@ export default function MessagesPage() {
             {dealChs.length > 0 && (
               <>
                 <div style={{ padding: "12px 12px 4px" }}>
-                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,255,255,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>◈ Deals</span>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "rgba(23,23,15,.25)", textTransform: "uppercase", letterSpacing: ".1em" }}>◈ Deals</span>
                 </div>
                 {dealChs.map(ch => <ChannelItem key={ch.id} ch={ch} isActive={activeChannel?.id === ch.id} onClick={() => selectChannel(ch)} />)}
               </>
@@ -1442,8 +1442,8 @@ export default function MessagesPage() {
 
             {allChannels.length === 0 && !loadingCh && !searchQ && (
               <div style={{ padding: "30px 16px", textAlign: "center" }}>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.3)", margin: "0 0 12px", fontFamily: "'Geist',system-ui,sans-serif" }}>No channels yet</p>
-                <button onClick={() => setShowNewChannel(true)} style={{ padding: "8px 18px", borderRadius: 9, background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.2)", color: "#0ef5d4", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Geist',system-ui,sans-serif" }}>+ Create Channel</button>
+                <p style={{ fontSize: 13, color: "rgba(23,23,15,.3)", margin: "0 0 12px", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>No channels yet</p>
+                <button onClick={() => setShowNewChannel(true)} style={{ padding: "8px 18px", borderRadius: 9, background: "rgba(34,49,92,.1)", border: "1px solid rgba(34,49,92,.2)", color: "#22315C", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>+ Create Channel</button>
               </div>
             )}
           </>
@@ -1451,9 +1451,9 @@ export default function MessagesPage() {
       </div>
 
       {isMobile && (
-        <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 8 }}>
-          <button onClick={() => setShowNewDM(true)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><MessageSquare size={14} /> New DM</button>
-          <button onClick={() => setShowNewChannel(true)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.2)", color: "#0ef5d4", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Hash size={14} /> New Channel</button>
+        <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(23,23,15,.06)", display: "flex", gap: 8 }}>
+          <button onClick={() => setShowNewDM(true)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><MessageSquare size={14} /> New DM</button>
+          <button onClick={() => setShowNewChannel(true)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(34,49,92,.1)", border: "1px solid rgba(34,49,92,.2)", color: "#22315C", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Hash size={14} /> New Channel</button>
         </div>
       )}
     </div>
@@ -1477,9 +1477,9 @@ export default function MessagesPage() {
         />
       )}
 
-      <div style={{ display: "flex", height: "calc(100vh - 7rem)", borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,.07)", background: "#08090f", fontFamily: "'Geist',system-ui,sans-serif", minHeight: 0 }}>
+      <div style={{ display: "flex", height: "calc(100vh - 7rem)", borderRadius: 14, overflow: "hidden", border: "1px solid rgba(23,23,15,.07)", background: "#FAFAF8", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", minHeight: 0 }}>
         {(!isMobile || mobileView === "list") && (
-          <div style={{ width: isMobile ? "100%" : 260, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,.06)", background: "#0c0f1e", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ width: isMobile ? "100%" : 260, flexShrink: 0, borderRight: "1px solid rgba(23,23,15,.06)", background: "#FAFAF8", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <Sidebar />
           </div>
         )}
@@ -1497,13 +1497,13 @@ export default function MessagesPage() {
               />
             ) : (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
-                {isMobile && <button onClick={() => setMobileView("list")} style={{ position: "absolute", top: 16, left: 16, background: "none", border: "none", cursor: "pointer", color: "#0ef5d4" }}><ChevronLeft size={22} /></button>}
-                <div style={{ width: 72, height: 72, borderRadius: 20, background: "rgba(14,245,212,.07)", border: "1px solid rgba(14,245,212,.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, marginBottom: 16 }}>💬</div>
-                <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,.4)", margin: "0 0 8px", fontFamily: "'Geist',system-ui,sans-serif" }}>Select a conversation</p>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.22)", maxWidth: 280, lineHeight: 1.6, margin: "0 0 20px" }}>Message teammates directly or collaborate in team and deal channels.</p>
+                {isMobile && <button onClick={() => setMobileView("list")} style={{ position: "absolute", top: 16, left: 16, background: "none", border: "none", cursor: "pointer", color: "#22315C" }}><ChevronLeft size={22} /></button>}
+                <div style={{ width: 72, height: 72, borderRadius: 20, background: "rgba(34,49,92,.07)", border: "1px solid rgba(34,49,92,.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, marginBottom: 16 }}>💬</div>
+                <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(23,23,15,.4)", margin: "0 0 8px", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>Select a conversation</p>
+                <p style={{ fontSize: 13, color: "rgba(23,23,15,.22)", maxWidth: 280, lineHeight: 1.6, margin: "0 0 20px" }}>Message teammates directly or collaborate in team and deal channels.</p>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setShowNewDM(true)} style={{ padding: "10px 18px", borderRadius: 10, background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.25)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", gap: 6 }}><Users size={14} /> New DM</button>
-                  <button onClick={() => setShowNewChannel(true)} style={{ padding: "10px 18px", borderRadius: 10, background: "rgba(14,245,212,.1)", border: "1px solid rgba(14,245,212,.25)", color: "#0ef5d4", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Geist',system-ui,sans-serif", display: "flex", alignItems: "center", gap: 6 }}><Hash size={14} /> New Channel</button>
+                  <button onClick={() => setShowNewDM(true)} style={{ padding: "10px 18px", borderRadius: 10, background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.25)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", display: "flex", alignItems: "center", gap: 6 }}><Users size={14} /> New DM</button>
+                  <button onClick={() => setShowNewChannel(true)} style={{ padding: "10px 18px", borderRadius: 10, background: "rgba(34,49,92,.1)", border: "1px solid rgba(34,49,92,.25)", color: "#22315C", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", display: "flex", alignItems: "center", gap: 6 }}><Hash size={14} /> New Channel</button>
                 </div>
               </div>
             )}
