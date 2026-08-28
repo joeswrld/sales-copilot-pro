@@ -20,7 +20,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import {
-  Loader2, Filter, X, DollarSign, Briefcase, ChevronLeft, ChevronRight,
+  Loader2, Filter, X, DollarSign, Briefcase, ChevronLeft, ChevronRight, ArrowRightLeft, Check,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MatchExplanation, scoreColor, scoreBg } from "@/lib/matchExplanation";
@@ -188,6 +188,70 @@ function RejectionModal({ row, onClose, onSubmit }: {
   );
 }
 
+// ─── Move-to sheet (mobile) ──────────────────────────────────────────────────
+// Replaces the old truncated 4-chip row: every valid destination stage is
+// listed (none get cut off), plus the current stage is shown disabled for
+// orientation. This is the only way to change stage on mobile now — drag
+// doesn't work on touch, so a chip row that hid 5 of 9 destinations behind
+// nothing was a dead end for those stages.
+
+function MoveToSheet({ row, onClose, onMove }: {
+  row: PipelineRow;
+  onClose: () => void;
+  onMove: (stageKey: string) => void;
+}) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20,
+          width: "100%", maxWidth: 480, maxHeight: "80vh", overflowY: "auto",
+          fontFamily: "'Inter', sans-serif", boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: "#17170F", margin: 0 }}>
+            Move {row.candidate?.full_name ?? "candidate"}
+          </h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.4)" }}>
+            <X style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: "rgba(23,23,15,0.45)", margin: "0 0 14px" }}>
+          Currently in <strong style={{ color: "#17170F" }}>{STAGES.find(s => s.key === row.pipeline_stage)?.label}</strong>. Pick a destination stage.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {STAGES.map(s => {
+            const isCurrent = s.key === row.pipeline_stage;
+            return (
+              <button
+                key={s.key}
+                disabled={isCurrent}
+                onClick={() => onMove(s.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, width: "100%",
+                  padding: "11px 12px", borderRadius: 10,
+                  border: isCurrent ? "1px solid rgba(23,23,15,0.06)" : "1px solid rgba(23,23,15,0.1)",
+                  background: isCurrent ? "rgba(23,23,15,0.03)" : "#fff",
+                  cursor: isCurrent ? "default" : "pointer", textAlign: "left",
+                }}
+              >
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: isCurrent ? "rgba(23,23,15,0.4)" : "#17170F", flex: 1 }}>
+                  {s.label}
+                </span>
+                {isCurrent && <Check style={{ width: 14, height: 14, color: "rgba(23,23,15,0.3)" }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Card ────────────────────────────────────────────────────────────────────
 
 function PipelineCard({ row, draggable, onDragStart, onClick }: {
@@ -316,6 +380,7 @@ function PipelinePageInner() {
   const [placementRow, setPlacementRow] = useState<PipelineRow | null>(null);
   const [rejectionRow, setRejectionRow] = useState<PipelineRow | null>(null);
   const [mobileStageIdx, setMobileStageIdx] = useState(0);
+  const [moveSheetRow, setMoveSheetRow] = useState<PipelineRow | null>(null);
 
   const load = useCallback(async () => {
     if (!teamId) return;
@@ -417,6 +482,20 @@ function PipelinePageInner() {
 
   const openCandidate = (row: PipelineRow) => navigate(`/candidates/${row.candidate_id}?job=${row.job_id}&cj=${row.id}`);
 
+  // Linear "next stage" quick-move — Placed/Rejected are terminal branches,
+  // not part of the forward flow, so "next" always means the next stage in
+  // the main funnel, never one of those two. The full picker still lists
+  // every stage including those two for non-linear moves.
+  const FORWARD_STAGES = STAGES.filter(s => s.key !== "placed" && s.key !== "rejected");
+  const nextStageFor = (row: PipelineRow) => {
+    const i = FORWARD_STAGES.findIndex(s => s.key === row.pipeline_stage);
+    return i >= 0 && i < FORWARD_STAGES.length - 1 ? FORWARD_STAGES[i + 1] : null;
+  };
+  const prevStageFor = (row: PipelineRow) => {
+    const i = FORWARD_STAGES.findIndex(s => s.key === row.pipeline_stage);
+    return i > 0 ? FORWARD_STAGES[i - 1] : null;
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: "'Inter', sans-serif" }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -479,16 +558,54 @@ function PipelinePageInner() {
                       {r.match_explanation.overall_recommendation}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                    {STAGES.filter(s => s.key !== r.pipeline_stage).slice(0, 4).map(s => (
-                      <button
-                        key={s.key}
-                        onClick={ev => { ev.stopPropagation(); moveStage(r.id, s.key); }}
-                        style={{ fontSize: 10.5, fontWeight: 600, padding: "5px 9px", borderRadius: 7, border: "1px solid rgba(23,23,15,0.1)", background: "rgba(23,23,15,0.03)", color: "#17170F", cursor: "pointer" }}
-                      >
-                        → {s.label}
-                      </button>
-                    ))}
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <button
+                      onClick={ev => { ev.stopPropagation(); setMoveSheetRow(r); }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        flex: 1, fontSize: 12, fontWeight: 700, padding: "8px 10px", borderRadius: 8,
+                        border: "none", background: "#22315C", color: "#FAFAF8", cursor: "pointer",
+                      }}
+                    >
+                      <ArrowRightLeft style={{ width: 12, height: 12 }} />
+                      Move to…
+                    </button>
+                    {(() => {
+                      const prev = prevStageFor(r);
+                      return (
+                        <button
+                          onClick={ev => { ev.stopPropagation(); if (prev) moveStage(r.id, prev.key); }}
+                          disabled={!prev}
+                          title={prev ? `Back to ${prev.label}` : undefined}
+                          style={{
+                            width: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                            borderRadius: 8, border: "1px solid rgba(23,23,15,0.1)",
+                            background: "#fff", color: prev ? "#17170F" : "rgba(23,23,15,0.2)",
+                            cursor: prev ? "pointer" : "default",
+                          }}
+                        >
+                          <ChevronLeft style={{ width: 14, height: 14 }} />
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      const next = nextStageFor(r);
+                      return (
+                        <button
+                          onClick={ev => { ev.stopPropagation(); if (next) moveStage(r.id, next.key); }}
+                          disabled={!next}
+                          title={next ? `Advance to ${next.label}` : undefined}
+                          style={{
+                            width: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                            borderRadius: 8, border: "1px solid rgba(23,23,15,0.1)",
+                            background: "#fff", color: next ? "#17170F" : "rgba(23,23,15,0.2)",
+                            cursor: next ? "pointer" : "default",
+                          }}
+                        >
+                          <ChevronRight style={{ width: 14, height: 14 }} />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))
@@ -515,6 +632,16 @@ function PipelinePageInner() {
       )}
       {rejectionRow && (
         <RejectionModal row={rejectionRow} onClose={() => setRejectionRow(null)} onSubmit={confirmRejection} />
+      )}
+      {moveSheetRow && (
+        <MoveToSheet
+          row={moveSheetRow}
+          onClose={() => setMoveSheetRow(null)}
+          onMove={stageKey => {
+            setMoveSheetRow(null);
+            moveStage(moveSheetRow.id, stageKey);
+          }}
+        />
       )}
     </div>
   );
