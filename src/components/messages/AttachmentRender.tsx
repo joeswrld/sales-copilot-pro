@@ -50,7 +50,7 @@ export default function AttachmentRender({ url, name, type, size, isOwn }: Props
       <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
         <img src={url} alt={name || "image"} style={{
           maxWidth: 260, maxHeight: 260, borderRadius: 10, display: "block",
-          border: "1px solid rgba(255,255,255,.06)",
+          border: "1px solid rgba(23,23,15,.08)",
         }} />
       </a>
     );
@@ -61,15 +61,15 @@ export default function AttachmentRender({ url, name, type, size, isOwn }: Props
   return (
     <a href={url} download={name || true} target="_blank" rel="noopener noreferrer" style={{
       display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-      background: isOwn ? "rgba(0,0,0,.18)" : "rgba(255,255,255,.06)",
+      background: isOwn ? "rgba(255,255,255,.14)" : "rgba(23,23,15,.05)",
       borderRadius: 10, textDecoration: "none", maxWidth: 260,
-      color: isOwn ? "#060912" : "#f0f6fc",
+      color: isOwn ? "#FAFAF8" : "#17170F",
     }}>
       <div style={{
         width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-        background: isOwn ? "rgba(0,0,0,.25)" : "rgba(14,245,212,.15)",
+        background: isOwn ? "rgba(255,255,255,.16)" : "rgba(34,49,92,.1)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        color: isOwn ? "rgba(255,255,255,.85)" : "#0ef5d4",
+        color: isOwn ? "#FAFAF8" : "#22315C",
       }}>
         <FileText size={15} />
       </div>
@@ -198,8 +198,8 @@ function VoicePlayer({ url: rawUrl, mimeType, isOwn }: {
   const remaining = Math.max(0, (duration || 0) - currentTime);
   const mm        = Math.floor(remaining / 60).toString().padStart(2, "0");
   const ss        = Math.floor(remaining % 60).toString().padStart(2, "0");
-  const fg        = isOwn ? "#060912" : "#0ef5d4";
-  const bg        = isOwn ? "rgba(0,0,0,.18)" : "rgba(255,255,255,.06)";
+  const fg        = isOwn ? "#FAFAF8" : "#22315C";
+  const bg        = isOwn ? "rgba(255,255,255,.14)" : "rgba(23,23,15,.05)";
 
   return (
     <div style={{
@@ -223,8 +223,8 @@ function VoicePlayer({ url: rawUrl, mimeType, isOwn }: {
         disabled={loadingUrl}
         style={{
           width: 32, height: 32, borderRadius: "50%", border: "none",
-          background: loadingUrl ? "rgba(255,255,255,.2)" : fg,
-          color: isOwn ? "#0ef5d4" : "#060912",
+          background: loadingUrl ? (isOwn ? "rgba(255,255,255,.2)" : "rgba(23,23,15,.12)") : fg,
+          color: isOwn ? "#22315C" : "#FAFAF8",
           cursor: loadingUrl ? "wait" : "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           opacity: loadingUrl ? 0.5 : 1,
@@ -234,7 +234,7 @@ function VoicePlayer({ url: rawUrl, mimeType, isOwn }: {
         {loadingUrl ? (
           <span style={{
             width: 10, height: 10,
-            border: `2px solid ${isOwn ? "#060912" : "#0ef5d4"}`,
+            border: `2px solid ${isOwn ? "#FAFAF8" : "#22315C"}`,
             borderTopColor: "transparent", borderRadius: "50%",
             display: "inline-block", animation: "spin .6s linear infinite",
           }} />
@@ -257,7 +257,7 @@ function VoicePlayer({ url: rawUrl, mimeType, isOwn }: {
                 flex: 1, height: `${h}px`, minHeight: 3,
                 background: filled
                   ? fg
-                  : (isOwn ? "rgba(0,0,0,.3)" : "rgba(255,255,255,.18)"),
+                  : (isOwn ? "rgba(255,255,255,.28)" : "rgba(23,23,15,.15)"),
                 borderRadius: 1, transition: "background .1s",
               }} />
             );
@@ -267,7 +267,7 @@ function VoicePlayer({ url: rawUrl, mimeType, isOwn }: {
 
       <span style={{
         fontSize: 11,
-        color: isOwn ? "rgba(0,0,0,.55)" : "rgba(255,255,255,.5)",
+        color: isOwn ? "rgba(255,255,255,.7)" : "rgba(23,23,15,.5)",
         fontVariantNumeric: "tabular-nums",
         minWidth: 34,
       }}>
