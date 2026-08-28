@@ -77,56 +77,57 @@ export default function PinnedDrawer({ isDM, channelId, conversationId, onClose,
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.55)", backdropFilter: "blur(4px)" }} />
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)", backdropFilter: "blur(4px)" }} />
       <div style={{
-        position: "relative", width: "100%", maxWidth: 380, background: "#0c0f1e",
-        borderLeft: "1px solid rgba(255,255,255,.08)", display: "flex", flexDirection: "column",
-        fontFamily: "'Geist',system-ui,sans-serif",
+        position: "relative", width: "100%", maxWidth: 380, background: "#F3F2ED",
+        borderLeft: "1px solid rgba(23,23,15,.09)", display: "flex", flexDirection: "column",
+        fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       }}>
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(23,23,15,.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Pin size={14} color="#fbbf24" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc" }}>Pinned messages</span>
+            <Pin size={14} color="#b45309" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#17170F" }}>Pinned messages</span>
           </div>
           <button onClick={onClose} style={{
-            width: 28, height: 28, borderRadius: 7, background: "rgba(255,255,255,.05)",
-            border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.6)",
+            width: 28, height: 28, borderRadius: 7, background: "rgba(23,23,15,.05)",
+            border: "1px solid rgba(23,23,15,.09)", color: "rgba(23,23,15,.55)",
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           }}><X size={14} /></button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
           {loading ? (
-            <p style={{ textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 12, padding: 24 }}>Loading…</p>
+            <p style={{ textAlign: "center", color: "rgba(23,23,15,.4)", fontSize: 12, padding: 24 }}>Loading…</p>
           ) : items.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 16px" }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>📌</div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", margin: 0, fontWeight: 600 }}>No pinned messages</p>
-              <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", margin: "4px 0 0" }}>Long-press or right-click a message to pin it.</p>
+              <p style={{ fontSize: 13, color: "rgba(23,23,15,.5)", margin: 0, fontWeight: 600 }}>No pinned messages</p>
+              <p style={{ fontSize: 11.5, color: "rgba(23,23,15,.35)", margin: "4px 0 0" }}>Long-press or right-click a message to pin it.</p>
             </div>
           ) : items.map(item => (
             <div key={item.id} style={{
-              padding: 12, borderRadius: 10, background: "rgba(255,255,255,.04)",
-              border: "1px solid rgba(255,255,255,.06)", marginBottom: 8,
+              padding: 12, borderRadius: 10, background: "#FFFFFF",
+              border: "1px solid rgba(23,23,15,.08)", marginBottom: 8,
+              boxShadow: "0 1px 2px rgba(0,0,0,.03)",
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fbbf24" }}>{item.sender_name}</span>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>{format(new Date(item.created_at), "MMM d, h:mm a")}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "#b45309" }}>{item.sender_name}</span>
+                <span style={{ fontSize: 10, color: "rgba(23,23,15,.4)" }}>{format(new Date(item.created_at), "MMM d, h:mm a")}</span>
               </div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.85)", margin: "0 0 8px", wordBreak: "break-word", lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13, color: "rgba(23,23,15,.85)", margin: "0 0 8px", wordBreak: "break-word", lineHeight: 1.5 }}>
                 {item.text || "(empty message)"}
               </p>
               <div style={{ display: "flex", gap: 6 }}>
                 {onJump && (
                   <button onClick={() => { onJump(item.message_id); onClose(); }} style={{
-                    padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(14,245,212,.25)",
-                    background: "rgba(14,245,212,.08)", color: "#0ef5d4",
+                    padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(34,49,92,.25)",
+                    background: "rgba(34,49,92,.08)", color: "#22315C",
                     fontSize: 11, fontWeight: 600, cursor: "pointer",
                   }}>Jump</button>
                 )}
                 <button onClick={() => unpin(item)} style={{
-                  padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,.1)",
-                  background: "transparent", color: "rgba(255,255,255,.55)",
+                  padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(23,23,15,.12)",
+                  background: "transparent", color: "rgba(23,23,15,.55)",
                   fontSize: 11, fontWeight: 600, cursor: "pointer",
                 }}>Unpin</button>
               </div>
