@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Icon, Logo } from "@/pages/LandingPage";
 import AuthPanel from "@/components/AuthPanel";
@@ -328,10 +328,21 @@ const SCREENS: Record<string, React.ComponentType> = {
 };
 
 export default function WelcomePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0); // 0..STEPS.length-1 walkthrough, STEPS.length = account step
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const liveRegionRef = useRef<HTMLDivElement>(null);
+
+  // This is a first-visit experience only. A signed-in user has already
+  // been through it (or straight past it) — send them to their real
+  // workspace instead of making them sit through recruiting-flow marketing
+  // again. replace: true so Back doesn't bounce them into /welcome.
+  useEffect(() => {
+    if (!loading && user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [loading, user, navigate]);
 
   const isAccountStep = step === STEPS.length;
   const current = !isAccountStep ? STEPS[step] : null;
@@ -346,6 +357,9 @@ export default function WelcomePage() {
     setStep((s) => Math.max(s - 1, 0));
   }, []);
 
+  // Any step is click-to-jump, forward or back — this is a marketing
+  // walkthrough with no data dependency between steps, so there's no
+  // reason to gate the dots to only steps already visited.
   const jumpTo = useCallback((i: number) => {
     setDirection(i > step ? "forward" : "back");
     setStep(i);
@@ -359,13 +373,12 @@ export default function WelcomePage() {
     }
   }, [step, isAccountStep, current]);
 
-  // Already-signed-in users skip straight to their workspace instead of
-  // being made to sit through onboarding marketing again — but they can
-  // still browse the walkthrough manually if they land here directly.
-  const alreadySignedIn = !!user;
-
   const Screen = current ? SCREENS[current.key] : null;
   const progressPct = ((isAccountStep ? STEPS.length : step) / STEPS.length) * 100;
+
+  // Signed-in users are redirected away above; render nothing while that
+  // decision is pending so there's no flash of the walkthrough first.
+  if (loading || user) return null;
 
   const css = `
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -402,7 +415,6 @@ export default function WelcomePage() {
     .wp-step-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong);flex-shrink:0;transition:background .25s,transform .25s;border:none;padding:0;cursor:pointer;}
     .wp-step-dot.active{background:var(--accent);transform:scale(1.5);}
     .wp-step-dot.done{background:var(--good);}
-    .wp-step-dot:disabled{cursor:default;}
 
     .wp-main{flex:1;display:flex;align-items:center;padding:20px 22px 140px;}
     .wp-main-inner{max-width:1040px;margin:0 auto;width:100%;}
@@ -506,11 +518,7 @@ export default function WelcomePage() {
           <Logo size={22} />
           <span className="wp-brandname">Fixsense</span>
         </Link>
-        {alreadySignedIn ? (
-          <Link to="/dashboard" className="wp-exit">Go to workspace</Link>
-        ) : (
-          <Link to="/" className="wp-exit">Exit</Link>
-        )}
+        <Link to="/" className="wp-exit">Exit</Link>
       </div>
 
       <div className="wp-progress-track">
@@ -523,7 +531,6 @@ export default function WelcomePage() {
             key={s.key}
             className={`wp-step-dot${i === step ? " active" : ""}${i < step ? " done" : ""}`}
             onClick={() => jumpTo(i)}
-            disabled={i > step}
             aria-label={`Step ${i + 1}: ${s.label}`}
             aria-current={i === step ? "step" : undefined}
           />
@@ -559,32 +566,19 @@ export default function WelcomePage() {
             <div className="wp-account-wrap">
               <div className="wp-account-head">
                 <div className="wp-account-icon"><Icon name="check" size={20} strokeWidth={2.4} /></div>
-                <h1 className="wp-account-title">
-                  {alreadySignedIn ? "You're already set up." : "Create your free account."}
-                </h1>
+                <h1 className="wp-account-title">Create your free account.</h1>
                 <p className="wp-account-sub">
-                  {alreadySignedIn
-                    ? "You're signed in, so there's nothing else to set up here — head straight into your workspace."
-                    : "That's the whole desk: job to placement, in one system. Sign up to start running yours."}
+                  That's the whole desk: job to placement, in one system. Sign up to start running yours.
                 </p>
               </div>
-              {alreadySignedIn ? (
-                <div className="wp-account-card" style={{ textAlign: "center" }}>
-                  <Link to="/dashboard" className="wp-continue-btn" style={{ width: "100%" }}>
-                    Go to your workspace
-                    <Icon name="arrow-right" size={14} />
-                  </Link>
-                </div>
-              ) : (
-                <div className="wp-account-card">
-                  <AuthPanel
-                    initialMode="signup"
-                    hideTabs={false}
-                    trackingSource="welcome_flow"
-                    oauthRedirectPath="/dashboard"
-                  />
-                </div>
-              )}
+              <div className="wp-account-card">
+                <AuthPanel
+                  initialMode="signup"
+                  hideTabs={false}
+                  trackingSource="welcome_flow"
+                  oauthRedirectPath="/dashboard"
+                />
+              </div>
             </div>
           )}
         </div>
