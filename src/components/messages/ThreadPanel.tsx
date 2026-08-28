@@ -98,44 +98,44 @@ export default function ThreadPanel({ root, isDM, channelId, conversationId, onC
 
   return (
     <div style={{
-      width: 360, flexShrink: 0, borderLeft: "1px solid rgba(255,255,255,.07)",
-      background: "#0c0f1e", display: "flex", flexDirection: "column",
-      fontFamily: "'Geist',system-ui,sans-serif", height: "100%",
+      width: 360, flexShrink: 0, borderLeft: "1px solid rgba(23,23,15,.09)",
+      background: "#F3F2ED", display: "flex", flexDirection: "column",
+      fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", height: "100%",
     }}>
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(23,23,15,.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f6fc", margin: 0 }}>Thread</p>
-          <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", margin: "2px 0 0" }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#17170F", margin: 0 }}>Thread</p>
+          <p style={{ fontSize: 11, color: "rgba(23,23,15,.4)", margin: "2px 0 0" }}>
             {replies.length} {replies.length === 1 ? "reply" : "replies"}
           </p>
         </div>
         <button onClick={onClose} style={{
-          width: 28, height: 28, borderRadius: 7, background: "rgba(255,255,255,.05)",
-          border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.6)",
+          width: 28, height: 28, borderRadius: 7, background: "rgba(23,23,15,.05)",
+          border: "1px solid rgba(23,23,15,.09)", color: "rgba(23,23,15,.55)",
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         }}><X size={14} /></button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
         {/* Root message */}
-        <div style={{ padding: 10, borderRadius: 10, background: "rgba(255,255,255,.04)", marginBottom: 12, borderLeft: "3px solid #a78bfa" }}>
+        <div style={{ padding: 10, borderRadius: 10, background: "#FFFFFF", marginBottom: 12, borderLeft: "3px solid #a78bfa", boxShadow: "0 1px 2px rgba(0,0,0,.03)" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa" }}>{rootName}</span>
-            <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)" }}>{format(new Date(root.created_at), "MMM d · h:mm a")}</span>
+            <span style={{ fontSize: 10, color: "rgba(23,23,15,.35)" }}>{format(new Date(root.created_at), "MMM d · h:mm a")}</span>
           </div>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.85)", margin: 0, wordBreak: "break-word" }}>{rootText}</p>
+          <p style={{ fontSize: 13, color: "rgba(23,23,15,.85)", margin: 0, wordBreak: "break-word" }}>{rootText}</p>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 12px" }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(23,23,15,.08)" }} />
+          <span style={{ fontSize: 11, color: "rgba(23,23,15,.4)" }}>
             {replies.length} {replies.length === 1 ? "Reply" : "Replies"}
           </span>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.06)" }} />
+          <div style={{ flex: 1, height: 1, background: "rgba(23,23,15,.08)" }} />
         </div>
 
         {loading ? (
-          <div style={{ textAlign: "center", padding: 20, color: "rgba(255,255,255,.4)", fontSize: 12 }}>Loading…</div>
+          <div style={{ textAlign: "center", padding: 20, color: "rgba(23,23,15,.4)", fontSize: 12 }}>Loading…</div>
         ) : replies.map(r => {
           const t = r.message_text || r.content || "";
           const name = r.sender_full_name || r.sender_email?.split("@")[0] || "Unknown";
@@ -145,16 +145,16 @@ export default function ThreadPanel({ root, isDM, channelId, conversationId, onC
               {r.sender_avatar_url ? (
                 <img src={r.sender_avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
               ) : (
-                <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: isOwn ? "rgba(14,245,212,.18)" : "rgba(167,139,250,.18)", color: isOwn ? "#0ef5d4" : "#a78bfa", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: isOwn ? "rgba(34,49,92,.12)" : "rgba(167,139,250,.18)", color: isOwn ? "#22315C" : "#a78bfa", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
                   {(name[0] || "?").toUpperCase()}
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: isOwn ? "#0ef5d4" : "#a78bfa" }}>{isOwn ? "You" : name}</span>
-                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)" }}>{format(new Date(r.created_at), "h:mm a")}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: isOwn ? "#22315C" : "#a78bfa" }}>{isOwn ? "You" : name}</span>
+                  <span style={{ fontSize: 10, color: "rgba(23,23,15,.35)" }}>{format(new Date(r.created_at), "h:mm a")}</span>
                 </div>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.88)", margin: 0, wordBreak: "break-word", lineHeight: 1.5 }}>{t}</p>
+                <p style={{ fontSize: 13, color: "rgba(23,23,15,.88)", margin: 0, wordBreak: "break-word", lineHeight: 1.5 }}>{t}</p>
               </div>
             </div>
           );
@@ -162,14 +162,14 @@ export default function ThreadPanel({ root, isDM, channelId, conversationId, onC
         <div ref={endRef} />
       </div>
 
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "rgba(255,255,255,.05)", border: `1px solid ${text ? "rgba(14,245,212,.25)" : "rgba(255,255,255,.09)"}`, borderRadius: 12, padding: "8px 10px 8px 12px" }}>
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(23,23,15,.08)" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "rgba(23,23,15,.05)", border: `1px solid ${text ? "rgba(34,49,92,.25)" : "rgba(23,23,15,.09)"}`, borderRadius: 12, padding: "8px 10px 8px 12px" }}>
           <textarea value={text} onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder="Reply in thread…" rows={1}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 13.5, color: "#f0f6fc", lineHeight: 1.5, maxHeight: 100, overflowY: "auto", fontFamily: "'Geist',system-ui,sans-serif" }} />
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", fontSize: 13.5, color: "#17170F", lineHeight: 1.5, maxHeight: 100, overflowY: "auto", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }} />
           <button onClick={send} disabled={!text.trim() || sending}
-            style={{ width: 32, height: 32, borderRadius: 8, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#0ef5d4,#0891b2)" : "rgba(255,255,255,.07)", color: text.trim() ? "#060912" : "rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
+            style={{ width: 32, height: 32, borderRadius: 8, border: "none", flexShrink: 0, background: text.trim() ? "linear-gradient(135deg,#22315C,#1a2748)" : "rgba(23,23,15,.07)", color: text.trim() ? "#FAFAF8" : "rgba(23,23,15,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "not-allowed" }}>
             <Send size={13} />
           </button>
         </div>
