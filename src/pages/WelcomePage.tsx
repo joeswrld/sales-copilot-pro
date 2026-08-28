@@ -21,6 +21,10 @@ type Step = {
   kicker: string;
   title: string;
   desc: string;
+  /** Present-tense story beat shown as a live ticker above the mock screen — makes each step read as something happening now, not a static slide. */
+  beat: string;
+  /** What this step adds to the running desk-stats strip, revealed cumulatively as the user moves forward. */
+  stat: { label: string; value: string };
 };
 
 const STEPS: Step[] = [
@@ -31,6 +35,8 @@ const STEPS: Step[] = [
     kicker: "Step 1 · Open the role",
     title: "Post the job once. Everything else hangs off it.",
     desc: "Add the client, the requirements, and the location. This becomes the single anchor every application, match, submission, and interview connects back to.",
+    beat: "You just opened Senior .NET Developer for Harrow & Bell Technology.",
+    stat: { label: "Jobs open", value: "1" },
   },
   {
     key: "applications",
@@ -39,6 +45,8 @@ const STEPS: Step[] = [
     kicker: "Step 2 · Applications arrive",
     title: "Applications land in the pipeline, not an inbox.",
     desc: "Share the job's application link and every candidate who applies drops straight into the pipeline, already attached to the right role.",
+    beat: "4 candidates have applied in the last few minutes.",
+    stat: { label: "Applications", value: "4" },
   },
   {
     key: "cv",
@@ -47,6 +55,8 @@ const STEPS: Step[] = [
     kicker: "Step 3 · CV parsing",
     title: "Every CV becomes a structured record.",
     desc: "Fixsense reads each upload into a real candidate profile: skills, roles, history, and contact details, searchable across your whole desk in seconds.",
+    beat: "Sarah Whitfield's CV just parsed: 8 years .NET/Azure, ready to search.",
+    stat: { label: "CVs parsed", value: "4" },
   },
   {
     key: "match",
@@ -55,6 +65,8 @@ const STEPS: Step[] = [
     kicker: "Step 4 · AI matching",
     title: "AI scores every candidate against the job.",
     desc: "Each application is matched against the job's requirements with a score and a plain-language reason, so you know who's worth a closer look first.",
+    beat: "Sarah just scored 94% — every required skill matched.",
+    stat: { label: "Top match", value: "94%" },
   },
   {
     key: "shortlist",
@@ -63,6 +75,8 @@ const STEPS: Step[] = [
     kicker: "Step 5 · Build the shortlist",
     title: "Move your strongest matches forward.",
     desc: "Shortlist candidates with one action, backed by the match reasoning underneath, not a gut call made at the end of a long day.",
+    beat: "You shortlisted Sarah and Aisha — 2 of 4 move forward.",
+    stat: { label: "Shortlisted", value: "2" },
   },
   {
     key: "submit",
@@ -71,6 +85,8 @@ const STEPS: Step[] = [
     kicker: "Step 6 · Submit to client",
     title: "Send the submission as a tracked step, not an email.",
     desc: "Submissions go to the client through Fixsense, so you always know what's been sent, when, and what happens to it next.",
+    beat: "Harrow & Bell Technology just opened your submission.",
+    stat: { label: "Client viewed", value: "Yes" },
   },
   {
     key: "invite",
@@ -79,6 +95,8 @@ const STEPS: Step[] = [
     kicker: "Step 7 · Interview invitation",
     title: "Get the interview on the calendar in one step.",
     desc: "Send the invitation and lock in the time without leaving the candidate record or juggling a separate calendar app.",
+    beat: "Sarah accepted — Thursday, 2:00pm is on the calendar.",
+    stat: { label: "Interview", value: "Thu 2pm" },
   },
   {
     key: "conduct",
@@ -87,6 +105,8 @@ const STEPS: Step[] = [
     kicker: "Step 8 · Conduct the interview",
     title: "Run the interview inside Fixsense Meetings.",
     desc: "Host the call live, with the candidate's profile and the job's requirements right there next to the conversation as it happens.",
+    beat: "Live now — the interview is being transcribed in real time.",
+    stat: { label: "Interview", value: "Live" },
   },
   {
     key: "transcript",
@@ -95,6 +115,8 @@ const STEPS: Step[] = [
     kicker: "Step 9 · Transcript & AI feedback",
     title: "The interview transcribes and scores itself.",
     desc: "A full transcript and AI-generated feedback save straight to the candidate record the moment the call ends, no notes to write up later.",
+    beat: "AI feedback landed the moment the call ended: strong recommend.",
+    stat: { label: "AI verdict", value: "Advance" },
   },
   {
     key: "pipeline",
@@ -103,6 +125,8 @@ const STEPS: Step[] = [
     kicker: "Step 10 · Pipeline tracking",
     title: "See exactly where every candidate stands.",
     desc: "Client feedback, interview outcomes, and next steps all land on the pipeline in real time, so nothing waits on a status-update email.",
+    beat: "Client feedback just posted: moving Sarah to round two.",
+    stat: { label: "Pipeline stage", value: "Round 2" },
   },
   {
     key: "offer",
@@ -111,6 +135,8 @@ const STEPS: Step[] = [
     kicker: "Step 11 · Offer & placement",
     title: "Carry it through to a confirmed placement.",
     desc: "Track the offer through to acceptance and see it reflected immediately in your recruitment analytics. That's the whole desk, start to finish.",
+    beat: "Offer accepted — Sarah starts as Senior .NET Developer.",
+    stat: { label: "Time to fill", value: "18 days" },
   },
 ];
 
@@ -365,6 +391,30 @@ export default function WelcomePage() {
     setStep(i);
   }, [step]);
 
+  // Light autoplay gives the page momentum instead of sitting inert
+  // waiting to be clicked — but it's paused the moment the user takes
+  // the wheel themselves (any manual nav), and respects reduced motion.
+  const [autoplay, setAutoplay] = useState(true);
+  const prefersReducedMotionRef = useRef(false);
+  useEffect(() => {
+    prefersReducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+
+  useEffect(() => {
+    if (!autoplay || isAccountStep || prefersReducedMotionRef.current) return;
+    const t = setTimeout(() => {
+      setDirection("forward");
+      setStep((s) => Math.min(s + 1, STEPS.length));
+    }, 4200);
+    return () => clearTimeout(t);
+  }, [autoplay, step, isAccountStep]);
+
+  const stopAutoplay = useCallback(() => setAutoplay(false), []);
+
+  const manualGoNext = useCallback(() => { stopAutoplay(); goNext(); }, [stopAutoplay, goNext]);
+  const manualGoBack = useCallback(() => { stopAutoplay(); goBack(); }, [stopAutoplay, goBack]);
+  const manualJumpTo = useCallback((i: number) => { stopAutoplay(); jumpTo(i); }, [stopAutoplay, jumpTo]);
+
   useEffect(() => {
     if (liveRegionRef.current) {
       liveRegionRef.current.textContent = isAccountStep
@@ -375,6 +425,10 @@ export default function WelcomePage() {
 
   const Screen = current ? SCREENS[current.key] : null;
   const progressPct = ((isAccountStep ? STEPS.length : step) / STEPS.length) * 100;
+
+  // Every stat unlocked by a step the user has reached, revealed in order
+  // so the desk visibly fills up with wins as they move forward.
+  const visibleStats = STEPS.slice(0, isAccountStep ? STEPS.length : step + 1).map((s) => s.stat);
 
   // Signed-in users are redirected away above; render nothing while that
   // decision is pending so there's no flash of the walkthrough first.
@@ -506,6 +560,33 @@ export default function WelcomePage() {
       .wp-main{padding:16px 16px 130px;}
       .wp-topbar{padding:14px 16px;}
     }
+    /* Live story-beat ticker — makes each step read as something happening now */
+    .wp-beat{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:100px;padding:7px 14px;margin-bottom:16px;line-height:1.4;}
+    .wp-beat-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:wpPulse 1.6s ease-in-out infinite;}
+    @keyframes wpPulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+    /* Desk-stats strip — visibly accumulates as the user moves forward */
+    .wp-stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px;}
+    .wp-stat-pill{display:flex;flex-direction:column;gap:2px;padding:9px 14px;background:var(--paper2);border:1px solid var(--border);border-radius:var(--radius-s);min-width:84px;animation:wpStatIn .4s cubic-bezier(.16,1,.3,1);}
+    @keyframes wpStatIn{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .wp-stat-pill-val{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.01em;}
+    .wp-stat-pill-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:var(--fm);}
+
+    /* Autoplay control */
+    .wp-autoplay-row{display:flex;justify-content:center;margin-top:20px;}
+    .wp-autoplay-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)!important;background:none;border:1px solid var(--border);padding:7px 13px;border-radius:100px;cursor:pointer;font-family:var(--fb);transition:border-color .15s,color .15s;}
+    .wp-autoplay-btn:hover{border-color:var(--border-strong);color:var(--ink2)!important;}
+
+    /* Final summary, before the signup form */
+    .wp-summary-wrap{max-width:560px;margin:0 auto;text-align:center;}
+    .wp-summary-badge{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--good);background:var(--good-soft);border:1px solid rgba(47,107,79,.24);border-radius:100px;padding:6px 14px;margin-bottom:18px;}
+    .wp-summary-h{font-size:clamp(24px,3.4vw,32px);font-weight:700;color:var(--ink);letter-spacing:-.025em;line-height:1.16;margin-bottom:12px;}
+    .wp-summary-sub{font-size:14.5px;color:var(--ink2);line-height:1.65;margin-bottom:26px;max-width:440px;margin-left:auto;margin-right:auto;}
+    .wp-summary-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;margin-bottom:30px;}
+    .wp-summary-stat{background:var(--paper);padding:18px 12px;}
+    .wp-summary-stat-val{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:3px;}
+    .wp-summary-stat-label{font-size:10.5px;color:var(--muted);}
+    @media(max-width:480px){.wp-summary-stats{grid-template-columns:1fr 1fr;}}
   `;
 
   return (
@@ -530,7 +611,7 @@ export default function WelcomePage() {
           <button
             key={s.key}
             className={`wp-step-dot${i === step ? " active" : ""}${i < step ? " done" : ""}`}
-            onClick={() => jumpTo(i)}
+            onClick={() => manualJumpTo(i)}
             aria-label={`Step ${i + 1}: ${s.label}`}
             aria-current={i === step ? "step" : undefined}
           />
@@ -545,33 +626,68 @@ export default function WelcomePage() {
           `}</style>
 
           {!isAccountStep && current && Screen ? (
-            <div className="wp-panel">
-              <div className="wp-detail">
-                <div className="wp-kicker">{current.kicker}</div>
-                <div className="wp-icon-badge"><Icon name={current.icon} size={19} strokeWidth={1.7} /></div>
-                <h1 className="wp-title">{current.title}</h1>
-                <p className="wp-desc">{current.desc}</p>
-              </div>
-              <div className="wp-frame">
-                <div className="wp-frame-bar">
-                  <div className="wp-frame-dots"><span /><span /><span /></div>
-                  <span className="wp-frame-label">fixsense.app · {current.label.toLowerCase()}</span>
+            <>
+              <div className="wp-panel">
+                <div className="wp-detail">
+                  <div className="wp-kicker">{current.kicker}</div>
+                  <div className="wp-icon-badge"><Icon name={current.icon} size={19} strokeWidth={1.7} /></div>
+                  <h1 className="wp-title">{current.title}</h1>
+                  <p className="wp-desc">{current.desc}</p>
+                  <div className="wp-stats">
+                    {visibleStats.map((s, i) => (
+                      <div className="wp-stat-pill" key={s.label} style={{ animationDelay: `${i * 40}ms` }}>
+                        <span className="wp-stat-pill-val">{s.value}</span>
+                        <span className="wp-stat-pill-label">{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="wp-frame-body">
-                  <Screen />
+                <div>
+                  <div className="wp-beat">
+                    <span className="wp-beat-dot" />
+                    {current.beat}
+                  </div>
+                  <div className="wp-frame">
+                    <div className="wp-frame-bar">
+                      <div className="wp-frame-dots"><span /><span /><span /></div>
+                      <span className="wp-frame-label">fixsense.app · {current.label.toLowerCase()}</span>
+                    </div>
+                    <div className="wp-frame-body">
+                      <Screen />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+              <div className="wp-autoplay-row">
+                <button className="wp-autoplay-btn" onClick={() => (autoplay ? stopAutoplay() : setAutoplay(true))}>
+                  {autoplay ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+                  ) : (
+                    <Icon name="play" size={11} />
+                  )}
+                  {autoplay ? "Playing — click to pause" : "Play walkthrough"}
+                </button>
+              </div>
+            </>
           ) : (
-            <div className="wp-account-wrap">
-              <div className="wp-account-head">
-                <div className="wp-account-icon"><Icon name="check" size={20} strokeWidth={2.4} /></div>
-                <h1 className="wp-account-title">Create your free account.</h1>
-                <p className="wp-account-sub">
-                  That's the whole desk: job to placement, in one system. Sign up to start running yours.
-                </p>
+            <div className="wp-summary-wrap">
+              <span className="wp-summary-badge">
+                <Icon name="check" size={12} strokeWidth={2.6} />
+                Placement complete
+              </span>
+              <h1 className="wp-summary-h">That's a full desk, run start to finish.</h1>
+              <p className="wp-summary-sub">
+                One job, four applications, an AI-scored shortlist, a client submission, a transcribed interview, and a placement — all without leaving Fixsense. Now make it yours.
+              </p>
+              <div className="wp-summary-stats">
+                {[["18d", "Time to fill"], ["94%", "Top AI match"], ["4→1", "Pipeline to placement"]].map(([v, l]) => (
+                  <div className="wp-summary-stat" key={l}>
+                    <div className="wp-summary-stat-val">{v}</div>
+                    <div className="wp-summary-stat-label">{l}</div>
+                  </div>
+                ))}
               </div>
-              <div className="wp-account-card">
+              <div className="wp-account-card" style={{ textAlign: "left" }}>
                 <AuthPanel
                   initialMode="signup"
                   hideTabs={false}
@@ -586,7 +702,7 @@ export default function WelcomePage() {
 
       <div className="wp-bottombar">
         <div className="wp-bottombar-inner">
-          <button className="wp-back-btn" onClick={goBack} disabled={step === 0}>
+          <button className="wp-back-btn" onClick={manualGoBack} disabled={step === 0}>
             <span style={{ display: "inline-flex", transform: "scaleX(-1)" }}><Icon name="arrow-right" size={13} strokeWidth={2} /></span>
             Back
           </button>
@@ -594,7 +710,7 @@ export default function WelcomePage() {
             {isAccountStep ? `Step ${TOTAL_STEPS} of ${TOTAL_STEPS}` : `Step ${step + 1} of ${TOTAL_STEPS}`}
           </span>
           {!isAccountStep && (
-            <button className="wp-continue-btn" onClick={goNext}>
+            <button className="wp-continue-btn" onClick={manualGoNext}>
               Continue
               <Icon name="arrow-right" size={14} />
             </button>
