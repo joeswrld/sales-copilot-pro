@@ -41,7 +41,7 @@ function Reveal({ children, delay = 0, y = 14 }: { children: React.ReactNode; de
 // ─────────────────────────────────────────────────────────────────────────
 // Logo
 // ─────────────────────────────────────────────────────────────────────────
-function Logo({ size = 26 }: { size?: number }) {
+export function Logo({ size = 26 }: { size?: number }) {
   return (
     <img
       src="/fixsense_icon_logo (2).png"
@@ -56,7 +56,7 @@ function Logo({ size = 26 }: { size?: number }) {
 // ─────────────────────────────────────────────────────────────────────────
 // Icon set: precise, uniform stroke, no decorative flourishes
 // ─────────────────────────────────────────────────────────────────────────
-function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: number; strokeWidth?: number }) {
+export function Icon({ name, size = 18, strokeWidth = 1.6 }: { name: string; size?: number; strokeWidth?: number }) {
   const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   switch (name) {
     case "mic": return <svg {...p}><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /><path d="M12 19v3M8 22h8" /></svg>;
