@@ -57,6 +57,7 @@ const MessagesPage = lazy(() => import("./pages/MessagesPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const TestimonialsPage = lazy(() => import("./pages/TestimonialsPage"));
 const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
+const WelcomePage = lazy(() => import("./pages/WelcomePage"));
 const GoogleCalendarCallback = lazy(() => import("./pages/GoogleCalendarCallback"));
 
 const GuestJoin = lazy(() => import("@/pages/GuestJoin"));
@@ -159,6 +160,7 @@ function AppRoutes() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/testimonials" element={<TestimonialsPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite/:token" element={<InviteLanding />} />
