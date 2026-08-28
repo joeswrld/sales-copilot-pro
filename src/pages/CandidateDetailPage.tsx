@@ -590,8 +590,15 @@ function CandidateDetailPageInner() {
       if (error) throw error;
 
       toast.success("Fixsense Meeting created and interview scheduled");
-      load();
-      loadPipelineDetail();
+      // Deliberately NOT calling load()/loadPipelineDetail() here: load()
+      // flips the page-level `loading` flag, which unmounts the whole page
+      // tree (including this modal and its in-progress `result` state) via
+      // the `if (loading) return <DetailSkeleton />` guard below — before
+      // ScheduleInterviewModal's submit() can transition to the AI-drafted
+      // invitation step. The page refreshes instead of showing "next step".
+      // A full reload happens once the modal actually closes (see the
+      // ScheduleInterviewModal onClose prop below), by which point the
+      // invite flow is done.
       return { interviewId: (interview as any)?.id, meetingLink: shareLink };
     } catch (e: any) {
       toast.error(e.message ?? "Failed to schedule interview");
@@ -1735,7 +1742,13 @@ function CandidateDetailPageInner() {
 
       {showScheduleModal && selectedCjId && (
         <ScheduleInterviewModal
-          onClose={() => setShowScheduleModal(false)}
+          onClose={() => {
+            setShowScheduleModal(false);
+            // Refresh once the modal is actually done (closed), instead of
+            // mid-flow inside scheduleInterview — see the comment there.
+            load();
+            loadPipelineDetail();
+          }}
           onSubmit={scheduleInterview}
           candidateJobId={selectedCjId}
           candidateName={candidate?.full_name ?? "Candidate"}
