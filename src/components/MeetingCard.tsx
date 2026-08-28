@@ -37,7 +37,7 @@ export interface MeetingCardMeta {
 }
 
 function scoreColor(score: number | null | undefined) {
-  if (score == null) return "rgba(255,255,255,.35)";
+  if (score == null) return "rgba(23,23,15,.35)";
   if (score >= 7.5) return "#22c55e";
   if (score >= 5) return "#fbbf24";
   return "#ef4444";
@@ -87,24 +87,24 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
         width: "min(420px, 100%)",
         borderRadius: 16,
         overflow: "hidden",
-        border: "1px solid rgba(14,245,212,.18)",
-        background: "linear-gradient(180deg, rgba(14,245,212,.06), rgba(255,255,255,.03))",
-        boxShadow: "0 4px 24px rgba(0,0,0,.25)",
-        fontFamily: "'Geist',system-ui,sans-serif",
+        border: "1px solid rgba(34,49,92,.18)",
+        background: "linear-gradient(180deg, rgba(34,49,92,.05), #FFFFFF 60%)",
+        boxShadow: "0 4px 16px -6px rgba(20,20,15,.12), 0 0 0 1px rgba(20,20,15,.02)",
+        fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       }}
     >
       {/* Header */}
-      <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "flex-start", gap: 10, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(14,245,212,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Video size={15} color="#0ef5d4" />
+      <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "flex-start", gap: 10, borderBottom: "1px solid rgba(23,23,15,.06)" }}>
+        <div style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(34,49,92,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Video size={15} color="#22315C" />
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(23,23,15,.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {meta.call_name || "Meeting recap"}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
             {meta.duration_minutes != null && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "rgba(255,255,255,.4)" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "rgba(23,23,15,.4)" }}>
                 <Clock size={10} /> {meta.duration_minutes}m
               </span>
             )}
@@ -124,7 +124,7 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
             <Sparkles size={11} color="#a78bfa" />
             <span style={{ fontSize: 10.5, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: .4 }}>AI Summary</span>
           </div>
-          <p style={{ fontSize: 12.5, lineHeight: 1.5, color: "rgba(255,255,255,.82)", margin: 0 }}>{meta.summary}</p>
+          <p style={{ fontSize: 12.5, lineHeight: 1.5, color: "rgba(23,23,15,.82)", margin: 0 }}>{meta.summary}</p>
         </div>
       )}
 
@@ -133,12 +133,12 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
         <div style={{ padding: "10px 14px 0" }}>
           <div
             onClick={() => setPlaying(p => !p)}
-            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "7px 10px", borderRadius: 10, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}
+            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "7px 10px", borderRadius: 10, background: "rgba(23,23,15,.05)", border: "1px solid rgba(23,23,15,.08)" }}
           >
-            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#0ef5d4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {playing ? <Pause size={11} color="#060912" /> : <Play size={11} color="#060912" style={{ marginLeft: 1 }} />}
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#22315C", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {playing ? <Pause size={11} color="#FAFAF8" /> : <Play size={11} color="#FAFAF8" style={{ marginLeft: 1 }} />}
             </div>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,.75)" }}>{playing ? "Playing recording…" : "Play recording"}</span>
+            <span style={{ fontSize: 12, color: "rgba(23,23,15,.75)" }}>{playing ? "Playing recording…" : "Play recording"}</span>
           </div>
           {playing && (
             <video
@@ -156,12 +156,12 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
       {actionItems.length > 0 && (
         <div style={{ padding: "10px 14px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}>
-            <ListChecks size={11} color="#0ef5d4" />
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0ef5d4", textTransform: "uppercase", letterSpacing: .4 }}>Action Items</span>
+            <ListChecks size={11} color="#22315C" />
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#22315C", textTransform: "uppercase", letterSpacing: .4 }}>Action Items</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {actionItems.slice(0, expanded ? undefined : 3).map((item, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(255,255,255,.78)" }}>
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(23,23,15,.78)" }}>
                 <Circle size={11} style={{ marginTop: 2, flexShrink: 0, opacity: .4 }} />
                 <span>{item}</span>
               </div>
@@ -179,7 +179,7 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {decisions.map((d, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(255,255,255,.78)" }}>
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(23,23,15,.78)" }}>
                 <CheckCircle2 size={11} style={{ marginTop: 2, flexShrink: 0, color: "#fbbf24" }} />
                 <span>{d}</span>
               </div>
@@ -197,7 +197,7 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {nextSteps.map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(255,255,255,.78)" }}>
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(23,23,15,.78)" }}>
                 <ArrowRight size={11} style={{ marginTop: 2, flexShrink: 0, color: "#60a5fa" }} />
                 <span>{s}</span>
               </div>
@@ -210,8 +210,8 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
       {expanded && transcriptToShow.length > 0 && (
         <div style={{ padding: "10px 14px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}>
-            <FileText size={11} color="rgba(255,255,255,.5)" />
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: .4 }}>
+            <FileText size={11} color="rgba(23,23,15,.5)" />
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(23,23,15,.5)", textTransform: "uppercase", letterSpacing: .4 }}>
               Transcript {loadingTranscript && "· loading…"}
             </span>
           </div>
@@ -219,7 +219,7 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
             {transcriptToShow.map((line, i) => (
               <div key={i} style={{ fontSize: 11.5, lineHeight: 1.45 }}>
                 <span style={{ fontWeight: 700, color: "#a78bfa" }}>{line.speaker}: </span>
-                <span style={{ color: "rgba(255,255,255,.68)" }}>{line.text}</span>
+                <span style={{ color: "rgba(23,23,15,.68)" }}>{line.text}</span>
               </div>
             ))}
           </div>
@@ -232,7 +232,7 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
           onClick={onExpand}
           style={{
             width: "100%", marginTop: 10, padding: "7px 0", background: "transparent", border: "none",
-            borderTop: "1px solid rgba(255,255,255,.06)", color: "rgba(255,255,255,.45)", fontSize: 11.5,
+            borderTop: "1px solid rgba(23,23,15,.06)", color: "rgba(23,23,15,.45)", fontSize: 11.5,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer",
           }}
         >
@@ -246,8 +246,8 @@ export default function MeetingCard({ meta, isOwn }: { meta: MeetingCardMeta; is
           onClick={() => navigate(`/calls/${meta.call_id}`)}
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            padding: "7px 0", borderRadius: 9, background: "rgba(14,245,212,.12)", border: "1px solid rgba(14,245,212,.25)",
-            color: "#0ef5d4", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            padding: "7px 0", borderRadius: 9, background: "rgba(34,49,92,.12)", border: "1px solid rgba(34,49,92,.25)",
+            color: "#22315C", fontSize: 12, fontWeight: 700, cursor: "pointer",
           }}
         >
           <ExternalLink size={12} /> Call Details
