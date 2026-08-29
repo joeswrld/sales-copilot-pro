@@ -339,8 +339,11 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
         )}
 
         <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>Invoice number (optional)</label>
-          <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} style={inputStyle} placeholder="INV-0001" />
+          <label style={labelStyle}>Invoice number</label>
+          <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} style={inputStyle} placeholder="Auto-generated (e.g. INV-0001)" />
+          <p style={{ fontSize: 10.5, color: "rgba(23,23,15,0.4)", margin: "4px 0 0" }}>
+            Leave blank to auto-number sequentially for your team. Enter your own to override.
+          </p>
         </div>
         <div style={{ marginBottom: 10 }}>
           <label style={labelStyle}>Due date (optional)</label>
