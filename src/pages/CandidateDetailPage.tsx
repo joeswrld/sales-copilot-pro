@@ -752,7 +752,12 @@ function CandidateDetailPageInner() {
       toast.success("Candidate data erased");
       setShowErasureConfirm(false);
       setErasureConfirmText("");
-      await load();
+      // The backend erasure already ran (anonymized + timestamped). Rather
+      // than re-fetching and showing the now-blanked record on this page,
+      // drop it from the client instantly and head back to the candidates
+      // list — a client-side route change, not a page reload — so the
+      // candidate disappears from the UI immediately.
+      navigate("/candidates", { replace: true, state: { erasedCandidateId: candidate.id } });
     } catch (e: any) {
       toast.error(e.message ?? "Failed to erase candidate data");
     } finally {
