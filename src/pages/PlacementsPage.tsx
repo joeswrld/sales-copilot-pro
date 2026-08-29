@@ -43,8 +43,9 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   Loader2, X, ChevronRight, ChevronDown, User, Briefcase, Building2,
   HandCoins, ShieldCheck, ShieldAlert, ShieldOff, FileText, Plus,
-  CheckCircle2, AlertTriangle, Ban, Search, Mail,
+  CheckCircle2, AlertTriangle, Ban, Search, Mail, FileDown,
 } from "lucide-react";
+import { downloadPlacementInvoicePdf } from "@/lib/placementInvoicePdf";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -445,20 +446,63 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
   const showEmailError = emailTouched && recipientEmail.trim().length > 0 && !emailValid;
   const showEmailRequired = emailTouched && recipientEmail.trim().length === 0;
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     setEmailTouched(true);
     const trimmedEmail = recipientEmail.trim();
     if (!trimmedEmail) { toast.error("Enter the client's email address"); return; }
     if (!EMAIL_RE.test(trimmedEmail)) { toast.error("That doesn't look like a valid email address"); return; }
     if (!subject.trim()) { toast.error("Subject can't be empty"); return; }
     if (!body.trim()) { toast.error("Message can't be empty"); return; }
+    if (!createdInvoice) return;
+
+    // Download the PDF first — mailto: links can't carry attachments (no
+    // browser/OS supports that), so the honest flow is: the PDF lands in
+    // the recruiter's Downloads, and the pre-filled email opens right
+    // after, ready for them to drag it in.
+    downloadPlacementInvoicePdf({
+      invoiceNumber: createdInvoice.invoiceNumber,
+      amount: createdInvoice.amount,
+      currency: createdInvoice.currency,
+      issuedDate: new Date().toISOString().slice(0, 10),
+      dueDate: createdInvoice.dueDate,
+      status: "sent",
+      notes: createdInvoice.notes,
+      candidateName: placement.candidate?.full_name ?? "the candidate",
+      jobTitle: placement.job?.title ?? "the role",
+      clientName: placement.client?.name ?? null,
+      teamName: team?.name || "",
+      recruiterName: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? "Recruiter",
+      recruiterEmail: user?.email ?? null,
+    });
 
     // Open the recruiter's own email client via mailto: — no third-party
     // email provider, nothing sent server-side, no connected account
     // required, same approach as SubmissionsPage's client-submission email.
     const mailto = `mailto:${encodeURIComponent(trimmedEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(mailto, "_self");
-    toast.success("Opened your email app with the invoice pre-filled");
+    toast.success("Invoice PDF downloaded — attach it to the email that just opened");
+
+    // Team-visible log entry — this is "opened the email," not a confirmed
+    // send (mailto: can't tell us whether the recruiter actually hit
+    // send), so it's worded that way. Surfaces on this client's timeline
+    // via get_recruiting_client_with_pipeline, same table
+    // mark_placement_fell_through already logs to.
+    if (team?.id) {
+      try {
+        await (supabase as any).from("recruiting_timeline_events").insert({
+          team_id: team?.id,
+          entity_type: "candidate_job",
+          entity_id: placement.id,
+          event_type: "invoice_email_opened",
+          title: `Invoice ${createdInvoice.invoiceNumber ?? ""} email opened for ${placement.candidate?.full_name ?? "candidate"}`.trim(),
+          actor_id: user?.id,
+          metadata: { recipient_email: trimmedEmail, amount: createdInvoice.amount, currency: createdInvoice.currency },
+        });
+      } catch {
+        // Best-effort activity log only — never block the actual email/PDF flow on this.
+      }
+    }
+
     onClose();
   };
 
@@ -544,7 +588,7 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
                 </button>
               </div>
               <p style={{ fontSize: 10.5, color: "rgba(23,23,15,0.4)", margin: "8px 0 0", textAlign: "center" }}>
-                Opens your default email app with this message pre-filled.
+                Downloads a PDF copy of this invoice and opens your default email app with this message pre-filled — attach the PDF before sending.
               </p>
             </>
           )}
@@ -733,9 +777,29 @@ function PlacementRow({ placement, invoices, onEditTerms, onNewInvoice, onPayInv
   onVoidInvoice: (inv: Invoice) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { team } = useTeam();
+  const { user } = useAuth();
   const guarantee = placement.guarantee_status ? GUARANTEE_CFG[placement.guarantee_status] : null;
   const GuaranteeIcon = guarantee?.icon;
   const fellThrough = placement.guarantee_status === "voided";
+
+  const handleDownloadInvoicePdf = (inv: Invoice) => {
+    downloadPlacementInvoicePdf({
+      invoiceNumber: inv.invoice_number,
+      amount: inv.amount,
+      currency: inv.currency,
+      issuedDate: inv.issued_date,
+      dueDate: inv.due_date,
+      status: inv.status,
+      notes: inv.notes,
+      candidateName: placement.candidate?.full_name ?? "the candidate",
+      jobTitle: placement.job?.title ?? "the role",
+      clientName: placement.client?.name ?? null,
+      teamName: team?.name || "",
+      recruiterName: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? "Recruiter",
+      recruiterEmail: user?.email ?? null,
+    });
+  };
 
   return (
     <div style={{ background: "#fff", border: "1px solid rgba(23,23,15,0.08)", borderRadius: 12, overflow: "hidden" }}>
@@ -839,6 +903,9 @@ function PlacementRow({ placement, invoices, onEditTerms, onNewInvoice, onPayInv
                         <StatusPill label={cfg.label} color={cfg.color} />
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => handleDownloadInvoicePdf(inv)} style={actionBtnStyle("rgba(34,49,92,0.08)", "#22315C")}>
+                          <FileDown style={{ width: 11, height: 11 }} /> Download PDF
+                        </button>
                         {canPay && (
                           <button onClick={() => onPayInvoice(inv)} style={actionBtnStyle("rgba(34,197,94,0.1)", "#22c55e")}>
                             <CheckCircle2 style={{ width: 11, height: 11 }} /> Record payment
