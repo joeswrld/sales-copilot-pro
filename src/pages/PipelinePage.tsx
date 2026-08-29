@@ -389,8 +389,14 @@ function PipelinePageInner() {
       const [cjRes, jobsRes] = await Promise.all([
         (supabase as any)
           .from("candidate_jobs")
-          .select("id, candidate_id, job_id, pipeline_stage, status, match_score, match_explanation, updated_at, candidate:candidates(full_name, candidate_current_role), job:jobs(title, client_id)")
+          .select("id, candidate_id, job_id, pipeline_stage, status, match_score, match_explanation, updated_at, candidate:candidates!inner(full_name, candidate_current_role), job:jobs(title, client_id)")
           .eq("team_id", teamId)
+          // Erased candidates (execute_candidate_erasure) are anonymized in
+          // place rather than row-deleted, so a stale pipeline card would
+          // otherwise keep showing "Deleted Candidate" on the board. The
+          // !inner join above turns this into a real filter instead of a
+          // left-join condition that Postgres would otherwise ignore.
+          .is("candidate.deleted_at", null)
           .order("updated_at", { ascending: false }),
         (supabase as any).from("jobs").select("id, title").eq("team_id", teamId).order("created_at", { ascending: false }),
       ]);
