@@ -80,11 +80,11 @@ function PlacementModal({ row, onClose, onSubmit }: {
     setSaving(true);
     try {
       await onSubmit({
-        placement_salary: salary ? Number(salary) : null,
-        placement_salary_currency: currency,
-        placement_fee: fee ? Number(fee) : null,
-        placement_fee_currency: feeCurrency,
-        placement_notes: notes || null,
+        p_placement_salary: salary ? Number(salary) : null,
+        p_placement_salary_currency: currency,
+        p_placement_fee: fee ? Number(fee) : null,
+        p_placement_fee_currency: feeCurrency,
+        p_placement_notes: notes || null,
       });
     } finally {
       setSaving(false);
