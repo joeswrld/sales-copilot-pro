@@ -74,6 +74,7 @@ interface ClientDetail {
     submission_date: string | null; placed_at: string | null;
     placement_salary: number | null; placement_salary_currency: string | null;
     placement_fee: number | null; placement_fee_currency: string | null;
+    guarantee_status: string | null;
     candidate: { id: string; full_name: string; email: string | null; candidate_current_role: string | null; location: string | null };
     job: { id: string; title: string };
     latest_feedback: { feedback_text: string; sentiment: string | null; created_at: string } | null;
@@ -453,12 +454,17 @@ function ClientDetailDrawer({ clientId, onClose }: { clientId: string; onClose: 
                     {cj.match_score !== null && (
                       <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)", marginTop: 4 }}>Match score: {cj.match_score}%</div>
                     )}
-                    {cj.placed_at && (
+                    {cj.placed_at && cj.guarantee_status === "voided" ? (
+                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4, fontWeight: 600 }}>
+                        Placement fell through — was {formatMoney(cj.placement_salary, cj.placement_salary_currency)} salary
+                        {cj.placement_fee ? ` · fee ${formatMoney(cj.placement_fee, cj.placement_fee_currency)} (voided)` : ""}
+                      </div>
+                    ) : cj.placed_at ? (
                       <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4, fontWeight: 600 }}>
                         Placed {formatMoney(cj.placement_salary, cj.placement_salary_currency)} salary
                         {cj.placement_fee ? ` · fee ${formatMoney(cj.placement_fee, cj.placement_fee_currency)}` : ""}
                       </div>
-                    )}
+                    ) : null}
                     {cj.latest_feedback && (
                       <div style={{ fontSize: 11.5, color: "rgba(23,23,15,0.55)", marginTop: 6, borderTop: "1px solid rgba(23,23,15,0.05)", paddingTop: 6, fontStyle: "italic" }}>
                         "{cj.latest_feedback.feedback_text}"
