@@ -35,6 +35,7 @@ import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/hooks/useTeam";
+import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -42,7 +43,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   Loader2, X, ChevronRight, ChevronDown, User, Briefcase, Building2,
   HandCoins, ShieldCheck, ShieldAlert, ShieldOff, FileText, Plus,
-  CheckCircle2, AlertTriangle, Ban, Search,
+  CheckCircle2, AlertTriangle, Ban, Search, Mail,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -83,7 +84,17 @@ interface Invoice {
   created_at: string;
 }
 
+interface InvoiceClientContact {
+  id: string;
+  full_name: string;
+  email: string | null;
+  job_title: string | null;
+  is_primary_contact: boolean;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function fmtMoney(amount: number | null | undefined, currency: string | null | undefined) {
   if (amount == null) return "—";
@@ -94,6 +105,48 @@ function fmtMoney(amount: number | null | undefined, currency: string | null | u
 function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Mirrors SubmissionsPage's buildSubjectAndBody — same "no third-party
+// email provider" mailto: pattern, just built around an invoice instead of
+// a candidate submission.
+function buildInvoiceSubjectAndBody(params: {
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  dueDate: string | null;
+  notes: string | null;
+  candidateName: string;
+  jobTitle: string;
+  clientName: string | null;
+  teamName: string;
+  recruiterName: string;
+}) {
+  const { invoiceNumber, amount, currency, dueDate, notes, candidateName, jobTitle, clientName, teamName, recruiterName } = params;
+  const label = invoiceNumber ? `Invoice ${invoiceNumber}` : "Invoice";
+  const subject = `${label} — Placement fee for ${candidateName} (${jobTitle})${clientName ? " — " + clientName : ""}`;
+
+  const lines: string[] = [];
+  lines.push(`Dear ${clientName || "Hiring Team"},`);
+  lines.push("");
+  lines.push(`Please find the placement invoice details below for ${candidateName}, placed in the ${jobTitle} role.`);
+  lines.push("");
+  lines.push("INVOICE DETAILS");
+  if (invoiceNumber) lines.push(`Invoice number: ${invoiceNumber}`);
+  lines.push(`Amount due: ${fmtMoney(amount, currency)}`);
+  if (dueDate) lines.push(`Due date: ${fmtDate(dueDate)}`);
+  if (notes) {
+    lines.push("");
+    lines.push(notes);
+  }
+  lines.push("");
+  lines.push("Please let us know if you have any questions or need a formal PDF copy for your records.");
+  lines.push("");
+  lines.push("Thank you,");
+  lines.push(recruiterName);
+  if (teamName) lines.push(teamName);
+
+  return { subject, body: lines.join("\n") };
 }
 
 const INVOICE_STATUS_CFG: Record<string, { label: string; color: string }> = {
@@ -267,10 +320,18 @@ function TermsDrawer({ placement, onClose, onSaved }: {
 }
 
 // ─── Create invoice drawer ───────────────────────────────────────────────────
+// Two steps: (1) enter invoice terms and create it via create_placement_invoice,
+// (2) optionally email it to the client — same "no third-party provider"
+// mailto: handoff SubmissionsPage already uses for candidate submissions,
+// so this needs no new edge function and stays within the project's
+// current edge function usage.
 
 function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
   placement: Placement; onClose: () => void; onCreated: () => void;
 }) {
+  const { team } = useTeam();
+  const { user } = useAuth();
+
   // Currency always defaults to *this placement's* fee currency — the one
   // the recruiter chose when the candidate was marked placed — never a
   // hardcoded USD/NGN. Only falls back to NGN (the table default) on the
@@ -282,6 +343,16 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Step 2 — populated once the invoice is actually created.
+  const [createdInvoice, setCreatedInvoice] = useState<{ invoiceNumber: string | null; amount: number; currency: string; dueDate: string | null; notes: string | null } | null>(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contacts, setContacts] = useState<InvoiceClientContact[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
 
   const submit = async () => {
     if (!amount || Number(amount) <= 0) {
@@ -301,13 +372,186 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
       if (error) throw error;
       toast.success("Invoice created and marked sent");
       onCreated();
-      onClose();
+
+      // Read back the row we just created rather than trust the RPC
+      // response's shape (composite-returning RPCs aren't guaranteed to
+      // come back in the same object shape as a plain select) — this is
+      // the only place we need the *actual* stored invoice_number,
+      // since it may have just been auto-generated server-side.
+      let invNumber: string | null = invoiceNumber || null;
+      try {
+        const { data: freshInvoice } = await (supabase as any)
+          .from("placement_invoices")
+          .select("invoice_number")
+          .eq("candidate_job_id", placement.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (freshInvoice?.invoice_number) invNumber = freshInvoice.invoice_number;
+      } catch {
+        // Non-fatal — falls back to whatever the recruiter typed (or null),
+        // the email step below still works either way.
+      }
+
+      setCreatedInvoice({ invoiceNumber: invNumber, amount: Number(amount), currency, dueDate: dueDate || null, notes: notes || null });
+
+      const { subject: s, body: b } = buildInvoiceSubjectAndBody({
+        invoiceNumber: invNumber,
+        amount: Number(amount),
+        currency,
+        dueDate: dueDate || null,
+        notes: notes || null,
+        candidateName: placement.candidate?.full_name ?? "the candidate",
+        jobTitle: placement.job?.title ?? "the role",
+        clientName: placement.client?.name ?? null,
+        teamName: team?.name || "",
+        recruiterName: (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? "Recruiter",
+      });
+      setSubject(s);
+      setBody(b);
+
+      // Load the client's contacts so the recruiter can pick a recipient
+      // the same way SubmissionsPage's client-submission email does,
+      // instead of having to remember/type the address from scratch.
+      const clientId = placement.job?.client_id;
+      if (clientId) {
+        setContactsLoading(true);
+        try {
+          const { data: contactRows, error: contactErr } = await (supabase as any)
+            .from("client_contacts")
+            .select("id, full_name, email, job_title, is_primary_contact")
+            .eq("client_id", clientId);
+          if (!contactErr) {
+            const list = (contactRows ?? []) as InvoiceClientContact[];
+            setContacts(list);
+            const primary = list.find(c => c.is_primary_contact && c.email) ?? list.find(c => c.email);
+            if (primary?.email) {
+              setSelectedContactId(primary.id);
+              setRecipientEmail(primary.email);
+            }
+          }
+        } finally {
+          setContactsLoading(false);
+        }
+      }
     } catch (e: any) {
       toast.error(e.message ?? "Failed to create invoice");
     } finally {
       setSaving(false);
     }
   };
+
+  const emailValid = EMAIL_RE.test(recipientEmail.trim());
+  const showEmailError = emailTouched && recipientEmail.trim().length > 0 && !emailValid;
+  const showEmailRequired = emailTouched && recipientEmail.trim().length === 0;
+
+  const handleSendEmail = () => {
+    setEmailTouched(true);
+    const trimmedEmail = recipientEmail.trim();
+    if (!trimmedEmail) { toast.error("Enter the client's email address"); return; }
+    if (!EMAIL_RE.test(trimmedEmail)) { toast.error("That doesn't look like a valid email address"); return; }
+    if (!subject.trim()) { toast.error("Subject can't be empty"); return; }
+    if (!body.trim()) { toast.error("Message can't be empty"); return; }
+
+    // Open the recruiter's own email client via mailto: — no third-party
+    // email provider, nothing sent server-side, no connected account
+    // required, same approach as SubmissionsPage's client-submission email.
+    const mailto = `mailto:${encodeURIComponent(trimmedEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto, "_self");
+    toast.success("Opened your email app with the invoice pre-filled");
+    onClose();
+  };
+
+  if (createdInvoice) {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "#FAFAF8", borderRadius: "18px 18px 0 0", padding: 20, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", fontFamily: "'Inter', sans-serif", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 800, color: "#17170F", margin: 0 }}>Email this invoice</h2>
+              <p style={{ fontSize: 11.5, color: "rgba(23,23,15,0.45)", margin: "2px 0 0" }}>
+                {createdInvoice.invoiceNumber ?? "Invoice"} · {fmtMoney(createdInvoice.amount, createdInvoice.currency)} · {placement.candidate?.full_name}
+              </p>
+            </div>
+            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(23,23,15,0.4)" }}><X style={{ width: 18, height: 18 }} /></button>
+          </div>
+          <p style={{ fontSize: 12, color: "rgba(23,23,15,0.5)", margin: "10px 0 16px" }}>
+            Invoice created. Send it to the client now, or close this and send it later.
+          </p>
+
+          {contactsLoading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+              <Loader2 style={{ width: 18, height: 18, color: "rgba(23,23,15,0.3)", animation: "spin 1s linear infinite" }} />
+            </div>
+          ) : (
+            <>
+              <label style={labelStyle}>Client email</label>
+              {contacts.length > 0 && (
+                <select
+                  value={selectedContactId}
+                  onChange={e => {
+                    setSelectedContactId(e.target.value);
+                    const c = contacts.find(c => c.id === e.target.value);
+                    if (c?.email) setRecipientEmail(c.email);
+                  }}
+                  style={{ ...inputStyle, marginBottom: 8 }}
+                >
+                  <option value="">Choose a client contact…</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id} disabled={!c.email}>
+                      {c.full_name}{c.job_title ? ` (${c.job_title})` : ""}{!c.email ? " — no email on file" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
+                value={recipientEmail}
+                onChange={e => { setRecipientEmail(e.target.value); setSelectedContactId(""); }}
+                onBlur={() => setEmailTouched(true)}
+                placeholder="client@company.com"
+                style={{ ...inputStyle, marginBottom: showEmailError || showEmailRequired ? 4 : 10, borderColor: (showEmailError || showEmailRequired) ? "#ef4444" : undefined }}
+              />
+              {showEmailError && <div style={{ fontSize: 11, color: "#ef4444", marginBottom: 10 }}>Enter a valid email address.</div>}
+              {showEmailRequired && <div style={{ fontSize: 11, color: "#ef4444", marginBottom: 10 }}>Client email is required to send.</div>}
+              {contacts.length === 0 && (
+                <div style={{ fontSize: 11, color: "rgba(23,23,15,0.4)", marginTop: -4, marginBottom: 10 }}>
+                  No contacts on file for this client yet — enter their email directly.
+                </div>
+              )}
+
+              <label style={labelStyle}>Subject</label>
+              <input value={subject} onChange={e => setSubject(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+
+              <label style={labelStyle}>Email preview (edit before sending)</label>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                style={{ ...inputStyle, minHeight: 220, resize: "vertical", marginBottom: 12, fontFamily: "monospace", fontSize: 12 }}
+              />
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={onClose}
+                  style={{ flex: 1, padding: "12px 16px", background: "rgba(23,23,15,0.05)", border: "none", borderRadius: 10, color: "rgba(23,23,15,0.6)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Skip for now
+                </button>
+                <button
+                  onClick={handleSendEmail}
+                  style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  <Mail style={{ width: 14, height: 14 }} /> Email invoice
+                </button>
+              </div>
+              <p style={{ fontSize: 10.5, color: "rgba(23,23,15,0.4)", margin: "8px 0 0", textAlign: "center" }}>
+                Opens your default email app with this message pre-filled.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
@@ -356,7 +600,7 @@ function CreateInvoiceDrawer({ placement, onClose, onCreated }: {
 
         <button onClick={submit} disabled={saving} style={{ width: "100%", padding: "12px 16px", background: "#22315C", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13.5, fontWeight: 700, cursor: saving ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           {saving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : null}
-          Create &amp; send invoice
+          Create invoice
         </button>
       </div>
     </div>
