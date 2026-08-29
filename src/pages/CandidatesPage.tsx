@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -241,6 +241,7 @@ function CreateCandidateModal({ open, onClose, onCreated, teamId, userId }: {
 
 export default function CandidatesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { teamId, teamLoading } = useTeam();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -259,6 +260,11 @@ export default function CandidatesPage() {
         .from("candidates")
         .select("id, full_name, email, location, candidate_current_role, current_company, expected_salary, expected_salary_currency, status, created_at, updated_at")
         .eq("team_id", teamId)
+        // Erased candidates (execute_candidate_erasure) are anonymized in
+        // place, not row-deleted — pipeline/interview history still points
+        // to them — so exclude them here explicitly rather than relying on
+        // the caller to have just navigated from an erasure.
+        .is("deleted_at", null)
         .order("updated_at", { ascending: false });
       if (error) throw error;
       setCandidates(data ?? []);
@@ -272,6 +278,19 @@ export default function CandidatesPage() {
   useEffect(() => {
     if (teamId) loadCandidates();
   }, [teamId, loadCandidates]);
+
+  // If we just arrived here from erasing a candidate on the detail page,
+  // drop it from local state immediately — no waiting on loadCandidates()
+  // to re-run, no visible flash of the (already-gone) row. This handles
+  // the case where this list was already mounted/cached in memory before
+  // the erasure happened. Clear the nav state afterward so a manual
+  // refresh or re-visit doesn't try to re-apply it.
+  useEffect(() => {
+    const erasedId = (location.state as { erasedCandidateId?: string } | null)?.erasedCandidateId;
+    if (!erasedId) return;
+    setCandidates(cs => cs.filter(c => c.id !== erasedId));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   const filtered = useMemo(() => {
     let list = candidates;
