@@ -15,7 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useUserProfile } from "@/hooks/useSettings";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -470,27 +470,15 @@ export default function DashboardHome() {
   const { data: calls, isLoading: callsLoading } = useCalls();
   const { profile, isLoading: profileLoading } = useUserProfile();
 
-  const checklistDismissKey = user ? `fixsense_onboard_checklist_dismissed_${user.id}` : null;
-  const [checklistDismissed, setChecklistDismissed] = useState(
-    () => checklistDismissKey ? localStorage.getItem(checklistDismissKey) === "1" : false
-  );
-
+  // onboarding_complete is the single source of truth for whether a user
+  // needs onboarding — no calls-count heuristic. A user who has finished
+  // onboarding is never sent back here, regardless of activity.
   useEffect(() => {
-    if (profileLoading || callsLoading) return;
-    if (profile && !profile.onboarding_complete && (!calls || calls.length === 0)) {
+    if (profileLoading) return;
+    if (profile && !profile.onboarding_complete) {
       navigate("/onboarding", { replace: true });
     }
-  }, [profile, profileLoading, calls, callsLoading, navigate]);
-
-  // Show the checklist for anyone who hasn't recorded a real meeting yet,
-  // until they explicitly dismiss it. This replaces the bare empty state
-  // with a guided path to first value.
-  const showChecklist = !checklistDismissed && !callsLoading && (!calls || calls.length === 0);
-
-  const handleDismissChecklist = () => {
-    setChecklistDismissed(true);
-    if (checklistDismissKey) localStorage.setItem(checklistDismissKey, "1");
-  };
+  }, [profile, profileLoading, navigate]);
 
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
   const recentCalls = (calls || []).slice(0, 5);
@@ -533,7 +521,7 @@ export default function DashboardHome() {
 
         {/* ── Guided onboarding checklist, shown until the person has a
              real recorded meeting or dismisses it ── */}
-        {showChecklist && <OnboardingChecklist onDismiss={handleDismissChecklist} />}
+        <OnboardingChecklist />
 
         {/* ── Stat cards + Pipeline Health ── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
