@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -244,12 +244,26 @@ export default function CandidatesPage() {
   const location = useLocation();
   const { user } = useAuth();
   const { teamId, teamLoading } = useTeam();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Deep-link support (?create=1) — used by the onboarding flow's
+  // "Add/import candidates" choice and anywhere else that wants to land
+  // here with the Add/Import Candidate workflow already open.
+  useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setCreateOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadCandidates = useCallback(async () => {
     if (!teamId) return;
