@@ -39,7 +39,7 @@ import {
   DollarSign, Calendar, FileText, Upload, Check, X, Edit3, ChevronDown,
   ChevronUp, Sparkles, Clock, Plus, RefreshCw, AlertCircle, CheckCircle2,
   XCircle, User, Tag, Kanban, Send, MessageSquare, Video, ThumbsUp, ExternalLink, Copy,
-  Shield, ShieldAlert, Trash2, ShieldCheck,
+  Shield, ShieldAlert, Trash2, ShieldCheck, Link2,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -501,13 +501,20 @@ function CandidateDetailPageInner() {
   // The resulting branded share_link is what gets stored on interviews.meeting_link
   // and is the only link ever shown to or emailed to the candidate.
   //
+  // Also seeds calls.who_can_join from the recruiter's "Who can join?"
+  // choice in ScheduleInterviewModal — the same anyone_with_link/
+  // invited_only setting and enforcement (guest-join-request, LiveMeeting.tsx's
+  // Meeting Settings panel) as any other Fixsense Meeting. The recruiter can
+  // still flip it later from Meeting Settings once the interview starts,
+  // same as any other call.
+  //
   // After scheduling, also calls the existing create_recruiting_call RPC
   // (call_type='interview', candidate_job_id, linked_call_id=the new calls
   // row) so the already-built post-interview pipeline — recording ->
   // transcript -> AI interview feedback -> recruiter confirmation ->
   // candidate timeline — fires automatically once the meeting completes.
   // Nothing about that pipeline is reimplemented here.
-  const createFixsenseMeetingForInterview = async (title: string): Promise<{ callId: string; shareLink: string }> => {
+  const createFixsenseMeetingForInterview = async (title: string, whoCanJoin: "anyone_with_link" | "invited_only"): Promise<{ callId: string; shareLink: string }> => {
     if (!user) throw new Error("Not authenticated");
 
     const { data: callRow, error: callErr } = await supabase.from("calls").insert({
@@ -516,6 +523,14 @@ function CandidateDetailPageInner() {
       status: "scheduled",
       meeting_type: "interview",
       date: new Date().toISOString(),
+      // Recruiter's choice from the "Who can join?" step of the schedule
+      // modal. Enforced entirely server-side by guest-join-request (see
+      // that function's docstring) — same mechanism LiveCall.tsx's meeting
+      // settings panel already uses for regular calls; nothing meeting-type
+      // specific needed here since guest-join-request keys off calls.id via
+      // daily_room_name regardless of meeting_type. Falls back to the
+      // column's own default ('anyone_with_link') when omitted.
+      who_can_join: whoCanJoin,
     } as any).select().single();
     if (callErr) throw callErr;
 
@@ -546,14 +561,14 @@ function CandidateDetailPageInner() {
 
   const scheduleInterview = async (
     stage: string, scheduledAt: string, timezone: string, interviewers: string[],
-    instructions: string, messageToCandidate: string,
+    instructions: string, messageToCandidate: string, whoCanJoin: "anyone_with_link" | "invited_only",
   ): Promise<{ interviewId: string; meetingLink: string } | null> => {
     if (!selectedCjId || !selectedCj || !teamId) return null;
     const candidateName = candidate?.full_name ?? "Candidate";
     const jobTitle = selectedCj.job?.title ?? "the role";
     try {
       const meetingTitle = `Interview — ${candidateName} — ${jobTitle}`;
-      const { callId, shareLink } = await createFixsenseMeetingForInterview(meetingTitle);
+      const { callId, shareLink } = await createFixsenseMeetingForInterview(meetingTitle, whoCanJoin);
 
       // create_recruiting_call links this Fixsense Meeting to the
       // Candidate -> Job -> Client -> Interview -> Recruiter chain and its
@@ -1786,7 +1801,7 @@ function ScheduleInterviewModal({
   onClose: () => void;
   onSubmit: (
     stage: string, scheduledAt: string, timezone: string, interviewers: string[],
-    instructions: string, messageToCandidate: string,
+    instructions: string, messageToCandidate: string, whoCanJoin: "anyone_with_link" | "invited_only",
   ) => Promise<{ interviewId: string; meetingLink: string } | null>;
   candidateJobId: string;
   candidateName: string;
@@ -1803,6 +1818,14 @@ function ScheduleInterviewModal({
   const [interviewerInput, setInterviewerInput] = useState("");
   const [instructions, setInstructions] = useState("");
   const [messageToCandidate, setMessageToCandidate] = useState("");
+  // Same "Anyone with the link" vs "Require approval" choice as the pre-call
+  // access dialog on /live (LiveCall.tsx) and StartMeetingModal — the
+  // candidate's interview link gets the same guest-join-request enforcement
+  // as any other Fixsense Meeting. Defaults to "anyone_with_link", matching
+  // the calls table's own column default and every other meeting-creation
+  // entry point, so a recruiter who doesn't touch this control gets
+  // unchanged behavior.
+  const [whoCanJoin, setWhoCanJoin] = useState<"anyone_with_link" | "invited_only">("anyone_with_link");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -1908,7 +1931,7 @@ function ScheduleInterviewModal({
     try {
       const interviewers = interviewerInput.split(",").map(s => s.trim()).filter(Boolean);
       const iso = scheduledAt ? new Date(scheduledAt).toISOString() : "";
-      const created = await onSubmit(stage, iso, timezone, interviewers, instructions.trim(), messageToCandidate.trim());
+      const created = await onSubmit(stage, iso, timezone, interviewers, instructions.trim(), messageToCandidate.trim(), whoCanJoin);
       if (created) {
         setResult(created);
         setGeneratingInvitation(true);
@@ -2007,6 +2030,45 @@ function ScheduleInterviewModal({
               <Video style={{ width: 13, height: 13, flexShrink: 0 }} />
               A native Fixsense Meeting will be created automatically with a unique link.
             </div>
+
+            <label style={labelStyle}>Who can join with this link?</label>
+            <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(23,23,15,0.1)", marginBottom: 10 }}>
+              <button
+                type="button"
+                onClick={() => setWhoCanJoin("anyone_with_link")}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", textAlign: "left",
+                  border: "none", cursor: "pointer",
+                  background: whoCanJoin === "anyone_with_link" ? "rgba(34,49,92,0.08)" : "transparent",
+                }}
+              >
+                <Link2 style={{ width: 14, height: 14, color: whoCanJoin === "anyone_with_link" ? "#22315C" : "rgba(23,23,15,0.4)", flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>Anyone with the link</p>
+                  <p style={{ margin: 0, fontSize: 10.5, color: "rgba(23,23,15,0.4)" }}>The candidate joins instantly — no approval needed</p>
+                </div>
+                {whoCanJoin === "anyone_with_link" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22315C", flexShrink: 0 }} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhoCanJoin("invited_only")}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", textAlign: "left",
+                  border: "none", borderTop: "1px solid rgba(23,23,15,0.1)", cursor: "pointer",
+                  background: whoCanJoin === "invited_only" ? "rgba(34,49,92,0.08)" : "transparent",
+                }}
+              >
+                <ShieldCheck style={{ width: 14, height: 14, color: whoCanJoin === "invited_only" ? "#22315C" : "rgba(23,23,15,0.4)", flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>Require approval</p>
+                  <p style={{ margin: 0, fontSize: 10.5, color: "rgba(23,23,15,0.4)" }}>The candidate knocks and you admit them from the meeting</p>
+                </div>
+                {whoCanJoin === "invited_only" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22315C", flexShrink: 0 }} />}
+              </button>
+            </div>
+            <p style={{ fontSize: 10.5, color: "rgba(23,23,15,0.35)", margin: "-4px 0 10px" }}>
+              You can change this later from Meeting Settings once the interview starts.
+            </p>
 
             <label style={labelStyle}>Interview instructions</label>
             <textarea value={instructions} onChange={e => setInstructions(e.target.value)} style={{ ...inputStyle, marginBottom: 10, minHeight: 60, resize: "vertical" }} placeholder="What to prepare, format, duration…" />
