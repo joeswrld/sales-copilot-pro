@@ -152,6 +152,113 @@ const STAGE_LABELS: Record<string, string> = {
   final_interview: "Final Interview", offer: "Offer", placed: "Placed", rejected: "Rejected",
 };
 
+// ─── Next recommended action ────────────────────────────────────────────────
+// Reads the same JobSummary fields already loaded for the stats row / pipeline
+// list — no extra queries. Walks the real recruiting workflow (job created →
+// application link → collect candidates → AI matching → shortlist → submit
+// to client → interview) and surfaces only the single next relevant step,
+// not the whole checklist at once.
+type NextAction = {
+  label: string;
+  detail: string;
+  cta: string;
+  onClick: () => void;
+};
+
+function getNextAction(summary: JobSummary, opts: { onCreateLink: () => void; onRunMatch: (candidateJobId: string) => void; navigate: (path: string) => void }): NextAction | null {
+  const { links, candidate_count, shortlisted_count, offer_count, placed_count, pipeline } = summary;
+
+  if (links.length === 0) {
+    return {
+      label: "Create an application link",
+      detail: "Share a link so candidates can apply directly to this role.",
+      cta: "Create link",
+      onClick: opts.onCreateLink,
+    };
+  }
+
+  if (candidate_count === 0) {
+    return {
+      label: "Collect candidates",
+      detail: "Share your application link, or add candidates to this role from Candidates.",
+      cta: "Go to candidates",
+      onClick: () => opts.navigate("/candidates?create=1"),
+    };
+  }
+
+  const unmatched = pipeline.find(pc => pc.match_score == null);
+  if (unmatched) {
+    return {
+      label: "Run AI matching",
+      detail: `${unmatched.candidate.full_name} hasn't been scored against this role yet.`,
+      cta: "Run match",
+      onClick: () => opts.onRunMatch(unmatched.candidate_job_id),
+    };
+  }
+
+  if (shortlisted_count === 0 && candidate_count > 0) {
+    return {
+      label: "Shortlist a candidate",
+      detail: "Review the AI-ranked pipeline and shortlist your strongest matches.",
+      cta: "View pipeline",
+      onClick: () => opts.navigate("/pipeline"),
+    };
+  }
+
+  const submissionsSoFar = pipeline.filter(pc => ["submitted", "client_review"].includes(pc.pipeline_stage)).length;
+  if (submissionsSoFar === 0 && shortlisted_count > 0) {
+    return {
+      label: "Submit to your client",
+      detail: "Send your shortlisted candidates' package to the client for review.",
+      cta: "Go to submissions",
+      onClick: () => opts.navigate("/submissions"),
+    };
+  }
+
+  if (offer_count === 0 && placed_count === 0 && submissionsSoFar > 0) {
+    return {
+      label: "Schedule an interview",
+      detail: "Move a submitted candidate to interview once the client responds.",
+      cta: "View pipeline",
+      onClick: () => opts.navigate("/pipeline"),
+    };
+  }
+
+  return null;
+}
+
+function NextActionCard({ action }: { action: NextAction }) {
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", marginBottom: 24,
+        background: "rgba(34,49,92,0.05)", border: "1px solid rgba(34,49,92,0.16)", borderRadius: 12,
+      }}
+    >
+      <div style={{
+        width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: "#22315C",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Sparkles style={{ width: 15, height: 15, color: "#FAFAF8" }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#17170F" }}>{action.label}</div>
+        <div style={{ fontSize: 12, color: "rgba(23,23,15,0.5)", marginTop: 1 }}>{action.detail}</div>
+      </div>
+      <button
+        onClick={action.onClick}
+        style={{
+          flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+          background: "#22315C", border: "none", borderRadius: 8, color: "#FAFAF8",
+          fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+        }}
+      >
+        {action.cta} <ChevronRight style={{ width: 13, height: 13 }} />
+      </button>
+    </div>
+  );
+}
+
 const PUBLIC_BASE_URL = "https://fixsense.com.ng/apply";
 // Client portal links use the app's actual runtime origin rather than the
 // hardcoded apply-link domain — CreateClipModal.tsx already establishes this
@@ -363,6 +470,11 @@ export default function JobDetailPage() {
   }
 
   const sortedPipeline = [...summary.pipeline].sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
+  const nextAction = getNextAction(summary, {
+    onCreateLink: () => setCreateLinkOpen(true),
+    onRunMatch: runAiMatch,
+    navigate,
+  });
 
   return (
     <ErrorBoundary>
@@ -442,6 +554,10 @@ export default function JobDetailPage() {
             <StatCard label="Offers" value={summary.offer_count} />
             <StatCard label="Placed" value={summary.placed_count} />
           </div>
+
+          {/* Next recommended action — one step at a time, driven by real
+              job/application/candidate data already loaded above */}
+          {nextAction && <NextActionCard action={nextAction} />}
 
           {/* Application links */}
           <div style={{ marginBottom: 32 }}>
