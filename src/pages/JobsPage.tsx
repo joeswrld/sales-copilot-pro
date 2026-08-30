@@ -23,7 +23,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -429,6 +429,7 @@ export default function JobsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { teamId, teamLoading } = useTeam();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clients, setClients] = useState<ClientOpt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -436,6 +437,19 @@ export default function JobsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Deep-link support (?create=1) — used by the onboarding flow's "Create
+  // your first job" choice and by anywhere else that wants to land here
+  // with the Create Job workflow already open.
+  useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setCreateOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadJobs = useCallback(async () => {
     if (!teamId) return;
