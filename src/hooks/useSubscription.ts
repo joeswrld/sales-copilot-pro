@@ -49,6 +49,10 @@ export interface Subscription {
   retention_offer_shown?: boolean | null;
   cancelled_at?: string | null;
   reactivated_at?: string | null;
+  /** Source-of-truth lifecycle status: "active" | "trialing" | "grace_period" | "past_due" | "cancelled" | "expired" */
+  subscription_status?: string | null;
+  /** When a failed-renewal grace period ends; access continues until this passes */
+  grace_period_ends_at?: string | null;
 }
 
 export interface SubscriptionTransaction {
@@ -227,9 +231,37 @@ async function invokeWithAuth(
 }
 
 // ── Helper: is a subscription row actually active and not expired? ─────────────
+// A subscription counts as "currently active" (i.e. premium access should be
+// granted) when subscription_status is "active", "trialing", or
+// "grace_period" — this must stay in sync with the server-side source of
+// truth: get_billing_status_for_user's can_access_premium, and
+// get_effective_plan/get_admin_effective_plan_key, which all treat
+// grace_period as still-active. A failed renewal moves a user into
+// grace_period (see paystack-webhook's invoice.payment_failed handler) while
+// billing-retry-scheduler keeps retrying in the background — the user must
+// not be locked out of premium features during that window, only once the
+// grace period actually expires (expire_grace_periods() flips them to
+// subscription_status "expired" and status "cancelled").
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", "grace_period"]);
+
 function isSubscriptionCurrentlyActive(sub: Subscription | null): boolean {
   if (!sub) return false;
-  if (sub.status !== "active") return false;
+
+  // Prefer subscription_status (the source of truth used by the DB
+  // functions above) when present; fall back to the legacy status column
+  // for any row that predates subscription_status being populated.
+  const effectiveStatus = sub.subscription_status ?? sub.status;
+  if (!effectiveStatus || !ACTIVE_SUBSCRIPTION_STATUSES.has(effectiveStatus)) return false;
+
+  // While in grace_period, access is intentionally kept alive by
+  // grace_period_ends_at rather than expires_at — expires_at reflects the
+  // last successful billing cycle and will already be in the past for
+  // anyone whose renewal failed.
+  if (effectiveStatus === "grace_period") {
+    if (sub.grace_period_ends_at) return new Date(sub.grace_period_ends_at) > new Date();
+    return true;
+  }
+
   if (sub.expires_at) {
     return new Date(sub.expires_at) > new Date();
   }
