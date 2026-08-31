@@ -22,10 +22,79 @@ import { formatDistanceToNow, format } from "date-fns";
 import { motion } from "framer-motion";
 import {
   Loader2, Link as LinkIcon, Copy, Power, Calendar, Users, Sparkles,
-  ChevronRight, ChevronLeft, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
-  Send, Pencil, Archive, RotateCcw, Image as ImageIcon, Building2,
+  ChevronRight, ChevronLeft, ChevronDown, X, Plus, Trash2, ExternalLink, CheckCircle2, Clock,
+  Send, Pencil, Image as ImageIcon, Building2,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+// ─── Job status ──────────────────────────────────────────────────────────────
+// Same 4 states shown in JobsPage.tsx's filter bar (draft/open/on_hold/closed)
+// — kept in sync there. jobs_status_check on the DB also allows the older
+// pipeline-shaped values (sourcing/shortlisting/interviewing/offer/filled)
+// for any existing rows in those states; this picker only writes the 4
+// recruiter-facing statuses.
+const JOB_STATUSES: { key: string; label: string; color: string }[] = [
+  { key: "draft", label: "Draft", color: "#94a3b8" },
+  { key: "open", label: "Open", color: "#22c55e" },
+  { key: "on_hold", label: "On Hold", color: "#fbbf24" },
+  { key: "closed", label: "Closed", color: "#64748b" },
+];
+
+function jobStatusCfg(status: string) {
+  return JOB_STATUSES.find(s => s.key === status) ?? { key: status, label: status, color: "#94a3b8" };
+}
+
+function JobStatusPicker({ status, onChange, disabled }: { status: string; onChange: (s: string) => void; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const cfg = jobStatusCfg(status);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={disabled}
+        style={{
+          display: "flex", alignItems: "center", gap: 7, padding: "10px 14px",
+          background: cfg.color + "1c", border: "none", borderRadius: 10,
+          color: cfg.color === "#94a3b8" ? "rgba(23,23,15,0.7)" : cfg.color, fontSize: 13, fontWeight: 700,
+          cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1,
+        }}
+      >
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+        {cfg.label}
+        <ChevronDown style={{ width: 13, height: 13 }} />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 50, minWidth: 160,
+            background: "#fff", border: "1px solid rgba(23,23,15,0.1)", borderRadius: 12,
+            boxShadow: "0 12px 32px -12px rgba(23,23,15,0.22)", overflow: "hidden", padding: 4,
+          }}>
+            {JOB_STATUSES.map(s => (
+              <button
+                key={s.key}
+                onClick={() => { setOpen(false); if (s.key !== status) onChange(s.key); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px",
+                  background: s.key === status ? "rgba(23,23,15,0.05)" : "transparent", border: "none",
+                  borderRadius: 8, cursor: "pointer", textAlign: "left",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(23,23,15,0.05)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = s.key === status ? "rgba(23,23,15,0.05)" : "transparent"; }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "#17170F" }}>{s.label}</span>
+                {s.key === status && <CheckCircle2 style={{ width: 13, height: 13, color: "#22315C", marginLeft: "auto" }} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Back to Jobs ───────────────────────────────────────────────────────────
 // Same wayfinding pattern as the landing page's nav: quiet by default, a
@@ -405,7 +474,7 @@ export default function JobDetailPage() {
     try {
       const { error } = await (supabase as any).from("jobs").update({ status }).eq("id", id);
       if (error) throw error;
-      toast.success(status === "closed" ? "Job archived" : "Job reopened");
+      toast.success(`Job marked ${jobStatusCfg(status).label}`);
       load();
     } catch (e: any) {
       toast.error(e.message ?? "Failed to update job status");
@@ -510,7 +579,7 @@ export default function JobDetailPage() {
                 <Pencil style={{ width: 11, height: 11, color: "rgba(23,23,15,0.25)" }} />
               </button>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#17170F", margin: 0 }}>{summary.job.title}</h1>
-              <span style={{ fontSize: 12.5, color: "rgba(23,23,15,0.45)", textTransform: "capitalize" }}>{summary.job.status}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: jobStatusCfg(summary.job.status).color }}>{jobStatusCfg(summary.job.status).label}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button
@@ -519,23 +588,7 @@ export default function JobDetailPage() {
               >
                 <Pencil style={{ width: 14, height: 14 }} /> Edit
               </button>
-              {summary.job.status === "closed" ? (
-                <button
-                  onClick={() => setJobStatus("open")}
-                  disabled={archiving}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "rgba(34,197,94,0.12)", border: "none", borderRadius: 10, color: "#16803c", fontSize: 13, fontWeight: 700, cursor: archiving ? "default" : "pointer", opacity: archiving ? 0.6 : 1 }}
-                >
-                  <RotateCcw style={{ width: 14, height: 14 }} /> Reopen
-                </button>
-              ) : (
-                <button
-                  onClick={() => setJobStatus("closed")}
-                  disabled={archiving}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "rgba(23,23,15,0.06)", border: "none", borderRadius: 10, color: "rgba(23,23,15,0.7)", fontSize: 13, fontWeight: 700, cursor: archiving ? "default" : "pointer", opacity: archiving ? 0.6 : 1 }}
-                >
-                  <Archive style={{ width: 14, height: 14 }} /> Archive
-                </button>
-              )}
+              <JobStatusPicker status={summary.job.status} onChange={setJobStatus} disabled={archiving} />
               <button
                 onClick={() => setCreateLinkOpen(true)}
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "linear-gradient(135deg, #22315C, #2A3F73)", border: "none", borderRadius: 10, color: "#FAFAF8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
