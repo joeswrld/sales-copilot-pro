@@ -17,6 +17,8 @@ import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/hooks/useTeam";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLiveCall } from "@/hooks/useLiveCall";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, isPast } from "date-fns";
 import {
@@ -35,12 +37,28 @@ interface InterviewItem {
   status: "scheduled" | "completed" | string;
   interviewer_names: string[] | null;
   meeting_link: string | null;
+  call_id: string | null;
   candidate_notified_at: string | null;
   candidate: { id: string; full_name: string; email: string | null };
   job: { id: string; title: string };
   client: { id: string; name: string } | null;
   feedback_status: string | null;
   feedback_confirmed: boolean | null;
+}
+
+// meeting_link is always a Fixsense-branded /meeting/:roomName share_link —
+// see createFixsenseMeetingForInterview in CandidateDetailPage.tsx, the only
+// place that ever writes it. Pull just the in-app path out of it so "Join"
+// can navigate inside the SPA (through MeetingEntry.tsx's host/guest
+// resolution, landing hosts on /live/:id in-page) instead of opening a new
+// browser tab.
+function meetingLinkPath(meetingLink: string): string | null {
+  try {
+    const u = new URL(meetingLink);
+    return u.pathname + u.search;
+  } catch {
+    return null;
+  }
 }
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
@@ -51,6 +69,69 @@ const STAGE_LABELS: Record<string, { label: string; color: string }> = {
 
 function getStageCfg(stage: string) {
   return STAGE_LABELS[stage] ?? { label: stage, color: "#94a3b8" };
+}
+
+// ─── Host / Join button ────────────────────────────────────────────────────
+// The host case needs one extra step a plain <Link> can't do: promote this
+// interview's `calls` row from scheduled -> live (via hostExistingCall)
+// before navigating, since useLiveCall() — and therefore /live/:id and the
+// whole LiveMeeting.tsx experience — only ever shows whichever call is
+// currently status='live' for the signed-in user, not whatever id is in the
+// URL. Skipping this step would land the host on /live/:id but show them
+// nothing (or the wrong meeting) if no call happens to be live yet.
+//
+// Guests (or a teammate who isn't this interview's host — hostExistingCall
+// is RLS-blocked for them, see useLiveCall.ts) fall through to the plain
+// in-app /meeting/:room path, which is MeetingEntry.tsx's normal guest flow.
+function HostJoinButton({ item }: { item: InterviewItem }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { hostExistingCall } = useLiveCall();
+  const [busy, setBusy] = useState(false);
+
+  const path = item.meeting_link ? meetingLinkPath(item.meeting_link) : null;
+  const isMine = !!(item.call_id && user); // confirmed against RLS on click, not assumed here
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!item.call_id || !path) {
+      // No parseable in-app path — last-resort external open so the button
+      // is never a dead end.
+      if (item.meeting_link) window.open(item.meeting_link, "_blank", "noopener");
+      return;
+    }
+    if (!isMine) {
+      navigate(path);
+      return;
+    }
+    setBusy(true);
+    try {
+      await hostExistingCall.mutateAsync(item.call_id);
+      navigate(path); // MeetingEntry.tsx now finds this call truly live and lands us on /live/:id
+    } catch {
+      // Not actually the host (RLS blocked the update) or some other
+      // hiccup — MeetingEntry.tsx's own guest handling is still a safe
+      // landing spot rather than a dead click.
+      navigate(path);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={busy}
+      style={{
+        display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
+        padding: "6px 10px", borderRadius: 8, background: "#22315C", color: "#FAFAF8",
+        border: "none", cursor: busy ? "default" : "pointer", flexShrink: 0, opacity: busy ? 0.7 : 1,
+      }}
+    >
+      {busy ? <Loader2 style={{ width: 11, height: 11, animation: "spin 1s linear infinite" }} /> : <Video style={{ width: 11, height: 11 }} />}
+      {busy ? "Starting…" : "Host / Join"}
+    </button>
+  );
 }
 
 // ─── Interview row ────────────────────────────────────────────────────────
@@ -119,21 +200,7 @@ function InterviewRow({ item, onClick }: { item: InterviewItem; onClick: () => v
           <CheckCircle2 style={{ width: 10, height: 10 }} />Feedback confirmed
         </div>
       )}
-      {item.meeting_link && item.status === "scheduled" && (
-        <a
-          href={item.meeting_link}
-          target="_blank"
-          rel="noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{
-            display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700,
-            padding: "6px 10px", borderRadius: 8, background: "#22315C", color: "#FAFAF8",
-            textDecoration: "none", flexShrink: 0,
-          }}
-        >
-          <Video style={{ width: 11, height: 11 }} />Join
-        </a>
-      )}
+      {item.meeting_link && item.status === "scheduled" && <HostJoinButton item={item} />}
     </div>
   );
 }
