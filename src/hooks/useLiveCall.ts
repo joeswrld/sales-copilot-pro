@@ -284,6 +284,49 @@ export function useLiveCall(options?: {
     }
   };
 
+  // ── Promote an existing scheduled call to live (interviews) ────────────────
+  // create-daily-room deliberately leaves a freshly-scheduled interview's
+  // `calls` row at status='scheduled' (see its own comment: "Never flip to
+  // live here — that happens on real join") — daily_room_name/
+  // daily_room_url/meeting_url are already populated from scheduling time,
+  // so no new room or Daily.co API call is needed here, only the same
+  // status flip startCall performs for a brand-new call. This is what lets
+  // InterviewsPage.tsx's "Host / Join" put the scheduling recruiter
+  // straight into their existing Fixsense Meeting for that interview via
+  // /live/:id, instead of accidentally showing whatever call already
+  // happens to be globally "live" for the team.
+  //
+  // .eq("user_id", user.id) is belt-and-suspenders on top of the "Users can
+  // update own calls" RLS policy (auth.uid() = user_id) that already blocks
+  // this for anyone but the host — this just returns a clear error instead
+  // of a silent 0-row update if it's ever called for someone else's call.
+  const hostExistingCall = useMutation({
+    mutationFn: async (id: string) => {
+      if (!user) throw new Error("Not authenticated");
+      const { data, error } = await supabase
+        .from("calls")
+        .update({ status: "live" } as any)
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .in("status", ["scheduled", "waiting"])
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      // No row matched — either this isn't the host's call, or it's already
+      // live/completed/cancelled. Already-live is fine (idempotent — the
+      // meeting is reachable either way); anything else surfaces below.
+      if (!data) {
+        const { data: existing } = await supabase.from("calls").select("status, user_id").eq("id", id).maybeSingle();
+        if (existing && existing.user_id === user.id && existing.status === "live") return { id };
+        throw new Error("This meeting can't be hosted right now.");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["live-call"] });
+    },
+  });
+
   // ── Realtime subscription — keyed on callId ─────────────────────────────
   // Only listens for changes to the call row itself now (status, timers,
   // final_transcript_status, etc). The old transcripts/objections/key_topics
@@ -605,6 +648,7 @@ export function useLiveCall(options?: {
     endCall,
     markCallStarted,
     markHostJoined,
+    hostExistingCall,
     updateMeetingSettings,
     // Has the host ever actually joined the Daily room for this live call
     // (as opposed to merely having created it)? Drives auto-reconnect on
