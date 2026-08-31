@@ -349,6 +349,11 @@ function useRealtimeNetwork() {
 
 // ─── Smart Link Checker ───────────────────────────────────────────────────────
 // Extracts room name from a link/room-name string and checks ownership.
+// Recognizes every URL shape a Fixsense Meeting link is ever produced or
+// routed as: /meeting/:roomName (the canonical share_link — see
+// create-daily-room's shareLink and LiveCall's own share_link fallback
+// above), /join/:roomName, and /meet/:roomName (all three are handled by
+// MeetingEntry.tsx), plus raw *.daily.co room URLs and a bare room name.
 function extractRoomName(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -358,10 +363,12 @@ function extractRoomName(input: string): string | null {
       const parts = u.pathname.split("/").filter(Boolean);
       if (parts.length > 0) return parts[parts.length - 1];
     }
-    // Also handle /join/<room> links from our app
-    if (u.pathname.startsWith("/join/")) {
-      const room = u.pathname.replace("/join/", "").split("/")[0];
-      if (room) return room;
+    // Fixsense Meeting links — /meeting/<room>, /join/<room>, /meet/<room>
+    for (const prefix of ["/meeting/", "/join/", "/meet/"]) {
+      if (u.pathname.startsWith(prefix)) {
+        const room = u.pathname.slice(prefix.length).split("/")[0];
+        if (room) return room;
+      }
     }
   } catch { /* not a URL */ }
   if (/^[a-zA-Z0-9_-]{3,80}$/.test(trimmed)) return trimmed;
