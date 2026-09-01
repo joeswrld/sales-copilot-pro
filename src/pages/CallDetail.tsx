@@ -556,11 +556,24 @@ export default function CallDetail() {
               </div>
             )}
           </div>
+          {recruitingContext?.candidate && (
+            <Link to={`/candidates/${recruitingContext.candidate.id}`}>
+              <Badge variant="outline" className="flex items-center gap-1.5 border-primary/30 text-primary hover:bg-primary/10 transition-colors">
+                <User className="w-3 h-3" />
+                {recruitingContext.candidate.full_name}
+              </Badge>
+            </Link>
+          )}
           <Badge className={statusColor(callData.status)}>{callData.status || "Unknown"}</Badge>
         </div>
 
         {/* ── Linked deal banner (sales calls) ── */}
-        {linkedDeal ? (
+        {recruitingContextLoading && dealId === null ? (
+          <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-2.5 text-sm animate-pulse">
+            <div className="w-4 h-4 rounded-full bg-muted-foreground/20 shrink-0" />
+            <div className="h-3.5 w-40 rounded bg-muted-foreground/20" />
+          </div>
+        ) : linkedDeal ? (
           <Link
             to={`/deals/${linkedDeal.id}`}
             className="flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-2.5 text-sm hover:bg-primary/10 transition-colors"
