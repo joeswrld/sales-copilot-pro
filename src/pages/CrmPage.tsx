@@ -48,7 +48,7 @@ interface ClientListItem {
   open_jobs_count: number;
   candidates_count: number;
   placements_count: number;
-  total_fees_ngn: number;
+  total_fees_by_currency: Record<string, number>;
   last_activity_at: string | null;
 }
 
@@ -120,6 +120,16 @@ function formatMoney(value: number | null | undefined, currency: string | null |
   return `${symbol}${value.toLocaleString()}`;
 }
 
+// Formats a { currency: amount } map as "$500 + £19K" etc. Clients can earn
+// fees in more than one currency, so totals are never collapsed into a
+// single number — each currency is shown with its own amount.
+function formatFeesByCurrency(byCurrency: Record<string, number> | null | undefined): string | null {
+  if (!byCurrency) return null;
+  const entries = Object.entries(byCurrency).filter(([, amt]) => !!amt);
+  if (!entries.length) return null;
+  return entries.map(([cur, amt]) => formatMoney(amt, cur)).join(" + ");
+}
+
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "10px 12px", background: "rgba(23,23,15,0.03)",
   border: "1px solid rgba(23,23,15,0.1)", borderRadius: 10, color: "#17170F",
@@ -177,11 +187,14 @@ function ClientRow({ client, onClick }: { client: ClientListItem; onClick: () =>
           )}
         </div>
       </div>
-      {client.total_fees_ngn > 0 && (
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#17170F", flexShrink: 0 }}>
-          {formatMoney(client.total_fees_ngn, "NGN")}
-        </div>
-      )}
+      {(() => {
+        const feesLabel = formatFeesByCurrency(client.total_fees_by_currency);
+        return feesLabel ? (
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#17170F", flexShrink: 0 }}>
+            {feesLabel}
+          </div>
+        ) : null;
+      })()}
       <div style={{
         fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6, flexShrink: 0,
         background: cfg.color + "18", color: cfg.color, textTransform: "capitalize",
@@ -548,11 +561,21 @@ export default function CrmPage() {
     return list;
   }, [clients, search, statusFilter]);
 
-  const totals = useMemo(() => ({
-    openJobs: clients.reduce((s, c) => s + c.open_jobs_count, 0),
-    placements: clients.reduce((s, c) => s + c.placements_count, 0),
-    revenue: clients.reduce((s, c) => s + c.total_fees_ngn, 0),
-  }), [clients]);
+  const totals = useMemo(() => {
+    const revenueByCurrency: Record<string, number> = {};
+    for (const c of clients) {
+      for (const [cur, amt] of Object.entries(c.total_fees_by_currency ?? {})) {
+        revenueByCurrency[cur] = (revenueByCurrency[cur] ?? 0) + (amt ?? 0);
+      }
+    }
+    return {
+      openJobs: clients.reduce((s, c) => s + c.open_jobs_count, 0),
+      placements: clients.reduce((s, c) => s + c.placements_count, 0),
+      revenueByCurrency,
+    };
+  }, [clients]);
+
+  const revenueLabel = useMemo(() => formatFeesByCurrency(totals.revenueByCurrency), [totals]);
 
   return (
     <DashboardLayout>
@@ -585,8 +608,8 @@ export default function CrmPage() {
             <div style={{ flex: 1, minWidth: 140, background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.06)", borderRadius: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
               <TrendingUp style={{ width: 14, height: 14, color: "#22315C" }} />
               <div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#17170F" }}>{formatMoney(totals.revenue, "NGN") ?? "₦0"}</div>
-                <div style={{ fontSize: 10, color: "rgba(23,23,15,0.4)" }}>Total fees (NGN)</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#17170F" }}>{revenueLabel ?? "—"}</div>
+                <div style={{ fontSize: 10, color: "rgba(23,23,15,0.4)" }}>Total fees</div>
               </div>
             </div>
             <div style={{ flex: 1, minWidth: 140, background: "rgba(23,23,15,0.02)", border: "1px solid rgba(23,23,15,0.06)", borderRadius: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
