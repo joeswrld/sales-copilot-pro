@@ -15,6 +15,7 @@ import UpgradeModal from "@/components/plan/UpgradeModal";
 
 // 🔒 Error Boundary + global handlers
 import { ErrorBoundary, useGlobalErrorHandlers } from "@/components/ErrorBoundary";
+import OnboardingLoadingScreen from "@/components/OnboardingLoadingScreen";
 
 // ── Eagerly loaded: these are the pages a first-time / logged-out visitor
 // actually lands on. Keeping them in the main bundle means zero extra
@@ -247,9 +248,11 @@ function AppRoutes() {
           <Route
             path="/onboarding"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute fallback={<OnboardingLoadingScreen />}>
                 <ErrorBoundary>
-                  <OnboardingPage />
+                  <Suspense fallback={<OnboardingLoadingScreen />}>
+                    <OnboardingPage />
+                  </Suspense>
                 </ErrorBoundary>
               </ProtectedRoute>
             }
