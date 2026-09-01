@@ -11,33 +11,36 @@ permissions:
 
 concurrency:
   group: repository-heartbeat
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
-        run: |
-          npm install --no-save typescript tsx
+      - name: Install TypeScript runner
+        run: npm install --no-save typescript tsx
 
       - name: Generate heartbeat
         run: |
           npx tsx .github/scripts/heartbeat.ts
 
+          echo "================================"
           echo "Generated heartbeat:"
+          echo "================================"
+
           cat heartbeat.md
 
       - name: Configure Git
@@ -45,12 +48,9 @@ jobs:
           git config user.name "joeswrld"
           git config user.email "codexpress200@gmail.com"
 
-      - name: Commit and push
+      - name: Commit heartbeat
         run: |
           git add heartbeat.md
-
-          echo "Git status:"
-          git status
 
           if git diff --cached --quiet; then
             echo "No changes detected."
@@ -58,4 +58,7 @@ jobs:
           fi
 
           git commit -m "chore: repository heartbeat update"
-          git push origin main
+
+      - name: Push heartbeat
+        run: |
+          git push origin HEAD:main
