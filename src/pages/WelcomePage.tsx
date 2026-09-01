@@ -415,6 +415,17 @@ export default function WelcomePage() {
   const manualGoBack = useCallback(() => { stopAutoplay(); goBack(); }, [stopAutoplay, goBack]);
   const manualJumpTo = useCallback((i: number) => { stopAutoplay(); jumpTo(i); }, [stopAutoplay, jumpTo]);
 
+  // Jumps straight to the account/signup step. This is the fix for the
+  // walkthrough being a hard 11-step gate in front of signup: someone who
+  // already knows they want an account (or is just impatient) shouldn't
+  // have to click "Continue" eleven times to find the form. Available from
+  // the very first step, not unlocked progressively.
+  const skipToAccount = useCallback(() => {
+    stopAutoplay();
+    setDirection("forward");
+    setStep(STEPS.length);
+  }, [stopAutoplay]);
+
   useEffect(() => {
     if (liveRegionRef.current) {
       liveRegionRef.current.textContent = isAccountStep
@@ -458,6 +469,9 @@ export default function WelcomePage() {
     .wp-topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border);background:rgba(250,250,248,0.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
     .wp-brand{display:flex;align-items:center;gap:9px;text-decoration:none;}
     .wp-brandname{font-size:14.5px;font-weight:700;color:var(--ink)!important;letter-spacing:-.01em;}
+    .wp-topbar-actions{display:flex;align-items:center;gap:8px;}
+    .wp-skip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--accent)!important;background:var(--accent-soft);border:1px solid var(--accent-border);padding:8px 13px;border-radius:100px;cursor:pointer;font-family:var(--fb);transition:background .15s,border-color .15s;white-space:nowrap;}
+    .wp-skip:hover{background:rgba(34,49,92,.12);border-color:var(--accent);}
     .wp-exit{font-size:13px;font-weight:500;color:var(--muted)!important;text-decoration:none;padding:8px 12px;border-radius:var(--radius-s);transition:color .15s,background .15s;}
     .wp-exit:hover{color:var(--ink)!important;background:rgba(23,23,15,.04);}
 
@@ -551,7 +565,10 @@ export default function WelcomePage() {
     .wp-back-btn{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink2)!important;background:none;border:1px solid var(--border-strong);padding:11px 18px;border-radius:var(--radius-s);cursor:pointer;font-family:var(--fb);transition:border-color .15s,background .15s,opacity .15s;min-height:44px;}
     .wp-back-btn:hover{border-color:var(--ink);background:rgba(23,23,15,.02);}
     .wp-back-btn:disabled{opacity:0;pointer-events:none;}
-    .wp-continue-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;color:var(--accent-ink)!important;background:var(--accent);border:1px solid var(--accent);padding:12px 26px;border-radius:var(--radius-s);cursor:pointer;font-family:var(--fb);transition:opacity .15s,transform .12s;min-height:44px;margin-left:auto;}
+    .wp-bottombar-right{display:flex;align-items:center;gap:14px;margin-left:auto;}
+    .wp-skip-inline{font-size:12.5px;font-weight:600;color:var(--muted)!important;background:none;border:none;cursor:pointer;font-family:var(--fb);text-decoration:underline;text-underline-offset:2px;padding:6px 2px;transition:color .15s;}
+    .wp-skip-inline:hover{color:var(--ink2)!important;}
+    .wp-continue-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;color:var(--accent-ink)!important;background:var(--accent);border:1px solid var(--accent);padding:12px 26px;border-radius:var(--radius-s);cursor:pointer;font-family:var(--fb);transition:opacity .15s,transform .12s;min-height:44px;}
     .wp-continue-btn:hover{opacity:.9;}
     .wp-continue-btn:active{transform:scale(.985);}
     .wp-bottombar-count{font-size:12px;color:var(--muted);font-family:var(--fm);flex-shrink:0;}
@@ -559,6 +576,9 @@ export default function WelcomePage() {
       .wp-bottombar-count{display:none;}
       .wp-main{padding:16px 16px 130px;}
       .wp-topbar{padding:14px 16px;}
+      .wp-skip-label{display:none;}
+      .wp-bottombar-right{gap:10px;}
+      .wp-skip-inline{font-size:11.5px;}
     }
     /* Live story-beat ticker — makes each step read as something happening now */
     .wp-beat{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:100px;padding:7px 14px;margin-bottom:16px;line-height:1.4;}
@@ -599,7 +619,15 @@ export default function WelcomePage() {
           <Logo size={22} />
           <span className="wp-brandname">Fixsense</span>
         </Link>
-        <Link to="/" className="wp-exit">Exit</Link>
+        <div className="wp-topbar-actions">
+          {!isAccountStep && (
+            <button className="wp-skip" onClick={skipToAccount}>
+              <span className="wp-skip-label">Skip to sign up</span>
+              <Icon name="arrow-right" size={12} />
+            </button>
+          )}
+          <Link to="/" className="wp-exit">Exit</Link>
+        </div>
       </div>
 
       <div className="wp-progress-track">
@@ -710,10 +738,15 @@ export default function WelcomePage() {
             {isAccountStep ? `Step ${TOTAL_STEPS} of ${TOTAL_STEPS}` : `Step ${step + 1} of ${TOTAL_STEPS}`}
           </span>
           {!isAccountStep && (
-            <button className="wp-continue-btn" onClick={manualGoNext}>
-              Continue
-              <Icon name="arrow-right" size={14} />
-            </button>
+            <div className="wp-bottombar-right">
+              <button className="wp-skip-inline" onClick={skipToAccount}>
+                Skip walkthrough
+              </button>
+              <button className="wp-continue-btn" onClick={manualGoNext}>
+                Continue
+                <Icon name="arrow-right" size={14} />
+              </button>
+            </div>
           )}
         </div>
       </div>
