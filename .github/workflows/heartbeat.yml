@@ -1,13 +1,14 @@
 name: Repository Heartbeat
 
 on:
-  schedule:
-    - cron: "2-59/5 * * * *"
-
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: repository-heartbeat
+  cancel-in-progress: false
 
 jobs:
   heartbeat:
@@ -29,10 +30,13 @@ jobs:
         run: npm install --no-save typescript tsx
 
       - name: Generate heartbeat
-        run: npx tsx .github/scripts/heartbeat.ts
+        run: |
+          npx tsx .github/scripts/heartbeat.ts
 
       - name: Show heartbeat
-        run: cat heartbeat.md
+        run: |
+          echo "Generated heartbeat:"
+          cat heartbeat.md
 
       - name: Configure Git
         run: |
@@ -51,4 +55,5 @@ jobs:
           git commit -m "chore: repository heartbeat update"
 
       - name: Push heartbeat
-        run: git push origin main
+        run: |
+          git push origin HEAD:main
