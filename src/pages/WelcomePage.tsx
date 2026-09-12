@@ -478,11 +478,13 @@ export default function WelcomePage() {
     .wp-progress-track{height:3px;background:var(--border);position:relative;overflow:hidden;flex-shrink:0;}
     .wp-progress-fill{height:100%;background:var(--accent);transition:width .45s cubic-bezier(.16,1,.3,1);}
 
-    .wp-steps{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:14px 22px;max-width:1040px;margin:0 auto;width:100%;scrollbar-width:none;}
+    .wp-steps{display:flex;align-items:center;gap:2px;overflow-x:auto;padding:2px 12px;max-width:1040px;margin:0 auto;width:100%;scrollbar-width:none;}
     .wp-steps::-webkit-scrollbar{display:none;}
-    .wp-step-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong);flex-shrink:0;transition:background .25s,transform .25s;border:none;padding:0;cursor:pointer;}
-    .wp-step-dot.active{background:var(--accent);transform:scale(1.5);}
-    .wp-step-dot.done{background:var(--good);}
+    .wp-step-dot{width:44px;height:44px;flex-shrink:0;border:none;padding:0;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+    .wp-step-dot::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--border-strong);transition:background .25s,transform .25s;}
+    .wp-step-dot.active::after{background:var(--accent);transform:scale(1.5);}
+    .wp-step-dot.done::after{background:var(--good);}
+    @media(max-width:640px){.wp-step-dot{width:28px;height:32px;}}
 
     .wp-main{flex:1;display:flex;align-items:center;padding:20px 22px 140px;}
     .wp-main-inner{max-width:1040px;margin:0 auto;width:100%;}
