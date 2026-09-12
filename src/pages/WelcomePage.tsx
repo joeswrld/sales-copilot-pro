@@ -43,7 +43,7 @@ const STEPS: Step[] = [
     label: "Applications",
     icon: "inbox",
     kicker: "Step 2 · Applications arrive",
-    title: "Applications land in the pipeline, not an inbox.",
+    title: "Applications land straight in the pipeline.",
     desc: "Share the job's application link and every candidate who applies drops straight into the pipeline, already attached to the right role.",
     beat: "4 candidates have applied in the last few minutes.",
     stat: { label: "Applications", value: "4" },
@@ -74,7 +74,7 @@ const STEPS: Step[] = [
     icon: "check-square",
     kicker: "Step 5 · Build the shortlist",
     title: "Move your strongest matches forward.",
-    desc: "Shortlist candidates with one action, backed by the match reasoning underneath, not a gut call made at the end of a long day.",
+    desc: "Shortlist candidates with one action, backed by the match reasoning underneath, instead of a gut call made at the end of a long day.",
     beat: "You shortlisted Sarah and Aisha — 2 of 4 move forward.",
     stat: { label: "Shortlisted", value: "2" },
   },
@@ -499,9 +499,8 @@ export default function WelcomePage() {
     .wp-frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);animation:wpFrameIn .45s cubic-bezier(.16,1,.3,1);}
     @keyframes wpFrameIn{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
     .wp-frame-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
-    .wp-frame-dots{display:flex;gap:6px;}
-    .wp-frame-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.14);}
-    .wp-frame-label{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex:1;text-align:center;}
+    .wp-frame-step{font-size:10.5px;font-weight:600;color:#8FA6D6;font-family:var(--fm);flex-shrink:0;}
+    .wp-frame-label{font-size:12px;color:rgba(255,255,255,.6);font-weight:500;flex:1;text-align:right;}
     .wp-frame-body{min-height:230px;position:relative;overflow:hidden;}
 
     /* fs-* mock-screen vocabulary, shared with the landing page's flow rail */
@@ -677,8 +676,8 @@ export default function WelcomePage() {
                   </div>
                   <div className="wp-frame">
                     <div className="wp-frame-bar">
-                      <div className="wp-frame-dots"><span /><span /><span /></div>
-                      <span className="wp-frame-label">fixsense.app · {current.label.toLowerCase()}</span>
+                      <span className="wp-frame-step">Step {step + 1}/{TOTAL_STEPS}</span>
+                      <span className="wp-frame-label">{current.label}</span>
                     </div>
                     <div className="wp-frame-body">
                       <Screen />
