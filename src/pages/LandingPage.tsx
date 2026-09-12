@@ -136,7 +136,7 @@ const PAIN_POINTS = [
   {
     icon: "message",
     pain: "Losing track of client feedback",
-    fix: "Client feedback is logged against the candidate and the job in the Client CRM, not buried in an email thread.",
+    fix: "Client feedback gets logged straight onto the candidate and the job inside the Client CRM.",
   },
   {
     icon: "route",
@@ -146,7 +146,7 @@ const PAIN_POINTS = [
   {
     icon: "clock",
     pain: "Follow-ups being forgotten",
-    fix: "Candidate timelines log every action automatically, so a stalled candidate is visible, not forgotten.",
+    fix: "Candidate timelines log every action automatically, which is how a stalled candidate actually gets noticed.",
   },
   {
     icon: "target",
@@ -160,12 +160,12 @@ const PAIN_POINTS = [
 // ─────────────────────────────────────────────────────────────────────────
 const DIFFERENTIATORS = [
   { icon: "database", title: "Candidate database & CV parsing", desc: "Upload a CV and Fixsense extracts skills, roles, and history into a structured, searchable record." },
-  { icon: "sparkle", title: "AI job matching", desc: "Every candidate gets a match score against a job, with the reasoning behind it, not just a ranked list." },
+  { icon: "sparkle", title: "AI job matching", desc: "Every candidate gets a match score against a job, plus the reasoning behind that score." },
   { icon: "link", title: "Application links", desc: "A public link per job collects applications directly into your pipeline, no manual re-entry." },
   { icon: "route", title: "Candidate pipeline", desc: "See every candidate's stage across every open job, from application to placement, in one view." },
   { icon: "briefcase", title: "Client CRM", desc: "Clients, contacts, jobs, candidates, interviews, and placements roll up into one company record." },
-  { icon: "check-square", title: "Candidate & client submissions", desc: "Submit a shortlist to a client and track it as a first-class step in the pipeline, not a side email." },
-  { icon: "mic", title: "Fixsense Meetings", desc: "Live transcription for interviews and client calls, built into the workflow, not bolted on." },
+  { icon: "check-square", title: "Candidate & client submissions", desc: "Submitting a shortlist to a client is its own tracked step in the pipeline." },
+  { icon: "mic", title: "Fixsense Meetings", desc: "Live transcription for interviews and client calls, sitting inside the same workflow as everything else." },
   { icon: "file-text", title: "Interview transcription & AI feedback", desc: "Every interview becomes a transcript and structured feedback the panel can actually use." },
   { icon: "clock", title: "Candidate timelines", desc: "A full, automatic activity history for every candidate: every stage change, note, and interaction." },
   { icon: "user-plus", title: "Interview invitations", desc: "Send and track interview invitations without leaving the candidate record." },
@@ -177,14 +177,14 @@ const DIFFERENTIATORS = [
 const SECURITY_ITEMS = [
   { icon: "lock", title: "Encrypted in transit and at rest", desc: "Candidate records, CVs, and interview transcripts are encrypted end to end." },
   { icon: "shield", title: "Built for GDPR", desc: "Data minimisation, explicit consent, and the right to be forgotten are part of the design, for candidate data as much as client data." },
-  { icon: "users", title: "Team-scoped access", desc: "Candidate and client records are scoped to your agency's team, not shared across accounts." },
+  { icon: "users", title: "Team-scoped access", desc: "Candidate and client records stay scoped to your agency's own team." },
   { icon: "download", title: "You control your data", desc: "Export or permanently delete any candidate record, CV, or transcript from your account at any time." },
 ];
 
 const FAQS = [
-  { q: "Is Fixsense a full ATS, or just an add-on?", a: "Fixsense is the operating system for your recruitment desk: jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements all live in one system, not stitched together from a spreadsheet, an inbox, and a separate call-recording tool." },
+  { q: "Is Fixsense a full ATS, or just an add-on?", a: "It's the operating system for your desk. Jobs, candidates, AI matching, applications, submissions, interviews, meeting intelligence, client feedback, and placements all live in one system instead of a spreadsheet, an inbox, and a separate call-recording tool." },
   { q: "Do I need to invite a bot to interviews?", a: "No. Fixsense Meetings works natively inside your call instead of sending a visible bot to join. Nothing extra for the candidate or client to notice before you start." },
-  { q: "How does AI matching work?", a: "Every candidate is scored against a job's requirements, with an explanation of what drove the score, not a black-box number. You decide who gets shortlisted." },
+  { q: "How does AI matching work?", a: "Every candidate is scored against a job's requirements, and you get the explanation behind that score, not just a number. You still decide who gets shortlisted." },
   { q: "What happens to candidate CVs and data?", a: "CVs and candidate records are encrypted, stored under your agency's account, and scoped to your team. You can export or delete any candidate's data at any time." },
   { q: "Do I need a credit card to try it?", a: "No. The free plan starts with just an email address. You're only asked for billing details if you choose to upgrade to a paid plan." },
   { q: "Can I cancel anytime?", a: "Yes. There's no contract and no lock-in. Cancel from your account settings at any time and keep access until the end of your current billing period." },
@@ -213,10 +213,12 @@ function ProductMock() {
   return (
     <div className="mock">
       <div className="mock-titlebar">
-        <div className="mock-dots">
-          <span /><span /><span />
+        <div className="mock-tabs">
+          <span className="mock-tab">Jobs</span>
+          <span className="mock-tab is-active">Pipeline</span>
+          <span className="mock-tab">Submissions</span>
         </div>
-        <div className="mock-titlebar-name">Pipeline · Senior .NET Developer, London</div>
+        <div className="mock-titlebar-name">Senior .NET Developer &middot; London</div>
       </div>
 
       <div className="mock-body">
@@ -301,8 +303,8 @@ const FLOW_DETAIL: Record<string, { title: string; desc: string }> = {
   applications: { title: "Applications land in one place.", desc: "Share the job's application link. Every application arrives directly into the pipeline instead of an inbox." },
   candidates: { title: "CVs become structured records.", desc: "CV parsing reads every application into your candidate database: skills, history, and contact details, searchable across your whole desk." },
   match: { title: "AI scores every candidate.", desc: "Each candidate is matched against the job's requirements with a score and a plain-language explanation of why." },
-  shortlist: { title: "Build the shortlist from evidence.", desc: "Move the strongest matches into shortlist with one action, backed by the match reasoning, not a gut feeling alone." },
-  submit: { title: "Submit to the client.", desc: "Send a submission to the client as a tracked step in the pipeline, not a one-off email that goes quiet." },
+  shortlist: { title: "Build the shortlist from evidence.", desc: "Move the strongest matches into shortlist with one action, backed by the match reasoning behind each one." },
+  submit: { title: "Submit to the client.", desc: "Send a submission to the client as a tracked step in the pipeline instead of a one-off email that goes quiet." },
   interview: { title: "Schedule and send the invitation.", desc: "Send the interview invitation and get it on the calendar without leaving the candidate record." },
   intel: { title: "The interview transcribes itself.", desc: "Fixsense Meetings captures the interview live and turns it into a transcript with feedback for the panel." },
   feedback: { title: "Client feedback lands on the record.", desc: "Feedback from the client goes straight onto the candidate and job in the Client CRM, never lost in a thread." },
@@ -578,8 +580,8 @@ function WorkflowRail() {
           <Reveal delay={120}>
             <div className="flow-frame">
               <div className="flow-frame-bar">
-                <div className="flow-frame-dots"><span /><span /><span /></div>
-                <span className="flow-frame-label">fixsense.app · {stage.label.toLowerCase()}</span>
+                <span className="flow-frame-step">Step {active + 1}/{FLOW.length}</span>
+                <span className="flow-frame-label">{stage.label}</span>
               </div>
               <div className="flow-frame-body" key={stage.key}>
                 <Screen />
@@ -727,10 +729,12 @@ export default function LandingPage() {
        PRODUCT MOCK
     ══════════════════════════════════════════ */
     .mock{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);}
-    .mock-titlebar{display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
-    .mock-dots{display:flex;gap:6px;}
-    .mock-dots span{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.14);}
-    .mock-titlebar-name{font-size:12.5px;color:rgba(255,255,255,.55);font-weight:500;flex:1;text-align:center;}
+    .mock-titlebar{display:flex;align-items:center;gap:14px;padding:0 16px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);height:42px;}
+    .mock-tabs{display:flex;align-items:center;height:100%;gap:2px;flex-shrink:0;}
+    .mock-tab{font-size:12px;font-weight:500;color:rgba(255,255,255,.35);padding:0 12px;height:100%;display:flex;align-items:center;border-bottom:2px solid transparent;}
+    .mock-tab.is-active{color:rgba(255,255,255,.9);border-bottom-color:#8FA6D6;}
+    .mock-titlebar-name{font-size:11.5px;color:rgba(255,255,255,.4);font-weight:500;flex:1;text-align:right;font-family:var(--fm);}
+    @media(max-width:480px){.mock-tab{padding:0 8px;font-size:11px;}}
     .mock-rec{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#8FA6D6;font-family:var(--fm);flex-shrink:0;}
 
     .mock-body{display:grid;grid-template-columns:1.15fr 1fr;}
@@ -812,9 +816,8 @@ export default function LandingPage() {
 
     .flow-frame{background:var(--ink-panel);border-radius:var(--radius-l);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04), 0 24px 64px -24px rgba(20,20,15,.35), 0 0 0 1px rgba(20,20,15,.04);}
     .flow-frame-bar{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.08);}
-    .flow-frame-dots{display:flex;gap:6px;}
-    .flow-frame-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.14);}
-    .flow-frame-label{font-size:11px;color:rgba(255,255,255,.35);font-family:var(--fm);flex:1;text-align:center;}
+    .flow-frame-step{font-size:10.5px;font-weight:600;color:#8FA6D6;font-family:var(--fm);flex-shrink:0;}
+    .flow-frame-label{font-size:12px;color:rgba(255,255,255,.6);font-weight:500;flex:1;text-align:right;}
     .flow-frame-body{min-height:220px;position:relative;overflow:hidden;}
 
     .flow-autoplay-row{display:flex;align-items:center;justify-content:center;margin-top:24px;}
@@ -892,13 +895,17 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        DIFFERENTIATORS GRID
     ══════════════════════════════════════════ */
-    .diff-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
-    .diff-card{background:var(--paper);padding:24px 22px;}
-    .diff-icon{width:32px;height:32px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);margin-bottom:14px;}
-    .diff-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;letter-spacing:-.01em;}
+    .diff-wrap{margin-top:40px;display:grid;grid-template-columns:1fr 1fr;column-gap:48px;}
+    .diff-row{display:flex;align-items:flex-start;gap:14px;padding:16px 0;border-bottom:1px solid var(--border);}
+    .diff-row:nth-last-child(-n+2){border-bottom:none;}
+    .diff-icon{width:28px;height:28px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);flex-shrink:0;margin-top:1px;}
+    .diff-title{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:3px;letter-spacing:-.01em;}
     .diff-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
-    @media(max-width:900px){.diff-grid{grid-template-columns:1fr 1fr;}}
-    @media(max-width:560px){.diff-grid{grid-template-columns:1fr;}}
+    @media(max-width:760px){
+      .diff-wrap{grid-template-columns:1fr;column-gap:0;}
+      .diff-row:nth-last-child(-n+2){border-bottom:1px solid var(--border);}
+      .diff-row:last-child{border-bottom:none;}
+    }
 
     /* ══════════════════════════════════════════
        BUILT FOR RECRUITERS
@@ -967,13 +974,14 @@ export default function LandingPage() {
     /* ══════════════════════════════════════════
        SECURITY
     ══════════════════════════════════════════ */
-    .security-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:40px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden;}
-    .security-card{background:var(--paper);padding:24px 22px;}
-    .security-icon{width:32px;height:32px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);margin-bottom:14px;}
-    .security-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:6px;}
-    .security-desc{font-size:12px;color:var(--muted);line-height:1.55;}
-    @media(max-width:860px){.security-grid{grid-template-columns:1fr 1fr;}}
-    @media(max-width:480px){.security-grid{grid-template-columns:1fr;}}
+    .security-wrap{margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start;}
+    .security-list{display:flex;flex-direction:column;}
+    .security-item{display:flex;align-items:flex-start;gap:13px;padding:15px 0;border-bottom:1px solid var(--border);}
+    .security-item:last-child{border-bottom:none;}
+    .security-icon{width:26px;height:26px;border-radius:var(--radius-s);background:var(--paper2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--ink2);flex-shrink:0;margin-top:1px;}
+    .security-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:3px;}
+    .security-desc{font-size:12.5px;color:var(--muted);line-height:1.6;}
+    @media(max-width:760px){.security-wrap{grid-template-columns:1fr;gap:0;}}
     .security-footline{margin-top:24px;}
     .security-footlink{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink2)!important;text-decoration:none;transition:color .15s;}
     .security-footlink:hover{color:var(--accent)!important;}
@@ -1205,20 +1213,21 @@ export default function LandingPage() {
       <section className="section" id="differentiators">
         <div className="section-inner">
           <Reveal>
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>Recruiting-specific, not bolted on</div>
-              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 680, margin: "0 auto" }}>
-                Everything a recruitment desk actually needs.
-              </h2>
-            </div>
+            <div className="kicker">Built specifically for recruiting</div>
+            <h2 className="section-h" style={{ maxWidth: 520 }}>
+              Everything a recruitment desk actually needs.
+            </h2>
+            <p className="section-sub">Thirteen things a generic meeting or CRM tool doesn't do, all shipped and live today.</p>
           </Reveal>
           <Reveal delay={80}>
-            <div className="diff-grid">
+            <div className="diff-wrap">
               {DIFFERENTIATORS.map((d, i) => (
-                <div key={i} className="diff-card">
-                  <div className="diff-icon"><Icon name={d.icon} size={16} /></div>
-                  <div className="diff-title">{d.title}</div>
-                  <div className="diff-desc">{d.desc}</div>
+                <div key={i} className="diff-row">
+                  <div className="diff-icon"><Icon name={d.icon} size={15} /></div>
+                  <div>
+                    <div className="diff-title">{d.title}</div>
+                    <div className="diff-desc">{d.desc}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1304,7 +1313,7 @@ export default function LandingPage() {
                 { icon: "database", title: "CVs parse into candidate records", desc: "Each application's CV is parsed automatically into a structured candidate profile (skills, experience, contact details) added to the candidate database." },
                 { icon: "sparkle", title: "AI scores every applicant", desc: "AI job matching scores each candidate against the job's requirements and explains the reasoning behind each score." },
                 { icon: "check-square", title: "Build the shortlist", desc: "The recruiter reviews the top matches and moves the strongest candidates into shortlist in the pipeline." },
-                { icon: "user-plus", title: "Submit to the client", desc: "A submission is sent to the client with the shortlisted candidates, tracked in the Client CRM, not a one-off email." },
+                { icon: "user-plus", title: "Submit to the client", desc: "A submission goes to the client with the shortlisted candidates, tracked in the Client CRM." },
                 { icon: "mic", title: "Run the interview in Fixsense Meetings", desc: "The client interview is held inside Fixsense Meetings, transcribed live with AI feedback generated for the panel afterward." },
                 { icon: "message", title: "Log the client feedback", desc: "The client's feedback after the interview is logged directly against the candidate and the job." },
                 { icon: "target", title: "Confirm the placement", desc: "Once the offer is accepted, the placement is recorded and reflected immediately in recruitment analytics." },
@@ -1359,29 +1368,31 @@ export default function LandingPage() {
       {/* SECURITY */}
       <section className="section" id="security">
         <div className="section-inner">
-          <Reveal>
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div className="kicker" style={{ justifyContent: "center" }}>Built to be trusted</div>
-              <h2 className="section-h" style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}>Candidate and client data, protected by default.</h2>
-              <p className="section-sub" style={{ textAlign: "center", maxWidth: 480, margin: "10px auto 0" }}>CVs, interviews, and client feedback carry sensitive information. Fixsense is built around that responsibility from day one.</p>
-            </div>
-          </Reveal>
-          <Reveal delay={80}>
-            <div className="security-grid">
-              {SECURITY_ITEMS.map((c, i) => (
-                <div key={i} className="security-card">
-                  <div className="security-icon"><Icon name={c.icon} size={16} /></div>
-                  <div className="security-title">{c.title}</div>
-                  <div className="security-desc">{c.desc}</div>
-                </div>
-              ))}
-            </div>
-          </Reveal>
-          <div className="security-footline" style={{ textAlign: "center" }}>
-            <Link to="/security" className="security-footlink">
-              Read our full security overview
-              <Icon name="arrow-right" size={12} />
-            </Link>
+          <div className="security-wrap">
+            <Reveal>
+              <div className="kicker">Built to be trusted</div>
+              <h2 className="section-h" style={{ maxWidth: 380 }}>Candidate and client data, protected by default.</h2>
+              <p className="section-sub">CVs, interviews, and client feedback carry sensitive information. That responsibility was part of the design from day one, not a section added before launch.</p>
+              <div className="security-footline">
+                <Link to="/security" className="security-footlink">
+                  Read our full security overview
+                  <Icon name="arrow-right" size={12} />
+                </Link>
+              </div>
+            </Reveal>
+            <Reveal delay={80}>
+              <div className="security-list">
+                {SECURITY_ITEMS.map((c, i) => (
+                  <div key={i} className="security-item">
+                    <div className="security-icon"><Icon name={c.icon} size={15} /></div>
+                    <div>
+                      <div className="security-title">{c.title}</div>
+                      <div className="security-desc">{c.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
           </div>
         </div>
       </section>
