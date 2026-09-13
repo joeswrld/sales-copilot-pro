@@ -262,7 +262,7 @@ export default function LoginPage() {
     markVisited();
     if (mode === "signup") {
       const trigger = modeParam === "signup" ? "landing_cta" : firstVisit ? "first_visit_default" : null;
-      if (trigger) void trackFunnel("signup_started", { method: "email", trigger });
+      if (trigger) void trackFunnel("signup_tab_opened", { method: "email", trigger });
     }
     // Intentionally run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -318,6 +318,7 @@ export default function LoginPage() {
           if (error) throw error;
           setResetSent(true);
         } else if (mode === "signup") {
+          void trackFunnel("signup_submitted", { method: "email" });
           const { error } = await supabase.auth.signUp({
             email,
             password,
@@ -342,6 +343,13 @@ export default function LoginPage() {
           // knows whether this user needs onboarding.
         }
       } catch (error: any) {
+        if (mode === "signup") {
+          void trackFunnel("signup_submitted", {
+            method: "email",
+            failed: true,
+            error_message: (error?.message ?? "").slice(0, 200),
+          });
+        }
         // Keep whatever the user typed — never clear the form on error.
         setFormError(friendlyAuthError(error?.message ?? ""));
       } finally {
@@ -364,7 +372,7 @@ export default function LoginPage() {
     submittingRef.current = true;
     setLoading(true);
 
-    if (mode === "signup") void trackFunnel("signup_started", { method: "google" });
+    if (mode === "signup") void trackFunnel("signup_submitted", { method: "google" });
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/dashboard` },
@@ -378,7 +386,7 @@ export default function LoginPage() {
   }, [mode, agreeToTerms]);
 
   const switchToSignup = useCallback(() => {
-    void trackFunnel("signup_started", { method: "email" });
+    void trackFunnel("signup_tab_opened", { method: "email" });
     setMode("signup");
     setTermsError(false);
     setFormError(null);
