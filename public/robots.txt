@@ -33,6 +33,27 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
+# SEO/backlink crawlers — not real visitors, no reason to let them hammer
+# the site. They largely respect robots.txt (unlike scrapers ignoring it
+# entirely, which robots.txt can't stop anyway — see note below).
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
 User-agent: *
 Allow: /
 
