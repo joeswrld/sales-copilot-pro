@@ -14,10 +14,39 @@ import { supabase } from "@/integrations/supabase/client";
 export type FunnelEvent =
   | "page_view"
   | "trial_click"
+  | "signup_tab_opened"
+  | "signup_abandoned_lead"
+  | "signup_submitted"
   | "signup_started"
   | "signup_completed";
 
 const SESSION_KEY = "fx_funnel_session";
+
+/**
+ * Best-effort bot signal, checked client-side before we log anything.
+ *
+ * This is NOT a security control — a bot can trivially spoof navigator
+ * properties. It exists purely to keep the funnel_events table honest, so
+ * "how many real visitors converted" doesn't get drowned out by crawlers,
+ * headless-browser scrapers, and uptime checkers. Real bot *blocking*
+ * (rate limiting, WAF rules, CAPTCHA) has to happen at the network edge or
+ * on signup — see the note in AuthPanel.tsx.
+ */
+const BOT_UA = /HeadlessChrome|PhantomJS|bot|crawl|spider|slurp|facebookexternalhit|bytespider|ahrefsbot|semrushbot|mj12bot|dotbot|read-aloud/i;
+
+export function looksLikeBot(): boolean {
+  try {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    if (BOT_UA.test(ua)) return true;
+    // Headless Chrome sometimes strips "Headless" from the UA string but
+    // still reports webdriver=true and no plugins.
+    if ((navigator as any).webdriver === true) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export function funnelSessionId(): string {
   try {
@@ -46,7 +75,9 @@ export async function trackFunnel(
       referrer: typeof document !== "undefined" ? document.referrer || null : null,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 400) : null,
       user_id: data.session?.user?.id ?? null,
-      metadata,
+      // Flagged, not filtered: keep the row (useful for spotting scraping
+      // spikes) but mark it so funnel/conversion dashboards can exclude it.
+      metadata: { ...metadata, is_likely_bot: looksLikeBot() },
     });
   } catch {
     /* analytics must never break the app */
@@ -107,7 +138,7 @@ export async function reportPartialLead(email: string, fullName?: string): Promi
   if (partialLeadSent.has(key)) return;
   if (!(await isPartialLeadCaptureEnabled())) return;
   partialLeadSent.add(key);
-  await trackFunnel("signup_started", {
+  await trackFunnel("signup_abandoned_lead", {
     method: "email",
     partial_email: trimmed,
     partial_name: fullName?.trim() || null,
