@@ -270,6 +270,11 @@ export default function AuthPanel({
           if (error) throw error;
           setResetSent(true);
         } else if (mode === "signup") {
+          // Fires the moment the form is actually submitted, before we know
+          // whether Supabase accepts it — distinct from signup_started
+          // (tab opened) so the funnel can show submit -> success separately
+          // from tab-open -> submit.
+          void trackFunnel("signup_submitted", { method: "email", ...(trackingSource ? { source: trackingSource } : {}) });
           const { error } = await supabase.auth.signUp({
             email,
             password,
@@ -293,6 +298,14 @@ export default function AuthPanel({
           }
         }
       } catch (error: any) {
+        if (mode === "signup") {
+          void trackFunnel("signup_submitted", {
+            method: "email",
+            failed: true,
+            error_message: (error?.message ?? "").slice(0, 200),
+            ...(trackingSource ? { source: trackingSource } : {}),
+          });
+        }
         setFormError(friendlyAuthError(error?.message ?? ""));
       } finally {
         setLoading(false);
@@ -314,7 +327,7 @@ export default function AuthPanel({
     submittingRef.current = true;
     setLoading(true);
 
-    if (mode === "signup") void trackFunnel("signup_started", { method: "google", ...(trackingSource ? { source: trackingSource } : {}) });
+    if (mode === "signup") void trackFunnel("signup_submitted", { method: "google", ...(trackingSource ? { source: trackingSource } : {}) });
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}${oauthRedirectPath}` },
@@ -327,7 +340,10 @@ export default function AuthPanel({
   }, [mode, agreeToTerms, trackingSource, oauthRedirectPath]);
 
   const switchToSignup = useCallback(() => {
-    void trackFunnel("signup_started", { method: "email", ...(trackingSource ? { source: trackingSource } : {}) });
+    // Tab opened, not a submission — kept as a separate event so the funnel
+    // can show tab-open -> submit -> completed as three distinct steps
+    // instead of collapsing "clicked the tab" into "tried to sign up".
+    void trackFunnel("signup_tab_opened", { method: "email", ...(trackingSource ? { source: trackingSource } : {}) });
     setMode("signup");
     setTermsError(false);
     setFormError(null);
