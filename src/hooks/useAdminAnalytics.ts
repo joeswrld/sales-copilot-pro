@@ -91,6 +91,7 @@ export function useAdminAnalytics(range: AnalyticsRange) {
     visitors: number; page_views: number; trial_clicks: number;
     signups_started: number; signups_completed: number; signups_abandoned: number;
     visit_to_trial_pct: number; trial_to_signup_pct: number; signup_abandon_pct: number;
+    bot_sessions: number;
   } | null>(null);
   const [funnelSeries, setFunnelSeries] = useState<SeriesPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,4 +137,3 @@ export function useAdminAnalytics(range: AnalyticsRange) {
 
   return { revenue, userGrowth, planBreakdown, activeUsers, churn, arpu, minutes, extraMinutes, profitCost, churnReasons, churnFeedback, funnel, funnelSeries, loading, refresh: load };
 }
-
