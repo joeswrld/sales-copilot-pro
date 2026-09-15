@@ -114,7 +114,7 @@ export default function AdminAnalyticsPage() {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: "Website visitors", value: a.funnel?.visitors ?? 0, sub: `${a.funnel?.page_views ?? 0} page views` },
+                { label: "Website visitors", value: a.funnel?.visitors ?? 0, sub: `${a.funnel?.page_views ?? 0} page views · real visitors only` },
                 { label: "Clicked Start Free Trial", value: a.funnel?.trial_clicks ?? 0, sub: `${Number(a.funnel?.visit_to_trial_pct ?? 0)}% of visitors` },
                 { label: "Started sign-up", value: a.funnel?.signups_started ?? 0, sub: `${a.funnel?.signups_completed ?? 0} completed` },
                 { label: "Abandoned sign-up", value: a.funnel?.signups_abandoned ?? 0, sub: `${Number(a.funnel?.signup_abandon_pct ?? 0)}% drop-off` },
@@ -126,6 +126,11 @@ export default function AdminAnalyticsPage() {
                 </div>
               ))}
             </div>
+            {(a.funnel?.bot_sessions ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {a.funnel?.bot_sessions} additional session{a.funnel?.bot_sessions === 1 ? "" : "s"} identified as bot/scraper traffic and excluded from the numbers above.
+              </p>
+            )}
 
             <div className="h-[260px] -ml-4">
               <ResponsiveContainer>
