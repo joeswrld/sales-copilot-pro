@@ -80,7 +80,7 @@ const CAT_COLORS: Record<string, string> = {
   coaching: "#fb923c", integrations: "#06b6d4", billing: "#f472b6",
   notifications: "#4ade80", developer: "#818cf8", beta: "#f87171", general: "#94a3b8"
 };
-const LC = { green: "#34d399", blue: "#38bdf8", purple: "#a78bfa", amber: "#fbbf24", coral: "#f87171", cyan: "#06b6d4", gridLine: "rgba(255,255,255,0.06)", tickColor: "#637085" };
+const LC = { green: "#34d399", blue: "#38bdf8", purple: "#a78bfa", amber: "#fbbf24", coral: "#f87171", cyan: "#06b6d4", gray: "#8b8f9a", gridLine: "rgba(255,255,255,0.06)", tickColor: "#637085" };
 
 const koboToNGN = (k: number) => `₦${(k / 100).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
 const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(Math.round(n));
@@ -1281,7 +1281,7 @@ interface SessionEvent {
 interface FunnelMetrics {
   visitors: number; page_views: number; trial_clicks: number; signups_started: number;
   signups_completed: number; signups_abandoned: number; visit_to_trial_pct: number;
-  trial_to_signup_pct: number; signup_abandon_pct: number;
+  trial_to_signup_pct: number; signup_abandon_pct: number; bot_sessions: number;
 }
 interface PartialLead {
   session_id: string; email: string; name: string | null; path: string | null; created_at: string;
@@ -1335,6 +1335,7 @@ function VisitorsSection() {
   const [funnel, setFunnel] = useState<FunnelMetrics | null>(null);
   const [sessions, setSessions] = useState<VisitorSession[]>([]);
   const [total, setTotal] = useState(0);
+  const [botTotal, setBotTotal] = useState(0);
   const [leads, setLeads] = useState<PartialLead[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -1352,7 +1353,7 @@ function VisitorsSection() {
       (supabase as any).rpc("admin_get_visitor_sessions", { _from: from.toISOString(), _to: to.toISOString(), p_limit: PER, p_offset: page * PER }),
       (supabase as any).from("funnel_events")
         .select("session_id, path, created_at, metadata")
-        .eq("event", "signup_started")
+        .in("event", ["signup_abandoned_lead", "signup_started"])
         .not("metadata->>partial_email", "is", null)
         .gte("created_at", from.toISOString())
         .lte("created_at", to.toISOString())
@@ -1361,7 +1362,7 @@ function VisitorsSection() {
       (supabase as any).rpc("is_partial_lead_capture_enabled"),
     ]);
     if (f.data?.[0]) setFunnel(f.data[0]);
-    if (s.data) { setSessions((s.data as any).sessions || []); setTotal((s.data as any).total || 0); }
+    if (s.data) { setSessions((s.data as any).sessions || []); setTotal((s.data as any).total || 0); setBotTotal((s.data as any).bot_total || 0); }
     if (l.data) {
       setLeads((l.data as any[]).map(r => ({
         session_id: r.session_id, path: r.path, created_at: r.created_at,
@@ -1511,16 +1512,22 @@ function VisitorsSection() {
         <>
           {funnel && (
             <div className="kpi-grid" style={{ marginBottom: 16 }}>
-              <KpiCard label="Website Visitors" value={fmt(funnel.visitors)} sub={`${fmt(funnel.page_views)} page views`} color={LC.blue} />
+              <KpiCard label="Website Visitors" value={fmt(funnel.visitors)} sub={`${fmt(funnel.page_views)} page views · real visitors only`} color={LC.blue} />
               <KpiCard label="Started Free Trial" value={fmt(funnel.trial_clicks)} sub={`${funnel.visit_to_trial_pct}% of visitors`} color={LC.cyan} />
               <KpiCard label="Started Sign-up" value={fmt(funnel.signups_started)} sub={`${funnel.trial_to_signup_pct}% of trial clicks`} color={LC.amber} />
               <KpiCard label="Completed Sign-up" value={fmt(funnel.signups_completed)} color={LC.green} />
               <KpiCard label="Abandoned Sign-up" value={fmt(funnel.signups_abandoned)} sub={`${funnel.signup_abandon_pct}% drop-off`} color={LC.coral} />
+              <KpiCard label="Bots Excluded" value={fmt(funnel.bot_sessions)} sub="scrapers/headless browsers, not counted above" color={LC.gray} />
             </div>
           )}
 
           {tab === "sessions" && (
             <>
+              {botTotal > 0 && (
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, padding: "6px 10px", background: "rgba(139,143,154,0.08)", borderRadius: 6 }}>
+                  {fmt(botTotal)} additional {botTotal === 1 ? "session" : "sessions"} in this period {botTotal === 1 ? "was" : "were"} identified as bot/scraper traffic and excluded from this list.
+                </div>
+              )}
               <div className="table-wrap">
                 <table>
                   <thead><tr>{["Visitor", "Location / Device", "Entry → Exit", "Duration", "Activity", ""].map(h => <th key={h}>{h}</th>)}</tr></thead>
